@@ -15,6 +15,12 @@
     "analysis",
     "discovery"
   ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./file": "./lib/require-file-report.js",
+    "./file/report": "./lib/require-file-report.js",
+    "./file/data": "./lib/require-file-data.js"
+  },
   "scripts": {
     "lint": "eslint src",
     "start": "discovery",
