@@ -10,7 +10,7 @@ discovery.page.define('default', {
                 },
                 {
                     view: 'markdown',
-                    source: 'CPU profiler viewer'
+                    source: 'A viewer for CPU profiles collected in Node.js or Chromium browsers'
                 },
                 'html:"<br>"',
                 {
