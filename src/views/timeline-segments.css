@@ -1,0 +1,15 @@
+.view-timeline-segments {
+    position: relative;
+    border-top: 1px solid #888c;
+    height: 8px;
+    margin: 8px 0 0;
+}
+
+.view-timeline-segments .timeline-segment {
+    position: absolute;
+    top: -5px;
+    left: calc(100% * var(--offset));
+    width: max(calc(100% * var(--width)), 1px);
+    height: 9px;
+    background: #7bc13f7a;
+}
