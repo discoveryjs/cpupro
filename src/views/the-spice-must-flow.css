@@ -1,9 +1,0 @@
-.view-flow .flow-node {
-    margin: 1ex;
-}
-.view-flow .flow-node::after {
-    content: "";
-    height: 3px;
-    background: red;
-    width: var(--self-time);
-}

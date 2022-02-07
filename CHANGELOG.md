@@ -1,3 +1,0 @@
-## next
-
-- First public release

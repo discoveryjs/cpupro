@@ -1,6 +1,4 @@
-# CPU PRO
-
-TBD
+GitHub Pages build of CPU PRO
 
 ## License
 
