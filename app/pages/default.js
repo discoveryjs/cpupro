@@ -6,7 +6,7 @@ discovery.page.define('default', {
             content: [
                 {
                     view: 'h1',
-                    content: 'text:"CPU pro"'
+                    content: 'text:"CPU (pro)file"'
                 },
                 {
                     view: 'markdown',

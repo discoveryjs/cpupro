@@ -18,10 +18,11 @@
   "scripts": {
     "lint": "eslint src",
     "start": "discovery",
-    "build": "discovery-build",
-    "build-app": "discovery-build --config app.config.js --clean --single-file --no-data --model-data-upload",
-    "build-report-template": "discovery-build --clean --single-file --no-data",
-    "build-gh-pages": "npm run build-app -- -o .gh-pages"
+    "build": "npm run build-app && npm run build-report-template",
+    "build-app": "discovery-build --config .discoveryrc.app.js --single-file --no-data --model-data-upload && mv build/index.html build/app.html",
+    "build-report-template": "discovery-build --single-file --no-data && mv build/index.html build/report.html",
+    "build-gh-pages": "discovery-build --config .discoveryrc.app.js --single-file --no-data --model-data-upload -o .gh-pages",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@discoveryjs/discovery": "^1.0.0-beta.63",

@@ -1,7 +1,7 @@
 module.exports = {
-    name: 'CPU profile discovery',
+    name: 'CPU(pro)file',
     cache: true,
-    basedir: __dirname + '/src',
+    basedir: __dirname + '/app',
     upload: {
         accept: ['.cpuprofile']
     },
