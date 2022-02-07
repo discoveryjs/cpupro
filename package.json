@@ -15,6 +15,12 @@
     "analysis",
     "discovery"
   ],
+  "files": [
+    "bin",
+    "build/app.html",
+    "build/report.html",
+    "lib"
+  ],
   "exports": {
     ".": "./lib/index.js",
     "./file": "./lib/require-file-report.js",
