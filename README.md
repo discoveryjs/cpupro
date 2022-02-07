@@ -1,3 +1,5 @@
+[![NPM version](https://img.shields.io/npm/v/cpupro.svg)](https://www.npmjs.com/package/cpupro)
+
 # CPU PRO
 
 Rethinking of CPU profile (collected in Node.js or Chromium browsers) analysis.
