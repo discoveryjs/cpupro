@@ -1,4 +1,5 @@
 /.discoveryjs-cache/
+/.gh-pages/
 /.vscode/
 /build/
 /node_modules/
