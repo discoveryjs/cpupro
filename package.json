@@ -15,6 +15,7 @@
     "analysis",
     "discovery"
   ],
+  "bin": "./bin/cpupro",
   "files": [
     "bin",
     "build/app.html",
