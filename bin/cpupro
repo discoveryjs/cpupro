@@ -1,0 +1,18 @@
+#!/usr/bin/env node
+/* eslint-env node */
+
+const command = require('../lib/cli');
+
+// run command
+try {
+    command.run();
+} catch (e) {
+    // output user frendly message if cli error
+    if (command.isCliError(e)) {
+        console.error(e.message || e);
+        process.exit(2);
+    }
+
+    // otherwise re-throw exception
+    throw e;
+}
