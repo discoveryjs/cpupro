@@ -494,6 +494,10 @@ export default function(data, { defineObjectMarker, addValueAnnotation, addQuery
 
     // process children (replace an ID with a node)
     for (const node of data.nodes) {
+        if (!node.children) {
+            node.children = [];
+        }
+
         for (let i = 0; i < node.children.length; i++) {
             const child = nodeById[Number(node.children[i])];
 
