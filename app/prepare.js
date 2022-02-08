@@ -89,6 +89,10 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
 
         switch (entry.protocol) {
             case '':
+                entry.type = 'script';
+                entry.path = 'file://' + url;
+                break;
+
             case 'file':
             case 'http':
             case 'https':
@@ -387,7 +391,6 @@ export default function(data, { defineObjectMarker, addValueAnnotation, addQuery
         }
 
         const { scriptId, functionName, url, lineNumber, columnNumber } = node.callFrame;
-        const fspath = url.replace(/^file:\/\//, '');
         const functionRef = `${scriptId}:${functionName}:${lineNumber}:${columnNumber}:${url}`;
         const moduleRef = resolveModuleRef(moduleRefCache, functionRef, scriptId, url, functionName);
         const packageRef = resolvePackageRef(packageRefCache, moduleRef);
@@ -447,7 +450,7 @@ export default function(data, { defineObjectMarker, addValueAnnotation, addQuery
             const modulePath = node.module.path || '';
 
             if (modulePath) {
-                if (node.module.package.type === 'script' && node.module.package.path === '') {
+                if (node.module.package.type === 'script' && node.module.package.path === 'file:') {
                     longestCommonModulePath = getLongestCommonPath(longestCommonModulePath, modulePath);
                 }
             }
@@ -461,7 +464,7 @@ export default function(data, { defineObjectMarker, addValueAnnotation, addQuery
                 id: functions.size + 1, // id starts with 1
                 name: functionName || `(anonymous function #${functions.anonymous++})`,
                 module: node.module,
-                loc: fspath ? `${fspath}:${lineNumber}:${columnNumber}` : null,
+                loc: node.module.path ? `${node.module.path}:${lineNumber}:${columnNumber}` : null,
                 selfTime: 0,
                 totalTime: 0,
                 parents: null,
@@ -540,17 +543,17 @@ export default function(data, { defineObjectMarker, addValueAnnotation, addQuery
 
     // shorthand paths
     if (longestCommonModulePath !== null && longestCommonModulePath.length > 0) {
-        longestCommonModulePath = longestCommonModulePath.join('/') + '/';
+        longestCommonModulePath = longestCommonModulePath.join('/');
 
         for (const pkg of packages.values()) {
-            if (pkg.type === 'script' && pkg.path === '') {
+            if (pkg.type === 'script' && pkg.path === 'file:') {
                 pkg.path = longestCommonModulePath;
             }
         }
 
         for (const fn of functions.values()) {
-            if (fn.loc && fn.loc.startsWith('/')) {
-                fn.loc = './' + fn.loc.slice(longestCommonModulePath.length);
+            if (fn.loc && fn.loc.startsWith(longestCommonModulePath + '/')) {
+                fn.loc = './' + fn.loc.slice(longestCommonModulePath.length + 1);
             }
         }
     }
