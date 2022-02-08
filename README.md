@@ -12,9 +12,9 @@ Rethinking of CPU profile (collected in Node.js or Chromium browsers) analysis.
 
 ## Usage
 
-### Scenario #1 – A standalone app to view .cpuprofile files
+### Scenario #1 – A viewer for .cpuprofile files
 
-Head to the [app on GitHub pages](https://lahmatiy.github.io/cpupro/), open a `.cpuprofile` file or drop it on the page.
+Head to the [viewer on GitHub pages](https://lahmatiy.github.io/cpupro/), open a `.cpuprofile` file or drop it on the page.
 
 <img width="560" alt="Viewer welcome page" src="https://user-images.githubusercontent.com/270491/152878930-9682c9fd-dabb-4f07-9b88-63351fcd29a1.png">
 
@@ -22,9 +22,9 @@ Head to the [app on GitHub pages](https://lahmatiy.github.io/cpupro/), open a `.
 
 Install `cpupro` globally using `npm install -g cpupro` or use `npx cpupro`:
 
-- `cpupro` – opens app with no data in your default browser
-- `cpupro - <test.cpuprofile` or `cat test.cpuprofile | cpupro -` – open an app with `test.cpuprofile` loaded
-- `cpupro -h` – get command usage help:
+- `cpupro` – open viewer without embedded data in default browser
+- `cpupro - <test.cpuprofile` or `cat test.cpuprofile | cpupro -` – open viewer with `test.cpuprofile` data embedded
+- `cpupro -h` – get usage information:
 
 ```
 Usage:
@@ -41,9 +41,9 @@ Options:
     -v, --version                Output version
 ```
 
-### Scenario #3 – Use API in your script
+### Scenario #3 – A library for Node.js program
 
-Basic API is similar to [`console.profile()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profile) / [`console.stopProfile()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profileEnd) with exception that `profileEnd()` method does nothing except return a profile, the result of recording with a handy API:
+Main `cpupro` API is similar to [`console.profile()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profile) / [`console.stopProfile()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profileEnd) with an exception that the `profileEnd()` method does nothing but return a profile, the result of profilging with methods for saving data to a file and generating a report:
 
 ```js
 const profiler = require('cpupro');
@@ -57,13 +57,13 @@ const profile = record.profileEnd('profileName');
 
 // write data to .cpuprofile file
 profile.writeToFile('./path/to/demo.cpuprofile');
-// or write a report (an app with embedded data) to file
+// or write a report (the viewer with embedded data) to file
 profile.report.writeToFile('report.html');
 // or just open the report in a browser
 profile.report.open();
 ```
 
-It's possible to use a reference to profile record API instead of a profile name:
+It is allowed to have several profiles being collected at once. It's possible to use a reference to profile record API instead of a profile name:
 
 ```js
 const profiler = require('cpupro');
@@ -76,7 +76,7 @@ const profile = profiler.profile();
 profile.end().openReport();
 ```
 
-### Scenario #4 – Using node --require
+### Scenario #4 – A preload module for Node.js scripts
 
 Collect data, generate report and open it in a browser:
 
