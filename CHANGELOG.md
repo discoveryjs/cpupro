@@ -1,4 +1,4 @@
-## next
+## 0.1.1 (2022-02-07)
 
 - Added missed `bin` field
 - Renamed profile recording method `end()` into `profileEnd()` for less confussion
@@ -7,6 +7,6 @@
 - Removed modification of `startTime` and `endTime` in recorded profile
 - Exposed `createReport()` method
 
-## 0.1.0
+## 0.1.0 (2022-02-07)
 
 - Initial release
