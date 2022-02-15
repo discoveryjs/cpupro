@@ -2,6 +2,7 @@
 
 - Added support for Chromium timeline profile format
 - Fixed time deltas processing
+- Fixed module path processing
 
 ## 0.1.1 (2022-02-07)
 

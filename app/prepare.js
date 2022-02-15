@@ -102,6 +102,7 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
             case 'file':
             case 'http':
             case 'https':
+            case 'webpack':
             case 'webpack-internal':
                 entry.type = 'script';
                 entry.path = url;
@@ -597,11 +598,11 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         if (module.package.path && modulePath.startsWith(module.package.path)) {
             module.packageRelPath = modulePath
                 .slice(module.package.path.length)
-                .replace(/^[\/\\]/, '');
+                .replace(/^[\/\\]+/, '');
         }
     }
 
-    // extend jora's queries
+    // extend jora's queries with custom methods
     addQueryHelpers({
         duration(value) {
             const percent = 100 * value / totalTime;
