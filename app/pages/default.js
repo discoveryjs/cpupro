@@ -5,21 +5,21 @@ discovery.page.define('default', {
             when: 'not #.dataLoaded',
             content: [
                 {
-                    view: 'h1',
-                    content: 'text:"CPU (pro)file"'
+                    view: 'page-header',
+                    content: 'h1:"CPU (pro)file"'
                 },
                 {
                     view: 'markdown',
-                    source: 'A viewer for CPU profiles collected in Node.js or Chromium browsers'
+                    source: [
+                        'A viewer for CPU profiles collected in Node.js or Chromium browsers.',
+                        '',
+                        'Supported formats:',
+                        '* [V8 CPU profile](https://v8.dev/docs/profile) (.cpuprofile)',
+                        '* [Chromium performance profile](https://www.debugbear.com/blog/devtools-performance#recording-a-performance-profile) (.json)'
+                    ]
                 },
                 'html:"<br>"',
-                {
-                    view: 'button-primary',
-                    onClick: '=#.actions.uploadFile',
-                    content: 'text:`Open file ${#.actions.uploadFile.fileExtensions | $ ? "(" + join(", ") + ")" : ""}`'
-                },
-                'html:"<span style=\\"color: #888; padding: 0 1ex\\"> or </span>"',
-                'text:"drop a file on the page"'
+                'preset/upload'
             ]
         },
         { content: [

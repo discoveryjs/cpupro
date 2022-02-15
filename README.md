@@ -4,6 +4,11 @@
 
 Rethinking of CPU profile (collected in Node.js or Chromium browsers) analysis.
 
+Supported formats:
+
+* [V8 CPU profile](https://v8.dev/docs/profile) (.cpuprofile)
+* [Chromium performance profile](https://www.debugbear.com/blog/devtools-performance#recording-a-performance-profile) (.json)
+
 > STATUS: MVP / proof of concept
 >
 > The project is at an early stage of development. Some things have yet to be added and polished. Feel free to create an issue if you found a bug or have an idea.

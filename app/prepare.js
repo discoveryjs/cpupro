@@ -1,3 +1,9 @@
+import { isCPUProfile } from './prepare/cpuprofile.js';
+import {
+    isChromiumTimeline,
+    extractCpuProfilesFromChromiumTimeline
+} from './prepare/chromium-timeline.js';
+
 const wellKnownNodeName = new Map([
     ['(root)', 'root'],
     ['(program)', 'program'],
@@ -321,7 +327,30 @@ function buildTree(rootNode, map, getTo) {
     }
 }
 
-export default function(data, { defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
+export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
+    if (isChromiumTimeline(data)) {
+        const result = extractCpuProfilesFromChromiumTimeline(data);
+
+        data = result.profiles[result.indexToView] || result.profiles[0];
+    }
+
+    if (!isCPUProfile(data)) {
+        rejectData('Bad format', {
+            view: 'alert-warning',
+            content: [
+                { view: 'h3', content: [
+                    'badge:"Error"',
+                    'text:"Bad format"'
+                ] },
+                { view: 'md', source: [
+                    'CPU (pro)file supports the following formats:',
+                    '* V8 CPU profile (.cpuprofile)',
+                    '* Chromium timeline (.json)'
+                ] }
+            ]
+        });
+    }
+
     const markAsNode = defineObjectMarker('node');
     const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
     const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
@@ -596,4 +625,6 @@ export default function(data, { defineObjectMarker, addValueAnnotation, addQuery
 
     delete data.samples;
     delete data.timeDeltas;
+
+    return data;
 }

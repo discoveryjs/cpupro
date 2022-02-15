@@ -33,7 +33,7 @@
     "start": "discovery",
     "build": "npm run build-app && npm run build-report-template",
     "build-app": "discovery-build --config .discoveryrc.app.js --single-file --no-data && mv build/index.html build/app.html",
-    "build-report-template": "discovery-build --single-file --no-data && mv build/index.html build/report.html",
+    "build-report-template": "discovery-build --single-file --no-data --no-model-data-upload && mv build/index.html build/report.html",
     "build-gh-pages": "discovery-build --config .discoveryrc.app.js --single-file --no-data -o .gh-pages",
     "prepublishOnly": "npm run build"
   },

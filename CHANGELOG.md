@@ -1,3 +1,7 @@
+## next
+
+- Added support for Chromium timeline profile format
+
 ## 0.1.1 (2022-02-07)
 
 - Added missed `bin` field

@@ -1,9 +1,9 @@
 module.exports = {
-    name: 'CPU(pro)file',
+    name: 'CPU (pro)file',
     cache: true,
     basedir: __dirname + '/app',
     upload: {
-        accept: ['.cpuprofile']
+        accept: ['.cpuprofile', '.json']
     },
     prepare: './prepare',
     data: './data',
