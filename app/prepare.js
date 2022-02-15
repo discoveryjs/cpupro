@@ -375,12 +375,12 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         gc: null
     };
     let longestCommonModulePath = null;
-    let totalTime = 0;
+    let totalTime = data.timeDeltas[0];
 
     markAsPackage(noPackage);
 
     // precompute self time and time segments
-    for (let i = 0, lastNodeId = -1, lastSegment = null; i < data.timeDeltas.length; i++) {
+    for (let i = 1, lastNodeId = data.samples[0], lastSegment = null; i < data.timeDeltas.length; i++) {
         const delta = data.timeDeltas[i];
 
         // a delta might be negative sometimes, just ignore such samples
@@ -522,6 +522,10 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         node.function.selfTime += node.selfTime;
         node.function.totalTime += node.selfTime;
         node.function.calls.push(node);
+    }
+
+    if (wellKnownNodes.idle) {
+        wellKnownNodes.idle.selfTime += data.timeDeltas[0];
     }
 
     // process children (replace an ID with a node)

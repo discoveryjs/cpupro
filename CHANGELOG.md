@@ -1,6 +1,7 @@
 ## next
 
 - Added support for Chromium timeline profile format
+- Fixed time deltas processing
 
 ## 0.1.1 (2022-02-07)
 
