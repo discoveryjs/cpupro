@@ -32,20 +32,20 @@
     "lint": "eslint src",
     "start": "discovery",
     "build": "npm run build-app && npm run build-report-template",
-    "build-app": "discovery-build --config .discoveryrc.app.js --single-file --no-data --model-data-upload && mv build/index.html build/app.html",
+    "build-app": "discovery-build --config .discoveryrc.app.js --single-file --no-data && mv build/index.html build/app.html",
     "build-report-template": "discovery-build --single-file --no-data && mv build/index.html build/report.html",
-    "build-gh-pages": "discovery-build --config .discoveryrc.app.js --single-file --no-data --model-data-upload -o .gh-pages",
+    "build-gh-pages": "discovery-build --config .discoveryrc.app.js --single-file --no-data -o .gh-pages",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@discoveryjs/discovery": "^1.0.0-beta.63",
     "@discoveryjs/json-ext": "^0.5.6",
     "clap": "^3.1.1",
     "open": "^8.4.0",
     "v8-profiler-next": "^1.5.1"
   },
   "devDependencies": {
-    "@discoveryjs/cli": "^2.0.0-beta.13",
+    "@discoveryjs/discovery": "^1.0.0-beta.64",
+    "@discoveryjs/cli": "^2.0.0-beta.14",
     "eslint": "^8.7.0"
   }
 }
