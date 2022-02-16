@@ -34,7 +34,7 @@ Install `cpupro` globally using `npm install -g cpupro` or use `npx cpupro`:
 ```
 Usage:
 
-    cpupro [path-to-cpuprofile] [options]
+    cpupro [filepath] [options]
 
 Options:
 
@@ -48,7 +48,7 @@ Options:
 
 ### Scenario #3 – A library for Node.js program
 
-Main `cpupro` API is similar to [`console.profile()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profile) / [`console.stopProfile()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profileEnd) with an exception that the `profileEnd()` method does nothing but return a profile, the result of profilging with methods for saving data to a file and generating a report:
+Main `cpupro` API is similar to [`console.profile()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profile) / [`console.profileEnd()`](https://developer.mozilla.org/en-US/docs/Web/API/console/profileEnd) with an exception that the `profileEnd()` method does nothing but return a profile, the result of profilging with methods for saving data to a file and generating a report:
 
 ```js
 const profiler = require('cpupro');
