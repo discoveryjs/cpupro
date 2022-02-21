@@ -1,10 +1,10 @@
-## next
+## 0.2.0 (2022-02-21)
 
 - Added support for Chromium Developer Tools profile format (Trace Event Format)
-- Added flame chart
+- Added flame chart on index page
 - Fixed time deltas processing
-- Fixed module path processing
 - Fixed total time computation for areas, packages, modules and functions
+- Fixed module path processing
 - Reworked aggregations for areas, packages, modules and functions
 
 ## 0.1.1 (2022-02-07)
