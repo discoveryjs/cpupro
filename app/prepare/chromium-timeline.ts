@@ -1,5 +1,11 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
+type ChromiumTimeline = {
+    traceEvents: ChromiumTimelineEvent[]
+} & {
+    [key: string]: any;
+};
+
 interface ChromiumTimelineEvent {
     pid: number;
     tid: number;
@@ -28,7 +34,6 @@ interface CPUProfileCallFrame {
 }
 
 interface ProfileGroup {
-    name: string;
     indexToView: number;
     profiles: CPUProfile[];
 }
@@ -51,33 +56,31 @@ export interface CPUProfile {
     timeDeltas: number[];
 }
 
-function isProfileRelatedEvent(e) {
-    return (
-        e.name === 'CpuProfile' ||
-        e.name === 'Profile' ||
-        e.name === 'ProfileChunk'
-    );
-}
-
-export function isChromiumTimeline(rawProfile: any): boolean {
-    if (!Array.isArray(rawProfile) || rawProfile.length === 0) {
-        return false;
+export function isChromiumTimeline(data: any): boolean {
+    if (!Array.isArray(data)) {
+        // JSON Object Format
+        return data && 'traceEvents' in data
+            ? isChromiumTimeline(data.traceEvents)
+            : false;
     }
 
-    const first = rawProfile[0]
+    if (data.length === 0) {
+        return true;
+    }
+
+    const first = data[0];
 
     if (!('pid' in first && 'tid' in first && 'ph' in first && 'cat' in first)) {
-        return false;
-    }
-
-    if (!rawProfile.find(isProfileRelatedEvent)) {
         return false;
     }
 
     return true;
 }
         
-export function extractCpuProfilesFromChromiumTimeline(events: ChromiumTimelineEvent[], fileName: string): ProfileGroup {
+export function extractCpuProfilesFromChromiumTimeline(
+    events: ChromiumTimeline | ChromiumTimelineEvent[],
+    fileName: string
+): ProfileGroup {
     // It seems like sometimes Chrome timeline files contain multiple CpuProfiles?
     // For now, choose the first one in the list.
     const cpuProfileByID = new Map<string, CPUProfile>();
@@ -88,9 +91,21 @@ export function extractCpuProfilesFromChromiumTimeline(events: ChromiumTimelineE
     // Maps pid/tid pairs to thread names
     const threadNameByPidTid = new Map<string, string>();
 
-    // The events aren't necessarily recorded in chronological order. Sort them so
-    // that they are.
-    events.sort((a, b) => a.ts - b.ts);
+    // JSON Object Format
+    if ('traceEvents' in events) {
+        events = events.traceEvents;
+    }
+
+    // Filter only necessary events and sort them since the events do not have
+    // to be in timestamp-sorted order
+    events = events
+        .filter(e =>
+            e.name === 'CpuProfile' ||
+            e.name === 'Profile' ||
+            e.name === 'ProfileChunk' ||
+            e.name === 'thread_name'
+        )
+        .sort((a, b) => a.ts - b.ts);
 
     for (let event of events) {
         if (event.name === 'CpuProfile') {
@@ -195,7 +210,6 @@ export function extractCpuProfilesFromChromiumTimeline(events: ChromiumTimelineE
     }
     
     return {
-        name: fileName,
         indexToView,
         profiles
     };

@@ -1,6 +1,6 @@
 ## next
 
-- Added support for Chromium timeline profile format
+- Added support for Chromium Developer Tools profile format (Trace Event Format)
 - Added flame chart
 - Fixed time deltas processing
 - Fixed module path processing

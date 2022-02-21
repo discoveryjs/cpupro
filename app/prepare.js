@@ -1,8 +1,4 @@
-import { isCPUProfile } from './prepare/cpuprofile.js';
-import {
-    isChromiumTimeline,
-    extractCpuProfilesFromChromiumTimeline
-} from './prepare/chromium-timeline.js';
+import { convertValidate } from './prepare/index.js';
 
 const wellKnownNodeName = new Map([
     ['(root)', 'root'],
@@ -328,28 +324,7 @@ function aggregateNodes(rootNode, map, getHost) {
 }
 
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
-    if (isChromiumTimeline(data)) {
-        const result = extractCpuProfilesFromChromiumTimeline(data);
-
-        data = result.profiles[result.indexToView] || result.profiles[0];
-    }
-
-    if (!isCPUProfile(data)) {
-        rejectData('Bad format', {
-            view: 'alert-warning',
-            content: [
-                { view: 'h3', content: [
-                    'badge:"Error"',
-                    'text:"Bad format"'
-                ] },
-                { view: 'md', source: [
-                    'CPU (pro)file supports the following formats:',
-                    '* V8 CPU profile (.cpuprofile)',
-                    '* Chromium timeline (.json)'
-                ] }
-            ]
-        });
-    }
+    data = convertValidate(data, rejectData);
 
     const markAsNode = defineObjectMarker('node');
     const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
@@ -380,7 +355,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     markAsPackage(noPackage);
 
     // precompute self time and time segments
-    for (let i = 1, lastNodeId = data.samples[0], lastSegment = null; i < data.timeDeltas.length; i++) {
+    for (let i = 1, lastNodeId = data.samples[0], lastSegment = []; i < data.timeDeltas.length; i++) {
         const delta = data.timeDeltas[i];
 
         // a delta might be negative sometimes, just ignore such samples

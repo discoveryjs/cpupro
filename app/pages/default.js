@@ -15,7 +15,7 @@ discovery.page.define('default', {
                         '',
                         'Supported formats:',
                         '* [V8 CPU profile](https://v8.dev/docs/profile) (.cpuprofile)',
-                        '* [Chromium performance profile](https://www.debugbear.com/blog/devtools-performance#recording-a-performance-profile) (.json)'
+                        '* [Chromium timeline](https://www.debugbear.com/blog/devtools-performance#recording-a-performance-profile) / [Trace Event](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview) format (.json)'
                     ]
                 },
                 'html:"<br>"',
