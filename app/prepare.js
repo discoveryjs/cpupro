@@ -410,6 +410,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                 path: moduleRef.path,
                 package: noPackage,
                 packageRelPath: null,
+                area: null,
                 selfTime: 0,
                 totalTime: 0,
                 functions: [],
@@ -432,6 +433,8 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                 areas.set(node.module.type, area);
                 markAsArea(area);
             }
+
+            node.module.area = areas.get(node.module.type);
 
             // package
             if (packages.has(packageRef.ref)) {
