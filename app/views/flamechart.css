@@ -8,8 +8,9 @@
 .view-flamechart__content {
     min-height: 150px;
     max-height: 50vh;
-    max-height: min(40vh, 250px);
+    max-height: min(40vh, 300px);
     overflow: scroll;
+    overflow-x: hidden;
 }
 
 .view-flamechart rect {

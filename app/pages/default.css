@@ -1,0 +1,47 @@
+.flamecharts {
+    margin-top: 8px;
+}
+.flamecharts-fullpage {
+    visibility: hidden;
+}
+.flamecharts-fullpage .flamecharts > .content {
+    visibility: visible;
+    position: fixed;
+    top: calc(var(--discovery-nav-height) + 5px);
+    left: 2px;
+    right: 2px;
+    bottom: 2px;
+    display: flex;
+    flex-direction: column;
+}
+.flamecharts-fullpage .view-flamechart {
+    flex: 1;
+}
+.flamecharts-fullpage .view-flamechart__content {
+    min-height: 100%;
+}
+
+.flamecharts .toolbar {
+    display: flex;
+    gap: 6px;
+    margin: 1px 0;
+}
+.flamecharts .toolbar .filters {
+    flex: 1;
+}
+.flamecharts .view-toggle {
+    font-size: 11px;
+    border-radius: 0;
+}
+
+.flamecharts .view-flamechart {
+    padding: 0;
+    margin: 0;
+}
+.flamecharts .view-checkbox {
+    --discovery-checkbox-size: 13px;
+    white-space: nowrap;
+}
+.flamecharts .view-checkbox__label {
+    font-size: 12px;
+}

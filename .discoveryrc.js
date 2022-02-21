@@ -10,6 +10,7 @@ module.exports = {
     view: {
         assets: [
             './pages/default.js',
+            './pages/default.css',
             './pages/area.js',
             './pages/function.js',
             './pages/module.js',
@@ -18,6 +19,8 @@ module.exports = {
             './views/duration.js',
             './views/flamechart.css',
             './views/flamechart.js',
+            './views/loc-badge.css',
+            './views/loc-badge.js',
             './views/module-badge.css',
             './views/module-badge.js',
             './views/package-badge.css',

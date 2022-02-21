@@ -35,15 +35,78 @@ discovery.page.define('default', {
             },
 
             {
-                view: 'tabs',
-                name: 'dataset',
-                tabs: [
-                    { text: 'Areas', value: 'areaTree' },
-                    { text: 'Packages', value: 'packageTree', active: true },
-                    { text: 'Modules', value: 'moduleTree' },
-                    { text: 'Functions', value: 'functionTree' }
-                ],
-                content: 'flamechart:$[#.dataset]'
+                view: 'expand',
+                expanded: true,
+                className: 'flamecharts',
+                header: 'text:"Flame charts"',
+                content: {
+                    view: 'context',
+                    modifiers: {
+                        view: 'block',
+                        className: 'toolbar',
+                        content: [
+                            {
+                                view: 'toggle-group',
+                                name: 'dataset',
+                                data: [
+                                    { text: 'Areas', value: 'areaTree' },
+                                    { text: 'Packages', value: 'packageTree', active: true },
+                                    { text: 'Modules', value: 'moduleTree' },
+                                    { text: 'Functions', value: 'functionTree' }
+                                ]
+                            },
+                            {
+                                view: 'block',
+                                className: 'filters',
+                                content: [
+                                    {
+                                        view: 'checkbox',
+                                        name: 'showIdle',
+                                        checked: true,
+                                        content: 'text:"(idle)"'
+                                    },
+                                    {
+                                        view: 'checkbox',
+                                        name: 'showProgram',
+                                        checked: true,
+                                        content: 'text:"(program)"'
+                                    },
+                                    {
+                                        view: 'checkbox',
+                                        name: 'showGC',
+                                        checked: true,
+                                        content: 'text:"(garbage collector)"'
+                                    }
+                                ]
+                            },
+                            {
+                                view: 'toggle',
+                                className: 'flamechart-fullpage-toggle',
+                                // checked: '=#.params.fullScreen',
+                                content: 'text:"Full page"',
+                                onToggle() {
+                                    // const params = { ...discovery.pageParams };
+
+                                    // if (enabled) {
+                                    //     params.fullScreen = true;
+                                    // } else {
+                                    //     delete params.fullScreen;
+                                    // }
+
+                                    // discovery.setPageParams(params);
+                                    // discovery.cancelScheduledRender();
+                                    discovery.dom.root.querySelector('.page').classList.toggle('flamecharts-fullpage');
+                                    discovery.dom.root.querySelector('.flamechart-fullpage-toggle').classList.toggle('checked');
+                                }
+                            }
+                        ]
+                    },
+                    content: `flamechart:
+                        $root: $[#.dataset];
+                        $children: $root.children.[host | (#.showIdle or name != "(idle)") and (#.showProgram or name != "(program)") and (#.showGC or name != "(garbage collector)")];
+                        { ...$root, $children, totalTime: $children.sum(=>totalTime) }
+                    `
+                }
             },
 
             {

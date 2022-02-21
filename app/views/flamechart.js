@@ -89,7 +89,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         .call(chart);
 
     const unsubscribeResize = sizeObserver.subscribe(({ width }) => {
-        chart.width(lastWidth = width).render();
+        chart.width(lastWidth = width + 1).render();
     });
     destroyEl.onDestroy = () => {
         unsubscribeResize();
