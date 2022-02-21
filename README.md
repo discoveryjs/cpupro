@@ -7,21 +7,21 @@ Rethinking of CPU profile (collected in Node.js or Chromium browsers) analysis.
 Supported formats:
 
 * [V8 CPU profile](https://v8.dev/docs/profile) (.cpuprofile)
-* [Chromium performance profile](https://www.debugbear.com/blog/devtools-performance#recording-a-performance-profile) (.json)
+* [Chromium timeline](https://www.debugbear.com/blog/devtools-performance#recording-a-performance-profile) / [Trace Event](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview) format (.json)
 
 > STATUS: MVP / proof of concept
 >
 > The project is at an early stage of development. Some things have yet to be added and polished. Feel free to create an issue if you found a bug or have an idea.
 
-![image](https://user-images.githubusercontent.com/270491/152838063-861a6ce6-2831-4230-80e9-8afea7f94eb0.png)
+<img alt="Demo" src="https://user-images.githubusercontent.com/270491/155012890-18a6d16e-4a17-47f7-a311-d989a3bc4a4c.png">
 
 ## Usage
 
-### Scenario #1 – A viewer for .cpuprofile files
+### Scenario #1 – A viewer for CPU profile files
 
-Head to the [viewer on GitHub pages](https://lahmatiy.github.io/cpupro/), open a `.cpuprofile` file or drop it on the page.
+Head to the [viewer on GitHub pages](https://lahmatiy.github.io/cpupro/), open a file in one of supported formats or drop it on the page.
 
-<img width="560" alt="Viewer welcome page" src="https://user-images.githubusercontent.com/270491/152878930-9682c9fd-dabb-4f07-9b88-63351fcd29a1.png">
+<img width="560" alt="Viewer welcome page" src="https://user-images.githubusercontent.com/270491/155013075-060368a7-0cb3-467d-8b34-8e9a9fcc9ad7.png">
 
 ### Scenario #2 – CLI
 
