@@ -1,0 +1,74 @@
+.view-flamechart {
+    position: relative;
+    margin: 4px 0;
+    padding: 4px 0;
+    background-color: rgba(136, 136, 136, .05);
+}
+
+.view-flamechart__content {
+    min-height: 150px;
+    max-height: 50vh;
+    max-height: min(40vh, 250px);
+    overflow: scroll;
+}
+
+.view-flamechart rect {
+    fill-opacity: .4;
+    cursor: pointer;
+}
+.view-flamechart rect:hover {
+    fill-opacity: .5;
+}
+.discovery-root-darkmode .view-flamechart rect:hover {
+    fill-opacity: .3;
+}
+
+.view-flamechart .frame.fade {
+    opacity: .65;
+}
+.view-flamechart .frame.selected foreignObject {
+    box-shadow: 0 0 1px 1px #ffa500bd inset;
+}
+
+.view-flamechart foreignObject {
+    pointer-events: none;
+}
+
+.view-flamechart .d3-flame-graph-label {
+    font-size: 10px;
+    line-height: 16px;
+    padding: 0 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: inherit;
+}
+.view-flamechart .d3-flame-graph-label:hover {
+    background-color: rgba(0, 0, 0, .1);
+    cursor: pointer;
+    height: 18px;
+}
+
+.flamechart-tooltip {
+    padding: 5px 10px;
+    min-width: 250px;
+    border: none;
+    border-radius: 3px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, .75);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+}
+.discovery-root-darkmode .flamechart-tooltip {
+    background: rgba(36, 36, 36, .8);
+}
+.flamechart-tooltip .view-badge {
+    display: inline-block;
+    margin: 0 0 3px -5px;
+    padding-top: 0;
+    padding-bottom: 1px;
+}
+.flamechart-tooltip .view-duration > .time {
+    flex: 0;
+}
+

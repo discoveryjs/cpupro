@@ -1,6 +1,7 @@
 ## next
 
 - Added support for Chromium timeline profile format
+- Added flame chart
 - Fixed time deltas processing
 - Fixed module path processing
 - Fixed total time computation for areas, packages, modules and functions

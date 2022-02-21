@@ -35,6 +35,18 @@ discovery.page.define('default', {
             },
 
             {
+                view: 'tabs',
+                name: 'dataset',
+                tabs: [
+                    { text: 'Areas', value: 'areaTree' },
+                    { text: 'Packages', value: 'packageTree', active: true },
+                    { text: 'Modules', value: 'moduleTree' },
+                    { text: 'Functions', value: 'functionTree' }
+                ],
+                content: 'flamechart:$[#.dataset]'
+            },
+
+            {
                 view: 'hstack',
                 content: [
                     {

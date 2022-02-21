@@ -16,6 +16,8 @@ module.exports = {
             './pages/package.js',
             './views/duration.css',
             './views/duration.js',
+            './views/flamechart.css',
+            './views/flamechart.js',
             './views/module-badge.css',
             './views/module-badge.js',
             './views/package-badge.css',
