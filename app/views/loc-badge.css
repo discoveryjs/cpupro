@@ -1,0 +1,8 @@
+.view-badge.function-loc {
+    padding-top: 3px;
+    padding-bottom: 3.5px;
+}
+.view-badge.function-loc .delim {
+    color: #888;
+    padding: 0 1px;
+}

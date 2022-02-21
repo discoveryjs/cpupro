@@ -25,7 +25,7 @@ discovery.page.define('module', {
                 { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
                 { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
                 { header: 'Function', content: 'auto-link' },
-                { header: 'Loc', content: 'text:loc or ""' }
+                { header: 'Loc', content: ['module-badge', 'loc-badge'] }
             ]
         }
     ]
