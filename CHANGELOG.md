@@ -3,6 +3,8 @@
 - Added support for Chromium timeline profile format
 - Fixed time deltas processing
 - Fixed module path processing
+- Fixed total time computation for areas, packages, modules and functions
+- Reworked aggregations for areas, packages, modules and functions
 
 ## 0.1.1 (2022-02-07)
 

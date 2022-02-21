@@ -164,10 +164,13 @@ function resolvePackageRef(cache, moduleRef) {
                     entry.ref = url.origin;
                     entry.name = url.host;
                     entry.path = url.origin;
-                } else {
+                } else if (moduleRef.path) {
                     entry.ref = '(script)';
                     entry.name = '(script)';
                     entry.path = moduleRef.path ? moduleRef.path.slice(0, moduleRef.path.indexOf(':') + 1) : '';
+                } else {
+                    entry.ref = '(compiled script)';
+                    entry.name = '(compiled script)';
                 }
             }
 
@@ -242,10 +245,9 @@ function createPackage(id, type, name, path) {
         path,
         selfTime: 0,
         totalTime: 0,
-        parents: null,
-        children: null,
         modules: [],
-        calls: []
+        calls: [],
+        recursiveCalls: []
     };
 }
 
@@ -263,69 +265,66 @@ function computeNodeTotal(node) {
     return node.totalTime;
 }
 
-function collectCalls(node, getHost, stack, x) {
-    const host = getHost(node);
+function collectHostCalls(call, getHost, stack) {
+    const host = getHost(call);
 
-    host.selfTime += node.selfTime;
-    if (stack[host.id] === 0) {
-        host.calls.push(node);
+    host.selfTime += call.selfTime;
+    host.calls.push(call);
+
+    if (stack[host.id] !== 0) {
+        host.recursiveCalls.push(call);
+    } else {
+        host.totalTime += call.totalTime;
     }
 
     stack[host.id]++;
 
-    for (const child of node.children) {
-        collectCalls(child, getHost, stack, x);
+    for (const childCall of call.children) {
+        collectHostCalls(childCall, getHost, stack);
     }
 
     stack[host.id]--;
 }
 
-function buildChildren(host, getTo, id = { seed: 1 }) {
-    if (host.children === null) {
-        const childrenMap = new Map();
+function buildTree(node, parent, getHost) {
+    const host = getHost(node);
 
-        host.totalTime = host.selfTime;
-        host.parents = [];
-        host.children = [];
+    if (parent === null || parent.host !== host) {
+        const existing = parent?.children.find(child => child.host === host);
+        const newParent = existing || {
+            host,
+            selfTime: 0,
+            totalTime: 0,
+            parent,
+            children: [],
+            nodes: []
+        };
 
-        for (const call of host.calls) {
-            for (const callChild of call.children) {
-                const to = getTo(callChild);
-                let hostChild = childrenMap.get(to);
-
-                if (hostChild === undefined) {
-                    childrenMap.set(to, hostChild = {
-                        id: id.seed++,
-                        from: host,
-                        to,
-                        selfTime: 0,
-                        totalTime: 0,
-                        parents: [],
-                        children: buildChildren(to, getTo, id),
-                        calls: []
-                    });
-
-                    host.children.push(hostChild);
-                    to.parents.push(hostChild);
-                }
-
-                host.totalTime += callChild.totalTime;
-                hostChild.selfTime += callChild.selfTime;
-                hostChild.totalTime += callChild.totalTime;
-                hostChild.calls.push(callChild);
+        if (parent) {
+            parent.totalTime += node.totalTime;
+            if (newParent !== existing) {
+                parent.children.push(newParent);
             }
         }
+
+        parent = newParent;
     }
 
-    return host.children;
+    parent.nodes.push(node);
+    parent.selfTime += node.selfTime;
+    parent.totalTime += node.selfTime;
+
+    for (const child of node.children) {
+        buildTree(child, parent, getHost);
+    }
+
+    return parent;
 }
 
-function buildTree(rootNode, map, getTo) {
-    collectCalls(rootNode, getTo, new Uint32Array(map.size + 1));
+function aggregateNodes(rootNode, map, getHost) {
+    collectHostCalls(rootNode, getHost, new Uint32Array(map.size + 1));
 
-    for (const entry of map.values()) {
-        buildChildren(entry, getTo);
-    }
+    return buildTree(rootNode, null, getHost);
 }
 
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
@@ -438,10 +437,9 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                 packageRelPath: null,
                 selfTime: 0,
                 totalTime: 0,
-                parents: null,
-                children: null,
                 functions: [],
-                calls: []
+                calls: [],
+                recursiveCalls: []
             });
             markAsModule(node.module);
 
@@ -452,9 +450,8 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                     name: node.module.type,
                     selfTime: 0,
                     totalTime: 0,
-                    parents: null,
-                    children: null,
-                    calls: []
+                    calls: [],
+                    recursiveCalls: []
                 };
 
                 areas.set(node.module.type, area);
@@ -497,9 +494,8 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                 loc: node.module.path ? `${node.module.path}:${lineNumber}:${columnNumber}` : null,
                 selfTime: 0,
                 totalTime: 0,
-                parents: null,
-                children: null,
-                calls: []
+                calls: [],
+                recursiveCalls: []
             });
             markAsFunction(node.function);
 
@@ -519,10 +515,6 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         node.selfTime = selfTimes[node.id];
         node.totalTime = null;
         node.segments = nodeSegments[node.id];
-
-        node.function.selfTime += node.selfTime;
-        node.function.totalTime += node.selfTime;
-        node.function.calls.push(node);
     }
 
     if (wellKnownNodes.idle) {
@@ -551,29 +543,27 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         }
     }
 
-    // delete (no package) if no modules attached to it
-    if (noPackage.modules.length === 0) {
-        packages.delete(null);
-    }
-
     // total time (can be computed only when selfTime for each node is set)
     for (const node of data.nodes) {
         node.totalTime = computeNodeTotal(node);
     }
 
     // aggregate function timinigs
-    for (const fn of functions.values()) {
-        buildChildren(fn, node => node.function);
-    }
+    data.functionTree = aggregateNodes(wellKnownNodes.root, functions, node => node.function);
 
-    // build module tree & aggregate timinigs
-    buildTree(wellKnownNodes.root, modules, node => node.module);
+    // // build module tree & aggregate timinigs
+    data.moduleTree = aggregateNodes(wellKnownNodes.root, modules, node => node.module);
 
     // build package tree & aggregate timinigs
-    buildTree(wellKnownNodes.root, packages, node => node.module.package);
+    data.packageTree = aggregateNodes(wellKnownNodes.root, packages, node => node.module.package);
 
     // build node types tree & aggregate timinigs
-    buildTree(wellKnownNodes.root, areas, node => areas.get(node.module.type));
+    data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => areas.get(node.module.type));
+
+    // delete (no package) if no modules attached to it
+    if (noPackage.modules.length === 0) {
+        packages.delete(null);
+    }
 
     // shorthand paths
     if (longestCommonModulePath !== null && longestCommonModulePath.length > 0) {
@@ -610,6 +600,15 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         },
         ms(value) {
             return (value / 1000).toFixed(1) + 'ms';
+        },
+        sum(array, fn = val => val) {
+            let sum = 0;
+
+            for (const val of array) {
+                sum += fn(val);
+            }
+
+            return sum;
         }
     });
 
