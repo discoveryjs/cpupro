@@ -8,8 +8,14 @@ const wellKnownNodeName = new Map([
 ]);
 const knownChromeExtensions = {
     'fmkadmapgofadopljbjfkapdkoienihi': 'React Developer Tools',
+    'lmhkpmbekcpmknklioeibfkpmmfibljd': 'Redux DevTools',
     'nhdogjmejiglipccpnnnanhbledajbpd': 'Vue.js devtools',
-    'hcikjlholajopgbgfmmlbmifdfbkijdj': 'Rempl'
+    'ienfalfjdbdpebioblfackkekamfmbnh': 'Angular DevTools',
+    'jdkknkkbebbapilgoeccciglkfbmbnfm': 'Apollo Client Devtools',
+    'hcikjlholajopgbgfmmlbmifdfbkijdj': 'Rempl',
+    'pamhglogfolfbmlpnenhpeholpnlcclo': 'JsonDiscovery',
+    'jlmafbaeoofdegohdhinkhilhclaklkp': 'OctoLinker',
+    'dhdgffkkebhmkfjojejmpbldmpobfkfo': 'Tampermonkey'
 };
 
 function maxNodesId(array) {
