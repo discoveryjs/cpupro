@@ -58,7 +58,7 @@ profiler.profile('profileName');
 
 // ... do something
 
-const profile = record.profileEnd('profileName');
+const profile = profiler.profileEnd('profileName');
 
 // write data to .cpuprofile file
 profile.writeToFile('./path/to/demo.cpuprofile');
