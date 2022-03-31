@@ -78,7 +78,7 @@ const profile = profiler.profile();
 // ... do something
 
 // end profiling and open a report in a browser
-profile.end().openReport();
+profile.profileEnd().openReport();
 ```
 
 ### Scenario #4 – A preload module for Node.js scripts
