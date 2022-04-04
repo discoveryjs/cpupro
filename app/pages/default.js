@@ -31,7 +31,11 @@ discovery.page.define('default', {
             'text-numeric:"Total time: " + totalTime.ms()',
             {
                 view: 'timing-bar',
-                data: 'areas.({ text: name, duration: selfTime, href: marker("area").href })'
+                data: `areas.({
+                    text: name,
+                    duration: selfTime,
+                    href: marker("area").href
+                })`
             },
 
             {
@@ -115,7 +119,10 @@ discovery.page.define('default', {
                     {
                         view: 'section',
                         when: 'packages.size() > 1',
-                        header: 'text:"Packages / scopes"',
+                        header: [
+                            'text:"Packages / scopes "',
+                            'badge:packages.size()'
+                        ],
                         content: {
                             view: 'table',
                             data: 'packages.sort(selfTime desc, totalTime desc)',
@@ -129,7 +136,10 @@ discovery.page.define('default', {
                     },
                     {
                         view: 'section',
-                        header: 'text:"Modules"',
+                        header: [
+                            'text:"Modules "',
+                            'badge:modules.size()'
+                        ],
                         content: {
                             view: 'table',
                             data: 'modules.sort(selfTime desc, totalTime desc)',
@@ -143,7 +153,10 @@ discovery.page.define('default', {
                     },
                     {
                         view: 'section',
-                        header: 'text:"Functions"',
+                        header: [
+                            'text:"Functions "',
+                            'badge:functions.size()'
+                        ],
                         content: {
                             view: 'table',
                             data: 'functions.sort(selfTime desc, totalTime desc)',
