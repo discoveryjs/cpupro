@@ -19,9 +19,9 @@ discovery.page.define('function', {
             ]
         },
 
-        'text:"Self time: " + selfTime.ms()',
+        'text-numeric:"Self time: " + selfTime.ms()',
         'html:"<br>"',
-        'text:"Total time: " + totalTime.ms()',
+        'text-numeric:"Total time: " + totalTime.ms()',
 
         'timeline-segments:calls.segments',
 

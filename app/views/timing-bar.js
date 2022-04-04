@@ -33,12 +33,16 @@ discovery.view.define('timing-bar', function(el, config, data) {
     let idx = 0;
     for (const { text = '?', duration, href } of entries) {
         const chunkEl = document.createElement('a');
+        const durationText = `${(duration / 1000).toFixed(1)}ms`;
+        const durationPercentText = `${(100 * duration / total).toFixed(1)}%`;
+        const title = `${text} (${durationText} / ${durationPercentText})`;
 
         chunkEl.className = 'view-timing-bar__segment';
         chunkEl.style.setProperty('--fraction', duration / total);
         chunkEl.style.setProperty('--color', colors[idx++] + '70');
-        chunkEl.title =
-        chunkEl.innerText = `${text} (${(duration / 1000).toFixed(1)}ms / ${(100 * duration / total).toFixed(1)}%)`;
+        chunkEl.title = title;
+
+        discovery.view.render(chunkEl, 'text-numeric:title', { title });
 
         if (href) {
             chunkEl.href = href;

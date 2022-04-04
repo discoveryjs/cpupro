@@ -28,7 +28,7 @@ discovery.page.define('default', {
                 content: 'h1:#.name'
             },
 
-            'text:"Total time: " + totalTime.ms()',
+            'text-numeric:"Total time: " + totalTime.ms()',
             {
                 view: 'timing-bar',
                 data: 'areas.({ text: name, duration: selfTime, href: marker("area").href })'

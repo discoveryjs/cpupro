@@ -27,6 +27,8 @@ module.exports = {
             './views/package-badge.js',
             './views/the-spice-must-flow.css',
             './views/the-spice-must-flow.js',
+            './views/text-numeric.css',
+            './views/text-numeric.js',
             './views/timeline-segments.css',
             './views/timeline-segments.js',
             './views/timing-bar.css',
