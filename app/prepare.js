@@ -338,6 +338,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
     const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
     const noPackage = createPackage(1, null, '(no package)', null);
+    const scriptIdFromString = new Map();
     const urlByScriptId = new Map();
     const modules = new Map();
     const moduleRefCache = Object.assign(new Map(), { anonymous: new Map() });
@@ -382,9 +383,30 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         }
     }
 
+    // normalize scriptId
     for (const { callFrame } of data.nodes) {
+        let { scriptId } = callFrame;
+
+        if (typeof scriptId === 'string') {
+            if (!/^\d+$/.test(scriptId)) {
+                // some tools are generating scriptId as an url (string) or ":number"
+                let numericScriptId = scriptIdFromString.get(scriptId);
+
+                if (numericScriptId === undefined) {
+                    scriptIdFromString.set(scriptId, numericScriptId = /^:\d+$/.test(scriptId)
+                        ? Number(scriptId.slice(1))
+                        : -scriptIdFromString.size - 1
+                    );
+                    console.log(scriptId, '->', numericScriptId);
+                }
+
+                scriptId = numericScriptId;
+            }
+        }
+
+        // ensure scriptId is a number
         // some tools are generating scriptId as a stringified number
-        callFrame.scriptId = Number(callFrame.scriptId);
+        callFrame.scriptId = Number(scriptId);
 
         // fix then issue, when a callFrame sometimes has no url, while another
         // callFrame with the same scriptId might have

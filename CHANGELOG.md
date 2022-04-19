@@ -1,3 +1,8 @@
+## next
+
+- Added count badges and tweaked numeric captions
+- Fixed processing of profiles when call frame `scriptId` is a non-numeric string
+
 ## 0.2.0 (2022-02-21)
 
 - Added support for Chromium Developer Tools profile format (Trace Event Format)
