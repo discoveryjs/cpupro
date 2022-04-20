@@ -32,6 +32,7 @@ export default function() {
     let zoomEnd = 1;
     let colorHue = null;
     let selectedNode = null;
+    let selectedNodesStack = [];
     const fadedNodes = new Set();
 
     let getName = function(d) {
@@ -136,7 +137,7 @@ export default function() {
         fadedNodes.clear();
     }
 
-    function fadeAncestors(node) {
+    function fadeAncestorNodes(node) {
         let cursor = node.parent;
 
         while (cursor !== null) {
@@ -151,7 +152,7 @@ export default function() {
         zoomEnd = d.x1;
 
         unfadeNodes();
-        fadeAncestors(d);
+        fadeAncestorNodes(d);
         update();
 
         if (scrollOnZoom) {
@@ -461,20 +462,34 @@ export default function() {
             }
         };
         d3Selection.select('svg')
-            .on('click', function(e, root) {
-                const node = findNodeByEl(e.target, this);
+            .on('click', function(event, root) {
+                const node = findNodeByEl(event.target, this);
 
                 if (!node) {
                     return;
                 }
 
                 if (selectedNode !== node && node !== root) {
-                    if (selectedNode) {
+                    if (selectedNode !== null) {
                         selectedNode.selected = false;
+
+                        if (selectedNode.depth < node.depth) {
+                            selectedNodesStack.push(selectedNode);
+                        } else {
+                            selectedNodesStack = selectedNodesStack
+                                .filter(item => item.depth >= node.depth);
+                        }
                     }
 
                     node.selected = true;
                     selectedNode = node;
+                } else if (selectedNode === node) {
+                    selectedNode.selected = false;
+                    selectedNode = selectedNodesStack.pop() || null;
+
+                    if (selectedNode !== null) {
+                        selectedNode.selected = true;
+                    }
                 } else if (selectedNode !== null) {
                     selectedNode.selected = false;
                     selectedNode = null;
@@ -620,10 +635,8 @@ export default function() {
 
     chart.clear = function() {
         detailsHandler(null);
-        d3Selection.each(function(root) {
-            clear(root);
-            update();
-        });
+        d3Selection.each(clear);
+        update();
     };
 
     chart.zoomTo = function(d) {

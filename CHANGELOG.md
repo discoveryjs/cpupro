@@ -3,6 +3,7 @@
 - Added count badges and tweaked numeric captions
 - Fixed processing of profiles when call frame `scriptId` is a non-numeric string
 - Reworked `flamechart` view to improve performance especially on large datasets (elimitated double "renders" in some cases, a lot of unnecessary computations and other optimisations)
+- Changed behaviour in `flamechart` when click on already selected frame to select previously selected frame with a lower depth
 - Fixed `flamechart`'s view height updating when stack depth is growing on zoom
 
 ## 0.2.0 (2022-02-21)
