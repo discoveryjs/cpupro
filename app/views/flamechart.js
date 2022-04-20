@@ -16,8 +16,6 @@ function convertTree(node) {
 }
 
 discovery.view.define('flamechart', function(el, config, data, context) {
-    let selected = null;
-
     const contentEl = document.createElement('div');
     const titleEl = document.createElement('div');
     const destroyEl = document.createElement('destroy-flamechart');
@@ -33,20 +31,10 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
     const chart = flamegraph()
         .inverted(true)
+        .resetHeightOnZoom(true)
         .cellHeight(19)
         .minFrameSize(2)
-        .transitionDuration(750)
-        .onClick((node) => {
-            if (node === selected) {
-                selected = null;
-                chart.resetZoom();
-            } else {
-                selected = node;
-            }
-        })
-        // .onZoom((node) => {
-        //     console.log(node, node?.data?.value);
-        // })
+        .transitionDuration(350)
         .selfValue(false);
         // .setColorMapper(colorMapper.offCpuColorMapper);
 
@@ -84,12 +72,17 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         chart.width(lastWidth);
     }
 
+    const tree = convertTree(data);
     select(contentEl)
-        .datum(convertTree(data))
-        .call(chart);
+        .datum(tree)
+        .call(chart, lastWidth !== null);
 
     const unsubscribeResize = sizeObserver.subscribe(({ width }) => {
-        chart.width(lastWidth = width + 1).render();
+        const newWidth = width + 1;
+
+        if (lastWidth !== newWidth) {
+            chart.width(lastWidth = newWidth).render();
+        }
     });
     destroyEl.onDestroy = () => {
         unsubscribeResize();

@@ -3,20 +3,19 @@
 import { select } from 'd3-selection';
 import { format } from 'd3-format';
 import { ascending } from 'd3-array';
-import { partition, hierarchy } from 'd3-hierarchy';
-import { scaleLinear } from 'd3-scale';
+import { Node as FlamechartNode } from 'd3-hierarchy';
 import { easeCubic } from 'd3-ease';
 import 'd3-transition';
 import { generateColorVector } from './colorUtils';
 import { calculateColor } from './colorScheme';
 
 export default function() {
+    let d3Selection = null; // selection
     let chartWidth = 960; // graph width
     let chartHeight = null; // graph height
-    let cellHeight = 18; // cell height
-    let selection = null; // selection
+    let cellHeight = 19; // cell height
     let tooltip = null; // tooltip
-    let transitionDuration = 750;
+    let transitionDuration = 350;
     let transitionEase = easeCubic; // tooltip offset
     let sort = false;
     let inverted = false; // invert the graph direction
@@ -29,9 +28,11 @@ export default function() {
     let selfValue = false;
     let resetHeightOnZoom = false;
     let scrollOnZoom = false;
-    let computeDelta = false;
+    let zoomStart = 0;
+    let zoomEnd = 1;
     let colorHue = null;
-    let selected = null;
+    let selectedNode = null;
+    const fadedNodes = new Set();
 
     let getName = function(d) {
         return d.data.n || d.data.name;
@@ -51,14 +52,6 @@ export default function() {
 
     let getLibtype = function(d) {
         return d.data.l || d.data.libtype;
-    };
-
-    let getDelta = function(d) {
-        if ('d' in d.data) {
-            return d.data.d;
-        } else {
-            return d.data.delta;
-        }
     };
 
     let searchHandler = function(searchResults, searchSum, totalValue) {
@@ -135,51 +128,36 @@ export default function() {
         return calculateColor(hue, vector);
     }
 
-    function show(d) {
-        d.data.fade = false;
-        d.data.hide = false;
-
-        if (d.children) {
-            d.children.forEach(show);
+    function unfadeNodes() {
+        for (const node of fadedNodes) {
+            node.fade = false;
         }
+
+        fadedNodes.clear();
     }
 
-    function hideSiblings(node) {
-        let child = node;
-        let parent = child.parent;
-        let children;
+    function fadeAncestors(node) {
+        let cursor = node.parent;
 
-        while (parent) {
-            children = parent.children;
-
-            for (let sibling of children) {
-                if (sibling !== child) {
-                    sibling.data.hide = true;
-                }
-            }
-
-            child = parent;
-            parent = child.parent;
-        }
-    }
-
-    function fadeAncestors(d) {
-        if (d.parent) {
-            d.parent.data.fade = true;
-            fadeAncestors(d.parent);
+        while (cursor !== null) {
+            fadedNodes.add(cursor);
+            cursor.fade = true;
+            cursor = cursor.parent;
         }
     }
 
     function zoom(d) {
-        hideSiblings(d);
-        show(d);
+        zoomStart = d.x0;
+        zoomEnd = d.x1;
+
+        unfadeNodes();
         fadeAncestors(d);
         update();
 
         if (scrollOnZoom) {
             const chartOffset = select(this).select('svg')._groups[0][0].parentNode.offsetTop;
             const maxFrames = (window.innerHeight - chartOffset) / cellHeight;
-            const frameOffset = (d.height - maxFrames + 10) * cellHeight;
+            const frameOffset = (d.height - maxFrames + 10) * cellHeight; // TODO: we don't compute height for now
 
             window.scrollTo({
                 top: chartOffset + frameOffset,
@@ -247,7 +225,7 @@ export default function() {
         }
     }
 
-    function doSort(a, b) {
+    function compareNodes(a, b) {
         if (typeof sort === 'function') {
             return sort(a, b);
         } else if (sort) {
@@ -255,160 +233,120 @@ export default function() {
         }
     }
 
-    const p = partition();
-
     function filterNodes(root) {
-        let nodeList = root.descendants();
-        if (minFrameSize > 0) {
-            const kx = chartWidth / (root.x1 - root.x0);
-            nodeList = nodeList.filter(function(el) {
-                return ((el.x1 - el.x0) * kx) > minFrameSize;
-            });
+        const minValue = (zoomEnd - zoomStart) * root.value * minFrameSize / chartWidth;
+        const nodeList = [root];
+        let acceptedCount = 0;
+
+        for (const node of nodeList) {
+            if (node.x0 < zoomEnd && node.x1 > zoomStart && node.value >= minValue) {
+                nodeList[acceptedCount++] = node;
+
+                if (node.children) {
+                    nodeList.push(...node.children);
+                }
+            }
         }
+
+        nodeList.length = acceptedCount;
+
         return nodeList;
     }
 
     function update(useTransitions = true) {
-        const updateTransitionDuration = useTransitions ? transitionDuration : 0;
-        selection.each(function(root) {
-            const x = scaleLinear().range([0, chartWidth]);
-            const y = scaleLinear().range([0, cellHeight]);
+        d3Selection.each(function(root) {
+            const maxWidth = (zoomEnd - zoomStart) * root.value;
+            const widthScale = chartWidth / maxWidth;
+            const getNodeWidth = d => Math.min(maxWidth, d.value * widthScale - 1);
 
-            reappraiseNode(root);
+            const xScale = chartWidth / (zoomEnd - zoomStart);
+            const xOffset = zoomStart * xScale;
+            const getNodeTranslate = d => 'translate(' +
+                Math.max(0, d.x0 * xScale - xOffset) + ',' +
+                (inverted ? cellHeight * d.depth : (chartHeight - cellHeight * d.depth - cellHeight)) +
+            ')';
 
-            if (sort) {
-                root.sort(doSort);
-            };
-
-            p(root);
-
-            const kx = chartWidth / (root.x1 - root.x0);
-            const width = (d) => (d.x1 - d.x0) * kx - 1;
-
-            const descendants = filterNodes(root);
+            const nodes = filterNodes(root);
             const svg = select(this).select('svg');
-            svg.attr('width', chartWidth);
 
-            let g = svg.selectAll('g').data(descendants, d => d.id);
+            svg.attr('width', chartWidth);
 
             // if height is not set: set height on first update, after nodes were filtered by minFrameSize
             if (!chartHeight || resetHeightOnZoom) {
-                const maxDepth = Math.max(...descendants.map(n => n.depth));
+                let maxDepth = 0;
+
+                for (const node of nodes) {
+                    maxDepth = Math.max(maxDepth, node.depth);
+                }
 
                 chartHeight = (maxDepth + 1) * cellHeight + 2;
 
                 svg.attr('height', chartHeight);
             }
 
-            g.transition()
-                .duration(updateTransitionDuration / 2)
-                .ease(transitionEase)
-                .attr('transform', d => 'translate(' + x(d.x0) + ',' + (inverted ? y(d.depth) : (chartHeight - y(d.depth) - cellHeight)) + ')');
-            g.select('rect')
-                .transition()
-                .duration(updateTransitionDuration / 2)
-                .ease(transitionEase)
-                .attr('width', width);
-            g.select('foreignObject')
-                .style('opacity', d => width(d) < 20 ? 0 : 1)
-                .transition()
-                .duration(updateTransitionDuration / 2)
-                .ease(transitionEase)
-                .attr('width', width);
+            // select all frame elements
+            let frameEls = svg.selectAll('.frame')
+                .data(nodes, d => d.id);
 
-            const node = g.enter()
+            // update
+            let update = frameEls
+                .classed('fade', d => d.fade)
+                .classed('selected', d => d.selected);
+
+            if (useTransitions) {
+                update = update
+                    .transition()
+                    .duration(transitionDuration)
+                    .ease(transitionEase);
+            }
+
+            update.attr('transform', getNodeTranslate);
+
+            update.select('rect')
+                .attr('width', getNodeWidth);
+
+            update.select('foreignObject')
+                .style('opacity', d => getNodeWidth(d) < 20 ? 0 : 1)
+                .attr('width', getNodeWidth);
+
+            // enter
+            const enter = frameEls.enter()
                 .append('svg:g')
-                .attr('transform', d => 'translate(' + x(d.x0) + ',' + (inverted ? y(d.depth) : (chartHeight - y(d.depth) - cellHeight)) + ')');
-
-            node
-                .attr('opacity', 0)
-                .transition()
-                .delay(updateTransitionDuration / 5)
-                .duration(updateTransitionDuration / 2)
-                .attr('opacity', 1);
-
-            node.append('svg:rect')
-                .attr('width', width);
-
-            if (!tooltip) {
-                node.append('svg:title');
-            }
-
-            node.append('foreignObject')
-                .attr('width', width)
-                .style('opacity', d => width(d) < 20 ? 0 : 1)
-                .append('xhtml:div');
-
-            // Now we have to re-select to see the new elements (why?).
-            g = svg.selectAll('g').data(descendants, d => d.id);
-
-            g.attr('width', width)
-                .attr('height', cellHeight)
-                .attr('name', d => getName(d))
                 .attr('class', 'frame')
-                .classed('fade', d => d.data.fade)
-                .classed('selected', d => d.data.selected);
+                .attr('transform', getNodeTranslate)
+                .classed('fade', d => d.fade)
+                .classed('selected', d => d.selected);
 
-            if (!useTransitions) {
-                g.attr('opacity', 1);
+            if (useTransitions) {
+                enter
+                    .attr('opacity', 0)
+                    .transition()
+                    .delay(transitionDuration / 2)
+                    .duration(transitionDuration)
+                    .attr('opacity', 1);
             }
 
-            g.select('rect')
+            enter.append('svg:rect')
+                .attr('width', getNodeWidth)
                 .attr('height', cellHeight - 1)
                 .attr('fill', d => colorMapper(d));
 
+            enter.append('svg:foreignObject')
+                .attr('width', getNodeWidth)
+                .attr('height', cellHeight - 1)
+                .style('opacity', d => getNodeWidth(d) < 20 ? 0 : 1)
+                .append('xhtml:div')
+                .attr('class', 'd3-flame-graph-label')
+                .text(getName);
+
             if (!tooltip) {
-                g.select('title')
+                enter.append('svg:title')
                     .text(labelHandler);
             }
 
-            g.select('foreignObject')
-                .attr('height', cellHeight - 1)
-                .select('div')
-                .attr('class', 'd3-flame-graph-label')
-                // .style('display', d => width(d) < 20 ? 'none' : 'block')
-                .transition()
-                .style('opacity', d => width(d) < 20 ? 0 : 1)
-                // .delay(transitionDuration)
-                .text(getName);
-
-            g.on('click', (_, d) => {
-                if (selected !== d) {
-                    if (selected) {
-                        selected.data.selected = false;
-                    }
-
-                    selected = d;
-                    d.data.selected = true;
-                } else {
-                    selected.data.selected = false;
-                    selected = null;
-                }
-
-                zoom(d);
-
-                if (typeof clickHandler === 'function') {
-                    clickHandler(d);
-                }
-            });
-
-            g.exit()
+            // exit
+            frameEls.exit()
                 .remove();
-
-            g.on('mouseenter', function(event, d) {
-                if (tooltip) {
-                    tooltip.show(d, this, event);
-                };
-                detailsHandler(labelHandler(d));
-                if (typeof hoverHandler === 'function') {
-                    hoverHandler(d);
-                }
-            }).on('mouseout', function() {
-                if (tooltip) {
-                    tooltip.hide();
-                };
-                detailsHandler(null);
-            });
         });
     }
 
@@ -432,139 +370,50 @@ export default function() {
         });
     }
 
-    function forEachNode(node, f) {
-        f(node);
-        let children = node.children;
-        if (children) {
-            const stack = [children];
-            let count; let child; let grandChildren;
-            while (stack.length) {
-                children = stack.pop();
-                count = children.length;
-                while (count--) {
-                    child = children[count];
-                    f(child);
-                    grandChildren = child.children;
-                    if (grandChildren) {
-                        stack.push(grandChildren);
-                    }
-                }
-            }
-        }
-    }
-
-    function adoptNode(node) {
-        let id = 0;
-        forEachNode(node, function(n) {
-            n.id = id++;
-        });
-    }
-
-    function reappraiseNode(root) {
-        let node; let children; let grandChildren; let childrenValue; let i; let j; let child; let childValue;
-        const stack = [];
-        const included = [];
-        const excluded = [];
-        const compoundValue = !selfValue;
-        let item = root.data;
-        if (item.hide) {
-            root.value = 0;
-            children = root.children;
-            if (children) {
-                excluded.push(children);
-            }
-        } else {
-            root.value = item.fade ? 0 : getValue(item);
-            stack.push(root);
-        }
-        // First DFS pass:
-        // 1. Update node.value with node's self value
-        // 2. Populate excluded list with children under hidden nodes
-        // 3. Populate included list with children under visible nodes
-        while ((node = stack.pop())) {
-            children = node.children;
-            if (children && (i = children.length)) {
-                childrenValue = 0;
-                while (i--) {
-                    child = children[i];
-                    item = child.data;
-                    if (item.hide) {
-                        child.value = 0;
-                        grandChildren = child.children;
-                        if (grandChildren) {
-                            excluded.push(grandChildren);
-                        }
-                        continue;
-                    }
-                    if (item.fade) {
-                        child.value = 0;
-                    } else {
-                        childValue = getValue(item);
-                        child.value = childValue;
-                        childrenValue += childValue;
-                    }
-                    stack.push(child);
-                }
-                // Here second part of `&&` is actually checking for `node.data.fade`. However,
-                // checking for node.value is faster and presents more oportunities for JS optimizer.
-                if (compoundValue && node.value) {
-                    node.value -= childrenValue;
-                }
-                included.push(children);
-            }
-        }
-        // Postorder traversal to compute compound value of each visible node.
-        i = included.length;
-        while (i--) {
-            children = included[i];
-            childrenValue = 0;
-            j = children.length;
-            while (j--) {
-                childrenValue += children[j].value;
-            }
-            children[0].parent.value += childrenValue;
-        }
-        // Continue DFS to set value of all hidden nodes to 0.
-        while (excluded.length) {
-            children = excluded.pop();
-            j = children.length;
-            while (j--) {
-                child = children[j];
-                child.value = 0;
-                grandChildren = child.children;
-                if (grandChildren) {
-                    excluded.push(grandChildren);
-                }
-            }
-        }
-    }
-
     function processData() {
-        selection.datum((data) => {
+        selectedNode = null;
+        d3Selection.datum((data) => {
             if (data.constructor.name !== 'Node') {
-                // creating a root hierarchical structure
-                const root = hierarchy(data, getChildren);
+                // creating a precomputed hierarchical structure
+                const root = new FlamechartNode(data);
+                const nodes = [root];
+                let id = 0;
 
-                // augumenting nodes with ids
-                adoptNode(root);
+                root.id = id++;
+                root.fade = false;
+                root.selected = false;
+                root.value = root.data.value;
+                root.x0 = 0;
+                root.x1 = 1;
 
-                // calculate actual value
-                reappraiseNode(root);
+                for (const node of nodes) {
+                    let children = getChildren(node.data);
 
-                // store value for later use
-                root.originalValue = root.value;
+                    if (Array.isArray(children)) {
+                        let x0 = node.x0;
 
-                // computing deltas for differentials
-                if (computeDelta) {
-                    root.eachAfter((node) => {
-                        let sum = getDelta(node);
-                        const children = node.children;
-                        let i = children && children.length;
-                        while (--i >= 0) {
-                            sum += children[i].delta;
-                        };
-                        node.delta = sum;
-                    });
+                        if (sort) {
+                            // use slice() to avoid data mutation
+                            children = children.slice().sort(compareNodes);
+                        }
+
+                        node.children = children.map(childData => {
+                            const child = new FlamechartNode(childData);
+
+                            child.id = id++;
+                            child.parent = node;
+                            child.depth = node.depth + 1;
+                            child.fade = false;
+                            child.selected = false;
+                            child.value = childData.value;
+                            child.x0 = x0;
+                            child.x1 = x0 += childData.value / root.value;
+
+                            nodes.push(child);
+
+                            return child;
+                        });
+                    }
                 }
 
                 // setting the bound data for the selection
@@ -573,19 +422,19 @@ export default function() {
         });
     }
 
-    function chart(s) {
+    function chart(s, renderOnInit = true) {
         if (!arguments.length) {
             return chart;
         }
 
         // saving the selection on `.call`
-        selection = s;
+        d3Selection = s;
 
         // processing raw data to be used in the chart
         processData();
 
         // create chart svg
-        selection.each(function(/* data */) {
+        d3Selection.each(function(/* data */) {
             if (select(this).select('svg').size() === 0) {
                 const svg = select(this)
                     .append('svg:svg')
@@ -602,8 +451,70 @@ export default function() {
             }
         });
 
-        // first draw
-        update();
+        const findNodeByEl = (cursor, rootEl) => {
+            while (cursor && cursor !== rootEl) {
+                if (cursor.__data__) {
+                    return cursor.__data__;
+                }
+
+                cursor = cursor.parentNode;
+            }
+        };
+        d3Selection.select('svg')
+            .on('click', function(e, root) {
+                const node = findNodeByEl(e.target, this);
+
+                if (!node) {
+                    return;
+                }
+
+                if (selectedNode !== node && node !== root) {
+                    if (selectedNode) {
+                        selectedNode.selected = false;
+                    }
+
+                    node.selected = true;
+                    selectedNode = node;
+                } else if (selectedNode !== null) {
+                    selectedNode.selected = false;
+                    selectedNode = null;
+                }
+
+                if (typeof clickHandler === 'function') {
+                    clickHandler(node);
+                } else {
+                    zoom(selectedNode || root);
+                }
+            })
+            .on('pointermove', function(event) {
+                const node = findNodeByEl(event.target, this);
+
+                if (!node) {
+                    return;
+                }
+
+                if (tooltip) {
+                    tooltip.show(node, this, event);
+                }
+
+                detailsHandler(labelHandler(node));
+
+                if (typeof hoverHandler === 'function') {
+                    hoverHandler(node);
+                }
+            })
+            .on('pointerout', function() {
+                if (tooltip) {
+                    tooltip.hide();
+                }
+
+                detailsHandler(null);
+            });
+
+        if (renderOnInit) {
+            // first draw
+            update();
+        }
     }
 
     chart.height = function(_) {
@@ -672,14 +583,6 @@ export default function() {
         return chart;
     };
 
-    chart.computeDelta = function(_) {
-        if (!arguments.length) {
-            return computeDelta;
-        }
-        computeDelta = _;
-        return chart;
-    };
-
     chart.setLabelHandler = function(_) {
         if (!arguments.length) {
             return labelHandler;
@@ -687,18 +590,16 @@ export default function() {
         labelHandler = _;
         return chart;
     };
-    // Kept for backwards compatibility.
-    chart.label = chart.setLabelHandler;
 
     chart.search = function(term) {
         const searchResults = [];
         let searchSum = 0;
         let totalValue = 0;
-        selection.each(function(data) {
+        d3Selection.each(function(data) {
             const res = searchTree(data, term);
             searchResults.push(...res[0]);
             searchSum += res[1];
-            totalValue += data.originalValue;
+            totalValue += data.value;
         });
         searchHandler(searchResults, searchSum, totalValue);
         update();
@@ -709,7 +610,7 @@ export default function() {
             return null;
         }
         let found = null;
-        selection.each(function(data) {
+        d3Selection.each(function(data) {
             if (found === null) {
                 found = findTree(data, id);
             }
@@ -719,7 +620,7 @@ export default function() {
 
     chart.clear = function() {
         detailsHandler(null);
-        selection.each(function(root) {
+        d3Selection.each(function(root) {
             clear(root);
             update();
         });
@@ -730,7 +631,7 @@ export default function() {
     };
 
     chart.resetZoom = function() {
-        selection.each(function(root) {
+        d3Selection.each(function(root) {
             zoom(root); // zoom to root
         });
     };
@@ -760,7 +661,7 @@ export default function() {
     };
 
     chart.merge = function(data) {
-        if (!selection) {
+        if (!d3Selection) {
             return chart;
         }
 
@@ -782,7 +683,7 @@ export default function() {
         searchDetails = null;
         detailsHandler(null);
 
-        selection.datum((root) => {
+        d3Selection.datum((root) => {
             merge([root.data], [data]);
             return root.data;
         });
@@ -796,11 +697,11 @@ export default function() {
     };
 
     chart.update = function(data) {
-        if (!selection) {
+        if (!d3Selection) {
             return chart;
         }
         if (data) {
-            selection.datum(data);
+            d3Selection.datum(data);
             processData();
         }
         update();
@@ -808,7 +709,7 @@ export default function() {
     };
 
     chart.destroy = function() {
-        if (!selection) {
+        if (!d3Selection) {
             return chart;
         }
         if (tooltip) {
@@ -817,7 +718,7 @@ export default function() {
                 tooltip.destroy();
             }
         }
-        selection.selectAll('svg').remove();
+        d3Selection.selectAll('svg').remove();
         return chart;
     };
 
@@ -915,14 +816,6 @@ export default function() {
             return getLibtype;
         }
         getLibtype = _;
-        return chart;
-    };
-
-    chart.getDelta = function(_) {
-        if (!arguments.length) {
-            return getDelta;
-        }
-        getDelta = _;
         return chart;
     };
 
