@@ -1,4 +1,4 @@
-## next
+## 0.2.1 (2022-04-20)
 
 - Added count badges and tweaked numeric captions
 - Fixed processing of profiles when call frame `scriptId` is a non-numeric string
