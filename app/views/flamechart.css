@@ -68,6 +68,7 @@
     margin: 0 0 3px -5px;
     padding-top: 0;
     padding-bottom: 1px;
+    line-height: 19px;
 }
 .flamechart-tooltip .view-duration > .time {
     flex: 0;

@@ -44,13 +44,11 @@
     "v8-profiler-next": "^1.5.1"
   },
   "devDependencies": {
-    "@discoveryjs/cli": "^2.0.0-beta.14",
+    "@discoveryjs/cli": "^2.0.0",
     "@discoveryjs/discovery": "^1.0.0-beta.65",
     "d3-array": "^3.1.1",
     "d3-ease": "^3.0.1",
     "d3-format": "^3.1.0",
-    "d3-hierarchy": "^3.1.1",
-    "d3-scale": "^4.0.2",
     "d3-selection": "^3.0.0",
     "d3-transition": "^3.0.1",
     "eslint": "^8.7.0"

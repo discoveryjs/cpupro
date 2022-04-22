@@ -1,5 +1,6 @@
 export default function(host, render) {
     let hideTimer;
+    let renderedNode = null;
     let popup = new host.view.Popup({
         className: 'flamechart-tooltip',
         position: 'pointer'
@@ -8,9 +9,10 @@ export default function(host, render) {
     function tip() {
     }
 
-    tip.show = function(d) {
+    tip.show = function(node) {
         clearTimeout(hideTimer);
-        popup.show(null, (el) => render(el, d.data));
+        popup.show(null, renderedNode !== node ? (el) => render(el, node.data) : undefined);
+        renderedNode = node;
 
         return tip;
     };

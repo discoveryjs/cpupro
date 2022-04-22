@@ -2,8 +2,6 @@
 
 import { select } from 'd3-selection';
 import { format } from 'd3-format';
-import { ascending } from 'd3-array';
-import { Node as FlamechartNode } from 'd3-hierarchy';
 import { easeCubic } from 'd3-ease';
 import 'd3-transition';
 import { generateColorVector } from './colorUtils';
@@ -14,6 +12,7 @@ export default function() {
     let chartWidth = 960; // graph width
     let chartHeight = null; // graph height
     let cellHeight = 19; // cell height
+    let minFrameSize = 2;
     let tooltip = null; // tooltip
     let transitionDuration = 350;
     let transitionEase = easeCubic; // tooltip offset
@@ -22,37 +21,32 @@ export default function() {
     let clickHandler = null;
     let zoomHandler = null;
     let hoverHandler = null;
-    let minFrameSize = 0;
     let detailsElement = null;
     let searchDetails = null;
-    let selfValue = false;
     let resetHeightOnZoom = false;
     let scrollOnZoom = false;
     let zoomStart = 0;
     let zoomEnd = 1;
     let colorHue = null;
+    let pointerNode = null;
     let selectedNode = null;
     let selectedNodesStack = [];
     const fadedNodes = new Set();
 
     let getName = function(d) {
-        return d.data.n || d.data.name;
+        return d.data.name;
     };
 
     let getValue = function(d) {
-        if ('v' in d) {
-            return d.v;
-        } else {
-            return d.value;
-        }
+        return d.value;
     };
 
     let getChildren = function(d) {
-        return d.c || d.children;
+        return d.children;
     };
 
     let getLibtype = function(d) {
-        return d.data.l || d.data.libtype;
+        return d.data.libtype;
     };
 
     let searchHandler = function(searchResults, searchSum, totalValue) {
@@ -147,18 +141,18 @@ export default function() {
         }
     }
 
-    function zoom(d) {
-        zoomStart = d.x0;
-        zoomEnd = d.x1;
+    function zoom(node) {
+        zoomStart = node.x0;
+        zoomEnd = node.x1;
 
         unfadeNodes();
-        fadeAncestorNodes(d);
+        fadeAncestorNodes(node);
         update();
 
         if (scrollOnZoom) {
             const chartOffset = select(this).select('svg')._groups[0][0].parentNode.offsetTop;
             const maxFrames = (window.innerHeight - chartOffset) / cellHeight;
-            const frameOffset = (d.height - maxFrames + 10) * cellHeight; // TODO: we don't compute height for now
+            const frameOffset = (node.height - maxFrames + 10) * cellHeight; // TODO: we don't compute height for now
 
             window.scrollTo({
                 top: chartOffset + frameOffset,
@@ -168,7 +162,7 @@ export default function() {
         }
 
         if (typeof zoomHandler === 'function') {
-            zoomHandler(d);
+            zoomHandler(node);
         }
     }
 
@@ -201,55 +195,39 @@ export default function() {
         return [results, sum];
     }
 
-    function findTree(d, id) {
-        if (d.id === id) {
-            return d;
-        } else {
-            const children = getChildren(d);
-            if (children) {
-                for (let i = 0; i < children.length; i++) {
-                    const found = findTree(children[i], id);
-                    if (found) {
-                        return found;
-                    }
-                }
-            }
-        }
-    }
-
-    function clear(d) {
-        d.highlight = false;
-        if (getChildren(d)) {
-            getChildren(d).forEach(function(child) {
-                clear(child);
-            });
-        }
+    function defaultCompare(nameA, nameB) {
+        return nameA > nameB ? 1 : nameA < nameB ? -1 : 0;
     }
 
     function compareNodes(a, b) {
         if (typeof sort === 'function') {
             return sort(a, b);
         } else if (sort) {
-            return ascending(getName(a), getName(b));
+            return defaultCompare(getName(a), getName(b));
         }
     }
 
     function filterNodes(root) {
         const minValue = (zoomEnd - zoomStart) * root.value * minFrameSize / chartWidth;
-        const nodeList = [root];
-        let acceptedCount = 0;
+        const nodeList = [];
+        let node = root;
 
-        for (const node of nodeList) {
+        while (node !== null) {
             if (node.x0 < zoomEnd && node.x1 > zoomStart && node.value >= minValue) {
-                nodeList[acceptedCount++] = node;
+                nodeList.push(node);
 
-                if (node.children) {
-                    nodeList.push(...node.children);
+                node = node.next;
+            } else {
+                while (node !== null) {
+                    if (node.nextSibling !== null) {
+                        node = node.nextSibling;
+                        break;
+                    }
+
+                    node = node.parent;
                 }
             }
         }
-
-        nodeList.length = acceptedCount;
 
         return nodeList;
     }
@@ -264,7 +242,7 @@ export default function() {
             const xOffset = zoomStart * xScale;
             const getNodeTranslate = d => 'translate(' +
                 Math.max(0, d.x0 * xScale - xOffset) + ',' +
-                (inverted ? cellHeight * d.depth : (chartHeight - cellHeight * d.depth - cellHeight)) +
+                (inverted ? cellHeight * d.depth : chartHeight - cellHeight * d.depth - cellHeight) +
             ')';
 
             const nodes = filterNodes(root);
@@ -351,24 +329,20 @@ export default function() {
         });
     }
 
-    function merge(data, samples) {
-        samples.forEach(function(sample) {
-            const node = data.find(function(element) {
-                return (element.name === sample.name);
-            });
-
-            if (node) {
-                node.value += sample.value;
-                if (sample.children) {
-                    if (!node.children) {
-                        node.children = [];
-                    }
-                    merge(node.children, sample.children);
-                }
-            } else {
-                data.push(sample);
-            }
-        });
+    class FrameNode {
+        constructor(id, parent, data) {
+            this.id = id;
+            this.parent = parent;
+            this.next = null;
+            this.nextSibling = null;
+            this.data = data;
+            this.depth = 0;
+            this.fade = false;
+            this.selected = false;
+            this.value = data.value;
+            this.x0 = 0;
+            this.x1 = 1;
+        }
     }
 
     function processData() {
@@ -376,45 +350,45 @@ export default function() {
         d3Selection.datum((data) => {
             if (data.constructor.name !== 'Node') {
                 // creating a precomputed hierarchical structure
-                const root = new FlamechartNode(data);
-                const nodes = [root];
-                let id = 0;
+                let id = 1;
+                const root = new FrameNode(id++, null, data);
+                let parent = root;
 
-                root.id = id++;
-                root.fade = false;
-                root.selected = false;
-                root.value = root.data.value;
-                root.x0 = 0;
-                root.x1 = 1;
-
-                for (const node of nodes) {
-                    let children = getChildren(node.data);
+                while (parent !== null) {
+                    let children = getChildren(parent.data);
 
                     if (Array.isArray(children)) {
-                        let x0 = node.x0;
-
                         if (sort) {
                             // use slice() to avoid data mutation
                             children = children.slice().sort(compareNodes);
                         }
 
-                        node.children = children.map(childData => {
-                            const child = new FlamechartNode(childData);
+                        let x0 = parent.x0;
+                        let prev = null;
+                        let parentNext = parent.next;
 
-                            child.id = id++;
-                            child.parent = node;
-                            child.depth = node.depth + 1;
-                            child.fade = false;
-                            child.selected = false;
-                            child.value = childData.value;
+                        for (const childData of children) {
+                            const child = new FrameNode(id++, parent, childData);
+
+                            child.depth = parent.depth + 1;
                             child.x0 = x0;
                             child.x1 = x0 += childData.value / root.value;
 
-                            nodes.push(child);
+                            if (prev === null) {
+                                parent.next = child;
+                            } else {
+                                prev.next = prev.nextSibling = child;
+                            }
 
-                            return child;
-                        });
+                            prev = child;
+                        }
+
+                        if (prev !== null) {
+                            prev.next = parentNext;
+                        }
                     }
+
+                    parent = parent.next;
                 }
 
                 // setting the bound data for the selection
@@ -473,26 +447,28 @@ export default function() {
                     if (selectedNode !== null) {
                         selectedNode.selected = false;
 
+                        selectedNodesStack = selectedNodesStack
+                            .filter(item => item.depth < node.depth);
+
                         if (selectedNode.depth < node.depth) {
                             selectedNodesStack.push(selectedNode);
-                        } else {
-                            selectedNodesStack = selectedNodesStack
-                                .filter(item => item.depth >= node.depth);
                         }
                     }
 
-                    node.selected = true;
                     selectedNode = node;
+                    selectedNode.selected = true;
                 } else if (selectedNode === node) {
                     selectedNode.selected = false;
-                    selectedNode = selectedNodesStack.pop() || null;
+                    selectedNode = null;
 
-                    if (selectedNode !== null) {
+                    if (selectedNodesStack.length > 0) {
+                        selectedNode = selectedNodesStack.pop();
                         selectedNode.selected = true;
                     }
                 } else if (selectedNode !== null) {
                     selectedNode.selected = false;
                     selectedNode = null;
+                    selectedNodesStack = [];
                 }
 
                 if (typeof clickHandler === 'function') {
@@ -502,6 +478,11 @@ export default function() {
                 }
             })
             .on('pointermove', function(event) {
+                if (pointerNode === event.target) {
+                    return;
+                }
+
+                pointerNode = event.target;
                 const node = findNodeByEl(event.target, this);
 
                 if (!node) {
@@ -519,6 +500,8 @@ export default function() {
                 }
             })
             .on('pointerout', function() {
+                pointerNode = null;
+
                 if (tooltip) {
                     tooltip.hide();
                 }
@@ -621,21 +604,30 @@ export default function() {
     };
 
     chart.findById = function(id) {
-        if (typeof (id) === 'undefined' || id === null) {
+        if (typeof id !== 'number') {
             return null;
         }
+
         let found = null;
-        d3Selection.each(function(data) {
-            if (found === null) {
-                found = findTree(data, id);
+
+        d3Selection.each(function(cursor) {
+            while (!found && cursor !== null) {
+                found = cursor.id === id;
+                cursor = cursor.next;
             }
         });
+
         return found;
     };
 
     chart.clear = function() {
         detailsHandler(null);
-        d3Selection.each(clear);
+        d3Selection.each(function(cursor) {
+            while (cursor !== null) {
+                cursor.highlight = false;
+                cursor = cursor.next;
+            }
+        });
         update();
     };
 
@@ -673,38 +665,6 @@ export default function() {
         return chart;
     };
 
-    chart.merge = function(data) {
-        if (!d3Selection) {
-            return chart;
-        }
-
-        // TODO: Fix merge with zoom
-        // Merging a zoomed chart doesn't work properly, so
-        //  clearing zoom before merge.
-        // To apply zoom on merge, we would need to set hide
-        //  and fade on new data according to current data.
-        // New ids are generated for the whole data structure,
-        //  so previous ids might not be the same. For merge to
-        //  work with zoom, previous ids should be maintained.
-        this.resetZoom();
-
-        // Clear search details
-        // Merge requires a new search, updating data and
-        //  the details handler with search results.
-        // Since we don't store the search term, can't
-        //  perform search again.
-        searchDetails = null;
-        detailsHandler(null);
-
-        d3Selection.datum((root) => {
-            merge([root.data], [data]);
-            return root.data;
-        });
-        processData();
-        update();
-        return chart;
-    };
-
     chart.render = function() {
         update(false);
     };
@@ -725,14 +685,28 @@ export default function() {
         if (!d3Selection) {
             return chart;
         }
+
         if (tooltip) {
             tooltip.hide();
             if (typeof tooltip.destroy === 'function') {
                 tooltip.destroy();
             }
         }
+
+        pointerNode = null;
+        selectedNode = null;
+        selectedNodesStack = [];
+        fadedNodes.clear();
+
         d3Selection.selectAll('svg').remove();
-        return chart;
+        d3Selection = null;
+        clickHandler = null;
+        zoomHandler = null;
+        hoverHandler = null;
+        detailsElement = null;
+        searchDetails = null;
+
+        chart = null;
     };
 
     chart.setColorMapper = function(_) {
@@ -746,8 +720,6 @@ export default function() {
         };
         return chart;
     };
-    // Kept for backwards compatibility.
-    chart.color = chart.setColorMapper;
 
     chart.setColorHue = function(_) {
         if (!arguments.length) {
@@ -771,16 +743,6 @@ export default function() {
             return detailsElement;
         }
         detailsElement = _;
-        return chart;
-    };
-    // Kept for backwards compatibility.
-    chart.details = chart.setDetailsElement;
-
-    chart.selfValue = function(_) {
-        if (!arguments.length) {
-            return selfValue;
-        }
-        selfValue = _;
         return chart;
     };
 

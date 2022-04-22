@@ -1,7 +1,7 @@
 /* eslint-env node */
 const { ContentRect } = require('@discoveryjs/discovery').utils;
 const { select } = require('d3-selection');
-const flamegraph = require('./flamechart/d3-flamechart').default;
+const flamechart = require('./flamechart/d3-flamechart').default;
 const tooltip = require('./flamechart/tooltip').default;
 
 let lastWidth = null;
@@ -29,13 +29,9 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     const sizeObserver = new ContentRect();
     sizeObserver.observe(contentEl);
 
-    const chart = flamegraph()
+    const chart = flamechart()
         .inverted(true)
-        .resetHeightOnZoom(true)
-        .cellHeight(19)
-        .minFrameSize(2)
-        .transitionDuration(350)
-        .selfValue(false);
+        .resetHeightOnZoom(true);
         // .setColorMapper(colorMapper.offCpuColorMapper);
 
     chart.tooltip(tooltip(
