@@ -70,5 +70,5 @@ export function calculateColor(hue, vector) {
         }
     }
 
-    return `rgb(${r}, ${g}, ${b})`;
+    return `${r}, ${g}, ${b}`;
 }

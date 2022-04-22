@@ -1,28 +1,33 @@
 // fork of https://github.com/spiermar/d3-flame-graph
 
-import { select } from 'd3-selection';
-import { format } from 'd3-format';
-import { easeCubic } from 'd3-ease';
-import 'd3-transition';
 import { generateColorVector } from './colorUtils';
 import { calculateColor } from './colorScheme';
+
+class FrameNode {
+    constructor(parent, data) {
+        this.parent = parent;
+        this.next = null;
+        this.nextSibling = null;
+        this.data = data;
+        this.value = data.totalTime;
+        this.depth = 0;
+        this.x0 = 0;
+        this.x1 = 1;
+        // this.fade = false;
+        // this.selected = false;
+    }
+}
 
 export default function() {
     let d3Selection = null; // selection
     let chartWidth = 960; // graph width
-    let chartHeight = null; // graph height
-    let cellHeight = 19; // cell height
     let minFrameSize = 2;
     let tooltip = null; // tooltip
-    let transitionDuration = 350;
-    let transitionEase = easeCubic; // tooltip offset
     let sort = false;
     let inverted = false; // invert the graph direction
     let clickHandler = null;
     let zoomHandler = null;
     let hoverHandler = null;
-    let detailsElement = null;
-    let searchDetails = null;
     let resetHeightOnZoom = false;
     let scrollOnZoom = false;
     let zoomStart = 0;
@@ -31,7 +36,11 @@ export default function() {
     let pointerNode = null;
     let selectedNode = null;
     let selectedNodesStack = [];
+    let rootFrameNode = null;
+    let chartEl = null;
     const fadedNodes = new Set();
+    const frameEls = new Map();
+    const frameNodeByEl = new WeakMap();
 
     let getName = function(d) {
         return d.data.name;
@@ -49,51 +58,12 @@ export default function() {
         return d.data.libtype;
     };
 
-    let searchHandler = function(searchResults, searchSum, totalValue) {
-        searchDetails = () => {
-            if (detailsElement) {
-                detailsElement.textContent = 'search: ' + searchSum + ' of ' + totalValue + ' total samples ( ' + format('.3f')(100 * (searchSum / totalValue), 3) + '%)';
-            }
-        };
-        searchDetails();
-    };
-    const originalSearchHandler = searchHandler;
-
-    let searchMatch = (d, term, ignoreCase = false) => {
-        if (!term) {
-            return false;
-        }
-        let label = getName(d);
-        if (ignoreCase) {
-            term = term.toLowerCase();
-            label = label.toLowerCase();
-        }
-        const re = new RegExp(term);
-        return typeof label !== 'undefined' && label && label.match(re);
-    };
-    const originalSearchMatch = searchMatch;
-
-    let detailsHandler = function(d) {
-        if (detailsElement) {
-            if (d) {
-                detailsElement.textContent = d;
-            } else {
-                if (typeof searchDetails === 'function') {
-                    searchDetails();
-                } else {
-                    detailsElement.textContent = '';
-                }
-            }
-        }
-    };
-    const originalDetailsHandler = detailsHandler;
-
     let labelHandler = function(d) {
-        return getName(d) + ' (' + format('.3f')(100 * (d.x1 - d.x0), 3) + '%, ' + getValue(d) + ' samples)';
+        return getName(d) + ' (' + (100 * (getValue(d) / getValue(rootFrameNode))).toFixed(2) + '%, ' + getValue(d) + ' ms)';
     };
 
     let colorMapper = function(d) {
-        return d.highlight ? '#E600E6' : colorHash(getName(d), getLibtype(d));
+        return d.highlight ? '#E600E6' : colorHash(d.name, getLibtype(d));
     };
     const originalColorMapper = colorMapper;
 
@@ -149,50 +119,21 @@ export default function() {
         fadeAncestorNodes(node);
         update();
 
-        if (scrollOnZoom) {
-            const chartOffset = select(this).select('svg')._groups[0][0].parentNode.offsetTop;
-            const maxFrames = (window.innerHeight - chartOffset) / cellHeight;
-            const frameOffset = (node.height - maxFrames + 10) * cellHeight; // TODO: we don't compute height for now
+        // if (scrollOnZoom) {
+        //     const chartOffset = select(this).select('svg')._groups[0][0].parentNode.offsetTop;
+        //     const maxFrames = (window.innerHeight - chartOffset) / cellHeight;
+        //     const frameOffset = (node.height - maxFrames + 10) * cellHeight; // TODO: we don't compute height for now
 
-            window.scrollTo({
-                top: chartOffset + frameOffset,
-                left: 0,
-                behavior: 'smooth'
-            });
-        }
+        //     window.scrollTo({
+        //         top: chartOffset + frameOffset,
+        //         left: 0,
+        //         behavior: 'smooth'
+        //     });
+        // }
 
         if (typeof zoomHandler === 'function') {
             zoomHandler(node);
         }
-    }
-
-    function searchTree(d, term) {
-        const results = [];
-        let sum = 0;
-
-        function searchInner(d, foundParent) {
-            let found = false;
-
-            if (searchMatch(d, term)) {
-                d.highlight = true;
-                found = true;
-                if (!foundParent) {
-                    sum += getValue(d);
-                }
-                results.push(d);
-            } else {
-                d.highlight = false;
-            }
-
-            if (getChildren(d)) {
-                getChildren(d).forEach(function(child) {
-                    searchInner(child, (foundParent || found));
-                });
-            }
-        }
-        searchInner(d, false);
-
-        return [results, sum];
     }
 
     function defaultCompare(nameA, nameB) {
@@ -207,8 +148,8 @@ export default function() {
         }
     }
 
-    function filterNodes(root) {
-        const minValue = (zoomEnd - zoomStart) * root.value * minFrameSize / chartWidth;
+    function filterNodes(root, minScale) {
+        const minValue = (zoomEnd - zoomStart) * root.value * minScale;
         const nodeList = [];
         let node = root;
 
@@ -232,295 +173,211 @@ export default function() {
         return nodeList;
     }
 
-    function update(useTransitions = true) {
-        d3Selection.each(function(root) {
-            const maxWidth = (zoomEnd - zoomStart) * root.value;
-            const widthScale = chartWidth / maxWidth;
-            const getNodeWidth = d => Math.min(maxWidth, d.value * widthScale - 1);
+    function update() {
+        const widthScale = 1 / chartWidth;
+        const xScale = 1 / (zoomEnd - zoomStart);
+        const xOffset = zoomStart * xScale;
+        const nodes = filterNodes(rootFrameNode, minFrameSize * widthScale);
+        const removeFrames = new Set(frameEls.keys());
+        const enterFramesEl =
+            chartEl.querySelector('.frames-group:empty') ||
+            document.createElement('div');
+        let maxDepth = 0;
 
-            const xScale = chartWidth / (zoomEnd - zoomStart);
-            const xOffset = zoomStart * xScale;
-            const getNodeTranslate = d => 'translate(' +
-                Math.max(0, d.x0 * xScale - xOffset) + ',' +
-                (inverted ? cellHeight * d.depth : chartHeight - cellHeight * d.depth - cellHeight) +
-            ')';
+        enterFramesEl.className = 'frames-group frames-group_init-enter-state';
+        setTimeout(() => enterFramesEl.classList.remove('frames-group_init-enter-state'), 1);
 
-            const nodes = filterNodes(root);
-            const svg = select(this).select('svg');
+        for (const frameNode of nodes) {
+            let el = frameEls.get(frameNode);
+            const className = `frame${frameNode.fade ? ' fade' : ''}${frameNode.selected ? ' selected' : ''}`;
+            const x0 = Math.max(0, frameNode.x0 * xScale - xOffset);
+            const x1 = Math.max(0, frameNode.x1 * xScale - xOffset);
 
-            svg.attr('width', chartWidth);
+            maxDepth = Math.max(maxDepth, frameNode.depth);
 
-            // if height is not set: set height on first update, after nodes were filtered by minFrameSize
-            if (!chartHeight || resetHeightOnZoom) {
-                let maxDepth = 0;
+            if (el === undefined) {
+                // add
+                el = document.createElement('div');
+                el.className = className;
+                el.style.setProperty('--x0', x0);
+                el.style.setProperty('--x1', x1);
+                el.style.setProperty('--depth', frameNode.depth);
+                el.style.setProperty('--color', colorMapper(frameNode));
 
-                for (const node of nodes) {
-                    maxDepth = Math.max(maxDepth, node.depth);
+                const divEl = document.createElement('div');
+
+                divEl.className = 'frame-label';
+                divEl.textContent = frameNode.name;
+
+                // foreignObjectEl.append(divEl);
+                el.append(divEl);
+                enterFramesEl.append(el);
+
+                frameNodeByEl.set(el, frameNode);
+                frameEls.set(frameNode, el);
+            } else {
+                // update
+                el.className = className;
+                el.style.setProperty('--x0', x0);
+                el.style.setProperty('--x1', x1);
+            }
+
+            removeFrames.delete(frameNode);
+        }
+
+        for (const frameNode of removeFrames) {
+            frameEls.get(frameNode).remove();
+            frameEls.delete(frameNode);
+        }
+
+        chartEl.append(enterFramesEl);
+        chartEl.style.setProperty('--max-depth', maxDepth);
+        chartEl.style.setProperty('--width-scale', widthScale);
+        chartEl.classList
+            .toggle('first-enter', !frameEls.size);
+    }
+
+    function processData(rootData) {
+        pointerNode = null;
+        selectedNode = null;
+        selectedNodesStack = [];
+        rootFrameNode = null;
+        fadedNodes.clear();
+
+        // creating a precomputed hierarchical structure
+        let parent = rootFrameNode = new FrameNode(null, rootData);
+        parent.name = getName(rootData);
+
+        while (parent !== null) {
+            let children = getChildren(parent.data);
+
+            if (Array.isArray(children)) {
+                if (sort) {
+                    // use slice() to avoid data mutation
+                    children = children.slice().sort(compareNodes);
                 }
 
-                chartHeight = (maxDepth + 1) * cellHeight + 2;
+                let x0 = parent.x0;
+                let prev = null;
+                let parentNext = parent.next;
 
-                svg.attr('height', chartHeight);
-            }
+                for (const childData of children) {
+                    const child = new FrameNode(parent, childData);
 
-            // select all frame elements
-            let frameEls = svg.selectAll('.frame')
-                .data(nodes, d => d.id);
+                    child.depth = parent.depth + 1;
+                    child.x0 = x0;
+                    child.x1 = x0 += child.value / rootFrameNode.value;
+                    child.name = getName(childData);
 
-            // update
-            let update = frameEls
-                .classed('fade', d => d.fade)
-                .classed('selected', d => d.selected);
-
-            if (useTransitions) {
-                update = update
-                    .transition()
-                    .duration(transitionDuration)
-                    .ease(transitionEase);
-            }
-
-            update.attr('transform', getNodeTranslate);
-
-            update.select('rect')
-                .attr('width', getNodeWidth);
-
-            update.select('foreignObject')
-                .style('opacity', d => getNodeWidth(d) < 20 ? 0 : 1)
-                .attr('width', getNodeWidth);
-
-            // enter
-            const enter = frameEls.enter()
-                .append('svg:g')
-                .attr('class', 'frame')
-                .attr('transform', getNodeTranslate)
-                .classed('fade', d => d.fade)
-                .classed('selected', d => d.selected);
-
-            if (useTransitions) {
-                enter
-                    .attr('opacity', 0)
-                    .transition()
-                    .delay(transitionDuration / 2)
-                    .duration(transitionDuration)
-                    .attr('opacity', 1);
-            }
-
-            enter.append('svg:rect')
-                .attr('width', getNodeWidth)
-                .attr('height', cellHeight - 1)
-                .attr('fill', d => colorMapper(d));
-
-            enter.append('svg:foreignObject')
-                .attr('width', getNodeWidth)
-                .attr('height', cellHeight - 1)
-                .style('opacity', d => getNodeWidth(d) < 20 ? 0 : 1)
-                .append('xhtml:div')
-                .attr('class', 'd3-flame-graph-label')
-                .text(getName);
-
-            if (!tooltip) {
-                enter.append('svg:title')
-                    .text(labelHandler);
-            }
-
-            // exit
-            frameEls.exit()
-                .remove();
-        });
-    }
-
-    class FrameNode {
-        constructor(id, parent, data) {
-            this.id = id;
-            this.parent = parent;
-            this.next = null;
-            this.nextSibling = null;
-            this.data = data;
-            this.depth = 0;
-            this.fade = false;
-            this.selected = false;
-            this.value = data.value;
-            this.x0 = 0;
-            this.x1 = 1;
-        }
-    }
-
-    function processData() {
-        selectedNode = null;
-        d3Selection.datum((data) => {
-            if (data.constructor.name !== 'Node') {
-                // creating a precomputed hierarchical structure
-                let id = 1;
-                const root = new FrameNode(id++, null, data);
-                let parent = root;
-
-                while (parent !== null) {
-                    let children = getChildren(parent.data);
-
-                    if (Array.isArray(children)) {
-                        if (sort) {
-                            // use slice() to avoid data mutation
-                            children = children.slice().sort(compareNodes);
-                        }
-
-                        let x0 = parent.x0;
-                        let prev = null;
-                        let parentNext = parent.next;
-
-                        for (const childData of children) {
-                            const child = new FrameNode(id++, parent, childData);
-
-                            child.depth = parent.depth + 1;
-                            child.x0 = x0;
-                            child.x1 = x0 += childData.value / root.value;
-
-                            if (prev === null) {
-                                parent.next = child;
-                            } else {
-                                prev.next = prev.nextSibling = child;
-                            }
-
-                            prev = child;
-                        }
-
-                        if (prev !== null) {
-                            prev.next = parentNext;
-                        }
+                    if (prev === null) {
+                        parent.next = child;
+                    } else {
+                        prev.next = prev.nextSibling = child;
                     }
 
-                    parent = parent.next;
+                    prev = child;
                 }
 
-                // setting the bound data for the selection
-                return root;
+                if (prev !== null) {
+                    prev.next = parentNext;
+                }
             }
-        });
-    }
 
-    function chart(s, renderOnInit = true) {
-        if (!arguments.length) {
-            return chart;
+            parent = parent.next;
         }
 
-        // saving the selection on `.call`
-        d3Selection = s;
+        return rootFrameNode;
+    }
 
-        // processing raw data to be used in the chart
-        processData();
+    function chart(containerEl) {
+        // create chart element
+        chartEl = containerEl.appendChild(document.createElement('div'));
+        chartEl.className = 'flamechart';
 
-        // create chart svg
-        d3Selection.each(function(/* data */) {
-            if (select(this).select('svg').size() === 0) {
-                const svg = select(this)
-                    .append('svg:svg')
-                    .attr('width', chartWidth)
-                    .attr('class', 'partition d3-flame-graph');
-
-                if (chartHeight) {
-                    svg.attr('height', chartHeight);
-                }
-
-                if (tooltip) {
-                    svg.call(tooltip);
-                };
-            }
-        });
-
-        const findNodeByEl = (cursor, rootEl) => {
+        const findFrameNodeByEl = (cursor, rootEl) => {
             while (cursor && cursor !== rootEl) {
-                if (cursor.__data__) {
-                    return cursor.__data__;
+                if (frameNodeByEl.has(cursor)) {
+                    return frameNodeByEl.get(cursor);
                 }
 
                 cursor = cursor.parentNode;
             }
         };
-        d3Selection.select('svg')
-            .on('click', function(event, root) {
-                const node = findNodeByEl(event.target, this);
+        chartEl.addEventListener('click', function(event) {
+            const frameNode = findFrameNodeByEl(event.target, this);
 
-                if (!node) {
-                    return;
+            if (!frameNode) {
+                return;
+            }
+
+            if (selectedNode !== frameNode && frameNode !== rootFrameNode) {
+                if (selectedNode !== null) {
+                    selectedNode.selected = false;
+
+                    selectedNodesStack = selectedNodesStack
+                        .filter(item => item.depth < frameNode.depth);
+
+                    if (selectedNode.depth < frameNode.depth) {
+                        selectedNodesStack.push(selectedNode);
+                    }
                 }
 
-                if (selectedNode !== node && node !== root) {
-                    if (selectedNode !== null) {
-                        selectedNode.selected = false;
+                selectedNode = frameNode;
+                selectedNode.selected = true;
+            } else if (selectedNode === frameNode) {
+                selectedNode.selected = false;
+                selectedNode = null;
 
-                        selectedNodesStack = selectedNodesStack
-                            .filter(item => item.depth < node.depth);
-
-                        if (selectedNode.depth < node.depth) {
-                            selectedNodesStack.push(selectedNode);
-                        }
-                    }
-
-                    selectedNode = node;
+                if (selectedNodesStack.length > 0) {
+                    selectedNode = selectedNodesStack.pop();
                     selectedNode.selected = true;
-                } else if (selectedNode === node) {
-                    selectedNode.selected = false;
-                    selectedNode = null;
-
-                    if (selectedNodesStack.length > 0) {
-                        selectedNode = selectedNodesStack.pop();
-                        selectedNode.selected = true;
-                    }
-                } else if (selectedNode !== null) {
-                    selectedNode.selected = false;
-                    selectedNode = null;
-                    selectedNodesStack = [];
                 }
+            } else if (selectedNode !== null) {
+                selectedNode.selected = false;
+                selectedNode = null;
+                selectedNodesStack = [];
+            }
 
-                if (typeof clickHandler === 'function') {
-                    clickHandler(node);
-                } else {
-                    zoom(selectedNode || root);
-                }
-            })
-            .on('pointermove', function(event) {
-                if (pointerNode === event.target) {
-                    return;
-                }
+            if (typeof clickHandler === 'function') {
+                clickHandler(frameNode);
+            } else {
+                zoom(selectedNode || rootFrameNode);
+            }
+        });
+        chartEl.addEventListener('pointermove', function(event) {
+            if (pointerNode === event.target) {
+                return;
+            }
 
-                pointerNode = event.target;
-                const node = findNodeByEl(event.target, this);
+            pointerNode = event.target;
+            const frameNode = findFrameNodeByEl(event.target, this);
 
-                if (!node) {
-                    return;
-                }
+            if (!frameNode) {
+                return;
+            }
 
-                if (tooltip) {
-                    tooltip.show(node, this, event);
-                }
+            if (tooltip) {
+                tooltip.show(frameNode);
+            }
 
-                detailsHandler(labelHandler(node));
+            if (typeof hoverHandler === 'function') {
+                hoverHandler(frameNode);
+            }
+        });
+        chartEl.addEventListener('pointerout', function() {
+            pointerNode = null;
 
-                if (typeof hoverHandler === 'function') {
-                    hoverHandler(node);
-                }
-            })
-            .on('pointerout', function() {
-                pointerNode = null;
+            if (tooltip) {
+                tooltip.hide();
+            }
+        });
 
-                if (tooltip) {
-                    tooltip.hide();
-                }
-
-                detailsHandler(null);
-            });
-
-        if (renderOnInit) {
-            // first draw
-            update();
-        }
+        return chart;
     }
 
-    chart.height = function(_) {
-        if (!arguments.length) {
-            return chartHeight;
-        }
-        chartHeight = _;
-        return chart;
+    chart.setData = function(data) {
+        processData(data || {});
+        update();
     };
 
     chart.width = function(_) {
@@ -531,14 +388,6 @@ export default function() {
         return chart;
     };
 
-    chart.cellHeight = function(_) {
-        if (!arguments.length) {
-            return cellHeight;
-        }
-        cellHeight = _;
-        return chart;
-    };
-
     chart.tooltip = function(_) {
         if (!arguments.length) {
             return tooltip;
@@ -546,22 +395,6 @@ export default function() {
         if (typeof _ === 'function') {
             tooltip = _;
         }
-        return chart;
-    };
-
-    chart.transitionDuration = function(_) {
-        if (!arguments.length) {
-            return transitionDuration;
-        }
-        transitionDuration = _;
-        return chart;
-    };
-
-    chart.transitionEase = function(_) {
-        if (!arguments.length) {
-            return transitionEase;
-        }
-        transitionEase = _;
         return chart;
     };
 
@@ -589,39 +422,7 @@ export default function() {
         return chart;
     };
 
-    chart.search = function(term) {
-        const searchResults = [];
-        let searchSum = 0;
-        let totalValue = 0;
-        d3Selection.each(function(data) {
-            const res = searchTree(data, term);
-            searchResults.push(...res[0]);
-            searchSum += res[1];
-            totalValue += data.value;
-        });
-        searchHandler(searchResults, searchSum, totalValue);
-        update();
-    };
-
-    chart.findById = function(id) {
-        if (typeof id !== 'number') {
-            return null;
-        }
-
-        let found = null;
-
-        d3Selection.each(function(cursor) {
-            while (!found && cursor !== null) {
-                found = cursor.id === id;
-                cursor = cursor.next;
-            }
-        });
-
-        return found;
-    };
-
     chart.clear = function() {
-        detailsHandler(null);
         d3Selection.each(function(cursor) {
             while (cursor !== null) {
                 cursor.highlight = false;
@@ -670,9 +471,6 @@ export default function() {
     };
 
     chart.update = function(data) {
-        if (!d3Selection) {
-            return chart;
-        }
         if (data) {
             d3Selection.datum(data);
             processData();
@@ -682,10 +480,6 @@ export default function() {
     };
 
     chart.destroy = function() {
-        if (!d3Selection) {
-            return chart;
-        }
-
         if (tooltip) {
             tooltip.hide();
             if (typeof tooltip.destroy === 'function') {
@@ -693,18 +487,18 @@ export default function() {
             }
         }
 
+        chartEl.remove();
+        chartEl = null;
+
+        rootFrameNode = null;
         pointerNode = null;
         selectedNode = null;
         selectedNodesStack = [];
         fadedNodes.clear();
 
-        d3Selection.selectAll('svg').remove();
-        d3Selection = null;
         clickHandler = null;
         zoomHandler = null;
         hoverHandler = null;
-        detailsElement = null;
-        searchDetails = null;
 
         chart = null;
     };
@@ -735,14 +529,6 @@ export default function() {
             return minFrameSize;
         }
         minFrameSize = _;
-        return chart;
-    };
-
-    chart.setDetailsElement = function(_) {
-        if (!arguments.length) {
-            return detailsElement;
-        }
-        detailsElement = _;
         return chart;
     };
 
@@ -791,33 +577,6 @@ export default function() {
             return getLibtype;
         }
         getLibtype = _;
-        return chart;
-    };
-
-    chart.setSearchHandler = function(_) {
-        if (!arguments.length) {
-            searchHandler = originalSearchHandler;
-            return chart;
-        }
-        searchHandler = _;
-        return chart;
-    };
-
-    chart.setDetailsHandler = function(_) {
-        if (!arguments.length) {
-            detailsHandler = originalDetailsHandler;
-            return chart;
-        }
-        detailsHandler = _;
-        return chart;
-    };
-
-    chart.setSearchMatch = function(_) {
-        if (!arguments.length) {
-            searchMatch = originalSearchMatch;
-            return chart;
-        }
-        searchMatch = _;
         return chart;
     };
 
