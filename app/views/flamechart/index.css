@@ -1,0 +1,64 @@
+.flamechart {
+    --transition-duration: 250ms;
+    --transition-delay: 250ms;
+    --transition: var(--transition-duration) ease-in-out;
+    --frame-height: 19px;
+
+    position: relative;
+    height: calc(max(var(--max-depth) + 1, 10) * var(--frame-height) + 2px);
+}
+
+.flamechart .frames-group {
+    opacity: 1;
+    transition: var(--transition);
+    transition-delay: var(--transition-delay);
+    transition-property: opacity;
+}
+.flamechart.first-enter .frames-group {
+    --transition-duration: 125ms;
+    --transition-delay: 0ms;
+}
+.flamechart .frames-group_init-enter-state {
+    opacity: 0;
+}
+
+.flamechart .frame {
+    --fill-opacity: .4;
+    position: absolute;
+    overflow: hidden;
+    cursor: pointer;
+    left: calc(100% * var(--x0));
+    right: calc(100% - 100% * var(--x1) + 1px);
+    top: calc(var(--depth) * var(--frame-height));
+    height: calc(var(--frame-height) - 1px);
+    background-color: rgba(
+        var(--color, 128, 128, 128),
+        var(--fill-opacity)
+    );
+    transition: var(--transition);
+    transition-property: left, right, opacity;
+}
+.flamechart .frame:hover {
+    --fill-opacity: .5;
+}
+.flamechart .frame.fade {
+    opacity: .65;
+}
+.flamechart .frame.selected {
+    box-shadow: 0 0 1px 1px #ffa500bd inset;
+}
+
+.flamechart .frame-label {
+    pointer-events: none;
+    font-size: 10px;
+    line-height: 16px;
+    padding: 0 3px;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    opacity: calc(max(var(--x1) - var(--x0) - 20 * var(--width-scale), 0) * 100000);
+    transition: var(--transition);
+    transition-property: opacity;
+}

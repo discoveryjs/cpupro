@@ -87,12 +87,13 @@ function defaultColorMapper(frame: Frame, colorHue: string | null = null) {
 
 export class FlameChart extends EventEmitter<Events> {
     el: HTMLElement;
+    #resizeObserver: ResizeObserver | null = null;
 
     #colorMapper: FrameColorGenerator = defaultColorMapper;
     #colorHue: string | null = null;
     #scheduleRenderTimer: Promise<void> | null = null;
 
-    #width = 1000; // graph width
+    #width = 0; // graph width
     #minFrameWidth = 2;
     zoomStart = 0;
     zoomEnd = 1;
@@ -136,6 +137,22 @@ export class FlameChart extends EventEmitter<Events> {
         chartEl.addEventListener('pointerleave', () => {
             chart.emit('frame:leave');
         }, true);
+
+        if (typeof ResizeObserver === 'function') {
+            this.#resizeObserver = new ResizeObserver(entries => {
+                let newWidth = null;
+
+                for (let entry of entries) {
+                    newWidth = entry.contentRect.width;
+                }
+
+                if (newWidth !== null && this.#width !== newWidth) {
+                    this.#width = newWidth;
+                    this.scheduleRender();
+                }
+            });
+            this.#resizeObserver.observe(chartEl);
+        }
 
         return chartEl;
     }
@@ -311,7 +328,11 @@ export class FlameChart extends EventEmitter<Events> {
     render() {
         this.#scheduleRenderTimer = null;
 
-        const widthScale = 1 / this.#width;
+        if (this.#width === 0 && this.#resizeObserver) {
+            return;
+        }
+
+        const widthScale = 1 / (this.#width || 1000);
         const xScale = 1 / (this.zoomEnd - this.zoomStart);
         const xOffset = this.zoomStart * xScale;
         const firstEnter = !this.frameEls.size;
@@ -438,18 +459,15 @@ export class FlameChart extends EventEmitter<Events> {
         this.scheduleRender();
     }
 
-    get width() {
-        return this.#width;
-    }
-    set width(width: number) {
-        this.#width = width;
-        this.scheduleRender();
-    }
-
     destroy() {
         this.emit('destroy');
 
         this.resetFrameRefs();
+
+        if (this.#resizeObserver) {
+            this.#resizeObserver.disconnect();
+            this.#resizeObserver = null;
+        }
 
         this.el.remove();
         this.el = null;

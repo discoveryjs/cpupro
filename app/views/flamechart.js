@@ -1,9 +1,6 @@
 /* eslint-env node */
-const { ContentRect } = require('@discoveryjs/discovery').utils;
 const { FlameChart } = require('./flamechart/index');
 const Tooltip = require('./flamechart/tooltip').default;
-
-let lastWidth = null;
 
 discovery.view.define('flamechart', function(el, config, data, context) {
     const contentEl = document.createElement('div');
@@ -52,10 +49,6 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         .on('destroy', tooltip.destroy);
         // .setColorMapper(colorMapper.offCpuColorMapper);
 
-    if (lastWidth) {
-        chart.width = lastWidth;
-    }
-
     chart.setData(data, {
         name: frameData => frameData.host.name || frameData.host.packageRelPath,
         value: frameData => frameData.totalTime,
@@ -66,19 +59,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     contentEl.append(chart.el);
     el.append(contentEl, destroyEl);
 
-    const sizeObserver = new ContentRect();
-    const unsubscribeResize = sizeObserver.subscribe(({ width }) => {
-        const newWidth = width + 1;
-
-        if (lastWidth !== newWidth) {
-            chart.width = lastWidth = newWidth;
-        }
-    });
-    sizeObserver.observe(contentEl);
     destroyEl.onDestroy = () => {
-        unsubscribeResize();
-        sizeObserver.observe();
-        sizeObserver.observer = null;
         tooltip.destroy();
         chart.destroy();
     };
