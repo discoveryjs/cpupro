@@ -1,7 +1,7 @@
 /* eslint-env node */
 const { ContentRect } = require('@discoveryjs/discovery').utils;
-const flamechart = require('./flamechart/d3-flamechart').default;
-const tooltip = require('./flamechart/tooltip').default;
+const { FlameChart } = require('./flamechart/index');
+const Tooltip = require('./flamechart/tooltip').default;
 
 let lastWidth = null;
 
@@ -11,74 +11,75 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
     contentEl.className = 'view-flamechart__content';
 
+
+    const tooltip = new Tooltip(discovery, (el, data) => {
+        el.innerHTML = '';
+        discovery.view.render(el, [
+            {
+                view: 'switch',
+                data: 'host',
+                content: [
+                    { when: 'marker("package")', content: [
+                        'package-badge'
+                    ] },
+                    { when: 'marker("module")', content: [
+                        'module-badge'
+                    ] },
+                    { when: 'marker("function")', content: [
+                        'module-badge:module',
+                        { view: 'block', content: 'text:name' }
+                    ] },
+                    { content: [
+                        { view: 'block', content: 'text:name' }
+                    ] }
+                ]
+            },
+            'duration{ id: "self-time", data: { time: host.totalTime, total: #.data.totalTime } }'
+        ], data, context);
+    });
+
+    const chart = new FlameChart(contentEl)
+        .on('frame:enter', tooltip.show)
+        .on('frame:leave', tooltip.hide)
+        .on('destroy', tooltip.destroy);
+        // .setColorMapper(colorMapper.offCpuColorMapper);
+
+    if (lastWidth) {
+        chart.width = lastWidth;
+    }
+
+    chart.setData(data, {
+        name: frameData => frameData.host.name || frameData.host.packageRelPath,
+        value: frameData => frameData.totalTime,
+        children: frameData => frameData.children,
+        childrenSort: true
+    });
+
+    contentEl.append(chart.el);
     el.append(contentEl, destroyEl);
 
     const sizeObserver = new ContentRect();
-    sizeObserver.observe(contentEl);
-
-    const chart = flamechart()(contentEl, lastWidth !== null)
-        .inverted(true)
-        .resetHeightOnZoom(true)
-        .getName(framedata =>
-            framedata.host.name || framedata.host.packageRelPath
-        )
-        .sort(true)
-        .getChildren(frameData => frameData.children);
-        // .setColorMapper(colorMapper.offCpuColorMapper);
-
-    chart.tooltip(tooltip(
-        discovery,
-        (el, data) => {
-            el.innerHTML = '';
-            discovery.view.render(el, [
-                {
-                    view: 'switch',
-                    data: 'host',
-                    content: [
-                        { when: 'marker("package")', content: [
-                            'package-badge'
-                        ] },
-                        { when: 'marker("module")', content: [
-                            'module-badge'
-                        ] },
-                        { when: 'marker("function")', content: [
-                            'module-badge:module',
-                            { view: 'block', content: 'text:name' }
-                        ] },
-                        { content: [
-                            { view: 'block', content: 'text:name' }
-                        ] }
-                    ]
-                },
-                'duration{ id: "self-time", data: { time: host.totalTime, total: #.data.totalTime } }'
-            ], data, context);
-        }
-    ));
-
-    if (lastWidth) {
-        chart.width(lastWidth);
-    }
-
-    chart.setData(data);
-
     const unsubscribeResize = sizeObserver.subscribe(({ width }) => {
         const newWidth = width + 1;
 
         if (lastWidth !== newWidth) {
-            chart.width(lastWidth = newWidth).render();
+            chart.width = lastWidth = newWidth;
         }
     });
+    sizeObserver.observe(contentEl);
     destroyEl.onDestroy = () => {
         unsubscribeResize();
+        sizeObserver.observe();
+        sizeObserver.observer = null;
         chart.destroy();
     };
 }, { tag: 'div' });
 
-class FlameChart extends HTMLElement {
+class FlameChartElement extends HTMLElement {
     disconnectedCallback() {
         this.onDestroy();
         this.onDestroy = null;
     }
 }
 
-customElements.define('destroy-flamechart', FlameChart);
+customElements.define('destroy-flamechart', FlameChartElement);

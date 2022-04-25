@@ -1,34 +1,28 @@
 export default function(host, render) {
     let hideTimer;
-    let renderedNode = null;
+    let renderedFrame = null;
     let popup = new host.view.Popup({
         className: 'flamechart-tooltip',
         position: 'pointer'
     });
 
-    function tip() {
-    }
+    return {
+        show(frame) {
+            clearTimeout(hideTimer);
+            popup.show(null, renderedFrame !== frame ? (el) => render(el, frame.data) : undefined);
+            renderedFrame = frame;
+        },
 
-    tip.show = function(node) {
-        clearTimeout(hideTimer);
-        popup.show(null, renderedNode !== node ? (el) => render(el, node.data) : undefined);
-        renderedNode = node;
+        hide() {
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => popup.hide(), 150);
+        },
 
-        return tip;
+        destroy() {
+            clearTimeout(hideTimer);
+            renderedFrame = null;
+            popup.hide();
+            popup = null;
+        }
     };
-
-    tip.hide = function() {
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => popup.hide(), 150);
-
-        return tip;
-    };
-
-    tip.destroy = function() {
-        clearTimeout(hideTimer);
-        popup.hide();
-        popup = null;
-    };
-
-    return tip;
 }

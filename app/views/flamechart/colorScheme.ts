@@ -1,7 +1,7 @@
-export function calculateColor(hue, vector) {
-    let r;
-    let g;
-    let b;
+export function calculateColor(hue: string, vector: number) {
+    let r: number;
+    let g: number;
+    let b: number;
 
     switch (hue) {
         case 'red': {
