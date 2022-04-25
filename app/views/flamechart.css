@@ -101,7 +101,25 @@
     padding-bottom: 1px;
     line-height: 19px;
 }
+.flamechart-tooltip .view-duration {
+    align-items: baseline;
+}
+.flamechart-tooltip .view-duration.total::before {
+    content: 'Total time: ';
+    white-space: pre;
+    font-size: 80%;
+    color: #888;
+}
+.flamechart-tooltip .view-duration.self::before {
+    content: 'Self time: ';
+    white-space: pre;
+    font-size: 80%;
+    color: #888;
+}
 .flamechart-tooltip .view-duration > .time {
     flex: 0;
+}
+.flamechart-tooltip .view-duration > .fraction {
+    width: auto;
 }
 

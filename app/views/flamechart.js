@@ -11,7 +11,6 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
     contentEl.className = 'view-flamechart__content';
 
-
     const tooltip = new Tooltip(discovery, (el, data) => {
         el.innerHTML = '';
         discovery.view.render(el, [
@@ -34,7 +33,16 @@ discovery.view.define('flamechart', function(el, config, data, context) {
                     ] }
                 ]
             },
-            'duration{ id: "self-time", data: { time: host.totalTime, total: #.data.totalTime } }'
+            {
+                view: 'duration',
+                className: 'total',
+                data: '{ time: host.totalTime, total: #.data.totalTime }'
+            },
+            {
+                view: 'duration',
+                className: 'self',
+                data: '{ time: host.selfTime, total: #.data.totalTime }'
+            }
         ], data, context);
     });
 
@@ -71,6 +79,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         unsubscribeResize();
         sizeObserver.observe();
         sizeObserver.observer = null;
+        tooltip.destroy();
         chart.destroy();
     };
 }, { tag: 'div' });

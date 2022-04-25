@@ -8,20 +8,32 @@ export default function(host, render) {
 
     return {
         show(frame) {
+            if (popup === null) {
+                return;
+            }
+
             clearTimeout(hideTimer);
             popup.show(null, renderedFrame !== frame ? (el) => render(el, frame.data) : undefined);
             renderedFrame = frame;
         },
 
         hide() {
+            if (popup === null) {
+                return;
+            }
+
             clearTimeout(hideTimer);
             hideTimer = setTimeout(() => popup.hide(), 150);
         },
 
         destroy() {
+            if (popup === null) {
+                return;
+            }
+
             clearTimeout(hideTimer);
             renderedFrame = null;
-            popup.hide();
+            popup.destroy?.();
             popup = null;
         }
     };
