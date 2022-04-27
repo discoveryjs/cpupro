@@ -76,10 +76,9 @@ export function isChromiumTimeline(data: any): boolean {
 
     return true;
 }
-        
+
 export function extractCpuProfilesFromChromiumTimeline(
-    events: ChromiumTimeline | ChromiumTimelineEvent[],
-    fileName: string
+    events: ChromiumTimeline | ChromiumTimelineEvent[]
 ): ProfileGroup {
     // It seems like sometimes Chrome timeline files contain multiple CpuProfiles?
     // For now, choose the first one in the list.
@@ -107,7 +106,7 @@ export function extractCpuProfilesFromChromiumTimeline(
         )
         .sort((a, b) => a.ts - b.ts);
 
-    for (let event of events) {
+    for (const event of events) {
         if (event.name === 'CpuProfile') {
             const pidTid = `${event.pid}:${event.tid}`;
             const id = event.id || pidTid;
@@ -115,7 +114,7 @@ export function extractCpuProfilesFromChromiumTimeline(
             cpuProfileByID.set(id, event.args.data.cpuProfile as CPUProfile);
             pidTidById.set(id, pidTid);
         }
-        
+
         if (event.name === 'Profile') {
             const pidTid = `${event.pid}:${event.tid}`;
 
@@ -128,16 +127,16 @@ export function extractCpuProfilesFromChromiumTimeline(
                 timeDeltas: [],
                 ...event.args.data
             });
-            
+
             if (event.id) {
                 pidTidById.set(event.id, pidTid);
             }
         }
-        
+
         if (event.name === 'thread_name') {
             threadNameByPidTid.set(`${event.pid}:${event.tid}`, event.args.name);
         }
-        
+
         if (event.name === 'ProfileChunk') {
             const pidTid = `${event.pid}:${event.tid}`;
             const cpuProfile = cpuProfileByID.get(event.id || pidTid);
@@ -179,10 +178,10 @@ export function extractCpuProfilesFromChromiumTimeline(
     const profiles: CPUProfile[] = [];
     const nodeById = new Map<number, CPUProfileNode>();
     let indexToView = 0;
-    
+
     for (const [profileId, profile] of cpuProfileByID) {
-        let pidTid = pidTidById.get(profileId);
-        let threadName: string | null = threadNameByPidTid.get(pidTid) || null;
+        const pidTid = pidTidById.get(profileId);
+        const threadName: string | null = threadNameByPidTid.get(pidTid) || null;
 
         for (const node of profile.nodes) {
             node.children = [];
@@ -191,24 +190,21 @@ export function extractCpuProfilesFromChromiumTimeline(
 
         for (const node of profile.nodes) {
             if (node.parent !== undefined) {
-                const parent = nodeById.get(node.parent)
+                const parent = nodeById.get(node.parent);
+
                 parent.children.push(node.id);
             }
         }
 
-        if (threadName && cpuProfileByID.size > 1) {
-            profile.name = `${fileName} - ${threadName}`;
+        profile.name = threadName;
 
-            if (threadName === 'CrRendererMain') {
-                indexToView = profiles.length;
-            }
-        } else {
-            profile.name = fileName;
+        if (threadName === 'CrRendererMain') {
+            indexToView = profiles.length;
         }
 
         profiles.push(profile);
     }
-    
+
     return {
         indexToView,
         profiles

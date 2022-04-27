@@ -10,6 +10,12 @@
         "ecmaVersion": 2020,
         "sourceType": "module"
     },
+    "parser": "@typescript-eslint/parser",
+    "plugins": ["@typescript-eslint"],
+    "extends": [
+        "plugin:@typescript-eslint/eslint-recommended",
+        "plugin:@typescript-eslint/recommended"
+    ],
     "rules": {
         "no-duplicate-case": 2,
         "no-undef": 2,
