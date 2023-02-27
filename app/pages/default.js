@@ -120,8 +120,8 @@ discovery.page.define('default', {
                         view: 'section',
                         when: 'packages.size() > 1',
                         header: [
-                            'text:"Packages / scopes "',
-                            'badge:packages.size()'
+                            'text:"Packages & areas "',
+                            { view: 'badge', content: 'text-numeric:packages.size()' }
                         ],
                         content: {
                             view: 'table',
@@ -138,7 +138,7 @@ discovery.page.define('default', {
                         view: 'section',
                         header: [
                             'text:"Modules "',
-                            'badge:modules.size()'
+                            { view: 'badge', content: 'text-numeric:modules.size()' }
                         ],
                         content: {
                             view: 'table',
@@ -155,7 +155,7 @@ discovery.page.define('default', {
                         view: 'section',
                         header: [
                             'text:"Functions "',
-                            'badge:functions.size()'
+                            { view: 'badge', content: 'text-numeric:functions.size()' }
                         ],
                         content: {
                             view: 'table',

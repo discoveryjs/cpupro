@@ -1,8 +1,9 @@
 .view-duration {
+    max-width: 18ex;
     display: flex;
     text-align: right;
     align-items: baseline;
-    gap: .5ex;
+    gap: .65ex;
 }
 .view-tree-leaf .view-duration {
     display: inline-flex;
@@ -18,7 +19,6 @@
 
 .view-duration > .fraction {
     width: 3em;
-    padding: 2px 4px;
     opacity: .65;
-    font-size: 10px;
+    font-size: 83%;
 }
