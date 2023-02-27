@@ -2,7 +2,7 @@
     --transition-duration: 250ms;
     --transition-delay: 250ms;
     --transition: var(--transition-duration) ease-in-out;
-    --frame-height: 19px;
+    --frame-height: 17px;
 
     position: relative;
     height: calc(max(var(--max-depth) + 1, 10) * var(--frame-height) + 2px);
@@ -28,9 +28,12 @@
     overflow: hidden;
     cursor: pointer;
     left: calc(100% * var(--x0));
-    right: calc(100% - 100% * var(--x1) + 1px);
+    right: calc(100% - 100% * var(--x1));
     top: calc(var(--depth) * var(--frame-height));
     height: calc(var(--frame-height) - 1px);
+    border: solid transparent;
+    border-width: 0 1px 1px 0;
+    background-clip: content-box;
     background-color: rgba(
         var(--color, 128, 128, 128),
         var(--fill-opacity)
@@ -51,7 +54,7 @@
 .flamechart .frame-label {
     pointer-events: none;
     font-size: 10px;
-    line-height: 16px;
+    line-height: 14px;
     padding: 0 3px;
 
     white-space: nowrap;
