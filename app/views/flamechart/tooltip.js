@@ -13,7 +13,7 @@ export default function(host, render) {
             }
 
             clearTimeout(hideTimer);
-            popup.show(null, renderedFrame !== frame ? (el) => render(el, frame.data) : undefined);
+            popup.show(null, renderedFrame !== frame ? (el) => render(el, frame) : undefined);
             renderedFrame = frame;
         },
 

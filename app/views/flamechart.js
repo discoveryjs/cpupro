@@ -13,7 +13,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         discovery.view.render(el, [
             {
                 view: 'switch',
-                data: 'host',
+                data: 'data.host',
                 content: [
                     { when: 'marker("package")', content: [
                         'package-badge'
@@ -33,12 +33,12 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             {
                 view: 'duration',
                 className: 'total',
-                data: '{ time: host.totalTime, total: #.data.totalTime }'
+                data: '{ time: value, total: ..parent[-2].value }'
             },
             {
                 view: 'duration',
                 className: 'self',
-                data: '{ time: host.selfTime, total: #.data.totalTime }'
+                data: '{ time: value - (next.parent = $ ? next + next..nextSibling.[] | reduce(=>$$ + value, 0) : 0), total: ..parent[-2].value }'
             }
         ], data, context);
     });
@@ -49,12 +49,28 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         .on('destroy', tooltip.destroy);
         // .setColorMapper(colorMapper.offCpuColorMapper);
 
-    chart.setData(data, {
-        name: frameData => frameData.host.name || frameData.host.packageRelPath,
-        value: frameData => frameData.totalTime,
-        children: frameData => frameData.children,
-        childrenSort: true
-    });
+    if (data.segment) {
+        const children = data.children;
+        const offsetScale = 1 / (data.segment[1] - data.segment[0]);
+
+        chart.setData({
+            host: data.host,
+            segment: [data.segment[0], children[children.length - 1].segment[1]],
+            children
+        }, {
+            name: frameData => frameData.host.name || frameData.host.packageRelPath,
+            value: frameData => frameData.segment[1] - frameData.segment[0],
+            offset: frameData => offsetScale * frameData.segment[0],
+            children: frameData => frameData.children
+        });
+    } else {
+        chart.setData(data, {
+            name: frameData => frameData.host.name || frameData.host.packageRelPath,
+            value: frameData => frameData.totalTime,
+            children: frameData => frameData.children,
+            childrenSort: true
+        });
+    }
 
     contentEl.append(chart.el);
     el.append(contentEl, destroyEl);

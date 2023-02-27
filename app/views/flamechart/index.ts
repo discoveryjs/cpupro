@@ -2,12 +2,14 @@ import { generateColorVector, calculateColor } from './color-utils';
 import { EventEmitter } from './event-emmiter';
 
 type FrameElement = HTMLElement;
+type FrameData = any;
 type FrameColorGenerator = (frame: Frame, colorHue: string | null) => string;
 type SetDataOptions = {
-    name?(data: any): string;
-    value?(data: any): number;
-    children?(data: any): any[] | null | undefined;
-    childrenSort?: true | ((a: any, b: any) => number);
+    name?(data: FrameData): string;
+    value?(data: FrameData): number;
+    offset?(data: FrameData, parentData: FrameData): number;
+    children?(data: FrameData): FrameData[] | null | undefined;
+    childrenSort?: true | ((a: FrameData, b: FrameData) => number);
 }
 type Events = {
     select(frame: Frame | null, prevFrame: Frame | null): void;
@@ -22,7 +24,7 @@ class Frame {
     parent: Frame | null;
     next: Frame | null;
     nextSibling: Frame | null;
-    data: any;
+    data: FrameData;
     name: string;
     value: number;
     depth: number;
@@ -31,7 +33,7 @@ class Frame {
     fade: boolean;
     selected: boolean;
 
-    constructor(parent: Frame, data: any) {
+    constructor(parent: Frame | null, data: FrameData) {
         this.parent = parent;
         this.next = null;
         this.nextSibling = null;
@@ -46,11 +48,11 @@ class Frame {
     }
 }
 
-const defaultGetName: SetDataOptions['name'] = (frameData: any) => frameData.name;
-const defaultGetValue: SetDataOptions['value'] = (frameData: any) => frameData.value;
-const defaultGetChildren: SetDataOptions['children'] = (frameData: any) => frameData.children;
+const defaultGetName: Exclude<SetDataOptions['name'], undefined> = (frameData: FrameData) => frameData.name;
+const defaultGetValue: Exclude<SetDataOptions['value'], undefined> = (frameData: FrameData) => frameData.value;
+const defaultGetChildren: Exclude<SetDataOptions['children'], undefined> = (frameData: FrameData) => frameData.children;
 
-function ensureFunction<T, U>(value: T, fallback: U): T | U {
+function ensureFunction<T, U>(value: T, fallback: U): U {
     return typeof value === 'function' ? value : fallback;
 }
 
@@ -69,7 +71,7 @@ function defaultColorMapper(frame: Frame, colorHue: string | null = null) {
     if (!colorHue && !(typeof libtype === 'undefined' || libtype === '')) {
         // Select hue. Order is important.
         hue = 'red';
-        if (typeof name !== 'undefined' && name && name.match(/::/)) {
+        if (typeof name !== 'undefined' && name && name.indexOf('::') !== -1) {
             hue = 'yellow';
         }
         if (libtype === 'kernel') {
@@ -139,13 +141,9 @@ export class FlameChart extends EventEmitter<Events> {
 
         if (typeof ResizeObserver === 'function') {
             this.#resizeObserver = new ResizeObserver(entries => {
-                let newWidth = null;
+                const newWidth = entries[entries.length - 1].contentRect.width;
 
-                for (let entry of entries) {
-                    newWidth = entry.contentRect.width;
-                }
-
-                if (newWidth !== null && this.#width !== newWidth) {
+                if (typeof newWidth === 'number' && this.#width !== newWidth) {
                     this.#width = newWidth;
                     this.scheduleRender();
                 }
@@ -156,9 +154,9 @@ export class FlameChart extends EventEmitter<Events> {
         return chartEl;
     }
 
-    findFrameByEl(cursor: Node) {
+    findFrameByEl(cursor: Node | null) {
         if (this.el.contains(cursor)) {
-            while (cursor && cursor !== this.el) {
+            while (cursor !== null && cursor !== this.el) {
                 if (this.frameByEl.has(cursor)) {
                     return {
                         element: cursor,
@@ -195,7 +193,7 @@ export class FlameChart extends EventEmitter<Events> {
             this.selectedFrame = null;
 
             if (this.selectedFramesStack.length > 0) {
-                this.selectedFrame = this.selectedFramesStack.pop();
+                this.selectedFrame = this.selectedFramesStack.pop() as Frame;
                 this.selectedFrame.selected = true;
             }
         } else if (this.selectedFrame !== null) {
@@ -219,23 +217,25 @@ export class FlameChart extends EventEmitter<Events> {
         this.frameEls.clear();
     }
 
-    setData<T>(rootData: T, options?: SetDataOptions) {
+    setData(rootData: FrameData, options?: SetDataOptions) {
         this.resetFrameRefs();
 
         options = options || {};
 
         const getName = ensureFunction(options.name, defaultGetName);
         const getValue = ensureFunction(options.value, defaultGetValue);
+        const getOffset = ensureFunction(options.offset, (() => x0) as (child: FrameData, parent: FrameData) => number);
         const getChildren = ensureFunction(options.children, defaultGetChildren);
-        const childrenSort = ensureFunction(options.childrenSort !== true ? options.childrenSort : (a: any, b: any) => {
+        const childrenSort = ensureFunction(options.childrenSort !== true ? options.childrenSort : (a: FrameData, b: FrameData) => {
             const nameA = getName(a);
             const nameB = getName(b);
-    
+
             return nameA > nameB ? 1 : nameA < nameB ? -1 : 0;
         }, false);
 
         // creating a precomputed hierarchical structure
-        let parent = this.rootFrame = new Frame(null, rootData);
+        let parent: Frame | null = this.rootFrame = new Frame(null, rootData);
+        let x0 = 0;
         parent.name = getName(rootData);
         parent.value = getValue(rootData);
 
@@ -248,17 +248,18 @@ export class FlameChart extends EventEmitter<Events> {
                     children = children.slice().sort(childrenSort);
                 }
 
-                let x0 = parent.x0;
-                let prev = null;
-                let parentNext = parent.next;
+                const parentNext: Frame | null = parent.next;
+                let prev: Frame | null = null;
+
+                x0 = parent.x0;
 
                 for (const childData of children) {
                     const child = new Frame(parent, childData);
 
+                    child.depth = parent.depth + 1;
                     child.name = getName(childData);
                     child.value = getValue(childData);
-                    child.depth = parent.depth + 1;
-                    child.x0 = x0;
+                    child.x0 = x0 = getOffset(childData, parent.data);
                     child.x1 = x0 += child.value / this.rootFrame.value;
 
                     if (prev === null) {
@@ -287,9 +288,13 @@ export class FlameChart extends EventEmitter<Events> {
         end = this.zoomEnd,
         minScale = 0
     ) {
+        if (root === null) {
+            return [];
+        }
+
         const minValue = (end - start) * root.value * minScale;
         const nodeList: Frame[] = [];
-        let node = root;
+        let node: Frame | null = root;
 
         while (node !== null) {
             if (node.x0 < end && node.x1 > start && node.value >= minValue) {
@@ -387,7 +392,7 @@ export class FlameChart extends EventEmitter<Events> {
 
         // remove non-visible frames
         for (const frame of removeFrames) {
-            this.frameEls.get(frame).remove();
+            this.frameEls.get(frame)?.remove();
             this.frameEls.delete(frame);
         }
 
@@ -404,6 +409,10 @@ export class FlameChart extends EventEmitter<Events> {
 
     zoomFrame(frame: Frame | null = null) {
         frame = frame || this.rootFrame;
+
+        if (frame === null) {
+            return;
+        }
 
         this.zoomStart = frame.x0;
         this.zoomEnd = frame.x1;

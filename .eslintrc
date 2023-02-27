@@ -17,15 +17,9 @@
         "plugin:@typescript-eslint/recommended"
     ],
     "rules": {
+        "@typescript-eslint/no-var-requires": 0,
         "no-duplicate-case": 2,
         "no-undef": 2,
-        "no-unused-vars": [
-            2,
-            {
-                "vars": "all",
-                "args": "after-used"
-            }
-        ],
         "no-empty": [
             2,
             {

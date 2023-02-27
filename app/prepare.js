@@ -1,3 +1,4 @@
+import { buildSegments } from './prepare/build-segments.js';
 import { convertValidate } from './prepare/index.js';
 
 const wellKnownNodeName = new Map([
@@ -253,15 +254,12 @@ function createPackage(id, type, name, path) {
     };
 }
 
-function computeNodeTotal(node) {
-    if (node.totalTime !== null) {
-        return node.totalTime;
-    }
-
+function computeNodeTotal(node, depth = 1) {
     node.totalTime = node.selfTime;
+    node.depth = depth;
 
     for (const child of node.children) {
-        node.totalTime += computeNodeTotal(child);
+        node.totalTime += computeNodeTotal(child, depth + 1);
     }
 
     return node.totalTime;
@@ -350,6 +348,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     const selfTimes = new Uint32Array(maxId + 1);
     const nodeById = new Array(maxId + 1);
     const nodeSegments = Array.from({ length: maxId + 1 }, () => []);
+    const roots = [];
     const wellKnownNodes = {
         root: null,
         program: null,
@@ -362,7 +361,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     markAsPackage(noPackage);
 
     // precompute self time and time segments
-    for (let i = 1, lastNodeId = data.samples[0], lastSegment = []; i < data.timeDeltas.length; i++) {
+    for (let i = 1; i < data.timeDeltas.length; i++) {
         const delta = data.timeDeltas[i];
 
         // a delta might be negative sometimes, just ignore such samples
@@ -370,15 +369,6 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
             const nodeId = data.samples[i];
 
             selfTimes[nodeId] += delta;
-
-            if (lastNodeId === nodeId) {
-                lastSegment[1] += delta;
-            } else {
-                lastNodeId = nodeId;
-                lastSegment = [totalTime, delta];
-                nodeSegments[nodeId].push(lastSegment);
-            }
-
             totalTime += delta;
         }
     }
@@ -527,8 +517,12 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         wellKnownNodes.idle.selfTime += data.timeDeltas[0];
     }
 
-    // process children (replace an ID with a node)
+    // collect roots & process children (replace an ID with a node)
     for (const node of data.nodes) {
+        if (node.parent === null) {
+            roots.push(node);
+        }
+
         if (!node.children) {
             node.children = [];
         }
@@ -550,14 +544,17 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     }
 
     // total time (can be computed only when selfTime for each node is set)
-    for (const node of data.nodes) {
+    for (const node of roots) {
         node.totalTime = computeNodeTotal(node);
     }
+
+    // build segments
+    buildSegments(data, nodeById, wellKnownNodes.gc);
 
     // aggregate function timinigs
     data.functionTree = aggregateNodes(wellKnownNodes.root, functions, node => node.function);
 
-    // // build module tree & aggregate timinigs
+    // build module tree & aggregate timinigs
     data.moduleTree = aggregateNodes(wellKnownNodes.root, modules, node => node.module);
 
     // build package tree & aggregate timinigs
