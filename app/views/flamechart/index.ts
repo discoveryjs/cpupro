@@ -1,5 +1,4 @@
-import { generateColorVector } from './colorUtils';
-import { calculateColor } from './colorScheme';
+import { generateColorVector, calculateColor } from './color-utils';
 import { EventEmitter } from './event-emmiter';
 
 type FrameElement = HTMLElement;
