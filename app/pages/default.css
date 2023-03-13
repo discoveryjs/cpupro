@@ -1,3 +1,9 @@
+.page > .indicators {
+    display: flex;
+    gap: 1px;
+    margin: 0 0 8px;
+}
+
 .flamecharts {
     margin-top: 8px;
 }

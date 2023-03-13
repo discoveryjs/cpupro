@@ -1,0 +1,24 @@
+.view-page-indicator {
+    background: #9b9b9b26;
+    padding: 4px 12px;
+    min-width: 100px;
+}
+.view-page-indicator > .title {
+    display: block;
+    margin-top: 2px;
+    margin-bottom: -2px;
+    color: #888;
+    font-size: 11px;
+}
+.view-page-indicator > .value {
+    display: block;
+    font-family: Helvetica, Tahoma, Arial, sans-serif;
+    font-size: 180%;
+    font-weight: 100;
+    text-align: right;
+}
+.view-page-indicator > .value > .unit {
+    font-size: 65%;
+    color: #888;
+    padding-left: .25ex;
+}

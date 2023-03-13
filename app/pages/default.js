@@ -28,7 +28,29 @@ discovery.page.define('default', {
                 content: 'h1:#.name'
             },
 
-            'text-numeric:"Total time: " + totalTime.ms()',
+            {
+                view: 'block',
+                className: 'indicators',
+                content: [
+                    {
+                        view: 'page-indicator',
+                        title: 'Total time',
+                        value: '=totalTime.ms()',
+                        unit: true
+                    },
+                    {
+                        view: 'page-indicator',
+                        title: 'Samples',
+                        value: '=samplesCount'
+                    },
+                    {
+                        view: 'page-indicator',
+                        title: 'Samples interval',
+                        value: '=samplesInterval',
+                        unit: 'μs'
+                    }
+                ]
+            },
             {
                 view: 'timing-bar',
                 data: `areas.({

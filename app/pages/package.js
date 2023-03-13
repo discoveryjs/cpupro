@@ -8,9 +8,36 @@ discovery.page.define('package', {
             content: 'h1:name'
         },
 
-        'text:"Self time: " + selfTime.ms()',
-        'html:"<br>"',
-        'text:"Total time: " + totalTime.ms()',
+        {
+            view: 'block',
+            className: 'indicators',
+            content: [
+                {
+                    view: 'page-indicator',
+                    title: 'Self time',
+                    value: '=selfTime.ms()',
+                    unit: true
+                },
+                {
+                    view: 'page-indicator',
+                    title: 'Self time, %',
+                    value: '=selfTime.totalPercent()',
+                    unit: true
+                },
+                {
+                    view: 'page-indicator',
+                    title: 'Total time',
+                    value: '=totalTime.ms()',
+                    unit: true
+                },
+                {
+                    view: 'page-indicator',
+                    title: 'Total time, %',
+                    value: '=totalTime.totalPercent()',
+                    unit: true
+                }
+            ]
+        },
 
         'timeline-segments: modules.($m:$; (calls + calls..children).[module=$m].segments)',
 
