@@ -19,6 +19,8 @@ module.exports = {
             './views/duration.js',
             './views/flamechart.css',
             './views/flamechart.js',
+            './views/function-badge.css',
+            './views/function-badge.js',
             './views/loc-badge.css',
             './views/loc-badge.js',
             './views/module-badge.css',

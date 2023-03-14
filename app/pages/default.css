@@ -4,6 +4,17 @@
     margin: 0 0 8px;
 }
 
+.view-badge {
+    --discovery-view-badge-color: #bababa33;
+    --discovery-view-badge-dark-color: #bababa33;
+}
+.view-badge > .prefix {
+    color: #777;
+}
+.discovery-root-darkmode .view-badge > .prefix {
+    color: #a4a4a4;
+}
+
 .flamecharts {
     margin-top: 8px;
 }

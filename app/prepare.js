@@ -357,6 +357,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     };
     let longestCommonModulePath = null;
     let totalTime = data.timeDeltas[0];
+    let samplesCount = 0;
 
     markAsPackage(noPackage);
 
@@ -370,6 +371,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
             selfTimes[nodeId] += delta;
             totalTime += delta;
+            samplesCount++;
         }
     }
 
@@ -597,6 +599,10 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // extend jora's queries with custom methods
     addQueryHelpers({
+        totalPercent(value) {
+            const percent = 100 * value / totalTime;
+            return percent >= 0.1 ? percent.toFixed(2) + '%' : '<0.1%';
+        },
         duration(value) {
             const percent = 100 * value / totalTime;
             return (value / 1000).toFixed(1) + 'ms' + (percent >= 0.01 ? ' / ' + percent.toFixed(2) + '%' : '');
@@ -620,6 +626,8 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     addValueAnnotation('#.key = "totalTime" and $ and { text: duration() }');
 
     // mutate data
+    data.samplesCount = samplesCount;
+    data.samplesInterval = data.timeDeltas.sort()[data.timeDeltas.length >> 1];
     data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
     data.totalTime = totalTime;
 
