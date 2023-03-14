@@ -96,6 +96,11 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
     } else {
         entry.protocol = (url.match(/^([a-z\-]+):/i) || [])[1] || '';
 
+        if (entry.protocol.length === 1 && /[A-Z]/.test(entry.protocol)) {
+            entry.protocol = '';
+            url = url.slice(2).replace(/\\/g, '/');
+        }
+
         switch (entry.protocol) {
             case '':
                 entry.type = 'script';
