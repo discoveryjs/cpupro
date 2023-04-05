@@ -2,7 +2,7 @@ discovery.page.define('default', {
     view: 'switch',
     content: [
         {
-            when: 'not #.dataLoaded',
+            when: 'no #.datasets',
             content: [
                 {
                     view: 'page-header',
@@ -25,7 +25,7 @@ discovery.page.define('default', {
         { content: [
             {
                 view: 'page-header',
-                content: 'h1:#.name'
+                content: 'h2:#.datasets[].resource | type = "file" ? name : #.model.name'
             },
 
             {

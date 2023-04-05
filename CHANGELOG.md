@@ -1,3 +1,16 @@
+## next
+
+- Used jsonxl binary encoding for data on report generation, which produces much smaller reports in size
+- Added `writeJsonxlToFileSync()` method to profile
+- Added `build/*.html` and `package.json` to exports
+- Report
+    - Bumped `discoveryjs` to `1.0.0-beta.73`
+    - Enabled [embed API](https://github.com/discoveryjs/discovery/blob/master/docs/embed.md) for integrations
+    - Rework `flamechart` for performance and reliability, it's a little more compact
+    - Added badges for function references
+    - Fixed Windows path processing
+    - New page badges
+
 ## 0.2.1 (2022-04-20)
 
 - Added count badges and tweaked numeric captions

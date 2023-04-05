@@ -1,9 +1,9 @@
 module.exports = {
     name: 'CPU (pro)file',
-    cache: true,
     basedir: __dirname + '/app',
+    embed: true,
     upload: {
-        accept: ['.cpuprofile', '.json']
+        accept: ['.cpuprofile', '.json', '.jsonxl']
     },
     prepare: './prepare',
     data: './data',
