@@ -1,15 +1,16 @@
 .view-timeline-segments {
     position: relative;
-    border-top: 1px solid #888c;
-    height: 8px;
+    border-bottom: 1px solid #0004;
     margin: 12px 0 0;
 }
 
-.view-timeline-segments .timeline-segment {
-    position: absolute;
-    top: -5px;
-    left: calc(100% * var(--offset));
-    width: max(calc(100% * var(--width)), 1px);
-    height: 9px;
-    background: #7bc13f7a;
+.view-timeline-segments svg {
+    display: block;
+    margin-bottom: -1px;
+}
+
+.view-timeline-segments path {
+    fill: #79c33ec9;
+    /* stroke: red;
+    stroke-width: .75; */
 }
