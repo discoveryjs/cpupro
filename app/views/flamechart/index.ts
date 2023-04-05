@@ -52,7 +52,7 @@ const defaultGetName: Exclude<SetDataOptions['name'], undefined> = (frameData: F
 const defaultGetValue: Exclude<SetDataOptions['value'], undefined> = (frameData: FrameData) => frameData.value;
 const defaultGetChildren: Exclude<SetDataOptions['children'], undefined> = (frameData: FrameData) => frameData.children;
 
-function ensureFunction<T, U>(value: T, fallback: U): U {
+function ensureFunction<T, U>(value: T, fallback: U) {
     return typeof value === 'function' ? value : fallback;
 }
 
@@ -138,6 +138,35 @@ export class FlameChart extends EventEmitter<Events> {
         chartEl.addEventListener('pointerleave', () => {
             chart.emit('frame:leave');
         }, true);
+        // chartEl.addEventListener('mousewheel', (e) => {
+        //     const deltaY = (e as WheelEvent).deltaY;
+        //     const scale = Math.sign(deltaY) < 0 ? 0.99 : 1.01;
+        //     const curDelta = chart.zoomEnd - chart.zoomStart;
+        //     const newDelta = Math.max(0.0001, Math.min(1, curDelta));
+
+        //     chart.zoomStart = chart.zoomStart + (curDelta - newDelta * scale) / 2;
+        //     chart.zoomEnd = chart.zoomEnd - (curDelta - newDelta * scale) / 2;
+        //     const t = Date.now();
+        //     chart.render();
+        //     console.log(Date.now() - t, { deltaY, scale, curDelta, newDelta }, [chart.zoomStart, chart.zoomEnd]);
+
+        //     e.preventDefault();
+
+        //     const xScale = 1 / (chart.zoomEnd - chart.zoomStart);
+        //     const xOffset = chart.zoomStart * xScale;
+
+        //     // add / update frame elements
+        //     for (const [frame, frameEl] of chart.frameEls) {
+        //         const x0 = Math.max(0, frame.x0 * xScale - xOffset);
+        //         const x1 = Math.max(0, frame.x1 * xScale - xOffset);
+
+        //         if (frameEl) {
+        //             // update
+        //             frameEl.style.setProperty('--x0', x0.toFixed(8));
+        //             frameEl.style.setProperty('--x1', x1.toFixed(8));
+        //         }
+        //     }
+        // });
 
         if (typeof ResizeObserver === 'function') {
             this.#resizeObserver = new ResizeObserver(entries => {
