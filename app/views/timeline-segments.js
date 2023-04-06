@@ -50,7 +50,7 @@ discovery.view.define('timeline-segments', function(el, config, data, context) {
         data = [];
     }
 
-    const count = 1000;
+    const count = 500;
     const totalTime = context.data.totalTime;
     const step = totalTime / count;
     const stat = new Uint32Array(count);
@@ -83,7 +83,7 @@ discovery.view.define('timeline-segments', function(el, config, data, context) {
     svgEl.setAttribute('viewBox', `0 0 ${stat.length} 20`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');
-    svgEl.setAttribute('height', 16);
+    svgEl.setAttribute('height', 20);
     svgEl.append(pathEl);
     el.append(svgEl);
 });

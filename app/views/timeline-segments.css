@@ -1,7 +1,7 @@
 .view-timeline-segments {
     position: relative;
     border-bottom: 1px solid #0004;
-    margin: 12px 0 0;
+    margin: 1px 0;
 }
 
 .view-timeline-segments svg {

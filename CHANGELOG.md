@@ -1,6 +1,6 @@
 ## next
 
-- Used jsonxl binary encoding for data on report generation, which produces much smaller reports in size
+- Used jsonxl binary and gzip encodings for data on report generating, which allow to produce a report much faster and much smaller (up to 50 times) in size
 - Added `writeJsonxlToFileSync()` method to profile
 - Added `build/*.html` and `package.json` to exports
 - Report
@@ -8,6 +8,7 @@
     - Enabled [embed API](https://github.com/discoveryjs/discovery/blob/master/docs/embed.md) for integrations
     - Rework `flamechart` for performance and reliability, it's a little more compact
     - Added badges for function references
+    - Updated segments timeline
     - Fixed Windows path processing
     - New page badges
 

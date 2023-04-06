@@ -19,6 +19,8 @@ discovery.page.define('function', {
             ]
         },
 
+        'timeline-segments:calls.segments',
+
         {
             view: 'block',
             className: 'indicators',
@@ -49,8 +51,6 @@ discovery.page.define('function', {
                 }
             ]
         },
-
-        'timeline-segments:calls.segments',
 
         {
             view: 'tree',

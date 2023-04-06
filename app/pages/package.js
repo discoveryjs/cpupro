@@ -8,6 +8,8 @@ discovery.page.define('package', {
             content: 'h1:name'
         },
 
+        'timeline-segments: modules.($m:$; (calls + calls..children).[module=$m].segments)',
+
         {
             view: 'block',
             className: 'indicators',
@@ -38,8 +40,6 @@ discovery.page.define('package', {
                 }
             ]
         },
-
-        'timeline-segments: modules.($m:$; (calls + calls..children).[module=$m].segments)',
 
         'h2:"Modules"',
         {

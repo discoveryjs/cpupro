@@ -11,6 +11,8 @@ discovery.page.define('module', {
             content: 'h1:packageRelPath or name or path'
         },
 
+        'timeline-segments: $m:$; (calls + calls..children).[module=$m].segments',
+
         {
             view: 'block',
             className: 'indicators',
@@ -41,8 +43,6 @@ discovery.page.define('module', {
                 }
             ]
         },
-
-        'timeline-segments: $m:$; (calls + calls..children).[module=$m].segments',
 
         'h2:"Function calls"',
         {
