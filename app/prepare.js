@@ -110,9 +110,13 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
             case 'file':
             case 'http':
             case 'https':
+                entry.type = 'script';
+                entry.path = url;
+                break;
+
             case 'webpack':
             case 'webpack-internal':
-                entry.type = 'script';
+                entry.type = 'bundle';
                 entry.path = url;
                 break;
 
@@ -225,14 +229,14 @@ function resolvePackageRef(cache, moduleRef) {
             entry.name = `(${moduleRef.type})`;
             break;
 
-            // case 'root':
-            // case 'program':
-            // case 'garbage collector':
-            // case 'idle':
-            //     entry.ref = moduleRef.type;
-            //     entry.type = moduleRef.type.slice(1, -1).replace(/\s/g, '-');
-            //     entry.name = moduleRef.type;
-            //     break;
+        // case 'root':
+        // case 'program':
+        // case 'garbage collector':
+        // case 'idle':
+        //     entry.ref = moduleRef.type;
+        //     entry.type = moduleRef.type.slice(1, -1).replace(/\s/g, '-');
+        //     entry.name = moduleRef.type;
+        //     break;
 
         default:
             entry.ref = 'unknown';
