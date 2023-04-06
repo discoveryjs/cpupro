@@ -1,4 +1,4 @@
-## next
+## 0.3.0 (2023-04-06)
 
 - Used jsonxl binary and gzip encodings for data on report generating, which allow to produce a report much faster and much smaller (up to 50 times) in size
 - Added `writeJsonxlToFileSync()` method to profile
