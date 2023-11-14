@@ -1,3 +1,23 @@
+## next
+
+- API:
+    - Profile (result of `profileEnd()`):
+        - Renamed methods:
+            - `writeToFile()` -> `writeToFileAsync()`
+            - `writeToFileSync()` -> `writeToFile()`
+            - `writeJsonxlToFileSync()` -> `writeJsonxlToFile()`
+        - Changed `writeToFileAsync()`, `writeToFile()` and `writeJsonxlToFile()` methods to return a destination file path
+        - Added `writeReport()` method as alias to `report.writeToFile()`
+    - `profileEnd().report`
+        - Renamed `writeToFile()` -> `writeToFileAsync()` and `writeToFileSync()` -> `writeToFile()` (however, at the moment both are sync)
+        - Changed `open()` method to return a destination file path
+    - Capture (result of `profile()`)
+        - Added `onEnd(callback)` method to add a callback to call once capturing is finished, a callback can take a profiling result argument
+        - Added `writeToFile()`, `writeJsonxlToFile()`, `writeReport()` and `openReport()` methods to call corresponding methods one capturing is finished
+    - Changed `profile()` to return an active capturing for a name if any instead of creating a new one
+    - Changed `profile()` to subscribe on process exit to end profiling (`process.on('exit', () => profileEnd())`)
+    - Added `writeToFile()`, `writeJsonxlToFile()`, `writeReport()` and `openReport()` methods that starts `profile()` and call a corresponding method, i.e. `writeReport()` is the same as `profile().writeReport()`
+
 ## 0.3.0 (2023-04-06)
 
 - Used jsonxl binary and gzip encodings for data on report generating, which allow to produce a report much faster and much smaller (up to 50 times) in size
