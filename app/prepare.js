@@ -68,6 +68,7 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
         return cache.get(cacheKey);
     }
 
+    const isEval = url && url.startsWith('evalmachine.');
     const isWellKnownNode = scriptId === 0 && wellKnownNodeName.has(functionName);
     const entry = {
         ref: url || scriptId,
@@ -81,7 +82,7 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
         entry.ref = functionName;
         entry.type = functionName.slice(1, -1);
         entry.name = functionName;
-    } else if (!url) {
+    } else if (!url || isEval) {
         if (scriptId === 0) {
             if (functionName.startsWith('RegExp: ')) {
                 entry.type = 'regexp';

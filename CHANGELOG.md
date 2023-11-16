@@ -6,6 +6,7 @@
     - Added ancestor call sites on a function page
     - Added function grouping on a function page (enabled by default)
     - Improved function subtree displaying
+    - Fixed processing of evaled functions (call frames with `evalmachine` prefixes)
 - CLI:
     - Added support to load jsonxl files
 - API:
