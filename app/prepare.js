@@ -402,9 +402,14 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     for (const { callFrame } of data.nodes) {
         let { scriptId } = callFrame;
 
+        // ensure scriptId is a number
+        // some tools are generating scriptId as a stringified number
         if (typeof scriptId === 'string') {
-            if (!/^\d+$/.test(scriptId)) {
-                // some tools are generating scriptId as an url (string) or ":number"
+            if (/^\d+$/.test(scriptId)) {
+                // the simplest case: a stringified number, convert it to a number
+                scriptId = Number(scriptId);
+            } else {
+                // handle cases where scriptId is represented as an URL or a string in the format ":number"
                 let numericScriptId = scriptIdFromString.get(scriptId);
 
                 if (numericScriptId === undefined) {
@@ -412,21 +417,18 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                         ? Number(scriptId.slice(1))
                         : -scriptIdFromString.size - 1
                     );
-                    console.log(scriptId, '->', numericScriptId);
                 }
 
                 scriptId = numericScriptId;
             }
+
+            callFrame.scriptId = scriptId;
         }
 
-        // ensure scriptId is a number
-        // some tools are generating scriptId as a stringified number
-        callFrame.scriptId = Number(scriptId);
-
-        // fix then issue, when a callFrame sometimes has no url, while another
-        // callFrame with the same scriptId might have
+        // address a known issue where some callFrames lack a URL;
+        // if a URL exists, associate it with its scriptId for reference
         if (callFrame.url) {
-            urlByScriptId.set(callFrame.scriptId, callFrame.url);
+            urlByScriptId.set(scriptId, callFrame.url);
         }
     }
 
