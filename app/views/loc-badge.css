@@ -1,5 +1,7 @@
 .view-badge.function-loc {
-    padding-top: 3px;
+    padding-left: 2px;
+    padding-right: 4px;
+    padding-top: 4px;
     padding-bottom: 3.5px;
 }
 .view-badge.function-loc .delim {

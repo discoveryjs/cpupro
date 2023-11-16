@@ -6,7 +6,7 @@
 
 .view-timeline-segments svg {
     display: block;
-    margin-bottom: -1px;
+    margin-bottom: -.5px;
 }
 
 .view-timeline-segments path {
