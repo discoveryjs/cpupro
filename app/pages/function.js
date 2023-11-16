@@ -53,19 +53,115 @@ discovery.page.define('function', {
         },
 
         {
-            view: 'tree',
-            data: 'calls',
-            item: [
+            view: 'context',
+            modifiers: [
                 {
-                    view: 'switch',
-                    content: [
-                        { when: '(function.id or to.id or id) = +#.id', content: 'text:function or $ | name' },
-                        { content: 'auto-link:function or to or $' }
-                    ]
-                },
-                'text:` ${selfTime.duration()} / ${totalTime.duration()} `',
-                'module-badge'
-            ]
+                    view: 'checkbox',
+                    name: 'groupByRef',
+                    checked: true,
+                    content: 'text:"Group call sites"'
+                }
+            ],
+            content: {
+                view: 'hstack',
+                className: 'trees',
+                content: [
+                    {
+                        view: 'block',
+                        content: [
+                            'h2:"Subtree"',
+                            {
+                                view: 'tree',
+                                data: `
+                                    calls
+                                    | (not #.groupByRef ?: groupByCallSiteRef())
+                                    | sort(totalTime desc)
+                                `,
+                                children: `
+                                    children
+                                    | (not #.groupByRef ?: groupByCallSiteRef())
+                                    | sort(totalTime desc)
+                                `,
+                                item: {
+                                    view: 'context',
+                                    content: [
+                                        {
+                                            view: 'switch',
+                                            content: [
+                                                { when: '(function.id or to.id or id) = +#.id', content: {
+                                                    view: 'block',
+                                                    className: 'self',
+                                                    content: 'text:function or $ | name'
+                                                } },
+                                                { content: 'auto-link:function or to or $' }
+                                            ]
+                                        },
+                                        {
+                                            view: 'block',
+                                            className: 'grouped',
+                                            data: 'grouped.size()',
+                                            whenData: '$ > 1',
+                                            content: 'text:"×" + $'
+                                        },
+                                        'self-time',
+                                        { view: 'nested-time', when: 'children', data: 'totalTime - selfTime' },
+                                        // { view: 'total-time', when: 'children', data: 'totalTime' },
+                                        'module-badge'
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+
+                    {
+                        view: 'block',
+                        content: [
+                            'h2:"Ancestor call sites"',
+                            {
+                                view: 'tree',
+                                expanded: 3,
+                                data: `
+                                    calls
+                                    | (not #.groupByRef ?: groupByCallSiteRef())
+                                    | sort(totalTime desc)
+                                `,
+                                children: `
+                                    grouped or [$]
+                                    | .(parent or [])
+                                    | (not #.groupByRef ?: groupByCallSiteRef())
+                                    | sort(totalTime desc)
+                                `,
+                                item: {
+                                    view: 'context',
+                                    content: [
+                                        {
+                                            view: 'switch',
+                                            content: [
+                                                { when: '(function.id or to.id or id) = +#.id', content: {
+                                                    view: 'block',
+                                                    className: 'self',
+                                                    content: 'text:function or $ | name'
+                                                } },
+                                                { content: 'auto-link:function or to or $' }
+                                            ]
+                                        },
+                                        {
+                                            view: 'block',
+                                            className: 'grouped',
+                                            data: 'grouped.size()',
+                                            whenData: '$ > 1',
+                                            content: 'text:"×" + $'
+                                        },
+                                        'total-time',
+                                        'module-badge',
+                                        'loc-badge'
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
         }
     ]
 });

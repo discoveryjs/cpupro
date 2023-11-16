@@ -441,6 +441,10 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
         const { scriptId, functionName, url, lineNumber, columnNumber } = node.callFrame;
         const functionRef = `${scriptId}:${functionName}:${lineNumber}:${columnNumber}:${url}`;
+
+        // FIXME: is there a more performant way for this?
+        node.callFrame.ref = functionRef.slice(functionRef.indexOf(':') + 1);
+
         const moduleRef = resolveModuleRef(moduleRefCache, functionRef, scriptId, url, functionName);
         const packageRef = resolvePackageRef(packageRefCache, moduleRef);
 
@@ -640,15 +644,15 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         ms(value) {
             return (value / 1000).toFixed(1) + 'ms';
         },
-        sum(array, fn = val => val) {
-            let sum = 0;
-
-            for (const val of array) {
-                sum += fn(val);
-            }
-
-            return sum;
-        }
+        groupByCallSiteRef: `
+            group(=>callFrame.ref).({
+                grouped: value,
+                ...value[],
+                children: value.children,
+                selfTime: value.sum(=>selfTime),
+                totalTime: value | $ + ..children | .sum(=>selfTime),
+            })
+        `
     });
 
     // annotations for struct view

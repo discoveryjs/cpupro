@@ -2,6 +2,10 @@
 
 - Report
     - Extracted regular expression into a separate area `regexp`
+    - Fixed edge cases when `scriptId` is not a number
+    - Added ancestor call sites on a function page
+    - Added function grouping on a function page (enabled by default)
+    - Improved function subtree displaying
 - CLI:
     - Added support to load jsonxl files
 - API:
