@@ -4,9 +4,19 @@
     margin: 0 0 8px;
 }
 
+.hint-tooltip {
+    max-width: 400px !important;
+}
+
 .view-badge {
     --discovery-view-badge-color: #bababa33;
-    --discovery-view-badge-dark-color: #bababa33;
+    --discovery-view-badge-dark-color: #383838;
+}
+.discovery-root-darkmode .view-badge {
+    box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12);
+}
+.view-table-cell > .view-badge {
+    padding-top: 2px;
 }
 .view-badge > .prefix {
     color: #777;
@@ -45,6 +55,14 @@
 }
 .flamecharts .toolbar .filters {
     flex: 1;
+}
+.flamecharts .toolbar .filters .discovery-view-has-tooltip > .view-checkbox__label {
+    padding-right: 18px;
+    margin-right: 12px;
+    background-image: url('../img/hint.svg');
+    background-position: right center;
+    background-size: 14px;
+    background-repeat: no-repeat;
 }
 .flamecharts .view-toggle {
     font-size: 11px;

@@ -89,19 +89,34 @@ discovery.page.define('default', {
                                         view: 'checkbox',
                                         name: 'showIdle',
                                         checked: true,
-                                        content: 'text:"(idle)"'
+                                        content: 'text:"(idle)"',
+                                        tooltip: {
+                                            showDelay: true,
+                                            className: 'hint-tooltip',
+                                            content: 'md:"Time when the engine is waiting for tasks or not actively executing any JavaScript code. This could be due to waiting for I/O operations, timer delays, or simply because there\'s no code to execute at that moment."'
+                                        }
                                     },
                                     {
                                         view: 'checkbox',
                                         name: 'showProgram',
                                         checked: true,
-                                        content: 'text:"(program)"'
+                                        content: 'text:"(program)"',
+                                        tooltip: {
+                                            showDelay: true,
+                                            className: 'hint-tooltip',
+                                            content: 'text:"Time spent by the engine on tasks other than executing JavaScript code. This includes overheads like JIT compilation, managing execution contexts, and time in engine\'s internal code. It reflects the internal processing and environment setup necessary for running JavaScript code, rather than the execution of the code itself."'
+                                        }
                                     },
                                     {
                                         view: 'checkbox',
                                         name: 'showGC',
                                         checked: true,
-                                        content: 'text:"(garbage collector)"'
+                                        content: 'text:"(garbage collector)"',
+                                        tooltip: {
+                                            showDelay: true,
+                                            className: 'hint-tooltip',
+                                            content: 'text:"When the CPU profile shows time spent in the garbage collector, it indicates the time consumed in these memory management activities. Frequent or prolonged garbage collection periods might be a sign of inefficient memory use in the application, like creating too many short-lived objects or holding onto unnecessary references."'
+                                        }
                                     }
                                 ]
                             },
