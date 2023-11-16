@@ -1,5 +1,7 @@
 ## next
 
+- CLI:
+    - Added support to load jsonxl files
 - API:
     - Profile (result of `profileEnd()`):
         - Renamed methods:
