@@ -243,14 +243,14 @@ function resolvePackageRef(cache, moduleRef) {
             entry.name = `(${moduleRef.type})`;
             break;
 
-        // case 'root':
-        // case 'program':
-        // case 'garbage collector':
-        // case 'idle':
-        //     entry.ref = moduleRef.type;
-        //     entry.type = moduleRef.type.slice(1, -1).replace(/\s/g, '-');
-        //     entry.name = moduleRef.type;
-        //     break;
+            // case 'root':
+            // case 'program':
+            // case 'garbage collector':
+            // case 'idle':
+            //     entry.ref = moduleRef.type;
+            //     entry.type = moduleRef.type.slice(1, -1).replace(/\s/g, '-');
+            //     entry.name = moduleRef.type;
+            //     break;
 
         default:
             entry.ref = 'unknown';
@@ -379,7 +379,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         gc: null
     };
     let longestCommonModulePath = null;
-    let totalTime = data.timeDeltas[0];
+    let totalTime = Math.max(data.timeDeltas[0], 0);
     let samplesCount = 0;
 
     markAsPackage(noPackage);
@@ -657,7 +657,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // mutate data
     data.samplesCount = samplesCount;
-    data.samplesInterval = data.timeDeltas.sort()[data.timeDeltas.length >> 1];
+    data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
     data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
     data.totalTime = totalTime;
 
