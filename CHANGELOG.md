@@ -1,5 +1,7 @@
 ## next
 
+- Report
+    - Extracted regular expression into a separate area `regexp`
 - CLI:
     - Added support to load jsonxl files
 - API:

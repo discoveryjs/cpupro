@@ -83,8 +83,14 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
         entry.name = functionName;
     } else if (!url) {
         if (scriptId === 0) {
-            entry.type = 'internals';
-            entry.name = '(internals)';
+            if (functionName.startsWith('RegExp: ')) {
+                entry.type = 'regexp';
+                entry.name = '(regexp)';
+                entry.ref = entry.name;
+            } else {
+                entry.type = 'internals';
+                entry.name = '(internals)';
+            }
         } else {
             if (!cache.anonymous.has(scriptId)) {
                 cache.anonymous.set(scriptId, `(anonymous module #${cache.anonymous.size + 1})`);
@@ -186,6 +192,14 @@ function resolvePackageRef(cache, moduleRef) {
                 }
             }
 
+            break;
+        }
+
+        case 'regexp': {
+            entry.ref = '(regexp)';
+            entry.type = 'regexp';
+            entry.name = '(regexp)';
+            entry.path = '';
             break;
         }
 
@@ -494,10 +508,15 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         if (functions.has(functionRef)) {
             node.function = functions.get(functionRef);
         } else {
+            const name = node.module.package.type === 'regexp'
+                ? functionName.slice('RegExp: '.length)
+                : functionName || `(anonymous function #${functions.anonymous++})`;
+
             functions.set(functionRef, node.function = {
                 id: functions.size + 1, // id starts with 1
-                name: functionName || `(anonymous function #${functions.anonymous++})`,
+                name,
                 module: node.module,
+                type: node.module.package.type === 'regexp' ? 'regexp' : 'function',
                 loc: node.module.path ? `${node.module.path}:${lineNumber}:${columnNumber}` : null,
                 selfTime: 0,
                 totalTime: 0,
