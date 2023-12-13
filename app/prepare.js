@@ -354,20 +354,20 @@ function aggregateNodes(rootNode, map, getHost) {
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     data = convertValidate(data, rejectData);
 
-    const markAsNode = defineObjectMarker('node');
-    const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
-    const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
-    const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
     const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
+    const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
+    const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
+    const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
+    const markAsNode = defineObjectMarker('node');
+    const areas = new Map();
     const noPackage = createPackage(1, null, '(no package)', null);
-    const scriptIdFromString = new Map();
-    const urlByScriptId = new Map();
+    const packages = new Map([[null, noPackage]]);
+    const packageRefCache = new Map();
     const modules = new Map();
     const moduleRefCache = Object.assign(new Map(), { anonymous: new Map() });
     const functions = Object.assign(new Map(), { anonymous: 0 });
-    const packages = new Map([[null, noPackage]]);
-    const packageRefCache = new Map();
-    const areas = new Map();
+    const scriptIdFromString = new Map();
+    const urlByScriptId = new Map();
     const maxId = Math.max(maxNodesId(data.nodes), maxSamplesId(data.samples));
     const selfTimes = new Uint32Array(maxId + 1);
     const nodeById = new Array(maxId + 1);
@@ -444,7 +444,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         const functionRef = `${scriptId}:${functionName}:${lineNumber}:${columnNumber}:${url}`;
 
         // FIXME: is there a more performant way for this?
-        node.callFrame.ref = functionRef.slice(functionRef.indexOf(':') + 1);
+        node.callFrame.ref = `${functionName}:${lineNumber}:${columnNumber}:${url || scriptId}`;
 
         const moduleRef = resolveModuleRef(moduleRefCache, functionRef, scriptId, url, functionName);
         const packageRef = resolvePackageRef(packageRefCache, moduleRef);
@@ -585,21 +585,6 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         node.totalTime = computeNodeTotal(node);
     }
 
-    // build segments
-    buildSegments(data, nodeById, wellKnownNodes.gc);
-
-    // aggregate function timinigs
-    data.functionTree = aggregateNodes(wellKnownNodes.root, functions, node => node.function);
-
-    // build module tree & aggregate timinigs
-    data.moduleTree = aggregateNodes(wellKnownNodes.root, modules, node => node.module);
-
-    // build package tree & aggregate timinigs
-    data.packageTree = aggregateNodes(wellKnownNodes.root, packages, node => node.module.package);
-
-    // build node types tree & aggregate timinigs
-    data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => areas.get(node.module.type));
-
     // delete (no package) if no modules attached to it
     if (noPackage.modules.length === 0) {
         packages.delete(null);
@@ -632,6 +617,33 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         }
     }
 
+    // mutate data
+    data.samplesCount = samplesCount;
+    data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
+    data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
+    data.totalTime = totalTime;
+
+    Object.assign(data, wellKnownNodes);
+
+    // build node types tree & aggregate timinigs
+    data.areas = [...areas.values()];
+    data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => areas.get(node.module.type));
+
+    // build package tree & aggregate timinigs
+    data.packages = [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1);
+    data.packageTree = aggregateNodes(wellKnownNodes.root, packages, node => node.module.package);
+
+    // build module tree & aggregate timinigs
+    data.modules = [...modules.values()].sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1);
+    data.moduleTree = aggregateNodes(wellKnownNodes.root, modules, node => node.module);
+
+    // aggregate function timinigs
+    data.functions = [...functions.values()];
+    data.functionTree = aggregateNodes(wellKnownNodes.root, functions, node => node.function);
+
+    // build segments
+    data.naturalTree = buildSegments(data, nodeById, wellKnownNodes.gc);
+
     // extend jora's queries with custom methods
     addQueryHelpers({
         totalPercent(value) {
@@ -659,22 +671,6 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     // annotations for struct view
     addValueAnnotation('#.key = "selfTime" and $ and { text: duration() }');
     addValueAnnotation('#.key = "totalTime" and $ and { text: duration() }');
-
-    // mutate data
-    data.samplesCount = samplesCount;
-    data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
-    data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
-    data.totalTime = totalTime;
-
-    Object.assign(data, wellKnownNodes);
-
-    data.packages = [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1);
-    data.modules = [...modules.values()].sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1);
-    data.functions = [...functions.values()];
-    data.areas = [...areas.values()];
-
-    delete data.samples;
-    delete data.timeDeltas;
 
     return data;
 }
