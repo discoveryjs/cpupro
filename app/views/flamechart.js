@@ -38,7 +38,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             {
                 view: 'duration',
                 className: 'self',
-                data: '{ time: value - (next.parent = $ ? next + next..nextSibling.[] | reduce(=>$$ + value, 0) : 0), total: ..parent[-2].value }'
+                data: '{ time: value - (next.parent = $ ? (next + next..nextSibling.[] | sum(=>value)) : 0), total: ..parent[-2].value }'
             }
         ], data, context);
     });
