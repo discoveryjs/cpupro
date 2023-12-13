@@ -106,7 +106,8 @@ discovery.page.define('function', {
                                         'self-time',
                                         { view: 'nested-time', when: 'children', data: 'totalTime - selfTime' },
                                         // { view: 'total-time', when: 'children', data: 'totalTime' },
-                                        'module-badge'
+                                        'module-badge',
+                                        'loc-badge'
                                     ]
                                 }
                             }

@@ -1,5 +1,6 @@
 .page-function .view-tree-leaf-content {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1px;
     padding-bottom: 1px;
@@ -17,8 +18,12 @@
     margin-right: 0px;
     margin-left: 3px;
 }
+.page-function .view-tree-leaf-content .view-badge.module {
+    margin-right: 0 !important;
+}
 .page-function .view-tree-leaf-content .function-loc {
-    padding: 1px 6px 3px;
+    padding: 1px 5px 3px 2px;
+    color: #aaa;
 }
 .page-function .view-tree-leaf-content .view-link {
     margin-right: 4px;
