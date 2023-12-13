@@ -90,9 +90,10 @@ export function buildSegments(data, nodeById, gcNode) {
     }
 
     closeSegments(lastNode, null, totalTime, treeNodes);
-    data.naturalTree = root.children[0];
 
     if (gcNode) {
         gcNode.parent = gcParentNode;
     }
+
+    return root.children[0];
 }
