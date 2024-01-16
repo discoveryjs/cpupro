@@ -77,17 +77,21 @@ discovery.page.define('default', {
 
             {
                 view: 'list',
+                className: 'area-timeline-split',
                 data: 'areas[1:].sort(selfTime desc)',
                 item: {
                     view: 'block',
                     className: 'timelines',
                     content: [
-                        { view: 'block', className: 'label', content: 'text:name' },
+                        { view: 'block', className: 'label', content: 'text:name = "garbage collector" ? "gc" : name' },
                         { view: 'timeline-segments-bin', data: 'binCalls(=>module.area=@)', color: '=#.data.colors[#.sliceIndex]' }
                     ],
                     tooltip: [
                         'text:name',
-                        { view: 'block', content: ['text:"Self time:"', 'duration:{ time: selfTime, total: #.data.totalTime }'] }
+                        { view: 'block', content: [
+                            // 'text:"Self time:"',
+                            'duration:{ time: selfTime, total: #.data.totalTime }'
+                        ] }
                     ]
                 }
             },

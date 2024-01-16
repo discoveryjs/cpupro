@@ -1,42 +1,44 @@
 discovery.view.define('timing-bar', function(el, config, data, context) {
+    const { limit, segment } = config;
+
     if (!Array.isArray(data)) {
         data = [data];
     }
 
-    let total = 0;
     const entries = data
-        .map(entry => {
-            let { duration = 0, ...rest } = entry || {};
+        .filter(entry => isFinite(entry.duration) && entry.duration > 0)
+        .sort((a, b) => b.duration - a.duration)
+        .map((entry, idx) => ({
+            ...entry,
+            color: entry.color || context.data.colors[idx]
+        }));
+    const total = entries.reduce((sum, entry) => sum + entry.duration, 0);
 
-            if (!isFinite(duration) || duration < 0) {
-                duration = 0;
-            }
-
-            total += duration;
-
-            return { duration, ...rest };
-        })
-        .filter(entry => entry.duration > 0)
-        .sort((a, b) => b.duration - a.duration);
-
-    let idx = 0;
-    for (const { text = '?', duration, href, color } of entries) {
-        const chunkEl = document.createElement('a');
-        const durationText = `${(duration / 1000).toFixed(1)}ms`;
-        const durationPercentText = `${(100 * duration / total).toFixed(1)}%`;
-        const title = `${text} (${durationText} / ${durationPercentText})`;
-
-        chunkEl.className = 'view-timing-bar__segment';
-        chunkEl.style.setProperty('--fraction', duration / total);
-        chunkEl.style.setProperty('--color', color || context.data.colors[idx++]);
-        chunkEl.title = title;
-
-        discovery.view.render(chunkEl, 'text-numeric:title', { title });
-
-        if (href) {
-            chunkEl.href = href;
-        }
-
-        el.append(chunkEl);
-    }
+    this.renderList(
+        el,
+        this.composeConfig({ view: 'timing-bar-segment', total }, segment),
+        entries,
+        context,
+        0,
+        this.listLimit(limit, 25)
+    );
 });
+
+discovery.view.define('timing-bar-segment', function(el, config, data) {
+    const { total, content } = config;
+    const { text = '?', duration, href, color } = data || {};
+    const durationText = `${(duration / 1000).toFixed(1)}ms`;
+    const durationPercentText = `${(100 * duration / total).toFixed(1)}%`;
+    const title = `${text} (${durationText} / ${durationPercentText})`;
+
+    el.style.setProperty('--fraction', duration / total);
+    el.style.setProperty('--color', color);
+    el.title = title;
+
+    if (href) {
+        el.href = href;
+    }
+
+    discovery.view.render(el, content || 'text-numeric:title', { title });
+
+}, { tag: 'a' });

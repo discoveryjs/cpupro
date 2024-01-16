@@ -116,15 +116,22 @@ h2 .logo {
     font-size: 12px;
 }
 
+.page-default .area-timeline-split {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    margin-top: 8px;
+}
+.page-default .area-timeline-split > .view-list-item {
+    display: contents;
+}
 .timelines {
     position: relative;
+    display: contents;
 }
-
 .timelines > .label {
-    position: absolute;
-    top: 0;
-    left: 0;
-    background-color: #0008;
     font-size: 10px;
-    z-index: 1;
+    align-self: flex-end;
+    text-align: right;
+    padding: 0 4px 0 0;
+    border-bottom: 1px solid #0004;
 }

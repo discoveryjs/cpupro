@@ -5,6 +5,7 @@
     - Fixed edge cases when `scriptId` is not a number
     - Added ancestor call sites on a function page
     - Added function grouping on a function page (enabled by default)
+    - Added timeline split by areas on default page
     - Improved function subtree displaying
     - Fixed processing of evaled functions (call frames with `evalmachine` prefixes)
 - CLI:

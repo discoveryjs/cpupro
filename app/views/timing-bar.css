@@ -3,29 +3,28 @@
     gap: 1px;
 }
 
-.view-timing-bar__segment {
+.view-timing-bar-segment {
     display: block;
+    box-sizing: border-box;
     flex: 1;
     flex-basis: calc(var(--fraction) * 100%);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    background: var(--color, rgba(128, 128, 128, .25));
-    border: 1px solid rgba(0, 0, 0, .1);
+    background: linear-gradient(to bottom, var(--color, rgba(128, 128, 128, .25)) 2px, transparent 0px);
+    background-clip: padding-box;
+    background-color: color-mix(in srgb, var(--color, rgba(128, 128, 128, .25)) 35%, transparent);
+    border-left: 1px solid var(--color, rgba(128, 128, 128, .25));
     font-size: 11px;
-    line-height: 12px;
-    padding: 3px;
+    line-height: 13px;
+    padding: 4px 4px 2px;
     color: var(--discovery-color);
     text-decoration: none;
 }
 
-.view-timing-bar__segment[href] {
+.view-timing-bar-segment[href] {
     cursor: pointer;
 }
-.view-timing-bar__segment[href]:hover {
+.view-timing-bar-segment[href]:hover {
     opacity: .75;
-}
-
-.discovery-root-darkmode .view-timing-bar__segment {
-    border-color: rgba(255, 255, 255, .1);
 }
