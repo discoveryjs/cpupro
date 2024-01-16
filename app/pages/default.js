@@ -25,7 +25,15 @@ discovery.page.define('default', {
         { content: [
             {
                 view: 'page-header',
-                content: 'h2:#.datasets[].resource | type = "file" ? name : #.model.name'
+                content: [
+                    {
+                        view: 'h2',
+                        content: [
+                            { view: 'block', className: 'logo' },
+                            'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
+                        ]
+                    }
+                ]
             },
 
             {

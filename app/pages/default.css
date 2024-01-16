@@ -1,3 +1,38 @@
+.logo {
+    --color1: #242424;
+    --color2: white;
+    display: inline-flex;
+    border: 1px solid var(--color1, black);
+    line-height: 1;
+    border-radius: 3px;
+    box-shadow: 0 0 0 .5px rgba(255, 255, 255, .5);
+    flex-direction: column;
+    aspect-ratio: 1/1;
+    vertical-align: middle;
+}
+.discovery-root-darkmode .logo {
+    filter: brightness(0.9);
+}
+h2 .logo {
+    font-size: 47%;
+    margin-right: 8px;
+    position: relative;
+    vertical-align: bottom;
+}
+.logo::before {
+    content: 'CPU';
+    background-color: var(--color1, black);
+    color: var(--color2, white);
+    padding: .3em .5em;
+}
+.logo::after {
+    content: 'PRO';
+    background-color: var(--color2, white);
+    color: var(--color1, black);
+    padding: .3em .5em;
+    border-radius: 0 0 2px 2px;
+}
+
 .page > .indicators {
     display: flex;
     gap: 1px;
