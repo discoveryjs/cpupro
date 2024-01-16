@@ -10,7 +10,7 @@
 }
 
 .view-timeline-segments path {
-    fill: #79c33ec9;
+    fill: var(--color, #79c33ec9);
     /* stroke: red;
     stroke-width: .75; */
 }

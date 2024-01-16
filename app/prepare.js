@@ -18,6 +18,16 @@ const knownChromeExtensions = {
     'jlmafbaeoofdegohdhinkhilhclaklkp': 'OctoLinker',
     'dhdgffkkebhmkfjojejmpbldmpobfkfo': 'Tampermonkey'
 };
+const colors = [
+    '#f98e94a0',
+    '#fcb69aa0',
+    '#fee29ca0',
+    '#edfdd1a0',
+    '#c5fccfa0',
+    '#7dfacda0',
+    '#8db2f8a0',
+    '#4688f8a0'
+];
 
 function maxNodesId(array) {
     let maxId = 0;
@@ -622,6 +632,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
     data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
     data.totalTime = totalTime;
+    data.colors = colors;
 
     Object.assign(data, wellKnownNodes);
 
@@ -656,6 +667,55 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         },
         ms(value) {
             return (value / 1000).toFixed(1) + 'ms';
+        },
+        binCalls(_, fn = () => true, n = 500) {
+            const { samples, timeDeltas } = this.context.data;
+            const bins = new Float64Array(n);
+            const step = this.context.data.totalTime / n;
+            let end = step;
+            let binIdx = 0;
+
+            for (let i = 0, offset = 0; i < samples.length; i++) {
+                const node = i === 0 && wellKnownNodes.idle ? wellKnownNodes.idle : nodeById[samples[i]];
+                const accept = typeof fn === 'function' ? fn(node) : true;
+                const delta = Math.max(timeDeltas[i], 0);
+
+                if (offset + delta < end) {
+                    if (accept) {
+                        bins[binIdx] += delta;
+                    }
+                } else {
+                    if (accept) {
+                        const dx = end - offset;
+                        let x = delta - dx;
+                        let i = 1;
+                        while (x > step) {
+                            bins[binIdx + i] = step;
+                            i++;
+                            x -= step;
+                        }
+
+                        bins[binIdx] += dx;
+                        bins[binIdx + i] = x;
+                    }
+
+                    while (offset + delta > end) {
+                        binIdx += 1;
+                        end += step;
+                    }
+                }
+
+                offset += delta;
+            }
+
+            // let sum = 0;
+            // for (let i = 0; i < bins.length; i++) {
+            //     sum += bins[i];
+            //     // bins[i] /= step;
+            // }
+            // bins[0] = step;
+
+            return Array.from(bins);
         },
         groupByCallSiteRef: `
             group(=>callFrame.ref).({

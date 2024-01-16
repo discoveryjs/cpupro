@@ -80,3 +80,16 @@
 .flamecharts .view-checkbox__label {
     font-size: 12px;
 }
+
+.timelines {
+    position: relative;
+}
+
+.timelines > .label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-color: #0008;
+    font-size: 10px;
+    z-index: 1;
+}

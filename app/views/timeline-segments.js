@@ -87,3 +87,28 @@ discovery.view.define('timeline-segments', function(el, config, data, context) {
     svgEl.append(pathEl);
     el.append(svgEl);
 });
+
+discovery.view.define('timeline-segments-bin', function(el, config, data) {
+    if (!Array.isArray(data)) {
+        data = [];
+    }
+
+    const stat = data;
+    el.classList.add('view-timeline-segments');
+
+    if (config.color) {
+        el.style.setProperty('--color', config.color);
+    }
+
+    // svg
+    const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+    pathEl.setAttribute('d', 'M 0 20 ' + generateSmoothPath(Array.from(stat), 20) + ' L ' + stat.length + ' 20 Z');
+    svgEl.setAttribute('viewBox', `0 0 ${stat.length} 20`);
+    svgEl.setAttribute('preserveAspectRatio', 'none');
+    svgEl.setAttribute('width', '100%');
+    svgEl.setAttribute('height', 20);
+    svgEl.append(pathEl);
+    el.append(svgEl);
+});
