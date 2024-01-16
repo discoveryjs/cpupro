@@ -59,6 +59,13 @@ discovery.page.define('default', {
                     }
                 ]
             },
+
+            {
+                view: 'timeline-profiles',
+                data: 'profiles',
+                whenData: true
+            },
+
             {
                 view: 'timing-bar',
                 data: `areas.({

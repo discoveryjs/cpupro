@@ -34,6 +34,8 @@ module.exports = {
             './views/the-spice-must-flow.js',
             './views/time.css',
             './views/time.js',
+            './views/timeline-profiles.css',
+            './views/timeline-profiles.js',
             './views/timeline-segments.css',
             './views/timeline-segments.js',
             './views/timing-bar.css',

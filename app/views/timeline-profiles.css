@@ -1,0 +1,17 @@
+.view-timeline-profiles {
+    position: relative;
+    border-bottom: 1px solid #0004;
+    margin: 1px 0;
+}
+
+.view-timeline-profiles > .profile {
+    margin-left: calc(100% * var(--x1));
+    width: calc(100% * (var(--x2) - var(--x1)));
+    height: 5px;
+    background-color: #54a6eea6;
+    border: .5px solid black;
+}
+
+.view-timeline-profiles > .selected {
+    background-color: orange;
+}

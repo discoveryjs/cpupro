@@ -4,6 +4,10 @@ import {
     extractCpuProfilesFromChromiumTimeline
 } from './chromium-timeline.js';
 
+// function isCPUProfileMerge(data) {
+//     return data && Array.isArray(data.nodes) && Array.isArray(data.profiles);
+// }
+
 export function convertValidate(data, rejectData) {
     // see https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#heading=h.lc5airzennvk
     if (isChromiumTimeline(data)) {
@@ -15,6 +19,14 @@ export function convertValidate(data, rejectData) {
             rejectData('CPU profile data not found');
         }
     }
+
+    // if (isCPUProfileMerge(data)) {
+    //     return {
+    //         ...data.profiles[2],
+    //         nodes: data.nodes,
+    //         profiles: data.profiles
+    //     };
+    // }
 
     if (!isCPUProfile(data)) {
         rejectData('Bad format', {
