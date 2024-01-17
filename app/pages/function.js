@@ -103,8 +103,24 @@ discovery.page.define('function', {
                                             whenData: '$ > 1',
                                             content: 'text:"×" + $'
                                         },
-                                        'self-time',
-                                        { view: 'nested-time', when: 'children', data: 'totalTime - selfTime' },
+                                        {
+                                            view: 'self-time',
+                                            tooltip: {
+                                                showDelay: true,
+                                                className: 'hint-tooltip',
+                                                content: 'text:"Self time – the time spent on executing the code of a function, not counting the time taken by other functions that it might call"'
+                                            }
+                                        },
+                                        {
+                                            view: 'nested-time',
+                                            when: 'children',
+                                            data: 'totalTime - selfTime',
+                                            tooltip: {
+                                                showDelay: true,
+                                                className: 'hint-tooltip',
+                                                content: 'text:"Nested time – the time accounted for the execution of other functions that are called from within a given function, but not including the time it takes to run the original function\'s own code"'
+                                            }
+                                        },
                                         // { view: 'total-time', when: 'children', data: 'totalTime' },
                                         'module-badge',
                                         'loc-badge'
@@ -153,7 +169,14 @@ discovery.page.define('function', {
                                             whenData: '$ > 1',
                                             content: 'text:"×" + $'
                                         },
-                                        'total-time',
+                                        {
+                                            view: 'total-time',
+                                            tooltip: {
+                                                showDelay: true,
+                                                className: 'hint-tooltip',
+                                                content: 'text:"Total time – the entire duration spent on the execution of a function. This includes both the \'self time\', which is the time taken by the function itself to execute its own code, and the \'nested time\', which is the time spent on executing all the other functions that are called from within this function"'
+                                            }
+                                        },
                                         'module-badge',
                                         'loc-badge'
                                     ]

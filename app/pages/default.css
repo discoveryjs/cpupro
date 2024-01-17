@@ -124,14 +124,19 @@ h2 .logo {
 .page-default .area-timeline-split > .view-list-item {
     display: contents;
 }
-.timelines {
-    position: relative;
+.page-default .timelines {
+    color: inherit;
     display: contents;
 }
-.timelines > .label {
+.page-default .timelines .view-timeline-segments {
+    margin: 0;
+}
+.page-default .timelines:hover > * {
+    background: rgba(165,165,165,.3);
+}
+.page-default .timelines > .label {
     font-size: 10px;
-    align-self: flex-end;
     text-align: right;
-    padding: 0 4px 0 0;
+    padding: 2px 4px 0 4px;
     border-bottom: 1px solid #0004;
 }

@@ -72,7 +72,13 @@ discovery.page.define('default', {
                     text: name,
                     duration: selfTime,
                     href: marker("area").href
-                })`
+                })`,
+                segment: {
+                    tooltip: [
+                        'text:text',
+                        'duration:{ time: duration, total: #.data.totalTime }'
+                    ]
+                }
             },
 
             {
@@ -80,18 +86,16 @@ discovery.page.define('default', {
                 className: 'area-timeline-split',
                 data: 'areas[1:].sort(selfTime desc)',
                 item: {
-                    view: 'block',
+                    view: 'link',
                     className: 'timelines',
+                    data: '{ area: $, href: marker("area").href }',
                     content: [
-                        { view: 'block', className: 'label', content: 'text:name = "garbage collector" ? "gc" : name' },
-                        { view: 'timeline-segments-bin', data: 'binCalls(=>module.area=@)', color: '=#.data.colors[#.sliceIndex]' }
+                        { view: 'block', className: 'label', content: 'text:area.name | $ != "garbage collector" ?: "gc"' },
+                        { view: 'timeline-segments-bin', data: 'binCalls(=>module.area=@.area)', color: '=#.data.colors[#.sliceIndex]' }
                     ],
                     tooltip: [
-                        'text:name',
-                        { view: 'block', content: [
-                            // 'text:"Self time:"',
-                            'duration:{ time: selfTime, total: #.data.totalTime }'
-                        ] }
+                        'text:area.name',
+                        'duration:{ time: area.selfTime, total: #.data.totalTime }'
                     ]
                 }
             },
