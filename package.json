@@ -1,6 +1,6 @@
 {
   "name": "cpupro",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Rethinking of CPU profile (collected in Node.js or Chromium browsers) analysis",
   "author": "Roman Dvornov <rdvornov@gmail.com> (https://github.com/lahmatiy)",
   "license": "MIT",

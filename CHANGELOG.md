@@ -1,4 +1,4 @@
-## next
+## 0.4.0 (2024-01-21)
 
 - Report
     - Extracted regular expression into a separate area `regexp`
