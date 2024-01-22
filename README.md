@@ -13,7 +13,7 @@ Supported formats:
 >
 > The project is at an early stage of development. Some things have yet to be added and polished. Feel free to create an issue if you found a bug or have an idea.
 
-<img alt="Demo" src="https://user-images.githubusercontent.com/270491/155012890-18a6d16e-4a17-47f7-a311-d989a3bc4a4c.png">
+<img width="1515" alt="Demo" src="https://github.com/lahmatiy/cpupro/assets/270491/59b95321-60f8-44fc-9a2f-03c367d69c41">
 
 ## Usage
 
