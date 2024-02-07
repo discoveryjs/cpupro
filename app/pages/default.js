@@ -1,3 +1,11 @@
+setTimeout(() => {
+    discovery.nav.primary.before('inspect', {
+        className: 'github',
+        data: { href: 'https://github.com/lahmatiy/cpupro' },
+        content: 'text:"GitHub"'
+    });
+});
+
 discovery.page.define('default', {
     view: 'switch',
     content: [
