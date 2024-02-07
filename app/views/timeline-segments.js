@@ -1,6 +1,6 @@
 function generateSmoothPath(points, height) {
     const chartWidth = points.length;
-    const maxValue = Math.max(...points);
+    const maxValue = Math.max(...points) || 1;
     const normalizedY = points.map((point) => height - (point / maxValue) * height);
     const stepX = chartWidth / (points.length - 1);
 

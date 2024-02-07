@@ -111,7 +111,7 @@ discovery.page.define('default', {
             {
                 view: 'list',
                 className: 'area-timeline-split',
-                data: 'areas[1:].sort(selfTime desc)',
+                data: 'areas[1:].sort(selfTime desc).[selfTime]',
                 item: {
                     view: 'link',
                     className: 'timelines',
