@@ -5,7 +5,8 @@
     vertical-align: text-top;
     height: var(--size);
     aspect-ratio: 1/1;
-    margin-right: .6ex;
+    margin-right: 5px;
+    margin-left: -3px;
     background: url("../img/github.svg") no-repeat center;
     background-size: calc(var(--size) - 0px);
     opacity: .85;

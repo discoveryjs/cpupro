@@ -1,8 +1,21 @@
+/* eslint-env node */
+const demoDataBase64 = require('../demo-data-base64.js').default;
+
+discovery.action.define('uploadDemoData', () => discovery.loadDataFromUrl(demoDataBase64));
 setTimeout(() => {
     discovery.nav.primary.before('inspect', {
         className: 'github',
-        data: { href: 'https://github.com/lahmatiy/cpupro' },
-        content: 'text:"GitHub"'
+        content: 'text:"GitHub"',
+        data: { href: 'https://github.com/lahmatiy/cpupro' }
+    });
+    discovery.nav.menu.append({
+        when: true,
+        content: 'text:"Unload cpuprofile"',
+        onClick(_, ctx) {
+            ctx.hide();
+            ctx.widget.unloadData();
+            ctx.widget.setPageHash('');
+        }
     });
 });
 
@@ -27,7 +40,13 @@ discovery.page.define('default', {
                     ]
                 },
                 'html:"<br>"',
-                'preset/upload'
+                'preset/upload',
+                'html:"<br><br>"',
+                {
+                    view: 'button',
+                    onClick: '=#.actions.uploadDemoData',
+                    content: 'text:"Try demo CPU profile"'
+                }
             ]
         },
         { content: [

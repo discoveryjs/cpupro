@@ -1,3 +1,8 @@
+## next
+
+- Report
+    - Added "Try demo CPU profile" button when no CPU profile is loaded
+
 ## 0.4.0 (2024-01-21)
 
 - Report
