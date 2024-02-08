@@ -17,7 +17,8 @@ setTimeout(() => {
             ctx.widget.setPageHash('');
         }
     });
-});
+    discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
+}, 1);
 
 discovery.page.define('default', {
     view: 'switch',
