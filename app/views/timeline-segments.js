@@ -45,6 +45,35 @@ function generateSmoothPath(points, height) {
     return pathData.join(' ');
 }
 
+function generateSquarePath(points, height, maxValue = Math.max(...points) || 1) {
+    const chartWidth = points.length;
+    const stepX = chartWidth / (points.length - 1);
+    const pathData = [];
+    const gap = 0.1;
+
+    pathData.push('M', 0, height);
+
+    for (let i = 0; i < points.length - 1; ++i) {
+        const y = (points[i] / maxValue);
+
+        if (y > 0) {
+            pathData.push(
+                'V', height - Math.max((points[i] / maxValue) * height, .5),
+                'h', stepX - gap,
+                'V', height,
+                'h', gap
+            );
+        } else {
+            pathData.push('h', stepX);
+        }
+    }
+
+    pathData.push('L', chartWidth, height);
+    pathData.push('Z');
+
+    return pathData.join(' ');
+}
+
 discovery.view.define('timeline-segments', function(el, config, data, context) {
     if (!Array.isArray(data)) {
         data = [];
@@ -79,7 +108,7 @@ discovery.view.define('timeline-segments', function(el, config, data, context) {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-    pathEl.setAttribute('d', 'M 0 20 ' + generateSmoothPath(Array.from(stat), 20) + ' L ' + stat.length + ' 20 Z');
+    pathEl.setAttribute('d', generateSmoothPath(Array.from(stat), 20));
     svgEl.setAttribute('viewBox', `0 0 ${stat.length} 20`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');
@@ -104,7 +133,7 @@ discovery.view.define('timeline-segments-bin', function(el, config, data) {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-    pathEl.setAttribute('d', 'M 0 20 ' + generateSmoothPath(Array.from(stat), 20) + ' L ' + stat.length + ' 20 Z');
+    pathEl.setAttribute('d', generateSquarePath(Array.from(stat), 20, config.max));
     svgEl.setAttribute('viewBox', `0 0 ${stat.length} 20`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');

@@ -119,7 +119,12 @@ discovery.page.define('default', {
                     data: '{ area: $, href: marker("area").href }',
                     content: [
                         { view: 'block', className: 'label', content: 'text:area.name | $ != "garbage collector" ?: "gc"' },
-                        { view: 'timeline-segments-bin', data: 'binCalls(=>module.area=@.area)', color: '=#.data.colors[#.sliceIndex]' }
+                        {
+                            view: 'timeline-segments-bin',
+                            data: 'binCalls(=>module.area=@.area, 500)',
+                            max: '=#.data.totalTime / 500',
+                            color: '=#.data.colors[#.sliceIndex]'
+                        }
                     ],
                     tooltip: [
                         'text:area.name',
