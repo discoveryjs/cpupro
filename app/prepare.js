@@ -361,6 +361,10 @@ function aggregateNodes(rootNode, map, getHost) {
     return buildTree(rootNode, null, getHost);
 }
 
+function refLineColumn(value) {
+    return typeof value !== 'number' || value < 0 ? '' : value;
+}
+
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     data = convertValidate(data, rejectData);
 
@@ -454,7 +458,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         const functionRef = `${scriptId}:${functionName}:${lineNumber}:${columnNumber}:${url}`;
 
         // FIXME: is there a more performant way for this?
-        node.callFrame.ref = `${functionName}:${lineNumber}:${columnNumber}:${url || scriptId}`;
+        node.callFrame.ref = `${functionName}:${refLineColumn(lineNumber)}:${refLineColumn(columnNumber)}:${url || scriptId}`;
 
         const moduleRef = resolveModuleRef(moduleRefCache, functionRef, scriptId, url, functionName);
         const packageRef = resolvePackageRef(packageRefCache, moduleRef);
