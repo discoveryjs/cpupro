@@ -119,10 +119,23 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
         }
 
         switch (entry.protocol) {
-            case '':
-                entry.type = 'script';
-                entry.path = 'file://' + url;
+            case '': {
+                const prefix = (url.match(/^[^/]+(?=\/)/) || [])[0];
+
+                switch (url !== prefix && prefix) {
+                    // case 'blink':
+                    // case 'v8':
+                    case 'electron':
+                        entry.type = prefix;
+                        entry.path = url.slice(prefix.length + 1);
+                        break;
+
+                    default:
+                        entry.type = 'script';
+                        entry.path = 'file://' + url;
+                }
                 break;
+            }
 
             case 'file':
             case 'http':
@@ -219,6 +232,17 @@ function resolvePackageRef(cache, moduleRef) {
             entry.type = 'node';
             entry.name = '(node.js modules)';
             entry.path = 'node:';
+
+            break;
+        }
+
+        // case 'blink':
+        // case 'v8':
+        case 'electron': {
+            entry.ref = `(${moduleRef.type})`;
+            entry.type = moduleRef.type;
+            entry.name = `(${moduleRef.type} modules)`;
+            entry.path = `${moduleRef.type}:`;
 
             break;
         }
