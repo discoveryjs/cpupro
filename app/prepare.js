@@ -181,7 +181,8 @@ function resolvePackageRef(cache, moduleRef) {
     };
 
     switch (moduleRef.type) {
-        case 'script': {
+        case 'script':
+        case 'bundle': {
             if (/\/node_modules\//.test(moduleRef.path || '')) {
                 // use a Node.js path convention
                 const pathParts = moduleRef.path.split(/\/node_modules\//);
@@ -508,21 +509,23 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
             markAsModule(node.module);
 
             // node type clusters
-            if (!areas.has(node.module.type)) {
+            const areaType = node.module.type === 'bundle' ? 'script' : node.module.type;
+            if (!areas.has(areaType)) {
                 const area = {
                     id: areas.size + 1, // id starts with 1
                     name: node.module.type,
+                    name: areaType,
                     selfTime: 0,
                     totalTime: 0,
                     calls: [],
                     recursiveCalls: []
                 };
 
-                areas.set(node.module.type, area);
+                areas.set(areaType, area);
                 markAsArea(area);
             }
 
-            node.module.area = areas.get(node.module.type);
+            node.module.area = areas.get(areaType);
 
             // package
             if (packages.has(packageRef.ref)) {
@@ -666,7 +669,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // build node types tree & aggregate timinigs
     data.areas = [...areas.values()];
-    data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => areas.get(node.module.type));
+    data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => node.module.area);
 
     // build package tree & aggregate timinigs
     data.packages = [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1);

@@ -4,6 +4,7 @@
     - Added "Try demo CPU profile" button when no CPU profile is loaded
     - Adjusted call frame reference computation by omitting line and column when they are not specified or less than zero
     - Added Electron's area
+    - Fixed the placement of bundle modules to be placed in the "script" area instead of the "bundle" area
 
 ## 0.4.0 (2024-01-21)
 
