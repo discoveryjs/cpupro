@@ -99,8 +99,9 @@ discovery.page.define('default', {
                 data: `areas.({
                     text: name,
                     duration: selfTime,
+                    color: name.color(),
                     href: marker("area").href
-                })`,
+                }).sort(duration desc)`,
                 segment: {
                     tooltip: [
                         'text:text',
@@ -110,27 +111,33 @@ discovery.page.define('default', {
             },
 
             {
-                view: 'list',
-                className: 'area-timeline-split',
-                data: 'areas[1:].sort(selfTime desc).[selfTime]',
-                item: {
-                    view: 'link',
-                    className: 'timelines',
-                    data: '{ area: $, href: marker("area").href }',
-                    content: [
-                        { view: 'block', className: 'label', content: 'text:area.name | $ != "garbage collector" ?: "gc"' },
-                        {
-                            view: 'timeline-segments-bin',
-                            data: 'binCalls(=>module.area=@.area, 500)',
-                            max: '=#.data.totalTime / 500',
-                            color: '=#.data.colors[#.sliceIndex]'
+                view: 'block',
+                className: 'area-timeline',
+                content: [
+                    {
+                        view: 'list',
+                        className: 'area-timeline-split',
+                        data: 'areas.[selfTime]',
+                        item: {
+                            view: 'link',
+                            className: 'timelines',
+                            data: '{ area: $, href: marker("area").href }',
+                            content: [
+                                { view: 'block', className: 'label', content: 'text:area.name | $ != "garbage collector" ?: "gc"' },
+                                {
+                                    view: 'timeline-segments-bin',
+                                    bins: '=binCalls(=>module.area=@.area, 500)',
+                                    max: '=#.data.totalTime / 500',
+                                    color: '=area.name.color()'
+                                }
+                            ],
+                            tooltip: [
+                                'text:area.name',
+                                'duration:{ time: area.selfTime, total: #.data.totalTime }'
+                            ]
                         }
-                    ],
-                    tooltip: [
-                        'text:area.name',
-                        'duration:{ time: area.selfTime, total: #.data.totalTime }'
-                    ]
-                }
+                    }
+                ]
             },
 
             {

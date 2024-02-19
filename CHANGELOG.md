@@ -5,6 +5,7 @@
     - Adjusted call frame reference computation by omitting line and column when they are not specified or less than zero
     - Added Electron's area
     - Fixed the placement of bundle modules to be placed in the "script" area instead of the "bundle" area
+    - Implemented permanent colors and a fixed timeline order for areas and module types
 
 ## 0.4.0 (2024-01-21)
 

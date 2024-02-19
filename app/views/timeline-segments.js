@@ -117,12 +117,13 @@ discovery.view.define('timeline-segments', function(el, config, data, context) {
     el.append(svgEl);
 });
 
-discovery.view.define('timeline-segments-bin', function(el, config, data) {
-    if (!Array.isArray(data)) {
-        data = [];
-    }
+function ensureArray(value) {
+    return Array.isArray(value) ? value : [];
+}
 
-    const stat = data;
+discovery.view.define('timeline-segments-bin', function(el, config, data) {
+    const bins = ensureArray(config.bins || data);
+
     el.classList.add('view-timeline-segments');
 
     if (config.color) {
@@ -133,8 +134,8 @@ discovery.view.define('timeline-segments-bin', function(el, config, data) {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-    pathEl.setAttribute('d', generateSquarePath(Array.from(stat), 20, config.max));
-    svgEl.setAttribute('viewBox', `0 0 ${stat.length} 20`);
+    pathEl.setAttribute('d', generateSquarePath(Array.from(bins), 20, config.max || Math.max(...bins)));
+    svgEl.setAttribute('viewBox', `0 0 ${bins.length} 20`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');
     svgEl.setAttribute('height', 20);

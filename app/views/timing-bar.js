@@ -7,7 +7,6 @@ discovery.view.define('timing-bar', function(el, config, data, context) {
 
     const entries = data
         .filter(entry => isFinite(entry.duration) && entry.duration > 0)
-        .sort((a, b) => b.duration - a.duration)
         .map((entry, idx) => ({
             ...entry,
             color: entry.color || context.data.colors[idx]
@@ -33,7 +32,6 @@ discovery.view.define('timing-bar-segment', function(el, config, data) {
 
     el.style.setProperty('--fraction', duration / total);
     el.style.setProperty('--color', color);
-    el.title = title;
 
     if (href) {
         el.href = href;

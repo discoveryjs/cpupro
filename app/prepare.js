@@ -29,6 +29,29 @@ const colors = [
     '#4688f8a0'
 ];
 
+const typeColor = {
+    'node': '#78b362a0',
+    'electron': '#9feaf9a0',
+    'script': '#fee29ca0',
+    'npm': '#f98e94a0',
+    'wasm': '#9481ffa0',
+    'internals': '#fcb69aa0',
+    'garbage collector': '#f98e94a0',
+    'regexp': '#8db2f8a0',
+    'program': '#edfdd1a0',
+    'chrome-extension': '#7dfacda0',
+    'root': '#444444a0',
+    'unknown': '#888888a0'
+};
+const typeColorComponents = Object.fromEntries(Object.entries(typeColor)
+    .map(([type, color]) =>[type, color
+        .match(/([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/)
+        .slice(1)
+        .map(hex => parseInt(hex, 16))
+    ])
+);
+const typeOrder = Object.fromEntries(Object.keys(typeColor).map((type, idx) => [type, idx + 1]));
+
 function maxNodesId(array) {
     let maxId = 0;
 
@@ -418,6 +441,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         idle: null,
         gc: null
     };
+    let unknownTypeOrder = typeOrder.unknown;
     let longestCommonModulePath = null;
     let totalTime = Math.max(data.timeDeltas[0], 0);
     let samplesCount = 0;
@@ -512,8 +536,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
             const areaType = node.module.type === 'bundle' ? 'script' : node.module.type;
             if (!areas.has(areaType)) {
                 const area = {
-                    id: areas.size + 1, // id starts with 1
-                    name: node.module.type,
+                    id: typeOrder[areaType] || unknownTypeOrder++,
                     name: areaType,
                     selfTime: 0,
                     totalTime: 0,
@@ -668,7 +691,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     Object.assign(data, wellKnownNodes);
 
     // build node types tree & aggregate timinigs
-    data.areas = [...areas.values()];
+    data.areas = [...areas.values()].sort((a, b) => a.id < b.id ? -1 : 0);
     data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => node.module.area);
 
     // build package tree & aggregate timinigs
@@ -688,6 +711,13 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // extend jora's queries with custom methods
     addQueryHelpers({
+        order(value) {
+            return typeOrder[value] || 100;
+        },
+        color(value, comp) {
+            const dict = comp ? typeColorComponents : typeColor;
+            return dict[value] || dict.unknown;
+        },
         totalPercent(value) {
             const percent = 100 * value / totalTime;
             return percent >= 0.1 ? percent.toFixed(2) + '%' : '<0.1%';
