@@ -6,6 +6,7 @@ discovery.view.define('package-badge', {
         { content: {
             view: 'badge',
             className: ({ object: { type } }) => `package package-type_${type}`,
+            content: 'text-match:{ text, match: #.filter }',
             data: '{ ..., text: title }'
         } }
     ]

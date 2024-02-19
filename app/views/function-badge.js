@@ -6,6 +6,7 @@ discovery.view.define('function-badge', {
         { when: 'object.module.package.type in ["script", "npm", "chrome-extension", "wasm", "node", "internals", "regexp"]', content: {
             view: 'badge',
             className: ({ object: { module: { package: { type } } } }) => `function function-type_${type}`,
+            content: 'text-match:{ text, match: #.filter }',
             data: `{
                 ...,
                 text: object | name,
@@ -15,6 +16,7 @@ discovery.view.define('function-badge', {
         { when: 'object.module.type = "script"', content: {
             view: 'badge',
             className: 'function function-type_script',
+            content: 'text-match:{ text, match: #.filter }',
             data: `{
                 ...,
                 text: object | name,
@@ -24,6 +26,7 @@ discovery.view.define('function-badge', {
         { content: {
             view: 'badge',
             className: 'function',
+            content: 'text-match:{ text, match: #.filter }',
             data: '{ ..., text: title }'
         } }
     ]

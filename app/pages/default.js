@@ -234,14 +234,17 @@ discovery.page.define('default', {
                             { view: 'badge', content: 'text-numeric:packages.size()' }
                         ],
                         content: {
-                            view: 'table',
-                            data: 'packages.sort(selfTime desc, totalTime desc)',
-                            limit: 15,
-                            cols: [
-                                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                                { header: 'Package', sorting: 'name asc', content: 'package-badge' }
-                            ]
+                            view: 'content-filter',
+                            content: {
+                                view: 'table',
+                                data: 'packages.sort(selfTime desc, totalTime desc).[name ~= #.filter]',
+                                limit: 15,
+                                cols: [
+                                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                                    { header: 'Package', sorting: 'name asc', content: 'package-badge' }
+                                ]
+                            }
                         }
                     },
                     {
@@ -251,14 +254,17 @@ discovery.page.define('default', {
                             { view: 'badge', content: 'text-numeric:modules.size()' }
                         ],
                         content: {
-                            view: 'table',
-                            data: 'modules.sort(selfTime desc, totalTime desc)',
-                            limit: 15,
-                            cols: [
-                                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                                { header: 'Module', sorting: '(name or path) ascN', content: 'module-badge' }
-                            ]
+                            view: 'content-filter',
+                            content: {
+                                view: 'table',
+                                data: 'modules.sort(selfTime desc, totalTime desc).[(name or (package.name + "/" + packageRelPath)) ~= #.filter]',
+                                limit: 15,
+                                cols: [
+                                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                                    { header: 'Module', sorting: '(name or (package.name + "/" + packageRelPath)) ascN', content: 'module-badge' }
+                                ]
+                            }
                         }
                     },
                     {
@@ -268,14 +274,17 @@ discovery.page.define('default', {
                             { view: 'badge', content: 'text-numeric:functions.size()' }
                         ],
                         content: {
-                            view: 'table',
-                            data: 'functions.sort(selfTime desc, totalTime desc)',
-                            limit: 15,
-                            cols: [
-                                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                                { header: 'Function', sorting: 'name ascN', content: 'function-badge' }
-                            ]
+                            view: 'content-filter',
+                            content: {
+                                view: 'table',
+                                data: 'functions.sort(selfTime desc, totalTime desc).[name ~= #.filter]',
+                                limit: 15,
+                                cols: [
+                                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                                    { header: 'Function', sorting: 'name ascN', content: 'function-badge' }
+                                ]
+                            }
                         }
                     }
                 ]

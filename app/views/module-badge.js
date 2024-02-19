@@ -6,6 +6,7 @@ discovery.view.define('module-badge', {
         { when: 'object.package.type in ["script", "npm", "chrome-extension", "wasm", "node", "electron"]', content: {
             view: 'badge',
             className: ({ object: { package: { type } } }) => `module module-type_${type}`,
+            content: 'text-match:{ text, match: #.filter }',
             data: `{
                 ...,
                 text: object | packageRelPath or path or name,
@@ -15,11 +16,17 @@ discovery.view.define('module-badge', {
         { when: 'object.type = "script"', content: {
             view: 'badge',
             className: 'module module-type_script',
-            data: '{ ..., text: object | packageRelPath or path or name, prefix: object.package | path and name != "(script)" and name }'
+            content: 'text-match:{ text, match: #.filter }',
+            data: `{
+                ...,
+                text: object | packageRelPath or path or name,
+                prefix: object.package | path and name != "(script)" and name
+            }`
         } },
         { content: {
             view: 'badge',
             className: 'module',
+            content: 'text-match:{ text, match: #.filter }',
             data: '{ ..., text: title }'
         } }
     ]
