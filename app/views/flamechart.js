@@ -47,7 +47,12 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         .on('frame:enter', tooltip.show)
         .on('frame:leave', tooltip.hide)
         .on('destroy', tooltip.destroy);
-        // .setColorMapper(colorMapper.offCpuColorMapper);
+
+    chart.colorMapper = discovery.queryFn(`
+        data.host
+        | package.type or module.package.type or type or area.name or name
+        | color(true)
+    `);
 
     if (data.segment) {
         const children = data.children;
@@ -68,7 +73,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             name: frameData => frameData.host.name || frameData.host.packageRelPath,
             value: frameData => frameData.totalTime,
             children: frameData => frameData.children,
-            childrenSort: true
+            childrenSort: (a, b) => b.totalTime - a.totalTime
         });
     }
 
