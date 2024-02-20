@@ -5,8 +5,8 @@ discovery.view.define('loc-badge', {
         view: 'badge',
         whenData: 'loc',
         className: 'function-loc',
-        content: ['html:loc.match(/:\\d+:\\d+$/).matched[].split(/:/).join(`<span class="delim">:</span>`)'],
         data: '{ ..., text: loc.match(/:\\d+:\\d+$/).matched[] }',
+        content: ['html:text.split(/:/).join(`<span class="delim">:</span>`)'],
         postRender(el, _, data) {
             el.title = data.loc;
         }

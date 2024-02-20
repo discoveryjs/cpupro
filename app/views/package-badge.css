@@ -35,6 +35,7 @@
     background-repeat: no-repeat;
     background-position: left center;
     background-size: contain;
+    opacity: .9;
 }
 .view-badge.package-type_script::before {
     background-image: url('../img/js.png');
@@ -46,7 +47,8 @@
     background-image: url('../img/npm.png');
 }
 .discovery-root-darkmode .view-badge.package-type_npm::before {
-    filter: contrast(.8);
+    filter: contrast(.85) opacity(0.85);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
 }
 .view-badge.package-type_chrome-extension::before {
     background-image: url('../img/chrome-extension.png');

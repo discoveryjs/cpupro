@@ -6,7 +6,10 @@ discovery.page.define('function', {
             view: 'page-header',
             prelude: [
                 'badge:{ color: "rgba(237, 177, 9, 0.35)", text: "Function" }',
-                'module-badge'
+                'badge{ text: module.area.name, href: module.area.marker().href, color: module.area.name.color() }',
+                'package-badge',
+                'badge{ text: module | packageRelPath or path or "module", href: module.marker().href }',
+                'loc-badge'
             ],
             content: [
                 'h1:name',
