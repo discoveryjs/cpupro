@@ -151,7 +151,7 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
                     // case 'v8':
                     case 'electron':
                         entry.type = prefix;
-                        entry.path = url.slice(prefix.length + 1);
+                        entry.path = url;
                         break;
 
                     default:
@@ -267,7 +267,7 @@ function resolvePackageRef(cache, moduleRef) {
             entry.ref = `(${moduleRef.type})`;
             entry.type = moduleRef.type;
             entry.name = `(${moduleRef.type} modules)`;
-            entry.path = `${moduleRef.type}:`;
+            entry.path = `${moduleRef.type}/`;
 
             break;
         }
