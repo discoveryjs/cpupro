@@ -84,6 +84,16 @@ discovery.page.define('default', {
                         title: 'Samples interval',
                         value: '=samplesInterval',
                         unit: 'μs'
+                    },
+                    {
+                        view: 'page-indicator',
+                        title: 'Runtime',
+                        value: '=#.data.meta.runtime'
+                    },
+                    {
+                        view: 'page-indicator',
+                        title: 'Engine',
+                        value: '=#.data.meta.engine'
                     }
                 ]
             },

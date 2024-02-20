@@ -727,6 +727,16 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     Object.assign(data, wellKnownNodes);
 
+    // profile meta
+    data.meta = {
+        engine: 'v8',
+        runtime:
+            areas.has('electron') ? 'Electron'
+                : areas.has('node') ? 'Node.js'
+                    : areas.has('chrome-extension') ? 'Chromium'
+                        : 'Unknown'
+    };
+
     // build node types tree & aggregate timinigs
     data.areas = [...areas.values()].sort((a, b) => a.id < b.id ? -1 : 0);
     data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => node.module.area);
