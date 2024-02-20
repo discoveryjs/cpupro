@@ -6,6 +6,8 @@
     - Added Electron's area
     - Fixed the placement of bundle modules to be placed in the "script" area instead of the "bundle" area
     - Implemented permanent colors and a fixed timeline order for areas and module types
+    - Changed flame diagram colors to match area colors and module types
+    - Implemented GC nodes reparenting to the script node
 
 ## 0.4.0 (2024-01-21)
 

@@ -65,18 +65,6 @@ function maxNodesId(array) {
     return maxId;
 }
 
-function maxSamplesId(array) {
-    let maxId = 0;
-
-    for (const id of array) {
-        if (id > maxId) {
-            maxId = id;
-        }
-    }
-
-    return maxId;
-}
-
 function getLongestCommonPath(longestCommonModulePath, modulePath) {
     let parts = modulePath.split(/\//);
 
@@ -414,8 +402,56 @@ function refLineColumn(value) {
     return typeof value !== 'number' || value < 0 ? '' : value;
 }
 
+function gcReparenting(data) {
+    const gcNode = data.nodes.find(node => node.callFrame.functionName === '(garbage collector)');
+
+    if (gcNode === undefined) {
+        return;
+    }
+
+    const gcNodeId = gcNode.id;
+    const stackToGc = new Map();
+    let id = 1 + data.nodes.reduce(
+        (max, node) => node.id > max ? node.id : max,
+        data.nodes[0].id
+    );
+
+    for (let i = 0, prevNodeId = -1; i < data.samples.length; i++) {
+        const nodeId = data.samples[i];
+
+        if (nodeId === gcNodeId) {
+            if (prevNodeId === gcNodeId) {
+                data.samples[i] = data.samples[i - 1];
+            } else {
+                if (stackToGc.has(prevNodeId)) {
+                    data.samples[i] = stackToGc.get(prevNodeId);
+                } else {
+                    const parentNode = data.nodes[prevNodeId];
+                    const newGcNodeId = id++;
+                    const newGcNode = {
+                        id: newGcNodeId,
+                        callFrame: { ...gcNode.callFrame }
+                    };
+                    stackToGc.set(prevNodeId, newGcNodeId);
+                    data.nodes.push(newGcNode);
+                    data.samples[i] = newGcNodeId;
+                    if (parentNode.children) {
+                        parentNode.children.push(newGcNodeId);
+                    } else {
+                        parentNode.children = [newGcNodeId];
+                    }
+                }
+            }
+        }
+
+        prevNodeId = nodeId;
+    }
+}
+
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     data = convertValidate(data, rejectData);
+
+    gcReparenting(data);
 
     const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
@@ -431,7 +467,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     const functions = Object.assign(new Map(), { anonymous: 0 });
     const scriptIdFromString = new Map();
     const urlByScriptId = new Map();
-    const maxId = Math.max(maxNodesId(data.nodes), maxSamplesId(data.samples));
+    const maxId = maxNodesId(data.nodes);
     const selfTimes = new Uint32Array(maxId + 1);
     const nodeById = new Array(maxId + 1);
     const nodeSegments = Array.from({ length: maxId + 1 }, () => []);
