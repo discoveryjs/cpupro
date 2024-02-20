@@ -50,6 +50,7 @@ function generateSquarePath(points, height, maxValue = Math.max(...points) || 1)
     const stepX = chartWidth / (points.length - 1);
     const pathData = [];
     const gap = 0.1;
+    const minNonZeroHeight = 1.5;
 
     pathData.push('M', 0, height);
 
@@ -58,7 +59,7 @@ function generateSquarePath(points, height, maxValue = Math.max(...points) || 1)
 
         if (y > 0) {
             pathData.push(
-                'V', height - Math.max((points[i] / maxValue) * height, .5),
+                'V', height - Math.max((points[i] / maxValue) * height, minNonZeroHeight),
                 'h', stepX - gap,
                 'V', height,
                 'h', gap
