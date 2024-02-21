@@ -123,7 +123,12 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
             entry.name = cache.anonymous.get(scriptId);
         }
     } else {
-        entry.protocol = (url.match(/^([a-z\-]+):/i) || [])[1] || '';
+        if (url.startsWith('node:electron/') || url.startsWith('electron/')) {
+            entry.protocol = 'electron';
+            url = url.slice(url.indexOf('/') + 1);
+        } else {
+            entry.protocol = (url.match(/^([a-z\-]+):/i) || [])[1] || '';
+        }
 
         if (entry.protocol.length === 1 && /[A-Z]/.test(entry.protocol)) {
             entry.protocol = '';
@@ -131,23 +136,10 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
         }
 
         switch (entry.protocol) {
-            case '': {
-                const prefix = (url.match(/^[^/]+(?=\/)/) || [])[0];
-
-                switch (url !== prefix && prefix) {
-                    // case 'blink':
-                    // case 'v8':
-                    case 'electron':
-                        entry.type = prefix;
-                        entry.path = url;
-                        break;
-
-                    default:
-                        entry.type = 'script';
-                        entry.path = 'file://' + url;
-                }
+            case '':
+                entry.type = 'script';
+                entry.path = 'file://' + url;
                 break;
-            }
 
             case 'file':
             case 'http':
@@ -166,6 +158,11 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
             case 'chrome-extension':
             case 'wasm':
                 entry.type = entry.protocol;
+                entry.path = url;
+                break;
+
+            case 'electron':
+                entry.type = 'electron';
                 entry.path = url;
                 break;
 
@@ -756,7 +753,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     data.functionTree = aggregateNodes(wellKnownNodes.root, functions, node => node.function);
 
     // build segments
-    data.naturalTree = buildSegments(data, nodeById, wellKnownNodes.gc);
+    // data.naturalTree = buildSegments(data, nodeById, wellKnownNodes.gc);
 
     // extend jora's queries with custom methods
     addQueryHelpers({
