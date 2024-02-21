@@ -5,13 +5,28 @@ discovery.page.define('module', {
         {
             view: 'page-header',
             prelude: [
-                'badge:{ color: "rgba(237, 177, 9, 0.35)", text: "Module" }',
+                'badge{ className: "type-badge", text: "Module" }',
+                'badge{ className: "area-badge", text: area.name, href: area.marker().href, color: area.name.color() }',
                 'package-badge'
             ],
             content: 'h1:packageRelPath or name or path'
         },
 
-        'timeline-segments: $m:$; (calls + calls..children).[module=$m].segments',
+        {
+            view: 'block',
+            className: 'subject-timeline',
+            content: [
+                'time-ruler{ duration: #.data.totalTime, captions: "top" }',
+                {
+                    view: 'timeline-segments-bin',
+                    bins: '=binCalls(=>module=@, 500)',
+                    max: '=#.data.totalTime / 500',
+                    binsMax: true,
+                    color: '=area.name.color()',
+                    height: 30
+                }
+            ]
+        },
 
         {
             view: 'block',

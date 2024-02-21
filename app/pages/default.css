@@ -95,3 +95,6 @@
 .page-default .view-list-item:first-child .timelines > * {
     border-top: 1px solid #0004;
 }
+.page-default .view-page-indicator.runtime {
+    margin-left: 2px;
+}

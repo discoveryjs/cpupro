@@ -45,7 +45,7 @@ function generateSmoothPath(points, height) {
     return pathData.join(' ');
 }
 
-function generateSquarePath(points, height, maxValue = Math.max(...points) || 1) {
+function generateSquarePath(points, height, maxValue) {
     const chartWidth = points.length;
     const stepX = chartWidth / (points.length - 1);
     const pathData = [];
@@ -55,7 +55,7 @@ function generateSquarePath(points, height, maxValue = Math.max(...points) || 1)
     pathData.push('M', 0, height);
 
     for (let i = 0; i < points.length - 1; ++i) {
-        const y = (points[i] / maxValue);
+        const y = points[i] / maxValue;
 
         if (y > 0) {
             pathData.push(
@@ -124,6 +124,8 @@ function ensureArray(value) {
 
 discovery.view.define('timeline-segments-bin', function(el, config, data) {
     const bins = ensureArray(config.bins || data);
+    const height = config.height || 20;
+    const maxValue = Math.max(...bins);
 
     el.classList.add('view-timeline-segments');
 
@@ -135,11 +137,19 @@ discovery.view.define('timeline-segments-bin', function(el, config, data) {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-    pathEl.setAttribute('d', generateSquarePath(Array.from(bins), 20, config.max || Math.max(...bins)));
-    svgEl.setAttribute('viewBox', `0 0 ${bins.length} 20`);
+    pathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, config.max || maxValue));
+    svgEl.setAttribute('viewBox', `0 0 ${bins.length} ${height}`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');
-    svgEl.setAttribute('height', 20);
+    svgEl.setAttribute('height', height);
     svgEl.append(pathEl);
     el.append(svgEl);
+
+    // maxValue is less than config max by 10%
+    if (config.binsMax && config.max && maxValue < config.max * 0.9) {
+        const relPathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        relPathEl.classList.add('rel-path');
+        relPathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, maxValue));
+        svgEl.prepend(relPathEl);
+    }
 });

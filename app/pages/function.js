@@ -5,24 +5,32 @@ discovery.page.define('function', {
         {
             view: 'page-header',
             prelude: [
-                'badge:{ color: "rgba(237, 177, 9, 0.35)", text: "Function" }',
-                'badge{ text: module.area.name, href: module.area.marker().href, color: module.area.name.color() }',
+                'badge{ className: "type-badge", text: "Function" }',
+                'badge{ className: "area-badge", text: module.area.name, href: module.area.marker().href, color: module.area.name.color() }',
                 'package-badge',
                 'badge{ text: module | packageRelPath or path or "module", href: module.marker().href }',
                 'loc-badge'
             ],
             content: [
-                'h1:name',
-                'package-badge{ when: package.type = "npm" }',
-                {
-                    view: 'text',
-                    when: 'loc',
-                    data: 'loc'
-                }
+                'h1:name'
             ]
         },
 
-        'timeline-segments:calls.segments',
+        {
+            view: 'block',
+            className: 'subject-timeline',
+            content: [
+                'time-ruler{ duration: #.data.totalTime, captions: "top" }',
+                {
+                    view: 'timeline-segments-bin',
+                    bins: '=binCalls(=>function=@, 500)',
+                    max: '=#.data.totalTime / 500',
+                    binsMax: true,
+                    color: '=module.area.name.color()',
+                    height: 30
+                }
+            ]
+        },
 
         {
             view: 'block',

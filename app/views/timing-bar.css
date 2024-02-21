@@ -11,13 +11,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    background: linear-gradient(to bottom, var(--color, rgba(128, 128, 128, .25)) 2px, transparent 0px);
     background-clip: padding-box;
     background-color: color-mix(in srgb, var(--color, rgba(128, 128, 128, .25)) 35%, transparent);
-    border-left: 1px solid var(--color, rgba(128, 128, 128, .25));
+    border: solid var(--color, rgba(128, 128, 128, .25));
+    border-width: 2px 0 0 1px;
     font-size: 11px;
     line-height: 13px;
-    padding: 4px 4px 2px;
+    padding: 1px 4px 3px;
     color: var(--discovery-color);
     text-decoration: none;
 }

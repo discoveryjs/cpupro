@@ -4,11 +4,28 @@ discovery.page.define('package', {
     content: [
         {
             view: 'page-header',
-            prelude: 'badge:{ color: "rgba(237, 177, 9, 0.35)", text: "Package" }',
+            prelude: [
+                'badge{ className: "type-badge", text: "Package" }',
+                'badge{ className: "area-badge", text: area.name, href: area.marker().href, color: area.name.color() }'
+            ],
             content: 'h1:name'
         },
 
-        'timeline-segments: modules.($m:$; (calls + calls..children).[module=$m].segments)',
+        {
+            view: 'block',
+            className: 'subject-timeline',
+            content: [
+                'time-ruler{ duration: #.data.totalTime, captions: "top" }',
+                {
+                    view: 'timeline-segments-bin',
+                    bins: '=binCalls(=>module.package=@, 500)',
+                    max: '=#.data.totalTime / 500',
+                    binsMax: true,
+                    color: '=area.name.color()',
+                    height: 30
+                }
+            ]
+        },
 
         {
             view: 'block',

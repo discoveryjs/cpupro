@@ -311,12 +311,13 @@ function resolvePackageRef(cache, moduleRef) {
     return entry;
 }
 
-function createPackage(id, type, name, path) {
+function createPackage(id, type, name, path, area) {
     return {
         id,
         type,
         name,
         path,
+        area,
         selfTime: 0,
         totalTime: 0,
         modules: [],
@@ -595,7 +596,8 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                     packages.size + 1, // id starts with 1
                     packageRef.type,
                     packageRef.name,
-                    packageRef.path
+                    packageRef.path,
+                    node.module.area
                 ));
                 markAsPackage(node.module.package);
             }
@@ -720,7 +722,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // mutate data
     data.samplesCount = samplesCount;
-    data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
+    data.samplingInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
     data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
     data.totalTime = totalTime;
     data.colors = colors;
@@ -729,7 +731,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // profile meta
     data.meta = {
-        engine: 'v8',
+        engine: 'V8',
         runtime:
             areas.has('electron') ? 'Electron'
                 : areas.has('node') ? 'Node.js'

@@ -1,16 +1,6 @@
 .page-function .view-page-header__prelude .function-loc {
-    padding-top: 3px;
-    padding-bottom: 3px;
+    padding: 3px 6px;
     color: #aaa;
-}
-.page-function .view-page-header__prelude .view-badge + .view-badge:not(.function-loc) {
-    margin-right: 1px;
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-}
-.page-function .view-page-header__prelude .view-badge:not(:first-child) + .view-badge {
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
 }
 .page-function .view-tree-leaf-content {
     display: flex;

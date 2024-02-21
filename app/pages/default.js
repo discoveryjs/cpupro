@@ -81,12 +81,13 @@ discovery.page.define('default', {
                     },
                     {
                         view: 'page-indicator',
-                        title: 'Samples interval',
-                        value: '=samplesInterval',
+                        title: 'Sampling interval',
+                        value: '=samplingInterval',
                         unit: 'μs'
                     },
                     {
                         view: 'page-indicator',
+                        className: 'runtime',
                         title: 'Runtime',
                         value: '=#.data.meta.runtime'
                     },
@@ -133,11 +134,17 @@ discovery.page.define('default', {
                             className: 'timelines',
                             data: '{ area: $, href: marker("area").href }',
                             content: [
-                                { view: 'block', className: 'label', content: 'text:area.name | $ != "garbage collector" ?: "gc"' },
+                                'duration:{ time: area.selfTime, total: #.data.totalTime }',
+                                {
+                                    view: 'block',
+                                    className: 'label',
+                                    content: 'text:area.name | $ != "garbage collector" ?: "gc"'
+                                },
                                 {
                                     view: 'timeline-segments-bin',
                                     bins: '=binCalls(=>module.area=@.area, 500)',
                                     max: '=#.data.totalTime / 500',
+                                    binsMax: true,
                                     color: '=area.name.color()'
                                 }
                             ],
@@ -146,7 +153,8 @@ discovery.page.define('default', {
                                 'duration:{ time: area.selfTime, total: #.data.totalTime }'
                             ]
                         }
-                    }
+                    },
+                    'time-ruler{ duration: #.data.totalTime, captions: "top" }'
                 ]
             },
 
