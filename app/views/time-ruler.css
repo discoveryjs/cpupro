@@ -1,0 +1,28 @@
+.view-time-ruler {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-right: 1px solid #6666;
+}
+.view-time-ruler .line {
+    position: absolute;
+    border-left: 1px solid #6666;
+    color: #888b;
+    top: 0;
+    left: calc(100% * var(--offset));
+    bottom: 0;
+}
+.view-time-ruler.top .line::before,
+.view-time-ruler.bottom .line::after {
+  content: attr(data-title);
+  position: absolute;
+  left: 3px;
+  font-size: 10px;
+  line-height: 10px;
+}
+.view-time-ruler .line::before {
+  top: 2px;
+}
+.view-time-ruler .line::after {
+  bottom: 2px;
+}

@@ -1,0 +1,113 @@
+
+.page > .indicators {
+    display: flex;
+    gap: 1px;
+    margin: 0 0 8px;
+}
+
+.page .view-page-header__prelude .view-badge + .view-badge:not(:last-child) {
+    margin-right: 1px;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.page .view-page-header__prelude .view-badge:not(:first-child) + .view-badge {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.page .view-page-header__prelude .type-badge {
+    /* --discovery-view-badge-color: #ffdc7959;
+    --discovery-view-badge-dark-color: #ffdc7959; */
+    min-width: 8ex;
+    text-align: center;
+}
+.page .view-page-header__prelude .area-badge {
+    background-clip: padding-box;
+    background-color: color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 35%, transparent);
+    border: solid color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 60%, transparent);
+    border-width: 1px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.page .subject-timeline {
+    position: relative;
+    padding-top: 15px;
+    margin-bottom: 2px;
+}
+.page .subject-timeline .view-timeline-segments {
+    border-top: 1px solid #0004;
+}
+
+.hint-tooltip {
+    max-width: 400px !important;
+}
+
+.view-badge {
+    --discovery-view-badge-color: #bababa33;
+    --discovery-view-badge-dark-color: #383838;
+}
+.discovery-root-darkmode .view-badge {
+    box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12);
+}
+.view-table-cell > .view-badge {
+    padding-top: 2px;
+}
+.view-badge > .prefix {
+    color: #777;
+}
+.discovery-root-darkmode .view-badge > .prefix {
+    color: #a4a4a4;
+}
+
+.discovery-nav > .github::before {
+    --size: 15px;
+    content: "";
+    display: inline-block;
+    vertical-align: text-top;
+    height: var(--size);
+    aspect-ratio: 1/1;
+    margin-right: 5px;
+    margin-left: -3px;
+    background: url("../img/github.svg") no-repeat center;
+    background-size: calc(var(--size) - 0px);
+    opacity: .85;
+}
+.discovery-root-darkmode .discovery-nav > .github::before {
+    background-image: url("../img/github-white.svg");
+}
+
+.logo {
+    --color1: #242424;
+    --color2: white;
+    display: inline-flex;
+    border: 1px solid var(--color1, black);
+    line-height: 1;
+    border-radius: 3px;
+    box-shadow: 0 0 0 .5px rgba(255, 255, 255, .5);
+    flex-direction: column;
+    aspect-ratio: 1/1;
+    vertical-align: middle;
+}
+.discovery-root-darkmode .logo {
+    filter: brightness(0.9);
+}
+h2 .logo {
+    font-size: 47%;
+    margin-right: 8px;
+    position: relative;
+    vertical-align: bottom;
+}
+.logo::before {
+    content: 'CPU';
+    background-color: var(--color1, black);
+    color: var(--color2, white);
+    padding: .3em .5em;
+}
+.logo::after {
+    content: 'PRO';
+    background-color: var(--color2, white);
+    color: var(--color1, black);
+    padding: .3em .5em;
+    border-radius: 0 0 2px 2px;
+}

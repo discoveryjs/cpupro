@@ -9,6 +9,7 @@ module.exports = {
     data: './data',
     view: {
         assets: [
+            './pages/common.css',
             './pages/default.js',
             './pages/default.css',
             './pages/area.js',
@@ -34,6 +35,8 @@ module.exports = {
             './views/the-spice-must-flow.js',
             './views/time.css',
             './views/time.js',
+            './views/time-ruler.css',
+            './views/time-ruler.js',
             './views/timeline-profiles.css',
             './views/timeline-profiles.js',
             './views/timeline-segments.css',
