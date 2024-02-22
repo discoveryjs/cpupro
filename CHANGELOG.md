@@ -8,6 +8,7 @@
     - Implemented permanent colors and a fixed timeline order for areas and module types
     - Changed flame diagram colors to match area colors and module types
     - Implemented GC nodes reparenting to the script node
+    - Improved the display of regular expressions, particularly long ones
 
 ## 0.4.0 (2024-01-21)
 

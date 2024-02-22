@@ -12,7 +12,8 @@ discovery.page.define('function', {
                 'loc-badge'
             ],
             content: [
-                'h1:name'
+                { view: 'h1', when: 'not regexp', data: 'name' },
+                { view: 'source', when: 'regexp', data: '{ content: regexp, syntax: "regexp", lineNum: false }' }
             ]
         },
 

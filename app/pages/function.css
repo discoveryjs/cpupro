@@ -2,6 +2,17 @@
     padding: 3px 6px;
     color: #aaa;
 }
+.page-function .view-page-header__content .view-source {
+    margin: 8px 0 1px;
+}
+.page-function .view-page-header__content .view-source__content {
+    padding-top: 11px;
+    padding-bottom: 12px;
+}
+.page-function .view-page-header__content .view-source__source {
+    font-size: 16px;
+}
+
 .page-function .view-tree-leaf-content {
     display: flex;
     flex-wrap: wrap;

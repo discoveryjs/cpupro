@@ -1,0 +1,20 @@
+.view-source__source .token.quantifier {
+    color: var(--discovery-fmt-flag-color);
+}
+.view-source__source .token.anchor {
+    color: var(--discovery-fmt-variable-color);
+}
+.view-source__source .token.generic-character-type {
+    color: var(--discovery-fmt-property-color);
+}
+.view-source__source .token.character-class {
+    color: var(--discovery-fmt-keyword-color);
+}
+.view-source__source .token.generic-character-type {
+    color: var(--discovery-fmt-atom-color);
+}
+.view-source__source .token.alternation,
+.view-source__source .token.start-group,
+.view-source__source .token.end-group {
+    color: var(--discovery-fmt-string-color);
+}

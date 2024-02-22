@@ -1,6 +1,7 @@
 import { buildSegments } from './prepare/build-segments.js';
 import { convertValidate } from './prepare/index.js';
 
+const maxRegExpLength = 65;
 const wellKnownNodeName = new Map([
     ['(root)', 'root'],
     ['(program)', 'program'],
@@ -28,7 +29,6 @@ const colors = [
     '#8db2f8a0',
     '#4688f8a0'
 ];
-
 const typeColor = {
     'node': '#78b362a0',
     'electron': '#9feaf9a0',
@@ -615,15 +615,17 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         if (functions.has(functionRef)) {
             node.function = functions.get(functionRef);
         } else {
-            const name = node.module.package.type === 'regexp'
-                ? functionName.slice('RegExp: '.length)
+            const isRegExp = node.module.package.type === 'regexp';
+            const regexp = isRegExp ? functionName.slice('RegExp: '.length) : null;
+            const name = regexp
+                ? (regexp.length <= maxRegExpLength ? regexp : `${regexp.slice(0, maxRegExpLength - 1)}…`)
                 : functionName || `(anonymous function #${functions.anonymous++})`;
 
             functions.set(functionRef, node.function = {
                 id: functions.size + 1, // id starts with 1
                 name,
                 module: node.module,
-                type: node.module.package.type === 'regexp' ? 'regexp' : 'function',
+                regexp,
                 loc: node.module.path ? `${node.module.path}:${lineNumber}:${columnNumber}` : null,
                 selfTime: 0,
                 totalTime: 0,

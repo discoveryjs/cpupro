@@ -9,6 +9,8 @@ module.exports = {
     data: './data',
     view: {
         assets: [
+            './mode-regexp.css',
+            './mode-regexp.js',
             './pages/common.css',
             './pages/default.js',
             './pages/default.css',
