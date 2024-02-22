@@ -545,61 +545,61 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         node.callFrame.ref = `${functionName}:${refLineColumn(lineNumber)}:${refLineColumn(columnNumber)}:${url || scriptId}`;
 
         const moduleRef = resolveModuleRef(moduleRefCache, functionRef, scriptId, url, functionName);
-        const packageRef = resolvePackageRef(packageRefCache, moduleRef);
 
         // module
         if (modules.has(moduleRef.ref)) {
             node.module = modules.get(moduleRef.ref);
         } else {
-            modules.set(moduleRef.ref, node.module = {
-                id: modules.size + 1, // id starts with 1
-                type: moduleRef.type,
-                name: moduleRef.name,
-                path: moduleRef.path,
-                package: noPackage,
-                packageRelPath: null,
-                area: null,
-                selfTime: 0,
-                totalTime: 0,
-                functions: [],
-                calls: [],
-                recursiveCalls: []
-            });
-            markAsModule(node.module);
+            const areaType = moduleRef.type === 'bundle' ? 'script' : moduleRef.type;
+            let moduleArea = areas.get(areaType);
+            const packageRef = resolvePackageRef(packageRefCache, moduleRef);
+            let modulePackage = packages.get(packageRef.ref);
 
-            // node type clusters
-            const areaType = node.module.type === 'bundle' ? 'script' : node.module.type;
-            if (!areas.has(areaType)) {
-                const area = {
+            // auto-create module's area (cluster) if needed
+            if (moduleArea === undefined) {
+                areas.set(areaType, moduleArea = {
                     id: typeOrder[areaType] || unknownTypeOrder++,
                     name: areaType,
                     selfTime: 0,
                     totalTime: 0,
                     calls: [],
                     recursiveCalls: []
-                };
+                });
 
-                areas.set(areaType, area);
-                markAsArea(area);
+                markAsArea(moduleArea);
             }
 
-            node.module.area = areas.get(areaType);
-
-            // package
-            if (packages.has(packageRef.ref)) {
-                node.module.package = packages.get(packageRef.ref);
-            } else {
-                packages.set(packageRef.ref, node.module.package = createPackage(
+            // auto-create module's package if needed
+            if (modulePackage === undefined) {
+                packages.set(packageRef.ref, modulePackage = createPackage(
                     packages.size + 1, // id starts with 1
                     packageRef.type,
                     packageRef.name,
                     packageRef.path,
-                    node.module.area
+                    moduleArea
                 ));
-                markAsPackage(node.module.package);
+
+                markAsPackage(modulePackage);
             }
 
-            node.module.package.modules.push(node.module);
+            // create module
+            modules.set(moduleRef.ref, node.module = {
+                id: modules.size + 1, // id starts with 1
+                type: moduleRef.type,
+                name: moduleRef.name,
+                path: moduleRef.path,
+                package: modulePackage,
+                packageRelPath: null,
+                area: moduleArea,
+                selfTime: 0,
+                totalTime: 0,
+                functions: [],
+                calls: [],
+                recursiveCalls: []
+            });
+
+            markAsModule(node.module);
+            modulePackage.modules.push(node.module);
 
             // module path processing
             const modulePath = node.module.path || '';
@@ -630,8 +630,8 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                 calls: [],
                 recursiveCalls: []
             });
-            markAsFunction(node.function);
 
+            markAsFunction(node.function);
             node.module.functions.push(node.function);
 
             if (scriptId === 0 && wellKnownNodeName.has(functionName)) {
