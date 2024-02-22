@@ -60,32 +60,31 @@ discovery.page.define('area', {
         {
             view: 'context',
             when: 'name = "script"',
-            data: '#.data.packages.[area = @]',
+            data: '#.data.packages.[area = @].sort(selfTime desc, totalTime desc)',
             content: [
                 { view: 'h2', content: ['text:"Packages "', 'badge:size()'] },
                 {
                     view: 'table',
-                    data: 'sort(selfTime desc, totalTime desc)',
                     cols: [
                         { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
                         { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Module', content: 'package-badge' }
+                        { header: 'Package', sorting: 'name asc', content: 'package-badge' }
                     ]
                 }
             ]
         },
+
         {
             view: 'context',
-            data: '#.data.modules.[area = @]',
+            data: '#.data.modules.[area = @].sort(selfTime desc, totalTime desc)',
             content: [
                 { view: 'h2', content: ['text:"Modules "', 'badge:size()'] },
                 {
                     view: 'table',
-                    data: 'sort(selfTime desc, totalTime desc)',
                     cols: [
                         { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
                         { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Module', content: 'module-badge' }
+                        { header: 'Module', sorting: 'name ascN',content: 'module-badge' }
                     ]
                 }
             ]

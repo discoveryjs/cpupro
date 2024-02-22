@@ -111,3 +111,8 @@ h2 .logo {
     padding: .3em .5em;
     border-radius: 0 0 2px 2px;
 }
+
+.view-table-cell > .view-timeline-segments-bin {
+    margin: -1px -6px -2px;
+    width: 250px;
+}
