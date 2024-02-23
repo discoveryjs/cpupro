@@ -11,6 +11,7 @@
     - Improved the display of regular expressions, particularly long ones
     - Fixed the extraction of a CPU profile from Chrome tracing when it contains several profiles
     - Resolved the issue with shortening paths to scripts when `webpack/runtime` is present in the CPU profile
+    - Changed the handling of negative time deltas, they are now corrected by rearranging instead of being ignored
 
 ## 0.4.0 (2024-01-21)
 

@@ -396,8 +396,43 @@ function refLineColumn(value) {
     return typeof value !== 'number' || value < 0 ? '' : value;
 }
 
+// Fixes negative deltas in a `timeDeltas` array and ensures the integrity and chronological order of the associated samples.
+// It adjusts the deltas to ensure all values are non-negative by redistributing negative deltas across adjacent elements.
+// Additionally, it corrects the order of associated samples to match the adjusted timing.
+function fixNegativeTimeDeltas({ timeDeltas, samples }) {
+    for (let i = 0; i < timeDeltas.length; i++) {
+        const delta = timeDeltas[i];
+
+        // check if the current delta is negative
+        if (delta < 0) {
+            // if not the last element, add the current negative delta to the next delta to correct the sequence
+            if (i < timeDeltas.length - 1) {
+                timeDeltas[i + 1] += delta;
+            }
+
+            // set the current delta to 0 if it's the first element, otherwise invert the negative delta to positive
+            timeDeltas[i] = i === 0 ? 0 : -delta;
+
+            // if not the first element, adjust the previous delta to include the current negative delta
+            if (i > 0) {
+                timeDeltas[i - 1] += delta;
+
+                // swap the current and previous samples to reflect the adjusted timing
+                const sample = samples[i];
+                samples[i] = samples[i - 1];
+                samples[i - 1] = sample;
+
+                // move back two indices to re-evaluate the previous delta in case it became negative due to the adjustment
+                i -= 2;
+            }
+        }
+    }
+}
+
 function gcReparenting(data) {
-    const gcNode = data.nodes.find(node => node.callFrame.functionName === '(garbage collector)');
+    const gcNode = data.nodes.find(node =>
+        node.callFrame.functionName === '(garbage collector)'
+    );
 
     if (gcNode === undefined) {
         return;
@@ -447,6 +482,7 @@ function gcReparenting(data) {
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     data = convertValidate(data, rejectData);
 
+    fixNegativeTimeDeltas(data);
     gcReparenting(data);
 
     const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
@@ -484,15 +520,11 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     // precompute self time and time segments
     for (let i = 1; i < data.timeDeltas.length; i++) {
         const delta = data.timeDeltas[i];
+        const nodeId = data.samples[i];
 
-        // a delta might be negative sometimes, just ignore such samples
-        if (delta > 0) {
-            const nodeId = data.samples[i];
-
-            selfTimes[nodeId] += delta;
-            totalTime += delta;
-            samplesCount++;
-        }
+        selfTimes[nodeId] += delta;
+        totalTime += delta;
+        samplesCount++;
     }
 
     // normalize scriptId
@@ -718,8 +750,10 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     }
 
     // mutate data
-    data.samplesCount = samplesCount;
+    data.samplesCount = data.samples.length;
+    const t = Date.now();
     data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
+    console.log('sort', Date.now() - t);
     data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
     data.totalTime = totalTime;
     data.colors = colors;
