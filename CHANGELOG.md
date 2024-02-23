@@ -9,6 +9,7 @@
     - Changed flame diagram colors to match area colors and module types
     - Implemented GC nodes reparenting to the script node
     - Improved the display of regular expressions, particularly long ones
+    - Fixed the extraction of a CPU profile from Chrome tracing when it contains several profiles
 
 ## 0.4.0 (2024-01-21)
 
