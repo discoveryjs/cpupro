@@ -719,7 +719,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // mutate data
     data.samplesCount = samplesCount;
-    data.samplingInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
+    data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
     data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
     data.totalTime = totalTime;
     data.colors = colors;

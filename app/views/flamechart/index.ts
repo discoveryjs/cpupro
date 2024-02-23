@@ -507,6 +507,6 @@ export class FlameChart extends EventEmitter<Events> {
         }
 
         this.el.remove();
-        this.el = null;
+        this.el = null as unknown as HTMLElement;
     }
 }

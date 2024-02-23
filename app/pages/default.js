@@ -82,7 +82,7 @@ discovery.page.define('default', {
                     {
                         view: 'page-indicator',
                         title: 'Sampling interval',
-                        value: '=samplingInterval',
+                        value: '=samplesInterval',
                         unit: 'μs'
                     },
                     {
