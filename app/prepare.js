@@ -35,10 +35,10 @@ const typeColor = {
     'script': '#fee29ca0',
     'npm': '#f98e94a0',
     'wasm': '#9481ffa0',
-    'internals': '#fcb69aa0',
     'garbage collector': '#f1b6fda0',
     'garbage-collector': '#f1b6fda0',
     'regexp': '#8db2f8a0',
+    'internals': '#fcb69aa0',
     'program': '#edfdd1a0',
     'chrome-extension': '#7dfacda0',
     'root': '#444444a0',
@@ -90,7 +90,6 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
         return cache.get(cacheKey);
     }
 
-    const isEval = url && url.startsWith('evalmachine.');
     const isWellKnownNode = scriptId === 0 && wellKnownNodeName.has(functionName);
     const entry = {
         ref: url || scriptId,
@@ -104,7 +103,7 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
         entry.ref = functionName;
         entry.type = functionName.slice(1, -1);
         entry.name = functionName;
-    } else if (!url || isEval) {
+    } else if (!url || url.startsWith('evalmachine.')) {
         if (scriptId === 0) {
             if (functionName.startsWith('RegExp: ')) {
                 entry.type = 'regexp';
@@ -122,13 +121,14 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
             entry.type = 'script';
             entry.name = cache.anonymous.get(scriptId);
         }
+    } else if (url.startsWith('node:electron/') || url.startsWith('electron/')) {
+        entry.type = 'electron';
+        entry.path = url;
+    } else if (url.startsWith('webpack/runtime/')) {
+        entry.type = 'webpack/runtime';
+        entry.path = url;
     } else {
-        if (url.startsWith('node:electron/') || url.startsWith('electron/')) {
-            entry.protocol = 'electron';
-            url = url.slice(url.indexOf('/') + 1);
-        } else {
-            entry.protocol = (url.match(/^([a-z\-]+):/i) || [])[1] || '';
-        }
+        entry.protocol = (url.match(/^([a-z\-]+):/i) || [])[1] || '';
 
         if (entry.protocol.length === 1 && /[A-Z]/.test(entry.protocol)) {
             entry.protocol = '';
@@ -158,11 +158,6 @@ function resolveModuleRef(cache, cacheKey, scriptId, url, functionName) {
             case 'chrome-extension':
             case 'wasm':
                 entry.type = entry.protocol;
-                entry.path = url;
-                break;
-
-            case 'electron':
-                entry.type = 'electron';
                 entry.path = url;
                 break;
 
@@ -248,6 +243,7 @@ function resolvePackageRef(cache, moduleRef) {
 
         // case 'blink':
         // case 'v8':
+        case 'webpack/runtime':
         case 'electron': {
             entry.ref = `(${moduleRef.type})`;
             entry.type = moduleRef.type;
@@ -430,9 +426,11 @@ function gcReparenting(data) {
                         id: newGcNodeId,
                         callFrame: { ...gcNode.callFrame }
                     };
+
                     stackToGc.set(prevNodeId, newGcNodeId);
                     data.nodes.push(newGcNode);
                     data.samples[i] = newGcNodeId;
+
                     if (parentNode.children) {
                         parentNode.children.push(newGcNodeId);
                     } else {
@@ -550,7 +548,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         if (modules.has(moduleRef.ref)) {
             node.module = modules.get(moduleRef.ref);
         } else {
-            const areaType = moduleRef.type === 'bundle' ? 'script' : moduleRef.type;
+            const areaType = moduleRef.type === 'bundle' || moduleRef.type === 'webpack/runtime' ? 'script' : moduleRef.type;
             let moduleArea = areas.get(areaType);
             const packageRef = resolvePackageRef(packageRefCache, moduleRef);
             let modulePackage = packages.get(packageRef.ref);
@@ -662,7 +660,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
             roots.push(node);
         }
 
-        if (!node.children) {
+        if (!Array.isArray(node.children)) {
             node.children = [];
         }
 

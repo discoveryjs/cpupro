@@ -10,6 +10,7 @@
     - Implemented GC nodes reparenting to the script node
     - Improved the display of regular expressions, particularly long ones
     - Fixed the extraction of a CPU profile from Chrome tracing when it contains several profiles
+    - Resolved the issue with shortening paths to scripts when `webpack/runtime` is present in the CPU profile
 
 ## 0.4.0 (2024-01-21)
 
