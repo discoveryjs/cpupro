@@ -19,16 +19,6 @@ const knownChromeExtensions = {
     'jlmafbaeoofdegohdhinkhilhclaklkp': 'OctoLinker',
     'dhdgffkkebhmkfjojejmpbldmpobfkfo': 'Tampermonkey'
 };
-const colors = [
-    '#f98e94a0',
-    '#fcb69aa0',
-    '#fee29ca0',
-    '#edfdd1a0',
-    '#c5fccfa0',
-    '#7dfacda0',
-    '#8db2f8a0',
-    '#4688f8a0'
-];
 const typeColor = {
     'node': '#78b362a0',
     'electron': '#9feaf9a0',
@@ -513,7 +503,6 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     let unknownTypeOrder = typeOrder.unknown;
     let longestCommonModulePath = null;
     let totalTime = Math.max(data.timeDeltas[0], 0);
-    let samplesCount = 0;
 
     markAsPackage(noPackage);
 
@@ -524,7 +513,6 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
         selfTimes[nodeId] += delta;
         totalTime += delta;
-        samplesCount++;
     }
 
     // normalize scriptId
@@ -751,12 +739,9 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // mutate data
     data.samplesCount = data.samples.length;
-    const t = Date.now();
     data.samplesInterval = data.timeDeltas.slice().sort()[data.timeDeltas.length >> 1];
-    console.log('sort', Date.now() - t);
     data.endTime = data.startTime + totalTime; // there is often a small delta as result of rounding/precision in samples
     data.totalTime = totalTime;
-    data.colors = colors;
 
     Object.assign(data, wellKnownNodes);
 
