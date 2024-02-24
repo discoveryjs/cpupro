@@ -1,3 +1,21 @@
+.page-default > .view-expand > .header {
+    --discovery-view-expand-trigger-size: 38px;
+    margin-right: -40px;
+}
+
+.page-default .flamecharts > .content {
+    margin-bottom: -30px;
+}
+.page-default .view-flamechart__content {
+    --height: calc(100vh
+        - 64px /* page header */
+        - 9px
+    );
+    min-height: var(--height);
+    max-height: var(--height);
+    height: var(--height);
+}
+
 .flamecharts {
     margin-top: 8px;
 }
@@ -54,47 +72,93 @@
     font-size: 12px;
 }
 
-.page-default .area-timeline {
+.page-default .indicators {
+    margin-bottom: 4px;
+}
+.page-default .view-expand.timelines > .header > .header-content {
+    background: var(--discovery-background-color);
+    padding: 0;
+    margin-left: 1px;
+}
+.page-default .view-expand.timelines > .header .view-timing-bar-segment {
+    border-left-width: 0;
+    padding-top: 3px;
+    padding-bottom: 5px;
+    pointer-events: auto;
+}
+.page-default .view-expand.timelines > .content {
+    padding: 2px 0 10px;
+}
+.page-default .area-timelines {
     position: relative;
     display: grid;
     grid-template-columns: auto auto 1fr;
-    margin-top: 8px;
     padding: 15px 0 0;
 }
-.page-default .area-timeline .view-time-ruler {
+.page-default .area-timelines .view-time-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
 }
-.page-default .area-timeline-split {
+.page-default .area-timelines-list,
+.page-default .area-timelines-list > .view-list-item {
     display: contents;
 }
-.page-default .area-timeline-split > .view-list-item {
-    display: contents;
-}
-.page-default .timelines {
+.page-default .area-timelines-item {
     color: inherit;
     display: contents;
 }
-.page-default .timelines .view-timeline-segments {
+.page-default .area-timelines-item .view-timeline-segments {
     margin: 0 1px;
 }
-.page-default .timelines:hover > * {
+.page-default .area-timelines-item:hover > * {
     background: rgba(165,165,165,.3);
 }
-.page-default .timelines > .label {
+.page-default .area-timelines-item > .label {
     font-size: 10px;
     text-align: right;
     padding: 2px 4px 0 4px;
     border-bottom: 1px solid #0004;
 }
-.page-default .timelines .view-duration {
+.page-default .area-timelines-item .view-duration {
     padding: 2px 4px 0 2px;
     font-size: 10px;
     border-bottom: 1px solid #0004;
 }
-.page-default .view-list-item:first-child .timelines > * {
+.page-default .view-list-item:first-child .area-timelines-item > * {
     border-top: 1px solid #0004;
 }
 .page-default .view-page-indicator.runtime {
     margin-left: 2px;
+}
+
+.page-default .hierarchical-components > .content {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.page-default .hierarchical-components > .content > .view-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: clip;
+    margin-bottom: 0;
+}
+.page-default .hierarchical-components > .content > .view-section > .view-header {
+    margin: 0;
+    font-size: inherit;
+}
+.page-default .hierarchical-components > .content > .view-section > .view-content-filter {
+    display: contents;
+}
+.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content {
+    overflow: auto;
+    max-height: 418px;
+}
+.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table {
+    min-width: 100%;
+}
+.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table th,
+.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table .view-table-cell.main {
+    min-width: 100%;
 }

@@ -5,12 +5,7 @@ discovery.view.define('timing-bar', function(el, config, data, context) {
         data = [data];
     }
 
-    const entries = data
-        .filter(entry => isFinite(entry.duration) && entry.duration > 0)
-        .map((entry, idx) => ({
-            ...entry,
-            color: entry.color || context.data.colors[idx]
-        }));
+    const entries = data.filter(entry => isFinite(entry.duration) && entry.duration > 0);
     const total = entries.reduce((sum, entry) => sum + entry.duration, 0);
 
     this.renderList(
