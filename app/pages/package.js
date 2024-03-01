@@ -18,7 +18,7 @@ discovery.page.define('package', {
                 'time-ruler{ duration: #.data.totalTime, captions: "top" }',
                 {
                     view: 'timeline-segments-bin',
-                    bins: '=binCalls(=>module.package=@, 500)',
+                    bins: '=binCalls(#.data.packagesTree, $, 500)',
                     max: '=#.data.totalTime / 500',
                     binsMax: true,
                     color: '=area.name.color()',
@@ -71,7 +71,7 @@ discovery.page.define('package', {
                         { header: 'Module', sorting: '(packageRelPath or name or path) asc', content: 'module-badge' },
                         { header: 'Histogram', content: {
                             view: 'timeline-segments-bin',
-                            bins: '=binCalls(=>module=@, 100)',
+                            bins: '=binCalls(#.data.modulesTree, $, 100)',
                             max: '=#.data.totalTime / 100',
                             binsMax: true,
                             color: '=area.name.color()',

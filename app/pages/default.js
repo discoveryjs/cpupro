@@ -58,7 +58,7 @@ const areasTimeline = {
                     },
                     {
                         view: 'timeline-segments-bin',
-                        bins: '=binCalls(=>module.area=@.area, 500)',
+                        bins: '=binCalls(#.data.areasTree, area, 500)',
                         max: '=#.data.totalTime / 500',
                         binsMax: true,
                         color: '=area.name.color()'

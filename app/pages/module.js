@@ -19,7 +19,7 @@ discovery.page.define('module', {
                 'time-ruler{ duration: #.data.totalTime, captions: "top" }',
                 {
                     view: 'timeline-segments-bin',
-                    bins: '=binCalls(=>module=@, 500)',
+                    bins: '=binCalls(#.data.modulesTree, $, 500)',
                     max: '=#.data.totalTime / 500',
                     binsMax: true,
                     color: '=area.name.color()',

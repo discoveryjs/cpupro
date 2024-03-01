@@ -1,7 +1,9 @@
+import { TIMINGS } from './const';
 import { CallTree } from './call-tree';
 import { CpuProArea, CpuProCallFrame, CpuProFunction, CpuProModule, CpuProPackage } from './types';
 
 type HierarhyTree = Map<number, Map<number, number>>;
+type CallTreeNode = CpuProArea | CpuProPackage | CpuProModule | CpuProFunction;
 
 function rollupTree<T>(
     // input
@@ -49,11 +51,25 @@ function rollupTree<T>(
     }
 }
 
-function callTreeFrom<T>(hierarhyTree: HierarhyTree, callTree: CallTree<T>, node = 0) {
+function callTreeFrom<T>(
+    hierarhyTree: HierarhyTree,
+    callTree: CallTree<T>,
+    nested = new Uint32Array(callTree.dictionary.length),
+    node = 0
+) {
+    const value = callTree.nodes[node];
     const childByValueMap = hierarhyTree.get(node);
+    const valueNested = nested[value];
+
+    if (valueNested !== 0) {
+        callTree.nested[node] = valueNested;
+    }
 
     if (childByValueMap !== undefined) {
         let prevChildIndex = 0;
+
+        nested[value] = node;
+
         for (const childNode of childByValueMap.values()) {
             callTree.parent[childNode] = node;
 
@@ -63,9 +79,11 @@ function callTreeFrom<T>(hierarhyTree: HierarhyTree, callTree: CallTree<T>, node
                 callTree.nextSibling[prevChildIndex] = childNode;
             }
 
-            callTreeFrom(hierarhyTree, callTree, childNode);
+            callTreeFrom(hierarhyTree, callTree, nested, childNode);
             prevChildIndex = childNode;
         }
+
+        nested[value] = valueNested;
     }
 }
 
@@ -74,19 +92,21 @@ function callTreeFrom<T>(hierarhyTree: HierarhyTree, callTree: CallTree<T>, node
 // nodes
 // hierarhyTree
 //   value -> index in nodes[]
-function buildTree<T, U>(
-    sourceTree: CallTree<U>,
-    dictionary: T[],
-    dictionaryIndexBySourceTreeNode: (x: U) => number
+function buildTree<S extends CpuProCallFrame | CallTreeNode, D extends CallTreeNode>(
+    sourceTree: CallTree<S>,
+    dictionary: D[],
+    dictionaryIndexBySourceTreeNode: (node: S) => number
 ) {
+    const t1 = Date.now();
     // on the beginning index contains [source index] -> [dictionary index]
     // later it remaps into [source index] -> [order index]
-    const indexBySource = sourceTree.nodes.map(
-        index => dictionaryIndexBySourceTreeNode(sourceTree.dictionary[index])
+    const indexBySource = sourceTree.nodes.map((index: number) =>
+        dictionaryIndexBySourceTreeNode(sourceTree.dictionary[index])
     );
-    const outputNodes = [0];
+    const outputNodes = [dictionaryIndexBySourceTreeNode(sourceTree.dictionary[sourceTree.mapToIndex[1]])];
     const hierarhyTree: HierarhyTree = new Map();
 
+    const t2 = Date.now();
     rollupTree(
         // input
         sourceTree,
@@ -96,13 +116,18 @@ function buildTree<T, U>(
         hierarhyTree
     );
 
+    const t3 = Date.now();
     const outputTree = new CallTree(dictionary, indexBySource, new Uint32Array(outputNodes));
     callTreeFrom(hierarhyTree, outputTree);
+
+    if (TIMINGS) {
+        console.log('---> buildTree', t2 - t1, t3 - t2, Date.now() - t3);
+    }
 
     return outputTree;
 }
 
-function xcalc(samples, timeDeltas, tree) {
+function computeTimings<T extends CallTreeNode>(samples: number[], timeDeltas: number[], tree: CallTree<T>) {
     const t = Date.now();
     const selfTimes = new Uint32Array(tree.nodes.length);
     const totalTimes = new Uint32Array(tree.nodes.length);
@@ -111,27 +136,24 @@ function xcalc(samples, timeDeltas, tree) {
         selfTimes[tree.mapToIndex[samples[i]]] += timeDeltas[i];
     }
 
-    for (let i = tree.nodes.length - 1; i >= 0; i--) {
-        const idx = i;
-        const totalTime = selfTimes[idx] + totalTimes[idx];
+    for (let i = tree.nodes.length - 1; i > 0; i--) {
+        const totalTime = selfTimes[i] + totalTimes[i];
 
-        totalTimes[idx] = totalTime;
-        if (idx > 0) {
-            totalTimes[tree.parent[idx]] += totalTime;
+        totalTimes[i] = totalTime;
+        totalTimes[tree.parent[i]] += totalTime;
+    }
+
+    for (let i = 0; i < tree.nodes.length; i++) {
+        const fn = tree.dictionary[tree.nodes[i]];
+        fn.selfTime += selfTimes[i];
+        if (tree.nested[i] === 0) {
+            fn.totalTime += totalTimes[i];
         }
     }
 
-    const result = tree.dictionary.map(x => ({ name: x.name, selfTime: 0, totalTime: 0 }));
-    for (let i = 0; i < tree.nodes.length; i++) {
-        const fn = result[tree.nodes[i]];
-        fn.selfTime += selfTimes[i];
-        fn.totalTime = totalTimes[i];
+    if (TIMINGS) {
+        console.log(Date.now() - t);
     }
-    // const test = Array.from({ length: nodeCallFrame.length }, (_, i) => {
-    //     return { id: i, callFrame: callFrames[nodeCallFrame[i]], selfTime: selfTimes[i] };
-    // });
-    console.log(Date.now() - t);
-    // console.log(result.sort((a, b) => b.selfTime - a.selfTime));
 }
 
 export function buildTrees(
@@ -145,24 +167,27 @@ export function buildTrees(
 ) {
     const t1 = Date.now();
     const areasTree = buildTree(callFramesTree, areas, callFrame => callFrame.area.id - 1);
-    console.log('>>> areas', Date.now() - t1);
+    TIMINGS && console.log('>>> areas', Date.now() - t1);
+
     const t2 = Date.now();
     const packagesTree = buildTree(callFramesTree, packages, callFrame => callFrame.package.id - 1);
-    console.log('>>> packages', Date.now() - t2);
+    TIMINGS && console.log('>>> packages', Date.now() - t2);
+
     const t3 = Date.now();
     const modulesTree = buildTree(callFramesTree, modules, callFrame => callFrame.module.id - 1);
-    console.log('>>> modules', Date.now() - t3);
+    TIMINGS && console.log('>>> modules', Date.now() - t3);
+
     const t4 = Date.now();
     const functionsTree = buildTree(callFramesTree, functions, callFrame => callFrame.function.id - 1);
-    console.log('>>> functions', Date.now() - t4);
+    TIMINGS && console.log('>>> functions', Date.now() - t4);
 
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 1; i++) {
         const t = Date.now();
-        xcalc(samples, timeDeltas, areasTree);
-        xcalc(samples, timeDeltas, packagesTree);
-        xcalc(samples, timeDeltas, modulesTree);
-        xcalc(samples, timeDeltas, functionsTree);
-        console.log('>>> xcalc', Date.now() - t);
+        computeTimings(samples, timeDeltas, areasTree);
+        computeTimings(samples, timeDeltas, packagesTree);
+        computeTimings(samples, timeDeltas, modulesTree);
+        computeTimings(samples, timeDeltas, functionsTree);
+        TIMINGS && console.log('>>> computeTimings', Date.now() - t);
     }
 
     return {

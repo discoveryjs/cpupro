@@ -24,7 +24,7 @@ discovery.page.define('function', {
                 'time-ruler{ duration: #.data.totalTime, captions: "top" }',
                 {
                     view: 'timeline-segments-bin',
-                    bins: '=binCalls(=>function=@, 500)',
+                    bins: '=binCalls(#.data.functionsTree, $, 500)',
                     max: '=#.data.totalTime / 500',
                     binsMax: true,
                     color: '=module.area.name.color()',

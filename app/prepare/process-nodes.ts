@@ -1,6 +1,6 @@
 import { CallTree } from './call-tree';
+import { TIMINGS } from './const';
 import {
-    V8CpuProfile,
     V8CpuProfileNode,
     V8CpuProfileCallFrame,
     CpuProCallFrame,
@@ -11,15 +11,15 @@ import {
 } from './types';
 
 type CallFrameMap = Map<
-    string, // function name
+    number, // scriptId
     Map<
-        number, // scriptId
+        string | null, // url
         Map<
-            string | null,
+            string, // function name
             Map<
-                number,
+                number, // line
                 Map<
-                    number,
+                    number, // column
                     CpuProCallFrame
                 >
             >
@@ -48,7 +48,7 @@ function normalizeLoc(value: unknown) {
 function getCallFrame(
     callFrame: V8CpuProfileCallFrame,
     callFrames: CpuProCallFrame[],
-    map: CallFrameMap,
+    byScriptIdMap: CallFrameMap,
     urlByScriptId: Map<number, string>
 ) {
     const functionName = callFrame.functionName || '';
@@ -87,19 +87,19 @@ function getCallFrame(
     }
 
     // resolve a callFrame through a chain of maps
-    let byScriptIdMap = map.get(functionName);
-    if (byScriptIdMap === undefined) {
-        map.set(functionName, byScriptIdMap = new Map());
-    }
-
     let byUrlMap = byScriptIdMap.get(scriptId);
     if (byUrlMap === undefined) {
         byScriptIdMap.set(scriptId, byUrlMap = new Map());
     }
 
-    let byLineNumberMap = byUrlMap.get(url);
+    let byFunctionNameMap = byUrlMap.get(url);
+    if (byFunctionNameMap === undefined) {
+        byUrlMap.set(url, byFunctionNameMap = new Map());
+    }
+
+    let byLineNumberMap = byFunctionNameMap.get(functionName);
     if (byLineNumberMap === undefined) {
-        byUrlMap.set(url, byLineNumberMap = new Map());
+        byFunctionNameMap.set(functionName, byLineNumberMap = new Map());
     }
 
     let resultMap = byLineNumberMap.get(lineNumber);
@@ -179,7 +179,9 @@ export function processNodes(nodes: V8CpuProfileNode[]) {
     const t = Date.now();
     const callFramesTree = new CallTree(callFrames, nodeById, new Uint32Array(nodes.length));
     buildCallFrameTree(nodes[0].id, nodes, callFramesTree);
-    console.log('>> buildCallFrameTree()', Date.now() - t);
+    if (TIMINGS) {
+        console.log('>> buildCallFrameTree()', Date.now() - t);
+    }
 
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[callFramesTree.nodes[i]];

@@ -158,17 +158,26 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         ms(value) {
             return (value / 1000).toFixed(1) + 'ms';
         },
-        binCalls(_, fn = () => true, n = 500) {
-            const { samples, timeDeltas } = this.context.data;
+        binCalls(_, tree, test, n = 500) {
+            const { samples, timeDeltas, totalTime } = this.context.data;
+            const mask = new Uint8Array(tree.dictionary.length);
             const bins = new Float64Array(n);
-            const step = this.context.data.totalTime / n;
+            const step = totalTime / n;
             let end = step;
             let binIdx = 0;
 
+            for (let i = 0; i < mask.length; i++) {
+                const accept = typeof test === 'function'
+                    ? test(tree.dictionary[i])
+                    : test === tree.dictionary[i];
+                if (accept) {
+                    mask[i] = 1;
+                }
+            }
+
             for (let i = 0, offset = 0; i < samples.length; i++) {
-                const node = i === 0 && wellKnownCallFrames.idle ? wellKnownCallFrames.idle : nodeById[samples[i]];
-                const accept = typeof fn === 'function' ? fn(node) : true;
-                const delta = Math.max(timeDeltas[i], 0);
+                const accept = mask[tree.nodes[tree.mapToIndex[samples[i]]]];
+                const delta = timeDeltas[i];
 
                 if (offset + delta < end) {
                     if (accept) {
