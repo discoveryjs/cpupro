@@ -1,3 +1,5 @@
+import { OLD_COMPUTATIONS } from './const';
+
 export function processTimeDeltas(timeDeltas: number[], samples: number[], startTime: number, endTime: number) {
     // Fixes negative deltas in a `timeDeltas` array and ensures the integrity and chronological order of the associated samples.
     // It adjusts the deltas to ensure all values are non-negative by redistributing negative deltas across adjacent elements.
@@ -30,22 +32,25 @@ export function processTimeDeltas(timeDeltas: number[], samples: number[], start
         }
     }
 
-    const startOverhead = timeDeltas[0];
-    const totalTime = (endTime - startTime) - startOverhead; // compute total time excluding start overhead duration
+    const startOverheadTime = timeDeltas[0];
+    const totalTime = (endTime - startTime) - startOverheadTime; // compute total time excluding start overhead duration
 
-    // compute sum of deltas to compute last delta
-    let deltasSum = 0;
-    for (let i = 1; i < timeDeltas.length; i++) {
-        deltasSum += timeDeltas[i];
+    // TODO: delete the condition after completing the comparison with the previous version for temporary analysis purposes
+    if (!OLD_COMPUTATIONS) {
+        // compute sum of deltas to compute last delta
+        let deltasSum = 0;
+        for (let i = 1; i < timeDeltas.length; i++) {
+            deltasSum += timeDeltas[i];
+        }
+
+        // shift deltas 1 index left and compute last delta
+        timeDeltas.copyWithin(0, 1);
+        timeDeltas[timeDeltas.length - 1] = totalTime - deltasSum;
     }
-
-    // shift deltas 1 index left and compute last delta
-    timeDeltas.copyWithin(0, 1);
-    timeDeltas[timeDeltas.length - 1] = totalTime - deltasSum;
 
     return {
         startTime,
-        startOverhead,
+        startOverheadTime,
         endTime,
         totalTime
     };

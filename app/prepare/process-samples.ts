@@ -51,6 +51,7 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[]) {
 }
 
 export function processSamples(samples: number[], nodeById: number[]) {
+    // remap samples
     for (let i = 0; i < samples.length; i++) {
         samples[i] = nodeById[samples[i]];
     }

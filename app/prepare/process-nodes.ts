@@ -1,8 +1,13 @@
+import { CallTree } from './call-tree';
 import {
     V8CpuProfile,
     V8CpuProfileNode,
     V8CpuProfileCallFrame,
-    CpuProCallFrame
+    CpuProCallFrame,
+    CpuProArea,
+    CpuProPackage,
+    CpuProModule,
+    CpuProFunction
 } from './types';
 
 type CallFrameMap = Map<
@@ -110,7 +115,12 @@ function getCallFrame(
             url,
             functionName,
             lineNumber,
-            columnNumber
+            columnNumber,
+            // these field will be populated on process call frames step
+            area: null as unknown as CpuProArea,
+            package: null as unknown as CpuProPackage,
+            module: null as unknown as CpuProModule,
+            function: null as unknown as CpuProFunction
         };
 
         callFrames.push(result);
@@ -120,26 +130,59 @@ function getCallFrame(
     return result;
 }
 
-export function processNodes(nodes: V8CpuProfileNode[], samples) {
+function buildCallFrameTree(nodeId: number, nodes: V8CpuProfileNode[], tree: CallTree<unknown>, cursor = 0) {
+    const idx = tree.mapToIndex[nodeId];
+    const node = nodes[idx];
+    const nodeIndex = cursor++;
+
+    tree.nodes[nodeIndex] = idx;
+    tree.mapToIndex[nodeId] = nodeIndex;
+
+    if (Array.isArray(node.children) && node.children.length > 0) {
+        let prevNodeOrderIndex = 0;
+
+        for (const childId of node.children) {
+            tree.parent[cursor] = nodeIndex;
+
+            if (prevNodeOrderIndex === 0) {
+                tree.firstChild[nodeIndex] = cursor;
+            } else {
+                tree.nextSibling[prevNodeOrderIndex] = cursor;
+            }
+
+            prevNodeOrderIndex = cursor;
+            cursor = buildCallFrameTree(
+                childId,
+                nodes,
+                tree,
+                cursor
+            );
+        }
+    }
+
+    return cursor;
+}
+
+export function processNodes(nodes: V8CpuProfileNode[]) {
     const maxNodeId = maxNodesId(nodes);
 
     const urlByScriptId = new Map<number, string>();
     const callFramesMap: CallFrameMap = new Map();
-    const callFrames = [];
+    const callFrames: CpuProCallFrame[] = [];
     const nodeById = new Uint32Array(maxNodeId + 1);
     const nodesCount = nodes.length;
-    const nodeCallFrame = new Uint32Array(nodesCount);
-    const nodeParent = new Uint32Array(nodesCount);
-    const nodeNext = new Uint32Array(nodesCount);
-    const nodeNextSibling = new Uint32Array(nodesCount);
-    const x = new Set(samples);
 
     for (let i = 0; i < nodesCount; i++) {
         nodeById[nodes[i].id] = i;
     }
 
-    for (let i = 0; i < nodesCount; i++) {
-        const node = nodes[i];
+    const t = Date.now();
+    const callFramesTree = new CallTree(callFrames, nodeById, new Uint32Array(nodes.length));
+    buildCallFrameTree(nodes[0].id, nodes, callFramesTree);
+    console.log('>> buildCallFrameTree()', Date.now() - t);
+
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[callFramesTree.nodes[i]];
         const callFrame = getCallFrame(
             node.callFrame,
             callFrames,
@@ -147,33 +190,12 @@ export function processNodes(nodes: V8CpuProfileNode[], samples) {
             urlByScriptId
         );
 
-        nodeCallFrame[i] = callFrame.id - 1;
-
-        if (Array.isArray(node.children) && node.children.length) {
-            let prevChildIndex = -1;
-            for (const childId of node.children) {
-                const childIndex = nodeById[Number(childId)];
-
-                if (childIndex === undefined) {
-                    throw new Error(`Bad child id #${childId} for node #${node.id}`);
-                }
-
-                if (prevChildIndex !== -1) {
-                    nodeNextSibling[prevChildIndex] = childIndex + 1;
-                }
-
-                nodeParent[childIndex] = i + 1;
-                prevChildIndex = childIndex;
-            }
-        }
+        callFramesTree.nodes[i] = callFrame.id - 1;
     }
 
     return {
         callFrames,
-        nodeById,
-        nodeCallFrame,
-        nodeParent,
-        nodeNext,
-        nodeNextSibling
+        callFramesTree,
+        nodeById
     };
 }

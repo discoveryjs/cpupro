@@ -1,5 +1,9 @@
 import { ModuleType, PackageType, WellKnownName, WellKnownType } from './types';
 
+// TODO: delete after completing the comparison with the previous version for temporary analysis purposes
+export const OLD_COMPUTATIONS = true;
+export const TIMINGS = true;
+
 export const EMPTY_ARRAY = Object.freeze([]);
 export const maxRegExpLength = 65;
 export const wellKnownNodeName = new Map<WellKnownName, WellKnownType>([
@@ -37,11 +41,11 @@ export const typeColor: Record<PackageType, string> = {
     'unknown': '#888888a0'
 };
 export const typeColorComponents = Object.fromEntries(Object.entries(typeColor)
-    .map(([type, color]) =>[type, color
-        .match(/([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/)
-        .slice(1)
-        .map(hex => parseInt(hex, 16))
-    ])
+    .map(([type, color]) =>[type, [
+        parseInt(color.slice(0, 2), 16),
+        parseInt(color.slice(2, 4), 16),
+        parseInt(color.slice(4, 6), 16)
+    ]])
 );
 export const typeOrder = Object.fromEntries(
     Object.keys(typeColor).map((type, idx) => [type, idx + 1])

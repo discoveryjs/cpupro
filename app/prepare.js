@@ -1,82 +1,14 @@
-import { typeColor, typeColorComponents, typeOrder } from './prepare/const.js';
+import { OLD_COMPUTATIONS, TIMINGS, typeColor, typeColorComponents, typeOrder } from './prepare/const.js';
 import { convertValidate } from './prepare/index.js';
 import { processCallFrames } from './prepare/process-call-frames.js';
 import { processNodes } from './prepare/process-nodes.js';
 import { processPaths } from './prepare/process-paths.js';
 import { gcReparenting, processSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
+import { buildTrees } from './prepare/build-trees.js';
 
-function computeNodeTotal(node, depth = 1) {
-    node.totalTime = node.selfTime;
-    node.depth = depth;
-
-    for (const child of node.children) {
-        node.totalTime += computeNodeTotal(child, depth + 1);
-    }
-
-    return node.totalTime;
-}
-
-function collectHostCalls(call, getHost, stack) {
-    const host = getHost(call);
-
-    host.selfTime += call.selfTime;
-    host.calls.push(call);
-
-    if (stack[host.id] !== 0) {
-        host.recursiveCalls.push(call);
-    } else {
-        host.totalTime += call.totalTime;
-    }
-
-    stack[host.id]++;
-
-    for (const childCall of call.children) {
-        collectHostCalls(childCall, getHost, stack);
-    }
-
-    stack[host.id]--;
-}
-
-function buildTree(node, parent, getHost) {
-    const host = getHost(node);
-
-    if (parent === null || parent.host !== host) {
-        const existing = parent?.children.find(child => child.host === host);
-        const newParent = existing || {
-            host,
-            selfTime: 0,
-            totalTime: 0,
-            parent,
-            children: [],
-            nodes: []
-        };
-
-        if (parent) {
-            parent.totalTime += node.totalTime;
-            if (newParent !== existing) {
-                parent.children.push(newParent);
-            }
-        }
-
-        parent = newParent;
-    }
-
-    parent.nodes.push(node);
-    parent.selfTime += node.selfTime;
-    parent.totalTime += node.selfTime;
-
-    for (const child of node.children) {
-        buildTree(child, parent, getHost);
-    }
-
-    return parent;
-}
-
-function aggregateNodes(rootNode, map, getHost) {
-    collectHostCalls(rootNode, getHost, new Uint32Array(map.size + 1));
-
-    return buildTree(rootNode, null, getHost);
+function remapId(node, index) {
+    node.id = index + 1;
 }
 
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
@@ -84,67 +16,127 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
     const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
     const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
+    let timestamp = Date.now();
+    let markTimeStep = null;
+    const markTime = TIMINGS
+        ? (name) => {
+            const newTimestamp = Date.now();
+            if (markTimeStep !== null) {
+                console.log('>', markTimeStep, newTimestamp - timestamp);
+            }
+            markTimeStep = name;
+            timestamp = newTimestamp;
+        }
+        : () => null;
 
+    markTime('convertValidate()');
     data = convertValidate(data, rejectData);
+    // let ids = new Set();
+    // console.log(data.nodes[0].callFrame);
+    // for (let i = 0; i < data.nodes.length; i++) {
+    //     const node = data.nodes[i];
+    //     if (node.children) {
+    //         for (const childId of node.children) {
+    //             if (ids.has(childId)) {
+    //                 console.log(`Problem ${node.id} -> ${childId}`);
+    //             }
+    //         }
+    //     }
+    //     ids.add(node.id);
+    // }
+    // return data;
 
+    markTime('convert samples and timeDeltas into TypeArrays');
     const samples = new Uint32Array(data.samples);
-    const timeDeltas = new Uint32Array(data.timeDeltas);
+    const timeDeltas = new Int32Array(data.timeDeltas);
 
+    markTime('processTimeDeltas()');
     const {
         startTime,
-        startOverhead,
+        startOverheadTime,
         endTime,
         totalTime
     } = processTimeDeltas(timeDeltas, samples, data.startTime, data.endTime);
 
+    markTime('gcReparenting()');
     gcReparenting(samples, data.nodes);
 
+    markTime('processNodes()');
     const {
         callFrames,
-        nodeById,
-        nodeCallFrame,
-        nodeParent,
-        nodeNext,
-        nodeNextSibling
-    } = processNodes(data.nodes, samples);
+        callFramesTree,
+        nodeById
+    } = processNodes(data.nodes);
 
+    markTime('processCallFrames()');
     const {
-        wellKnownNodes,
+        wellKnownCallFrames,
         areas,
         packages,
         modules,
         functions
     } = processCallFrames(callFrames);
 
+    markTime('processSamples()');
     processSamples(samples, nodeById);
+
+    markTime('processPaths()');
     processPaths(packages, modules, functions);
 
-    areas.sort((a, b) => a.id < b.id ? -1 : 0);
+    // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
+    if (OLD_COMPUTATIONS) {
+        if (wellKnownCallFrames.idle) {
+            samples[0] = wellKnownCallFrames.idle.id - 1;
+        } else {
+            timeDeltas[0] = 0;
+        }
+    }
+
+    markTime('sorting & marking');
+    areas.sort((a, b) => a.id < b.id ? -1 : 0).forEach(remapId);
     areas.forEach(markAsArea);
 
-    packages.sort((a, b) => a.name < b.name ? -1 : 1);
+    packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
     packages.forEach(markAsPackage);
 
-    modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1);
+    modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1).forEach(remapId);
     modules.forEach(markAsModule);
 
+    functions.forEach(remapId);
     functions.forEach(markAsFunction);
+
+    // build trees should be performed after dictionaries are sorted and remaped
+    markTime('buildTrees()');
+    const {
+        areasTree,
+        packagesTree,
+        modulesTree,
+        functionsTree
+    } = buildTrees(
+        callFramesTree,
+        areas,
+        packages,
+        modules,
+        functions,
+        samples,
+        timeDeltas
+    );
 
     // // build node types tree & aggregate timinigs
     // data.areas = [...areas.values()].sort((a, b) => a.id < b.id ? -1 : 0);
-    // data.areaTree = aggregateNodes(wellKnownNodes.root, areas, node => node.module.area);
+    // data.areaTree = aggregateNodes(wellKnownCallFrames.root, areas, node => node.module.area);
 
     // // build package tree & aggregate timinigs
     // data.packages = [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1);
-    // data.packageTree = aggregateNodes(wellKnownNodes.root, packages, node => node.module.package);
+    // data.packageTree = aggregateNodes(wellKnownCallFrames.root, packages, node => node.module.package);
 
     // // build module tree & aggregate timinigs
     // data.modules = [...modules.values()].sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1);
-    // data.moduleTree = aggregateNodes(wellKnownNodes.root, modules, node => node.module);
+    // data.moduleTree = aggregateNodes(wellKnownCallFrames.root, modules, node => node.module);
 
     // // aggregate function timinigs
     // data.functions = [...functions.values()];
-    // data.functionTree = aggregateNodes(wellKnownNodes.root, functions, node => node.function);
+    // data.functionTree = aggregateNodes(wellKnownCallFrames.root, functions, node => node.function);
 
     // extend jora's queries with custom methods
     addQueryHelpers({
@@ -174,7 +166,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
             let binIdx = 0;
 
             for (let i = 0, offset = 0; i < samples.length; i++) {
-                const node = i === 0 && wellKnownNodes.idle ? wellKnownNodes.idle : nodeById[samples[i]];
+                const node = i === 0 && wellKnownCallFrames.idle ? wellKnownCallFrames.idle : nodeById[samples[i]];
                 const accept = typeof fn === 'function' ? fn(node) : true;
                 const delta = Math.max(timeDeltas[i], 0);
 
@@ -230,8 +222,9 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     addValueAnnotation('#.key = "selfTime" and $ and { text: duration() }');
     addValueAnnotation('#.key = "totalTime" and $ and { text: duration() }');
 
+    markTime('producing result');
     const areasSet = new Set(areas.map(m => m.name));
-    return {
+    const result = {
         meta: {
             engine: 'V8',
             runtime:
@@ -240,23 +233,29 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
                         : areasSet.has('chrome-extension') ? 'Chromium'
                             : 'Unknown'
         },
+        // nodes: data.nodes,
+        // nodeById: data.nodes.reduce((m, x, idx) => ((m[x.id] = idx), m), Object.create(null)),
         startTime,
-        startOverhead,
+        startOverheadTime,
         endTime,
         totalTime,
         callFrames,
-        ...wellKnownNodes,
+        wellKnownCallFrames,
         areas,
+        areasTree,
         packages,
+        packagesTree,
         modules,
+        modulesTree,
         functions,
+        functionsTree,
         samples,
         samplesCount: samples.length,
         samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1], // TODO: speedup
-        timeDeltas,
-        nodeCallFrame,
-        nodeParent,
-        nodeNext,
-        nodeNextSibling
+        timeDeltas
     };
+
+    markTime('finish');
+
+    return result;
 }

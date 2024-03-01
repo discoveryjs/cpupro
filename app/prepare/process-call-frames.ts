@@ -278,7 +278,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
     const modules = new Map<string, CpuProModule>();
     const functions = Object.assign(new Map<string, CpuProFunction>(), { anonymous: 0 });
     const anonymousModuleByScriptId = new Map<number, string>();
-    const wellKnownNodes: Record<WellKnownType, CpuProCallFrame | null> = {
+    const wellKnownCallFrames: Record<WellKnownType, CpuProCallFrame | null> = {
         root: null,
         program: null,
         idle: null,
@@ -345,7 +345,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
             modulePackage.modules.push(callFrameModule);
 
             if (moduleRef.wellKnown !== null) {
-                wellKnownNodes[moduleRef.wellKnown] = callFrame;
+                wellKnownCallFrames[moduleRef.wellKnown] = callFrame;
             }
         }
 
@@ -386,6 +386,6 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
         packages: [...packages.values()],
         modules: [...modules.values()],
         functions: [...functions.values()],
-        wellKnownNodes
+        wellKnownCallFrames
     };
 }

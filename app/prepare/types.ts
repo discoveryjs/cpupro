@@ -25,6 +25,10 @@ export type CpuProCallFrame = {
     functionName: string;
     lineNumber: number;
     columnNumber: number;
+    area: CpuProArea;
+    package: CpuProPackage;
+    module: CpuProModule;
+    function: CpuProFunction;
 };
 
 export type WellKnownName =
