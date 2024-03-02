@@ -304,9 +304,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                     id: typeOrder[areaRef.name] || areas.unknownTypeOrder++,
                     name: areaRef.name,
                     selfTime: 0,
-                    totalTime: 0,
-                    calls: [],
-                    recursiveCalls: []
+                    totalTime: 0
                 });
             }
 
@@ -320,9 +318,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                     area: moduleArea,
                     selfTime: 0,
                     totalTime: 0,
-                    modules: [],
-                    calls: [],
-                    recursiveCalls: []
+                    modules: []
                 });
             }
 
@@ -337,9 +333,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                 packageRelPath: null,
                 selfTime: 0,
                 totalTime: 0,
-                functions: [],
-                calls: [],
-                recursiveCalls: []
+                functions: []
             });
 
             modulePackage.modules.push(callFrameModule);
@@ -367,9 +361,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                 regexp,
                 loc: callFrameModule.path ? `${callFrameModule.path}:${lineNumber}:${columnNumber}` : null,
                 selfTime: 0,
-                totalTime: 0,
-                calls: [],
-                recursiveCalls: []
+                totalTime: 0
             });
 
             callFrameModule.functions.push(callFrameFunction);

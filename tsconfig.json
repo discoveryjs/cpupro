@@ -1,0 +1,6 @@
+{
+    "compilerOptions": {
+        "lib": ["ES2022", "dom"],
+        "target": "ES2022"
+    }
+}

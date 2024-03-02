@@ -6,6 +6,7 @@ import { processPaths } from './prepare/process-paths.js';
 import { gcReparenting, processSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { buildTrees } from './prepare/build-trees.js';
+import { CallTree } from './prepare/call-tree.js';
 
 function remapId(node, index) {
     node.id = index + 1;
@@ -158,6 +159,27 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         ms(value) {
             return (value / 1000).toFixed(1) + 'ms';
         },
+        select(tree, type, ...args) {
+            if (tree instanceof CallTree) {
+                let iterator;
+
+                switch (type) {
+                    case 'nodes':
+                        iterator = tree.selectNodes(...args);
+                        break;
+                    case 'children':
+                        iterator = tree.children(...args);
+                        break;
+                    case 'ancestors':
+                        iterator = tree.ancestors(...args);
+                        break;
+                }
+
+                if (iterator !== undefined) {
+                    return [...tree.map(iterator)];
+                }
+            }
+        },
         binCalls(_, tree, test, n = 500) {
             const { samples, timeDeltas, totalTime } = this.context.data;
             const mask = new Uint8Array(tree.dictionary.length);
@@ -249,6 +271,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         endTime,
         totalTime,
         callFrames,
+        callFramesTree,
         wellKnownCallFrames,
         areas,
         areasTree,

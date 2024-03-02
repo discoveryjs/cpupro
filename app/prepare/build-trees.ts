@@ -9,35 +9,34 @@ function rollupTree<T>(
     // input
     inputTree: CallTree<T>,
     // output
-    indexBySource: number[] | Uint32Array,
+    indexBySource: CallTree<T>['mapToIndex'],
     outputNodes: number[],
     hierarhyTree: HierarhyTree,
     // state
     cursor = 0,
-    parentValue = 0,
-    parentValueNode = 0
+    parentValue = indexBySource[cursor],
+    parentIndex = 0
 ) {
     const value = indexBySource[cursor];
-    let valueNode: number | undefined = parentValueNode;
+    let nodeIndex: number | undefined = parentIndex;
 
     if (value !== parentValue) {
-        let childByValueMap = hierarhyTree.get(parentValueNode);
+        let childByValueMap = hierarhyTree.get(parentIndex);
         if (childByValueMap === undefined) {
-            hierarhyTree.set(parentValueNode, childByValueMap = new Map());
+            hierarhyTree.set(parentIndex, childByValueMap = new Map());
         }
 
-        valueNode = childByValueMap.get(value);
-        if (valueNode === undefined) {
-            childByValueMap.set(value, valueNode = outputNodes.length);
+        nodeIndex = childByValueMap.get(value);
+        if (nodeIndex === undefined) {
+            childByValueMap.set(value, nodeIndex = outputNodes.length);
             outputNodes.push(value);
         }
     }
 
-    indexBySource[cursor] = valueNode;
+    indexBySource[cursor] = nodeIndex;
 
-    cursor = inputTree.firstChild[cursor];
-    while (cursor !== 0) {
-        // console.log('>>', tree.nodes[cursor].id);
+    const end = cursor + inputTree.subtreeSize[cursor];
+    while (cursor++ < end) {
         rollupTree(
             inputTree,
             indexBySource,
@@ -45,46 +44,45 @@ function rollupTree<T>(
             hierarhyTree,
             cursor,
             value,
-            valueNode
+            nodeIndex
         );
-        cursor = inputTree.nextSibling[cursor];
+        cursor += inputTree.subtreeSize[cursor];
     }
 }
 
 function callTreeFrom<T>(
     hierarhyTree: HierarhyTree,
     callTree: CallTree<T>,
+    outputNodes: number[],
     nested = new Uint32Array(callTree.dictionary.length),
-    node = 0
+    index = 0,
+    cursor = 0
 ) {
-    const value = callTree.nodes[node];
-    const childByValueMap = hierarhyTree.get(node);
+    const childByValueMap = hierarhyTree.get(index);
+    const value = outputNodes[index];
+    const nodeIndex = cursor++;
     const valueNested = nested[value];
 
+    callTree.nodes[nodeIndex] = value;
+    outputNodes[index] = nodeIndex;
+
     if (valueNested !== 0) {
-        callTree.nested[node] = valueNested;
+        callTree.nested[nodeIndex] = valueNested;
     }
 
     if (childByValueMap !== undefined) {
-        let prevChildIndex = 0;
+        nested[value] = nodeIndex;
 
-        nested[value] = node;
-
-        for (const childNode of childByValueMap.values()) {
-            callTree.parent[childNode] = node;
-
-            if (prevChildIndex === 0) {
-                callTree.firstChild[node] = childNode;
-            } else {
-                callTree.nextSibling[prevChildIndex] = childNode;
-            }
-
-            callTreeFrom(hierarhyTree, callTree, nested, childNode);
-            prevChildIndex = childNode;
+        for (const childIndex of childByValueMap.values()) {
+            callTree.parent[cursor] = nodeIndex;
+            cursor = callTreeFrom(hierarhyTree, callTree, outputNodes, nested, childIndex, cursor);
         }
 
+        callTree.subtreeSize[nodeIndex] = cursor - nodeIndex - 1;
         nested[value] = valueNested;
     }
+
+    return cursor;
 }
 
 // indexBySource
@@ -99,11 +97,11 @@ function buildTree<S extends CpuProCallFrame | CallTreeNode, D extends CallTreeN
 ) {
     const t1 = Date.now();
     // on the beginning index contains [source index] -> [dictionary index]
-    // later it remaps into [source index] -> [order index]
-    const indexBySource = sourceTree.nodes.map((index: number) =>
-        dictionaryIndexBySourceTreeNode(sourceTree.dictionary[index])
-    );
-    const outputNodes = [dictionaryIndexBySourceTreeNode(sourceTree.dictionary[sourceTree.mapToIndex[1]])];
+    // later it remaps into [source index] -> [nodes index]
+    const mapDict = sourceTree.dictionary.map(dictionaryIndexBySourceTreeNode);
+    const indexBySource = sourceTree.nodes.map((index: number) => mapDict[index]);
+    const rootIndex = mapDict[sourceTree.nodes[0]];
+    const outputNodes = [rootIndex];
     const hierarhyTree: HierarhyTree = new Map();
 
     const t2 = Date.now();
@@ -117,8 +115,11 @@ function buildTree<S extends CpuProCallFrame | CallTreeNode, D extends CallTreeN
     );
 
     const t3 = Date.now();
-    const outputTree = new CallTree(dictionary, indexBySource, new Uint32Array(outputNodes));
-    callTreeFrom(hierarhyTree, outputTree);
+    const outputTree = new CallTree(dictionary, indexBySource, new Uint32Array(outputNodes.length));
+    callTreeFrom(hierarhyTree, outputTree, outputNodes);
+    for (let i = 0; i < indexBySource.length; i++) {
+        indexBySource[i] = outputNodes[indexBySource[i]];
+    }
 
     if (TIMINGS) {
         console.log('---> buildTree', t2 - t1, t3 - t2, Date.now() - t3);
@@ -129,25 +130,22 @@ function buildTree<S extends CpuProCallFrame | CallTreeNode, D extends CallTreeN
 
 function computeTimings<T extends CallTreeNode>(samples: number[], timeDeltas: number[], tree: CallTree<T>) {
     const t = Date.now();
-    const selfTimes = new Uint32Array(tree.nodes.length);
-    const totalTimes = new Uint32Array(tree.nodes.length);
 
     for (let i = 0; i < samples.length; i++) {
-        selfTimes[tree.mapToIndex[samples[i]]] += timeDeltas[i];
+        tree.selfTimes[tree.mapToIndex[samples[i]]] += timeDeltas[i];
     }
 
     for (let i = tree.nodes.length - 1; i > 0; i--) {
-        const totalTime = selfTimes[i] + totalTimes[i];
+        const selfTime = tree.selfTimes[i];
+        const totalTime = selfTime + tree.nestedTimes[i];
 
-        totalTimes[i] = totalTime;
-        totalTimes[tree.parent[i]] += totalTime;
-    }
+        tree.nestedTimes[tree.parent[i]] += totalTime;
 
-    for (let i = 0; i < tree.nodes.length; i++) {
-        const fn = tree.dictionary[tree.nodes[i]];
-        fn.selfTime += selfTimes[i];
+        // populare subject fields
+        const subject = tree.dictionary[tree.nodes[i]];
+        subject.selfTime += selfTime;
         if (tree.nested[i] === 0) {
-            fn.totalTime += totalTimes[i];
+            subject.totalTime += totalTime;
         }
     }
 

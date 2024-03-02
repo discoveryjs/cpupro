@@ -47,8 +47,6 @@ export type CpuProArea = {
     name: string;
     selfTime: number;
     totalTime: number;
-    calls: [];
-    recursiveCalls: [];
 };
 
 export type PackageType =
@@ -72,8 +70,6 @@ export type CpuProPackage = {
     selfTime: number;
     totalTime: number;
     modules: CpuProModule[];
-    calls: [];
-    recursiveCalls: [];
 }
 
 export type ModuleType =
@@ -102,8 +98,6 @@ export type CpuProModule = {
     selfTime: number;
     totalTime: number;
     functions: CpuProFunction[];
-    calls: [];
-    recursiveCalls: [];
 };
 
 export type CpuProFunction = {
@@ -114,6 +108,4 @@ export type CpuProFunction = {
     loc: string | null;
     selfTime: 0;
     totalTime: 0;
-    calls: [];
-    recursiveCalls: [];
 };

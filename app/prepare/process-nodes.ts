@@ -116,7 +116,7 @@ function getCallFrame(
             functionName,
             lineNumber,
             columnNumber,
-            // these field will be populated on process call frames step
+            // these field will be populated on call frames processing step
             area: null as unknown as CpuProArea,
             package: null as unknown as CpuProPackage,
             module: null as unknown as CpuProModule,
@@ -139,18 +139,8 @@ function buildCallFrameTree(nodeId: number, nodes: V8CpuProfileNode[], tree: Cal
     tree.mapToIndex[nodeId] = nodeIndex;
 
     if (Array.isArray(node.children) && node.children.length > 0) {
-        let prevNodeOrderIndex = 0;
-
         for (const childId of node.children) {
             tree.parent[cursor] = nodeIndex;
-
-            if (prevNodeOrderIndex === 0) {
-                tree.firstChild[nodeIndex] = cursor;
-            } else {
-                tree.nextSibling[prevNodeOrderIndex] = cursor;
-            }
-
-            prevNodeOrderIndex = cursor;
             cursor = buildCallFrameTree(
                 childId,
                 nodes,
@@ -158,6 +148,8 @@ function buildCallFrameTree(nodeId: number, nodes: V8CpuProfileNode[], tree: Cal
                 cursor
             );
         }
+
+        tree.subtreeSize[nodeIndex] = cursor - nodeIndex - 1;
     }
 
     return cursor;
@@ -177,7 +169,7 @@ export function processNodes(nodes: V8CpuProfileNode[]) {
     }
 
     const t = Date.now();
-    const callFramesTree = new CallTree(callFrames, nodeById, new Uint32Array(nodes.length));
+    const callFramesTree = new CallTree(callFrames, nodeById, new Uint32Array(nodesCount));
     buildCallFrameTree(nodes[0].id, nodes, callFramesTree);
     if (TIMINGS) {
         console.log('>> buildCallFrameTree()', Date.now() - t);
