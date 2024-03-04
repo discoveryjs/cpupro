@@ -4,7 +4,7 @@ import { CpuProArea, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuPr
 import { makeFirstNextArrays } from './build-trees-wasm-wrapper.js';
 import { buildTreeAndCompareWithBaseline } from './build-trees-baseline.js';
 
-const compareWithBaseline = true;
+const compareWithBaseline = false;
 
 function finalizeArrays(
     count: number,
@@ -197,11 +197,11 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
     if (TIMINGS) {
         console.info(
             '---> buildTree()',
-            rollupTreeStart - initTimeStart,
-            finalizeStart - rollupTreeStart,
+            rollupTreeStart - initTimeStart, '+',
+            finalizeStart - rollupTreeStart, '+',
             Date.now() - finalizeStart,
             '=',
-            Date.now() - initTimeStart
+            Date.now() - initTimeStart, 'ms'
         );
     }
 

@@ -125,11 +125,11 @@ export function baselineBuildTree<S extends CpuProNode, D extends CpuProHierarch
     if (TIMINGS) {
         console.info(
             '---> buildTree() [baseline]',
-            rollupTreeStart - initTimeStart,
-            finalizeStart - rollupTreeStart,
+            rollupTreeStart - initTimeStart, '+',
+            finalizeStart - rollupTreeStart, '+',
             Date.now() - finalizeStart,
             '=',
-            Date.now() - initTimeStart
+            Date.now() - initTimeStart, 'ms'
         );
     }
 
@@ -152,8 +152,8 @@ export function buildTreeAndCompareWithBaseline<S extends CpuProNode, D extends 
     const diff = treeTime - baselineTime;
     const diffSign = Math.sign(diff) !== -1 ? '+' : '';
     console.info(
-        'Time [baseline]:', baselineTime,
-        '\nTime:', treeTime,
+        'Time [baseline]:', baselineTime, 'ms',
+        '\nTime:', treeTime, 'ms',
         '\nDiff:',
         diff && baselineTime && treeTime
             ? `${diffSign}${diff}ms (${diffSign}${
