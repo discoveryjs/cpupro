@@ -3,6 +3,7 @@ import { ModuleType, PackageType, WellKnownName, WellKnownType } from './types';
 // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
 export const OLD_COMPUTATIONS = true;
 export const TIMINGS = true;
+export const USE_WASM = true;
 
 export const EMPTY_ARRAY = Object.freeze([]);
 export const maxRegExpLength = 65;

@@ -7,43 +7,48 @@ type Entry<T> = {
 };
 
 type NumericArray =
-    | number[]
-    | Uint8Array
-    | Uint16Array
+    // | number[]
+    // | Uint8Array
+    // | Uint16Array
     | Uint32Array;
 
 export class CallTree<T> {
+    dictionary: T[];
+    mapToIndex: NumericArray;
     root: Entry<T>;
+    nodes: NumericArray;
     parent: NumericArray;
     subtreeSize: NumericArray;
-    selfTimes: NumericArray;
+    selfTimes: Uint32Array;
     nested: NumericArray;
-    nestedTimes: NumericArray;
+    nestedTimes: Uint32Array;
     entries: Map<number, WeakRef<Entry<T>>>;
 
     constructor(
-        public dictionary: T[],
-        public mapToIndex: NumericArray,
-        public nodes: NumericArray = new Uint32Array(dictionary.length)
+        dictionary: T[],
+        mapToIndex: NumericArray,
+        nodes?: NumericArray,
+        parent?: NumericArray,
+        subtreeSize?: NumericArray,
+        nested?: NumericArray
     ) {
-        this.parent = new Uint32Array(nodes.length);
-        this.subtreeSize = new Uint32Array(nodes.length);
+        this.dictionary = dictionary;
+        this.mapToIndex = mapToIndex;
+        this.nodes = nodes || new Uint32Array(dictionary.length);
+        this.parent = parent || new Uint32Array(nodes.length);
+        this.subtreeSize = subtreeSize || new Uint32Array(nodes.length);
         this.subtreeSize[0] = nodes.length - 1;
         this.selfTimes = new Uint32Array(nodes.length);
-        this.nested = new Uint32Array(nodes.length);
+        this.nested = nested || new Uint32Array(nodes.length);
         this.nestedTimes = new Uint32Array(nodes.length);
         this.entries = new Map();
 
+        // use Object.defineProperty() since jora iterates through own properties only
         Object.defineProperty(this, 'root', {
             enumerable: true,
             get: () => this.getEntry(0)
         });
     }
-
-    // get root() {
-    //     debugger;
-    //     return this.getEntry(0);
-    // }
 
     createEntry(nodeIndex: number): Entry<T> {
         const entry = {

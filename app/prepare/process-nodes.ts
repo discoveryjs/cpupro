@@ -116,6 +116,8 @@ function getCallFrame(
             functionName,
             lineNumber,
             columnNumber,
+            selfTime: 0,
+            totalTime: 0,
             // these field will be populated on call frames processing step
             area: null as unknown as CpuProArea,
             package: null as unknown as CpuProPackage,

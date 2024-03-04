@@ -18,6 +18,20 @@ export type V8CpuProfileCallFrame = {
     columnNumber: number;
 };
 
+export type WellKnownName =
+    | '(root)'
+    | '(program)'
+    | '(idle)'
+    | '(garbage collector)';
+export type WellKnownType =
+    | 'root'
+    | 'program'
+    | 'idle'
+    | 'gc';
+
+export type CpuProHierarchyNode = CpuProArea | CpuProPackage | CpuProModule | CpuProFunction;
+export type CpuProNode = CpuProCallFrame | CpuProHierarchyNode;
+
 export type CpuProCallFrame = {
     id: number;
     scriptId: number;
@@ -29,18 +43,9 @@ export type CpuProCallFrame = {
     package: CpuProPackage;
     module: CpuProModule;
     function: CpuProFunction;
+    selfTime: number;
+    totalTime: number;
 };
-
-export type WellKnownName =
-    | '(root)'
-    | '(program)'
-    | '(idle)'
-    | '(garbage collector)';
-export type WellKnownType =
-    | 'root'
-    | 'program'
-    | 'idle'
-    | 'gc';
 
 export type CpuProArea = {
     id: number;
