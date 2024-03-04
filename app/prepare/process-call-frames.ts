@@ -78,7 +78,7 @@ function resolvePackage(
                 }
             }
 
-            if (!name) {
+            if (ref === 'unknown') {
                 type = 'script';
 
                 if (/^https?:/.test(modulePath)) {
