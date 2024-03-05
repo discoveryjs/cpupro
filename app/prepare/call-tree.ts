@@ -1,6 +1,6 @@
 type Entry<T> = {
     nodeIndex: number;
-    subject: T;
+    host: T;
     parent: Entry<T> | null;
     subtreeSize: number;
     children?: Entry<T>[];
@@ -53,9 +53,11 @@ export class CallTree<T> {
     createEntry(nodeIndex: number): Entry<T> {
         const entry = {
             nodeIndex,
-            subject: this.dictionary[this.nodes[nodeIndex]],
+            host: this.dictionary[this.nodes[nodeIndex]],
             parent: null,
-            subtreeSize: this.subtreeSize[nodeIndex]
+            subtreeSize: this.subtreeSize[nodeIndex],
+            selfTime: this.selfTimes[nodeIndex],
+            totalTime: this.selfTimes[nodeIndex] + this.nestedTimes[nodeIndex]
         };
 
         if (nodeIndex !== 0) {

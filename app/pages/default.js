@@ -147,10 +147,10 @@ const flamecharts = {
                 view: 'toggle-group',
                 name: 'dataset',
                 data: [
-                    { text: 'Areas', value: 'areaTree' },
-                    { text: 'Packages', value: 'packageTree', active: true },
-                    { text: 'Modules', value: 'moduleTree' },
-                    { text: 'Functions', value: 'functionTree' }
+                    { text: 'Areas', value: 'areasTree' },
+                    { text: 'Packages', value: 'packagesTree', active: true },
+                    { text: 'Modules', value: 'modulesTree' },
+                    { text: 'Functions', value: 'functionsTree' }
                 ]
             },
             {
@@ -215,9 +215,9 @@ const flamecharts = {
         ]
     },
     content: `flamechart:
-        $root: $[#.dataset];
-        $children: $root.children.[host | (#.showIdle or name != "(idle)") and (#.showProgram or name != "(program)") and (#.showGC or name != "(garbage collector)")];
-        { ...$root, $children, totalTime: $children.sum(=>totalTime) }
+        $tree: $[#.dataset];
+        $children: $tree.root.children.[host | (#.showIdle or name != "(idle)") and (#.showProgram or name != "(program)") and (#.showGC or name != "(garbage collector)")];
+        { ...$tree.root, $children, totalTime: $children.sum(=>totalTime) }
     `
 };
 
