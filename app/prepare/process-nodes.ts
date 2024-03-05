@@ -132,26 +132,37 @@ function getCallFrame(
     return result;
 }
 
-function buildCallFrameTree(nodeId: number, nodes: V8CpuProfileNode[], tree: CallTree<unknown>, cursor = 0) {
-    const idx = tree.mapToIndex[nodeId];
-    const node = nodes[idx];
+function buildCallFrameTree(
+    nodeId: number,
+    sourceNodes: V8CpuProfileNode[],
+    mapToIndex: Uint32Array,
+    nodes: Uint32Array,
+    parent: Uint32Array,
+    subtreeSize: Uint32Array,
+    cursor = 0
+) {
+    const idx = mapToIndex[nodeId];
+    const node = sourceNodes[idx];
     const nodeIndex = cursor++;
 
-    tree.nodes[nodeIndex] = idx;
-    tree.mapToIndex[nodeId] = nodeIndex;
+    nodes[nodeIndex] = idx;
+    mapToIndex[nodeId] = nodeIndex;
 
     if (Array.isArray(node.children) && node.children.length > 0) {
         for (const childId of node.children) {
-            tree.parent[cursor] = nodeIndex;
+            parent[cursor] = nodeIndex;
             cursor = buildCallFrameTree(
                 childId,
+                sourceNodes,
+                mapToIndex,
                 nodes,
-                tree,
+                parent,
+                subtreeSize,
                 cursor
             );
         }
 
-        tree.subtreeSize[nodeIndex] = cursor - nodeIndex - 1;
+        subtreeSize[nodeIndex] = cursor - nodeIndex - 1;
     }
 
     return cursor;
@@ -170,13 +181,21 @@ export function processNodes(nodes: V8CpuProfileNode[]) {
         nodeById[nodes[i].id] = i;
     }
 
-    const t = Date.now();
+    const buildTreeStart = Date.now();
     const callFramesTree = new CallTree(callFrames, nodeById, new Uint32Array(nodesCount));
-    buildCallFrameTree(nodes[0].id, nodes, callFramesTree);
+    buildCallFrameTree(
+        nodes[0].id,
+        nodes,
+        callFramesTree.mapToIndex, // pass arrays as separate values reduces property read number, good for performance
+        callFramesTree.nodes,
+        callFramesTree.parent,
+        callFramesTree.subtreeSize
+    );
     if (TIMINGS) {
-        console.log('>> buildCallFrameTree()', Date.now() - t);
+        console.log('>> buildCallFrameTree()', Date.now() - buildTreeStart);
     }
 
+    const dedupCallFramesStart = Date.now();
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[callFramesTree.nodes[i]];
         const callFrame = getCallFrame(
@@ -187,6 +206,9 @@ export function processNodes(nodes: V8CpuProfileNode[]) {
         );
 
         callFramesTree.nodes[i] = callFrame.id - 1;
+    }
+    if (TIMINGS) {
+        console.log('>> dedup call frames', Date.now() - dedupCallFramesStart);
     }
 
     return {

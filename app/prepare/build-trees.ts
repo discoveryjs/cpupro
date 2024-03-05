@@ -77,6 +77,7 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
     dictionaryIndexBySourceTreeNode: (node: S) => number
 ) {
     const initTimeStart = Date.now();
+    const sourceNodes = sourceTree.nodes;
     const sourceToOutputIndex = new Uint32Array(sourceTree.dictionary.length);
     const indexBySource = new Uint32Array(sourceTree.nodes.length);
     const { firstChild, nextSibling } = makeFirstNextArrays(sourceTree.parent, sourceTree.subtreeSize);
@@ -92,12 +93,12 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
     const rollupTreeStart = Date.now();
     while (stack.length > 0) {
         const nodeIndex = stack.pop();
-        const nodeValue = sourceToOutputIndex[sourceTree.nodes[nodeIndex]];
+        const nodeValue = sourceToOutputIndex[sourceNodes[nodeIndex]];
 
         let prevCursor = nodeIndex;
         let cursor = firstChild[nodeIndex];
         while (cursor !== 0) {
-            const childValue = sourceToOutputIndex[sourceTree.nodes[cursor]];
+            const childValue = sourceToOutputIndex[sourceNodes[cursor]];
 
             if (childValue === nodeValue) {
                 const cursorFirstChild = firstChild[cursor];
@@ -215,21 +216,22 @@ function computeTimings<T extends CpuProNode>(
     tree: CallTree<T>
 ) {
     const startTime = Date.now();
+    const { dictionary, mapToIndex, nodes, parent, nested, selfTimes, nestedTimes } = tree;
 
     for (let i = 0; i < samples.length; i++) {
-        tree.selfTimes[tree.mapToIndex[samples[i]]] += timeDeltas[i];
+        selfTimes[mapToIndex[samples[i]]] += timeDeltas[i];
     }
 
-    for (let i = tree.nodes.length - 1; i > 0; i--) {
-        const selfTime = tree.selfTimes[i];
-        const totalTime = selfTime + tree.nestedTimes[i];
+    for (let i = nodes.length - 1; i > 0; i--) {
+        const selfTime = selfTimes[i];
+        const totalTime = selfTime + nestedTimes[i];
 
-        tree.nestedTimes[tree.parent[i]] += totalTime;
+        nestedTimes[parent[i]] += totalTime;
 
         // populare subject fields
-        const subject = tree.dictionary[tree.nodes[i]];
+        const subject = dictionary[nodes[i]];
         subject.selfTime += selfTime;
-        if (tree.nested[i] === 0) {
+        if (nested[i] === 0) {
             subject.totalTime += totalTime;
         }
     }

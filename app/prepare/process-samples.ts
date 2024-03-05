@@ -1,5 +1,18 @@
 import { V8CpuProfileNode } from './types';
 
+// fastest way to find max id
+function findMaxId(nodes: V8CpuProfileNode[]) {
+    let maxId = nodes[nodes.length - 1].id;
+
+    for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].id > maxId) {
+            maxId = nodes[i].id;
+        }
+    }
+
+    return maxId;
+}
+
 export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[]) {
     const gcNode = nodes.find(node =>
         node.callFrame.functionName === '(garbage collector)'
@@ -11,10 +24,7 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[]) {
 
     const gcNodeId = gcNode.id;
     const stackToGc = new Map();
-    let id = 1 + nodes.reduce(
-        (max, node) => node.id > max ? node.id : max,
-        nodes[0].id
-    );
+    let id = findMaxId(nodes) + 1;
 
     for (let i = 0, prevNodeId = -1; i < samples.length; i++) {
         const nodeId = samples[i];
