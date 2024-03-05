@@ -1,6 +1,6 @@
 discovery.page.define('function', {
     view: 'context',
-    data: 'functions[=>id = +#.id]',
+    data: 'functionsTree.dictionary[=>id = +#.id]',
     content: [
         {
             view: 'page-header',
@@ -67,12 +67,12 @@ discovery.page.define('function', {
         {
             view: 'context',
             modifiers: [
-                {
-                    view: 'checkbox',
-                    name: 'groupByRef',
-                    checked: true,
-                    content: 'text:"Group call sites"'
-                }
+                // {
+                //     view: 'checkbox',
+                //     name: 'groupByRef',
+                //     checked: true,
+                //     content: 'text:"Group call sites"'
+                // }
             ],
             content: {
                 view: 'hstack',
@@ -85,13 +85,11 @@ discovery.page.define('function', {
                             {
                                 view: 'tree',
                                 data: `
-                                    calls
-                                    | (not #.groupByRef ?: groupByCallSiteRef())
+                                    #.data.functionsTree.select('nodes', $)
                                     | sort(totalTime desc)
                                 `,
                                 children: `
                                     children
-                                    | (not #.groupByRef ?: groupByCallSiteRef())
                                     | sort(totalTime desc)
                                 `,
                                 item: {
@@ -100,12 +98,12 @@ discovery.page.define('function', {
                                         {
                                             view: 'switch',
                                             content: [
-                                                { when: '(function.id or to.id or id) = +#.id', content: {
+                                                { when: 'host.id = +#.id', content: {
                                                     view: 'block',
                                                     className: 'self',
-                                                    content: 'text:function or $ | name'
+                                                    content: 'text:host.name'
                                                 } },
-                                                { content: 'auto-link:function or to or $' }
+                                                { content: 'auto-link:host' }
                                             ]
                                         },
                                         {
@@ -134,8 +132,8 @@ discovery.page.define('function', {
                                             }
                                         },
                                         // { view: 'total-time', when: 'children', data: 'totalTime' },
-                                        'module-badge',
-                                        'loc-badge'
+                                        'module-badge:host',
+                                        'loc-badge:host'
                                     ]
                                 }
                             }
@@ -150,14 +148,11 @@ discovery.page.define('function', {
                                 view: 'tree',
                                 expanded: 3,
                                 data: `
-                                    calls
-                                    | (not #.groupByRef ?: groupByCallSiteRef())
+                                    #.data.functionsTree.select('nodes', $)
                                     | sort(totalTime desc)
                                 `,
                                 children: `
-                                    grouped or [$]
-                                    | .(parent or [])
-                                    | (not #.groupByRef ?: groupByCallSiteRef())
+                                    [parent]
                                     | sort(totalTime desc)
                                 `,
                                 item: {
@@ -166,12 +161,12 @@ discovery.page.define('function', {
                                         {
                                             view: 'switch',
                                             content: [
-                                                { when: '(function.id or to.id or id) = +#.id', content: {
+                                                { when: 'host.id = +#.id', content: {
                                                     view: 'block',
                                                     className: 'self',
-                                                    content: 'text:function or $ | name'
+                                                    content: 'text:host.name'
                                                 } },
-                                                { content: 'auto-link:function or to or $' }
+                                                { content: 'auto-link:host' }
                                             ]
                                         },
                                         {
@@ -189,8 +184,8 @@ discovery.page.define('function', {
                                                 content: 'text:"Total time – the entire duration spent on the execution of a function. This includes both the \'self time\', which is the time taken by the function itself to execute its own code, and the \'nested time\', which is the time spent on executing all the other functions that are called from within this function"'
                                             }
                                         },
-                                        'module-badge',
-                                        'loc-badge'
+                                        'module-badge:host',
+                                        'loc-badge:host'
                                     ]
                                 }
                             }
