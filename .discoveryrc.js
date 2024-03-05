@@ -9,8 +9,6 @@ module.exports = {
     data: './data',
     view: {
         assets: [
-            './mode-regexp.css',
-            './mode-regexp.js',
             './pages/common.css',
             './pages/default.js',
             './pages/default.css',
@@ -19,6 +17,8 @@ module.exports = {
             './pages/function.js',
             './pages/module.js',
             './pages/package.js',
+            './views/misc/mode-regexp.css',
+            './views/misc/mode-regexp.js',
             './views/duration.css',
             './views/duration.js',
             './views/flamechart.css',
@@ -33,8 +33,6 @@ module.exports = {
             './views/package-badge.js',
             './views/page-indicator.css',
             './views/page-indicator.js',
-            './views/the-spice-must-flow.css',
-            './views/the-spice-must-flow.js',
             './views/time.css',
             './views/time.js',
             './views/time-ruler.css',
