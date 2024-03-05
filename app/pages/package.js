@@ -80,8 +80,6 @@ discovery.page.define('package', {
                     ]
                 }
             ]
-        },
-
-        'flow'
+        }
     ]
 });

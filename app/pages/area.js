@@ -99,8 +99,6 @@ discovery.page.define('area', {
                 { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
                 { header: 'Area', content: 'auto-link:to' }
             ]
-        },
-
-        'flow'
+        }
     ]
 });
