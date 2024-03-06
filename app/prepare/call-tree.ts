@@ -52,8 +52,8 @@ export class CallTree<T> {
             get: () => this.getEntry(0)
         });
 
-        this.selfTimes = new Uint32Array(nodes.length);
-        this.nestedTimes = new Uint32Array(nodes.length);
+        this.selfTimes = new Uint32Array();
+        this.nestedTimes = new Uint32Array();
     }
 
     createEntry(nodeIndex: number): Entry<T> {

@@ -213,7 +213,6 @@ export function processNodes(nodes: V8CpuProfileNode[]) {
 
     return {
         callFrames,
-        callFramesTree,
-        nodeById
+        callFramesTree
     };
 }

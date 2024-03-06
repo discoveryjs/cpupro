@@ -65,8 +65,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     markTime('processNodes()');
     const {
         callFrames,
-        callFramesTree,
-        nodeById
+        callFramesTree
     } = processNodes(data.nodes);
 
     markTime('processCallFrames()');
@@ -78,22 +77,10 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         functions
     } = processCallFrames(callFrames);
 
-    markTime('processSamples()');
-    processSamples(samples, nodeById);
-
     markTime('processPaths()');
     processPaths(packages, modules, functions);
 
-    // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
-    if (OLD_COMPUTATIONS) {
-        if (wellKnownCallFrames.idle) {
-            samples[0] = wellKnownCallFrames.idle.id - 1;
-        } else {
-            timeDeltas[0] = 0;
-        }
-    }
-
-    markTime('sorting & marking');
+    markTime('sorting & marking hierarchy nodes');
     areas.sort((a, b) => a.id < b.id ? -1 : 0).forEach(remapId);
     areas.forEach(markAsArea);
 
@@ -109,35 +96,36 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     // build trees should be performed after dictionaries are sorted and remaped
     markTime('buildTrees()');
     const {
-        areasTree,
-        packagesTree,
+        functionsTree,
         modulesTree,
-        functionsTree
+        packagesTree,
+        areasTree
     } = buildTrees(
         callFramesTree,
-        areas,
-        packages,
-        modules,
         functions,
-        samples,
-        timeDeltas
+        modules,
+        packages,
+        areas
     );
 
-    // // build node types tree & aggregate timinigs
-    // data.areas = [...areas.values()].sort((a, b) => a.id < b.id ? -1 : 0);
-    // data.areaTree = aggregateNodes(wellKnownCallFrames.root, areas, node => node.module.area);
-
-    // // build package tree & aggregate timinigs
-    // data.packages = [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1);
-    // data.packageTree = aggregateNodes(wellKnownCallFrames.root, packages, node => node.module.package);
-
-    // // build module tree & aggregate timinigs
-    // data.modules = [...modules.values()].sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1);
-    // data.moduleTree = aggregateNodes(wellKnownCallFrames.root, modules, node => node.module);
-
-    // // aggregate function timinigs
-    // data.functions = [...functions.values()];
-    // data.functionTree = aggregateNodes(wellKnownCallFrames.root, functions, node => node.function);
+    markTime('processSamples()');
+    // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
+    if (OLD_COMPUTATIONS) {
+        if (wellKnownCallFrames.idle) {
+            samples[0] = wellKnownCallFrames.idle.id - 1;
+        } else {
+            timeDeltas[0] = 0;
+        }
+    }
+    processSamples(
+        samples,
+        timeDeltas,
+        callFramesTree,
+        functionsTree,
+        modulesTree,
+        packagesTree,
+        areasTree
+    );
 
     // extend jora's queries with custom methods
     addQueryHelpers({
@@ -182,6 +170,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         },
         binCalls(_, tree, test, n = 500) {
             const { samples, timeDeltas, totalTime } = this.context.data;
+            const { dictionary, nodes, mapToIndex } = tree;
             const mask = new Uint8Array(tree.dictionary.length);
             const bins = new Float64Array(n);
             const step = totalTime / n;
@@ -190,15 +179,15 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
             for (let i = 0; i < mask.length; i++) {
                 const accept = typeof test === 'function'
-                    ? test(tree.dictionary[i])
-                    : test === tree.dictionary[i];
+                    ? test(dictionary[i])
+                    : test === dictionary[i];
                 if (accept) {
                     mask[i] = 1;
                 }
             }
 
             for (let i = 0, offset = 0; i < samples.length; i++) {
-                const accept = mask[tree.nodes[tree.mapToIndex[samples[i]]]];
+                const accept = mask[nodes[mapToIndex[samples[i]]]];
                 const delta = timeDeltas[i];
 
                 if (offset + delta < end) {
@@ -254,7 +243,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     addValueAnnotation('#.key = "totalTime" and $ and { text: duration() }');
 
     markTime('producing result');
-    const areasSet = new Set(areas.map(m => m.name));
+    const areasSet = new Set(areas.map(area => area.name));
     const result = {
         meta: {
             engine: 'V8',
@@ -270,9 +259,9 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         startOverheadTime,
         endTime,
         totalTime,
+        wellKnownCallFrames,
         callFrames,
         callFramesTree,
-        wellKnownCallFrames,
         areas,
         areasTree,
         packages,

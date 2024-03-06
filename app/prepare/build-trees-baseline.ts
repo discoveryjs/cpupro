@@ -1,5 +1,5 @@
 import { isEqualArrays } from './build-trees-utils.js';
-import { buildTree } from './build-trees.js';
+import { buildCallTree } from './build-trees.js';
 import { CallTree } from './call-tree.js';
 import { TIMINGS } from './const.js';
 import { CpuProHierarchyNode, CpuProNode } from './types.js';
@@ -136,7 +136,7 @@ export function baselineBuildTree<S extends CpuProNode, D extends CpuProHierarch
     return outputTree;
 }
 
-export function buildTreeAndCompareWithBaseline<S extends CpuProNode, D extends CpuProHierarchyNode>(
+export function buildCallTreeAndCompareWithBaseline<S extends CpuProNode, D extends CpuProHierarchyNode>(
     sourceTree: CallTree<S>,
     dictionary: D[],
     dictionaryIndexBySourceTreeNode: (node: S) => number
@@ -146,7 +146,7 @@ export function buildTreeAndCompareWithBaseline<S extends CpuProNode, D extends 
     const baselineTime = Date.now() - baselineTreeBuildStart;
 
     const buildTreeStart = Date.now();
-    const tree = buildTree(sourceTree, dictionary, dictionaryIndexBySourceTreeNode);
+    const tree = buildCallTree(sourceTree, dictionary, dictionaryIndexBySourceTreeNode);
     const treeTime = Date.now() - buildTreeStart;
 
     const diff = treeTime - baselineTime;

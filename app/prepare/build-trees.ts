@@ -2,7 +2,7 @@ import { TIMINGS } from './const';
 import { CallTree } from './call-tree.js';
 import { CpuProArea, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from './types.js';
 import { makeFirstNextArrays } from './build-trees-wasm-wrapper.js';
-import { buildTreeAndCompareWithBaseline } from './build-trees-baseline.js';
+import { buildCallTreeAndCompareWithBaseline } from './build-trees-baseline.js';
 
 const compareWithBaseline = false;
 
@@ -11,8 +11,8 @@ function finalizeArrays(
     dictSize: number,
     firstChild: Uint32Array,
     nextSibling: Uint32Array,
-    indexBySource: Uint32Array,
-    cursorToValue: Uint32Array,
+    sourceToNode: Uint32Array,
+    sourceToDictionary: Uint32Array,
     sourceNodes: Uint32Array
 ) {
     const nodes = new Uint32Array(count);
@@ -25,14 +25,14 @@ function finalizeArrays(
     let cursor = 0;
 
     do {
-        const valueIndex = cursorToValue[sourceNodes[cursor]];
+        const valueIndex = sourceToDictionary[sourceNodes[cursor]];
         const nestedLevel = nestedMask[valueIndex];
         const first = firstChild[cursor];
         let next = nextSibling[cursor];
         let nodeIndex = index++;
 
         nodes[nodeIndex] = cursor;
-        remap[indexBySource[cursor]] = nodeIndex;
+        remap[sourceToNode[cursor]] = nodeIndex;
 
         if (nestedLevel !== 0) {
             nested[nodeIndex] = nestedLevel;
@@ -48,7 +48,7 @@ function finalizeArrays(
         } else {
             cursor = 0;
             while (nodeIndex = parent[nodeIndex]) {
-                nestedMask[cursorToValue[sourceNodes[nodes[nodeIndex]]]]--;
+                nestedMask[sourceToDictionary[sourceNodes[nodes[nodeIndex]]]]--;
                 if (next = nextSibling[nodes[nodeIndex]]) {
                     parent[index] = parent[nodeIndex];
                     cursor = next;
@@ -58,28 +58,28 @@ function finalizeArrays(
         }
     } while (cursor !== 0);
 
-    nodes[0] = cursorToValue[sourceNodes[nodes[0]]];
+    nodes[0] = sourceToDictionary[sourceNodes[nodes[0]]];
     for (let i = nodes.length - 1; i > 0; i--) {
         subtreeSize[parent[i]] += subtreeSize[i] + 1;
-        nodes[i] = cursorToValue[sourceNodes[nodes[i]]];
+        nodes[i] = sourceToDictionary[sourceNodes[nodes[i]]];
     }
 
-    for (let i = 0; i < indexBySource.length; i++) {
-        indexBySource[i] = remap[indexBySource[i]];
+    for (let i = 0; i < sourceToNode.length; i++) {
+        sourceToNode[i] = remap[sourceToNode[i]];
     }
 
     return { nodes, parent, subtreeSize, nested };
 }
 
-export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
+export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
     sourceTree: CallTree<S>,
     dictionary: D[],
     dictionaryIndexBySourceTreeNode: (node: S) => number
 ) {
     const initTimeStart = Date.now();
     const sourceNodes = sourceTree.nodes;
-    const sourceToOutputIndex = new Uint32Array(sourceTree.dictionary.length);
-    const indexBySource = new Uint32Array(sourceTree.nodes.length);
+    const sourceToDictionary = new Uint32Array(sourceTree.dictionary.length);
+    const sourceToNode = new Uint32Array(sourceNodes.length);
     const { firstChild, nextSibling } = makeFirstNextArrays(sourceTree.parent, sourceTree.subtreeSize);
     const valueToNodeEpoch = new Uint32Array(dictionary.length);
     const valueToNode = new Uint32Array(dictionary.length);
@@ -87,23 +87,23 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
     let nodesCount = 1;
 
     for (let i = 0; i < sourceTree.dictionary.length; i++) {
-        sourceToOutputIndex[i] = dictionaryIndexBySourceTreeNode(sourceTree.dictionary[i]);
+        sourceToDictionary[i] = dictionaryIndexBySourceTreeNode(sourceTree.dictionary[i]);
     }
 
     const rollupTreeStart = Date.now();
     while (stack.length > 0) {
         const nodeIndex = stack.pop();
-        const nodeValue = sourceToOutputIndex[sourceNodes[nodeIndex]];
+        const nodeValue = sourceToDictionary[sourceNodes[nodeIndex]];
 
         let prevCursor = nodeIndex;
         let cursor = firstChild[nodeIndex];
         while (cursor !== 0) {
-            const childValue = sourceToOutputIndex[sourceNodes[cursor]];
+            const childValue = sourceToDictionary[sourceNodes[cursor]];
 
             if (childValue === nodeValue) {
                 const cursorFirstChild = firstChild[cursor];
 
-                indexBySource[cursor] = indexBySource[nodeIndex];
+                sourceToNode[cursor] = sourceToNode[nodeIndex];
 
                 if (prevCursor === nodeIndex) {
                     firstChild[prevCursor] = cursorFirstChild || nextSibling[cursor];
@@ -132,7 +132,7 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
                     const cursorFirstChild = firstChild[cursor];
                     const existedCursor = valueToNode[childValue];
 
-                    indexBySource[cursor] = indexBySource[existedCursor];
+                    sourceToNode[cursor] = sourceToNode[existedCursor];
                     nextSibling[prevCursor] = nextSibling[cursor];
 
                     if (cursorFirstChild) {
@@ -165,7 +165,7 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
                     }
                 } else {
                     // create new
-                    indexBySource[cursor] = nodesCount++;
+                    sourceToNode[cursor] = nodesCount++;
                     valueToNodeEpoch[childValue] = nodeIndex + 1;
                     valueToNode[childValue] = cursor;
                     prevCursor = cursor;
@@ -186,14 +186,10 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
         dictionary.length,
         firstChild,
         nextSibling,
-        indexBySource,
-        sourceToOutputIndex,
-        sourceTree.nodes
+        sourceToNode,
+        sourceToDictionary,
+        sourceNodes
     );
-
-    // for (let i = 0; i < nodes.length; i++) {
-    //     nodes[i] = sourceToOutputIndex[sourceTree.nodes[nodes[i]]];
-    // }
 
     if (TIMINGS) {
         console.info(
@@ -206,42 +202,10 @@ export function buildTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
         );
     }
 
-    return new CallTree(dictionary, indexBySource, nodes, parent, subtreeSize, nested);
+    return new CallTree(dictionary, sourceToNode, nodes, parent, subtreeSize, nested);
 }
 
-function computeTimings<T extends CpuProNode>(
-    name: string,
-    samples: number[],
-    timeDeltas: number[],
-    tree: CallTree<T>
-) {
-    const startTime = Date.now();
-    const { dictionary, mapToIndex, nodes, parent, nested, selfTimes, nestedTimes } = tree;
-
-    for (let i = 0; i < samples.length; i++) {
-        selfTimes[mapToIndex[samples[i]]] += timeDeltas[i];
-    }
-
-    for (let i = nodes.length - 1; i > 0; i--) {
-        const selfTime = selfTimes[i];
-        const totalTime = selfTime + nestedTimes[i];
-
-        nestedTimes[parent[i]] += totalTime;
-
-        // populare subject fields
-        const subject = dictionary[nodes[i]];
-        subject.selfTime += selfTime;
-        if (nested[i] === 0) {
-            subject.totalTime += totalTime;
-        }
-    }
-
-    if (TIMINGS) {
-        console.log(`${name}:`, Date.now() - startTime);
-    }
-}
-
-function buildTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
+function buildCallTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
     name: string,
     sourceTree: CallTree<S>,
     dictionary: D[],
@@ -250,8 +214,8 @@ function buildTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
     console.group(`Build tree for ${name}`);
     try {
         return compareWithBaseline
-            ? buildTreeAndCompareWithBaseline(sourceTree, dictionary, dictionaryIndexBySourceTreeNode).tree
-            : buildTree(sourceTree, dictionary, dictionaryIndexBySourceTreeNode);
+            ? buildCallTreeAndCompareWithBaseline(sourceTree, dictionary, dictionaryIndexBySourceTreeNode).tree
+            : buildCallTree(sourceTree, dictionary, dictionaryIndexBySourceTreeNode);
     } finally {
         console.groupEnd();
     }
@@ -259,35 +223,20 @@ function buildTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
 
 export function buildTrees(
     callFramesTree: CallTree<CpuProCallFrame>,
-    areas: CpuProArea[],
-    packages: CpuProPackage[],
-    modules: CpuProModule[],
     functions: CpuProFunction[],
-    samples: number[],
-    timeDeltas: number[]
+    modules: CpuProModule[],
+    packages: CpuProPackage[],
+    areas: CpuProArea[]
 ) {
-    const areasTree = buildTreeFor('areas', callFramesTree, areas, callFrame => callFrame.area.id - 1);
-    const packagesTree = buildTreeFor('packages', callFramesTree, packages, callFrame => callFrame.package.id - 1);
-    const modulesTree = buildTreeFor('modules', callFramesTree, modules, callFrame => callFrame.module.id - 1);
-    const functionsTree = buildTreeFor('functions', callFramesTree, functions, callFrame => callFrame.function.id - 1);
-
-    TIMINGS && console.group('Compute timings');
-    for (let i = 0; i < 1; i++) {
-        const startTime = Date.now();
-
-        computeTimings('areas', samples, timeDeltas, areasTree);
-        computeTimings('packages', samples, timeDeltas, packagesTree);
-        computeTimings('modules', samples, timeDeltas, modulesTree);
-        computeTimings('functions', samples, timeDeltas, functionsTree);
-
-        TIMINGS && console.log('Total time:', Date.now() - startTime);
-    }
-    TIMINGS && console.groupEnd();
+    const functionsTree = buildCallTreeFor('functions', callFramesTree, functions, callFrame => callFrame.function.id - 1);
+    const modulesTree = buildCallTreeFor('modules', functionsTree, modules, callFrame => callFrame.module.id - 1);
+    const packagesTree = buildCallTreeFor('packages', modulesTree, packages, callFrame => callFrame.package.id - 1);
+    const areasTree = buildCallTreeFor('areas', packagesTree, areas, callFrame => callFrame.area.id - 1);
 
     return {
-        areasTree,
-        packagesTree,
+        functionsTree,
         modulesTree,
-        functionsTree
+        packagesTree,
+        areasTree
     };
 }
