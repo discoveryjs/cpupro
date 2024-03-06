@@ -214,20 +214,8 @@ export function processSamples(
     };
 }
 
-// fastest way to find max id
-function findMaxId(nodes: V8CpuProfileNode[]) {
-    let maxId = nodes[nodes.length - 1].id;
 
-    for (let i = 0; i < nodes.length; i++) {
-        if (nodes[i].id > maxId) {
-            maxId = nodes[i].id;
-        }
-    }
-
-    return maxId;
-}
-
-export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[]) {
+export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[], maxNodeId: number) {
     const gcNode = nodes.find(node =>
         node.callFrame.functionName === '(garbage collector)'
     );
@@ -238,7 +226,6 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[]) {
 
     const gcNodeId = gcNode.id;
     const stackToGc = new Map();
-    let id = findMaxId(nodes) + 1;
 
     for (let i = 0, prevNodeId = -1; i < samples.length; i++) {
         const nodeId = samples[i];
@@ -251,7 +238,7 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[]) {
                     samples[i] = stackToGc.get(prevNodeId);
                 } else {
                     const parentNode = nodes[prevNodeId];
-                    const newGcNodeId = id++;
+                    const newGcNodeId = ++maxNodeId;
                     const newGcNode = {
                         id: newGcNodeId,
                         callFrame: { ...gcNode.callFrame }
@@ -272,4 +259,6 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[]) {
 
         prevNodeId = nodeId;
     }
+
+    return maxNodeId;
 }

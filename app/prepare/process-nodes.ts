@@ -29,18 +29,6 @@ type CallFrameMap = Map<
 
 const scriptIdFromString = new Map<string, number>();
 
-function maxNodesId(nodes: V8CpuProfileNode[]) {
-    let maxNodeId = 0;
-
-    for (const { id } of nodes) {
-        if (id > maxNodeId) {
-            maxNodeId = id;
-        }
-    }
-
-    return maxNodeId;
-}
-
 function normalizeLoc(value: unknown) {
     return typeof value === 'number' && value >= 0 ? value : -1;
 }
@@ -168,9 +156,8 @@ function buildCallFrameTree(
     return cursor;
 }
 
-export function processNodes(nodes: V8CpuProfileNode[]) {
-    const maxNodeId = maxNodesId(nodes);
-
+export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
+    const initStart = Date.now();
     const urlByScriptId = new Map<number, string>();
     const callFramesMap: CallFrameMap = new Map();
     const callFrames: CpuProCallFrame[] = [];
@@ -179,6 +166,10 @@ export function processNodes(nodes: V8CpuProfileNode[]) {
 
     for (let i = 0; i < nodesCount; i++) {
         nodeById[nodes[i].id] = i;
+    }
+
+    if (TIMINGS) {
+        console.log('>> init processNodes', Date.now() - initStart);
     }
 
     const buildTreeStart = Date.now();

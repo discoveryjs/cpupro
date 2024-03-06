@@ -12,6 +12,19 @@ function remapId(node, index) {
     node.id = index + 1;
 }
 
+// fastest way to find max id
+function findMaxId(nodes) {
+    let maxId = nodes[nodes.length - 1].id;
+
+    for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].id > maxId) {
+            maxId = nodes[i].id;
+        }
+    }
+
+    return maxId;
+}
+
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
@@ -47,6 +60,9 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     // }
     // return data;
 
+    markTime('find max node ID');
+    let maxNodeId = findMaxId(data.nodes);
+
     markTime('convert samples and timeDeltas into TypeArrays');
     const samples = new Uint32Array(data.samples);
     const timeDeltas = new Int32Array(data.timeDeltas);
@@ -60,13 +76,13 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     } = processTimeDeltas(timeDeltas, samples, data.startTime, data.endTime);
 
     markTime('gcReparenting()');
-    gcReparenting(samples, data.nodes);
+    maxNodeId = gcReparenting(samples, data.nodes, maxNodeId);
 
     markTime('processNodes()');
     const {
         callFrames,
         callFramesTree
-    } = processNodes(data.nodes);
+    } = processNodes(data.nodes, maxNodeId);
 
     markTime('processCallFrames()');
     const {
