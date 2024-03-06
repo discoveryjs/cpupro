@@ -1,4 +1,5 @@
 import { OLD_COMPUTATIONS, TIMINGS, typeColor, typeColorComponents, typeOrder } from './prepare/const.js';
+import { convertToUint32Array, findMaxId, remapId } from './prepare/utils.js';
 import { convertValidate } from './prepare/index.js';
 import { processCallFrames } from './prepare/process-call-frames.js';
 import { processNodes } from './prepare/process-nodes.js';
@@ -7,23 +8,6 @@ import { gcReparenting, processSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { buildTrees } from './prepare/build-trees.js';
 import { CallTree } from './prepare/call-tree.js';
-
-function remapId(node, index) {
-    node.id = index + 1;
-}
-
-// fastest way to find max id
-function findMaxId(nodes) {
-    let maxId = nodes[nodes.length - 1].id;
-
-    for (let i = 0; i < nodes.length; i++) {
-        if (nodes[i].id > maxId) {
-            maxId = nodes[i].id;
-        }
-    }
-
-    return maxId;
-}
 
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
@@ -63,17 +47,19 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     markTime('find max node ID');
     let maxNodeId = findMaxId(data.nodes);
 
-    markTime('convert samples and timeDeltas into TypeArrays');
-    const samples = new Uint32Array(data.samples);
-    const timeDeltas = new Int32Array(data.timeDeltas);
-
     markTime('processTimeDeltas()');
     const {
         startTime,
         startOverheadTime,
         endTime,
         totalTime
-    } = processTimeDeltas(timeDeltas, samples, data.startTime, data.endTime);
+    } = processTimeDeltas(data.timeDeltas, data.samples, data.startTime, data.endTime);
+
+    // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
+    // are correcting within processTimeDeltas()
+    markTime('convert samples and timeDeltas into TypeArrays');
+    const samples = convertToUint32Array(data.samples);
+    const timeDeltas = convertToUint32Array(data.timeDeltas);
 
     markTime('gcReparenting()');
     maxNodeId = gcReparenting(samples, data.nodes, maxNodeId);
