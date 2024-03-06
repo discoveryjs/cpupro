@@ -224,36 +224,38 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[], maxN
         return;
     }
 
+    const gcNodeIdByPrevNodeId = new Map<number, number>();
     const gcNodeId = gcNode.id;
-    const stackToGc = new Map();
 
-    for (let i = 0, prevNodeId = -1; i < samples.length; i++) {
+    for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
         const nodeId = samples[i];
 
         if (nodeId === gcNodeId) {
             if (prevNodeId === gcNodeId) {
                 samples[i] = samples[i - 1];
             } else {
-                if (stackToGc.has(prevNodeId)) {
-                    samples[i] = stackToGc.get(prevNodeId);
-                } else {
-                    const parentNode = nodes[prevNodeId];
-                    const newGcNodeId = ++maxNodeId;
-                    const newGcNode = {
-                        id: newGcNodeId,
-                        callFrame: { ...gcNode.callFrame }
-                    };
+                let sampleGcNodeId = gcNodeIdByPrevNodeId.get(prevNodeId);
 
-                    stackToGc.set(prevNodeId, newGcNodeId);
-                    nodes.push(newGcNode);
-                    samples[i] = newGcNodeId;
+                if (sampleGcNodeId === undefined) {
+                    // create new GC node
+                    sampleGcNodeId = ++maxNodeId;
+
+                    const parentNode = nodes[prevNodeId];
 
                     if (Array.isArray(parentNode.children)) {
-                        parentNode.children.push(newGcNodeId);
+                        parentNode.children.push(sampleGcNodeId);
                     } else {
-                        parentNode.children = [newGcNodeId];
+                        parentNode.children = [sampleGcNodeId];
                     }
+
+                    gcNodeIdByPrevNodeId.set(prevNodeId, sampleGcNodeId);
+                    nodes.push({
+                        id: sampleGcNodeId,
+                        callFrame: gcNode.callFrame
+                    });
                 }
+
+                samples[i] = sampleGcNodeId;
             }
         }
 
