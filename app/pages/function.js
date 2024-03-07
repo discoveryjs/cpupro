@@ -86,11 +86,11 @@ discovery.page.define('function', {
                                 view: 'tree',
                                 data: `
                                     #.data.functionsTree.select('nodes', $)
-                                    | sort(totalTime desc)
+                                    | sort(totalTime desc, selfTime desc, host.name ascN)
                                 `,
                                 children: `
                                     children
-                                    | sort(totalTime desc)
+                                    | sort(totalTime desc, selfTime desc, host.name ascN)
                                 `,
                                 item: {
                                     view: 'context',
@@ -152,7 +152,7 @@ discovery.page.define('function', {
                                     | sort(totalTime desc)
                                 `,
                                 children: `
-                                    [parent]
+                                    parent ? [parent]
                                     | sort(totalTime desc)
                                 `,
                                 item: {

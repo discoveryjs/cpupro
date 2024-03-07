@@ -290,12 +290,12 @@ discovery.page.define('default', {
                         view: 'page-indicator',
                         className: 'runtime',
                         title: 'Runtime',
-                        value: '=#.data.meta.runtime'
+                        value: '=#.data.runtime'
                     },
                     {
                         view: 'page-indicator',
                         title: 'Engine',
-                        value: '=#.data.meta.engine'
+                        value: '=#.data.engine'
                     }
                 ]
             },
