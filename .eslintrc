@@ -31,7 +31,8 @@
             {
                 "boolean": true,
                 "string": true,
-                "number": true
+                "number": true,
+                "allow": ["*"]
             }
         ],
         "no-with": 2,
