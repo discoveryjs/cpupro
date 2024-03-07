@@ -1,6 +1,7 @@
 module.exports = {
     name: 'CPU (pro)file',
     basedir: __dirname + '/app',
+    darkmode: 'only',
     embed: true,
     upload: {
         accept: ['.cpuprofile', '.json', '.jsonxl']
