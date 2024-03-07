@@ -1,5 +1,5 @@
-import { OLD_COMPUTATIONS, TIMINGS, typeColor, typeColorComponents, typeOrder } from './prepare/const.js';
-import { convertToUint32Array, findMaxId, remapId } from './prepare/utils.js';
+import { OLD_COMPUTATIONS, TIMINGS } from './prepare/const.js';
+import { convertToUint32Array, createMarkTime, findMaxId, remapId } from './prepare/utils.js';
 import { convertValidate } from './prepare/index.js';
 import { processCallFrames } from './prepare/process-call-frames.js';
 import { processNodes } from './prepare/process-nodes.js';
@@ -7,25 +7,14 @@ import { processPaths } from './prepare/process-paths.js';
 import { gcReparenting, processSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { buildTrees } from './prepare/build-trees.js';
-import { CallTree } from './prepare/call-tree.js';
+import joraQueryHelpers from './prepare/jora-methods.js';
 
 export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
     const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
     const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
-    let timestamp = Date.now();
-    let markTimeStep = null;
-    const markTime = TIMINGS
-        ? (name) => {
-            const newTimestamp = Date.now();
-            if (markTimeStep !== null) {
-                console.log('>', markTimeStep, newTimestamp - timestamp);
-            }
-            markTimeStep = name;
-            timestamp = newTimestamp;
-        }
-        : () => null;
+    const markTime = TIMINGS ? createMarkTime() : () => undefined;
 
     markTime('convertValidate()');
     data = convertValidate(data, rejectData);
@@ -44,6 +33,10 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     // }
     // return data;
 
+    // store source's initial metrics
+    const nodesCount = data.nodes.length;
+    const samplesCount = data.samples.length;
+
     markTime('find max node ID');
     let maxNodeId = findMaxId(data.nodes);
 
@@ -61,6 +54,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     const samples = convertToUint32Array(data.samples);
     const timeDeltas = convertToUint32Array(data.timeDeltas);
 
+    // GC nodes reparenting should be performed before node processing since it adds additional nodes
     markTime('gcReparenting()');
     maxNodeId = gcReparenting(samples, data.nodes, maxNodeId);
 
@@ -70,6 +64,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         callFramesTree
     } = processNodes(data.nodes, maxNodeId);
 
+    // callFrames -> functions, modules, packages, areas
     markTime('processCallFrames()');
     const {
         wellKnownCallFrames,
@@ -79,6 +74,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         functions
     } = processCallFrames(callFrames);
 
+    // process dictionaries
     markTime('processPaths()');
     processPaths(packages, modules, functions);
 
@@ -130,115 +126,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     );
 
     // extend jora's queries with custom methods
-    addQueryHelpers({
-        order(value) {
-            return typeOrder[value] || 100;
-        },
-        color(value, comp) {
-            const dict = comp ? typeColorComponents : typeColor;
-            return dict[value] || dict.unknown;
-        },
-        totalPercent(value) {
-            const percent = 100 * value / totalTime;
-            return percent >= 0.1 ? percent.toFixed(2) + '%' : '<0.1%';
-        },
-        duration(value) {
-            const percent = 100 * value / totalTime;
-            return (value / 1000).toFixed(1) + 'ms' + (percent >= 0.01 ? ' / ' + percent.toFixed(2) + '%' : '');
-        },
-        ms(value) {
-            return (value / 1000).toFixed(1) + 'ms';
-        },
-        select(tree, type, ...args) {
-            if (tree instanceof CallTree) {
-                let iterator;
-
-                switch (type) {
-                    case 'nodes':
-                        iterator = tree.selectNodes(...args);
-                        break;
-                    case 'children':
-                        iterator = tree.children(...args);
-                        break;
-                    case 'ancestors':
-                        iterator = tree.ancestors(...args);
-                        break;
-                }
-
-                if (iterator !== undefined) {
-                    return [...tree.map(iterator)];
-                }
-            }
-        },
-        binCalls(_, tree, test, n = 500) {
-            const { samples, timeDeltas, totalTime } = this.context.data;
-            const { dictionary, nodes, mapToIndex } = tree;
-            const mask = new Uint8Array(tree.dictionary.length);
-            const bins = new Float64Array(n);
-            const step = totalTime / n;
-            let end = step;
-            let binIdx = 0;
-
-            for (let i = 0; i < mask.length; i++) {
-                const accept = typeof test === 'function'
-                    ? test(dictionary[i])
-                    : test === dictionary[i];
-                if (accept) {
-                    mask[i] = 1;
-                }
-            }
-
-            for (let i = 0, offset = 0; i < samples.length; i++) {
-                const accept = mask[nodes[mapToIndex[samples[i]]]];
-                const delta = timeDeltas[i];
-
-                if (offset + delta < end) {
-                    if (accept) {
-                        bins[binIdx] += delta;
-                    }
-                } else {
-                    if (accept) {
-                        const dx = end - offset;
-                        let x = delta - dx;
-                        let i = 1;
-                        while (x > step) {
-                            bins[binIdx + i] = step;
-                            i++;
-                            x -= step;
-                        }
-
-                        bins[binIdx] += dx;
-                        bins[binIdx + i] = x;
-                    }
-
-                    while (offset + delta > end) {
-                        binIdx += 1;
-                        end += step;
-                    }
-                }
-
-                offset += delta;
-            }
-
-            // let sum = 0;
-            // for (let i = 0; i < bins.length; i++) {
-            //     sum += bins[i];
-            //     // bins[i] /= step;
-            // }
-            // bins[0] = step;
-
-            return Array.from(bins);
-        },
-        groupByCallSiteRef: `
-            group(=>callFrame.ref).({
-                grouped: value,
-                ...value[],
-                children: value.children,
-                selfTime: value.sum(=>selfTime),
-                totalTime: value | $ + ..children | .sum(=>selfTime),
-            })
-        `
-    });
+    addQueryHelpers(joraQueryHelpers);
 
     // annotations for struct view
     addValueAnnotation('#.key = "selfTime" and $ and { text: duration() }');
@@ -247,33 +135,30 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     markTime('producing result');
     const areasSet = new Set(areas.map(area => area.name));
     const result = {
-        meta: {
-            engine: 'V8',
-            runtime:
-                areasSet.has('electron') ? 'Electron'
-                    : areasSet.has('node') ? 'Node.js'
-                        : areasSet.has('chrome-extension') ? 'Chromium'
-                            : 'Unknown'
-        },
-        // nodes: data.nodes,
-        // nodeById: data.nodes.reduce((m, x, idx) => ((m[x.id] = idx), m), Object.create(null)),
+        engine: 'V8',
+        runtime:
+            areasSet.has('electron') ? 'Electron'
+                : areasSet.has('node') ? 'Node.js'
+                    : areasSet.has('chrome-extension') ? 'Chromium'
+                        : 'Unknown',
         startTime,
         startOverheadTime,
         endTime,
         totalTime,
+        nodesCount,
         wellKnownCallFrames,
         callFrames,
         callFramesTree,
-        areas,
-        areasTree,
-        packages,
-        packagesTree,
-        modules,
-        modulesTree,
         functions,
         functionsTree,
+        modules,
+        modulesTree,
+        packages,
+        packagesTree,
+        areas,
+        areasTree,
         samples,
-        samplesCount: samples.length,
+        samplesCount,
         samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1], // TODO: speedup
         timeDeltas
     };

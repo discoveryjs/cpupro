@@ -31,3 +31,19 @@ export function findMaxId(nodes: V8CpuProfileNode[]) {
 export function remapId(node: CpuProNode, index: number) {
     node.id = index + 1;
 }
+
+export function createMarkTime() {
+    let markTimeTimestamp = Date.now();
+    let markTimeStep = null;
+
+    return (name) => {
+        const newTimestamp = Date.now();
+
+        if (markTimeStep !== null) {
+            console.info('>', markTimeStep, newTimestamp - markTimeTimestamp);
+        }
+
+        markTimeStep = name;
+        markTimeTimestamp = newTimestamp;
+    };
+}
