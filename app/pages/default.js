@@ -217,7 +217,7 @@ const flamecharts = {
     content: `flamechart:
         $tree: $[#.dataset];
         $children: $tree.root.children.[host | (#.showIdle or name != "(idle)") and (#.showProgram or name != "(program)") and (#.showGC or name != "(garbage collector)")];
-        { ...$tree.root, $children, totalTime: $children.sum(=>totalTime) }
+        { $tree, ...$tree.root, $children, totalTime: $children.sum(=>totalTime) }
     `
 };
 

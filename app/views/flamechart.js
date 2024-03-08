@@ -8,12 +8,12 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
     contentEl.className = 'view-flamechart__content';
 
-    const tooltip = new Tooltip(discovery, (el, data) => {
+    const tooltip = new Tooltip(discovery, (el, nodeIndex) => {
         el.innerHTML = '';
         discovery.view.render(el, [
             {
                 view: 'switch',
-                data: 'data.host',
+                data: 'host',
                 content: [
                     { when: 'marker("package")', content: [
                         'package-badge'
@@ -33,14 +33,14 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             {
                 view: 'duration',
                 className: 'total',
-                data: '{ time: value, total: ..parent[-2].value }'
+                data: '{ time: totalTime, total: #.data.totalTime }'
             },
             {
                 view: 'duration',
                 className: 'self',
-                data: '{ time: value - (next.parent = $ ? (next + next..nextSibling.[] | sum(=>value)) : 0), total: ..parent[-2].value }'
+                data: '{ time: selfTime, total: #.data.totalTime }'
             }
-        ], data, context);
+        ], data.tree.getEntry(nodeIndex), context);
     });
 
     const chart = new FlameChart(contentEl)
@@ -49,7 +49,6 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         .on('destroy', tooltip.destroy);
 
     chart.colorMapper = discovery.queryFn(`
-        data.host
         | package.type or module.package.type or type or area.name or name
         | color(true)
     `);
@@ -69,12 +68,16 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             children: frameData => frameData.children
         });
     } else {
-        chart.setData(data, {
-            name: frameData => frameData.host.name || frameData.host.packageRelPath,
-            value: frameData => frameData.totalTime,
-            children: frameData => frameData.children,
-            childrenSort: (a, b) => b.totalTime - a.totalTime
+        const setDataStart = Date.now();
+        const tree = data.tree;
+        const { nestedTimes, selfTimes } = tree;
+
+        chart.setData(tree, {
+            name: host => host.name || host.packageRelPath,
+            value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex]
         });
+
+        console.log('Flamechart.setData()', Date.now() - setDataStart);
     }
 
     contentEl.append(chart.el);

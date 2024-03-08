@@ -10,12 +10,12 @@ export default {
         return dict[value] || dict.unknown;
     },
     totalPercent(value) {
-        const totalTime = (this.context.context || this.context).data.totalTime; // the method can be invoked in struct annotation context
+        const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
         const percent = 100 * value / totalTime;
         return percent >= 0.1 ? percent.toFixed(2) + '%' : '<0.1%';
     },
     duration(value) {
-        const totalTime = (this.context.context || this.context).data.totalTime; // the method can be invoked in struct annotation context
+        const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
         const percent = 100 * value / totalTime;
         return (value / 1000).toFixed(1) + 'ms' + (percent >= 0.01 ? ' / ' + percent.toFixed(2) + '%' : '');
     },
