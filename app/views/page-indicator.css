@@ -12,9 +12,9 @@
 }
 .view-page-indicator > .value {
     display: block;
-    font-family: Helvetica, Tahoma, Arial, sans-serif;
+    font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
     font-size: 180%;
-    font-weight: 100;
+    font-weight: 300;
     text-align: right;
 }
 .view-page-indicator > .value > .unit {

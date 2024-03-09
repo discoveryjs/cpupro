@@ -5,6 +5,12 @@
 
 .page-default .flamecharts > .content {
     margin-bottom: calc(-1 * var(--discovery-page-padding-bottom));
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
+}
+.page-default .flamecharts .view-flamechart {
+    padding: 0;
+    margin: 0;
+    margin-left: calc(-1 * var(--discovery-page-padding-left))
 }
 .page-default .view-flamechart__content {
     --height: calc(100vh
@@ -42,6 +48,7 @@
 .flamecharts-fullpage .view-flamechart {
     flex: 1;
     height: auto;
+    margin: 0 !important;
 }
 .flamecharts-fullpage .view-flamechart__content {
     max-height: none;
@@ -94,10 +101,6 @@
     padding-top: 5px;
 }
 
-.flamecharts .view-flamechart {
-    padding: 0;
-    margin: 0;
-}
 .flamecharts .view-checkbox {
     --discovery-checkbox-size: 13px;
     white-space: nowrap;
@@ -118,10 +121,12 @@
     border-left-width: 0;
     padding-top: 3px;
     padding-bottom: 5px;
-    pointer-events: auto;
+    /* pointer-events: auto; */
 }
 .page-default .view-expand.timelines > .content {
-    padding: 2px 0 10px;
+    padding: 2px 0 0;
+    margin-left: calc(8px - var(--discovery-page-padding-left));
+    margin-right: calc(-1px - var(--discovery-page-padding-right));
 }
 .page-default .area-timelines {
     position: relative;
