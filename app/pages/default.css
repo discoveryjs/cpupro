@@ -5,12 +5,12 @@
 
 .page-default .flamecharts > .content {
     margin-bottom: calc(-1 * var(--discovery-page-padding-bottom));
-    margin-right: calc(-1 * var(--discovery-page-padding-right));
+    margin-right: calc(1px - var(--discovery-page-padding-right));
+    margin-left: calc(1px - var(--discovery-page-padding-left));
 }
 .page-default .flamecharts .view-flamechart {
     padding: 0;
     margin: 0;
-    margin-left: calc(-1 * var(--discovery-page-padding-left))
 }
 .page-default .view-flamechart__content {
     --height: calc(100vh
@@ -48,7 +48,6 @@
 .flamecharts-fullpage .view-flamechart {
     flex: 1;
     height: auto;
-    margin: 0 !important;
 }
 .flamecharts-fullpage .view-flamechart__content {
     max-height: none;
@@ -165,9 +164,6 @@
 }
 .page-default .view-list-item:first-child .area-timelines-item > * {
     border-top: 1px solid #0004;
-}
-.page-default .view-page-indicator.runtime {
-    margin-left: 2px;
 }
 
 .page-default .hierarchical-components > .content {

@@ -292,32 +292,55 @@ discovery.page.define('default', {
                 className: 'indicators',
                 content: [
                     {
-                        view: 'page-indicator',
-                        title: 'Total time',
-                        value: '=totalTime.ms()',
-                        unit: true
+                        view: 'block',
+                        className: 'indicators__group',
+                        content: [
+                            {
+                                view: 'page-indicator',
+                                className: 'runtime',
+                                title: 'Runtime',
+                                value: '=runtime != "Unknown" ? runtime : `Unknown/${engine}`'
+                            }
+                        ]
                     },
                     {
-                        view: 'page-indicator',
-                        title: 'Samples',
-                        value: '=samplesCount'
+                        view: 'block',
+                        className: 'indicators__group',
+                        content: [
+                            {
+                                view: 'page-indicator',
+                                title: 'Total time',
+                                value: '=totalTime.ms()',
+                                unit: true
+                            },
+                            {
+                                view: 'page-indicator',
+                                title: 'Samples',
+                                value: '=samplesCount'
+                            },
+                            {
+                                view: 'page-indicator',
+                                title: 'Sampling interval',
+                                value: '=samplesInterval',
+                                unit: 'μs'
+                            }
+                        ]
                     },
                     {
-                        view: 'page-indicator',
-                        title: 'Sampling interval',
-                        value: '=samplesInterval',
-                        unit: 'μs'
-                    },
-                    {
-                        view: 'page-indicator',
-                        className: 'runtime',
-                        title: 'Runtime',
-                        value: '=#.data.runtime'
-                    },
-                    {
-                        view: 'page-indicator',
-                        title: 'Engine',
-                        value: '=#.data.engine'
+                        view: 'block',
+                        className: 'indicators__group',
+                        content: [
+                            {
+                                view: 'page-indicator',
+                                title: 'Call tree nodes',
+                                value: '=callFramesTree.nodes.size()'
+                            },
+                            {
+                                view: 'page-indicator',
+                                title: 'Call frames',
+                                value: '=callFramesTree.dictionary.size()'
+                            }
+                        ]
                     }
                 ]
             },
