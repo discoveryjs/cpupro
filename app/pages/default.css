@@ -1,10 +1,10 @@
 .page-default > .view-expand > .header {
-    --discovery-view-expand-trigger-size: 38px;
-    margin-right: -40px;
+    --discovery-view-expand-trigger-size: calc(var(--discovery-page-padding-left) - 2px);
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
 
 .page-default .flamecharts > .content {
-    margin-bottom: -30px;
+    margin-bottom: calc(-1 * var(--discovery-page-padding-bottom));
 }
 .page-default .view-flamechart__content {
     --height: calc(100vh
@@ -20,12 +20,19 @@
     margin-top: 8px;
 }
 .flamecharts-fullpage {
+    --discovery-page-padding-right: 0px;
+}
+.flamecharts-fullpage .page {
     visibility: hidden;
+}
+.flamecharts-fullpage .flamecharts {
+    height: 100vh;
 }
 .flamecharts-fullpage .flamecharts > .content {
     visibility: visible;
     position: fixed;
-    top: calc(var(--discovery-nav-height) + 5px);
+    margin: 0;
+    top: 0px;
     left: 2px;
     right: 2px;
     bottom: 2px;
@@ -34,18 +41,41 @@
 }
 .flamecharts-fullpage .view-flamechart {
     flex: 1;
+    height: auto;
 }
 .flamecharts-fullpage .view-flamechart__content {
-    --height: calc(100vh - 61px);
+    max-height: none;
+    min-height: 100%;
 }
 
 .flamecharts .toolbar {
     display: flex;
-    gap: 6px;
+    gap: 0px 8px;
     margin: 1px 0;
+}
+.flamecharts-fullpage .flamecharts .toolbar {
+    gap: 0px 4px;
+    flex-wrap: wrap;
+    padding-right: calc(var(--discovery-nav-width) + var(--discovery-page-padding-right) + 16px);
+}
+.flamecharts-fullpage .flamechart-fullpage-toggle {
+    display: none;
+    align-self: start;
+    cursor: pointer;
+}
+.page-default .flamechart-fullpage-toggle:hover {
+    background-color: rgba(78, 187, 255, .2)
+}
+
+.flamecharts-fullpage .flamecharts .toolbar .view-toggle-group {
+    min-height: calc(var(--discovery-nav-height) - 1px);
 }
 .flamecharts .toolbar .filters {
     flex: 1;
+}
+.flamecharts-fullpage .flamecharts .toolbar .filters {
+    white-space: nowrap;
+    padding: 2px 6px;
 }
 .flamecharts .toolbar .filters .discovery-view-has-tooltip > .view-checkbox__label {
     padding-right: 18px;
@@ -58,6 +88,10 @@
 .flamecharts .view-toggle {
     font-size: 11px;
     border-radius: 0;
+}
+.flamecharts-fullpage .flamecharts .view-toggle {
+    align-self: stretch;
+    padding-top: 5px;
 }
 
 .flamecharts .view-flamechart {

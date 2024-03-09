@@ -1,12 +1,17 @@
 /* eslint-env node */
+const { utils } = require('@discoveryjs/discovery');
 const { FlameChart } = require('./flamechart/index');
 const Tooltip = require('./flamechart/tooltip').default;
 
 discovery.view.define('flamechart', function(el, config, data, context) {
-    const contentEl = document.createElement('div');
-    const destroyEl = document.createElement('destroy-flamechart');
-
-    contentEl.className = 'view-flamechart__content';
+    const { tree, lockScrolling } = config;
+    const contentEl = utils.createElement('div', 'view-flamechart__content');
+    const destroyEl = utils.createElement('destroy-flamechart');
+    const enableScrolling = (e) => e.which !== 3 && setTimeout(() => el.classList.remove('disable-scrolling'), 0);
+    const enableScrollingEl = utils.createElement('div', {
+        class: 'view-flamechart__enable-scrolling-button',
+        onclick: enableScrolling
+    }, 'Start interacting with the chart or click the button to enable scrolling');
 
     const tooltip = new Tooltip(discovery, (el, nodeIndex) => {
         el.innerHTML = '';
@@ -40,7 +45,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
                 className: 'self',
                 data: '{ time: selfTime, total: #.data.totalTime }'
             }
-        ], data.tree.getEntry(nodeIndex), context);
+        ], tree.getEntry(nodeIndex), context);
     });
 
     const chart = new FlameChart(contentEl)
@@ -53,43 +58,65 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         | color(true)
     `);
 
-    if (data.segment) {
-        const children = data.children;
-        const offsetScale = 1 / (data.segment[1] - data.segment[0]);
+    const setDataStart = Date.now();
+    const { nestedTimes, selfTimes } = tree;
 
-        chart.setData({
-            host: data.host,
-            segment: [data.segment[0], children[children.length - 1].segment[1]],
-            children
-        }, {
-            name: frameData => frameData.host.name || frameData.host.packageRelPath,
-            value: frameData => frameData.segment[1] - frameData.segment[0],
-            offset: frameData => offsetScale * frameData.segment[0],
-            children: frameData => frameData.children
-        });
-    } else {
-        const setDataStart = Date.now();
-        const tree = data.tree;
-        const { nestedTimes, selfTimes } = tree;
+    chart.setData(tree, {
+        name: host => host.name || host.packageRelPath,
+        value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex]
+    });
 
-        chart.setData(tree, {
-            name: host => host.name || host.packageRelPath,
-            value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex]
-        });
-
-        console.log('Flamechart.setData()', Date.now() - setDataStart);
-    }
+    console.log('Flamechart.setData()', Date.now() - setDataStart);
 
     contentEl.append(chart.el);
-    el.append(contentEl, destroyEl);
+    el.append(contentEl, enableScrollingEl, destroyEl);
 
+    if (lockScrolling) {
+        el.classList.add('disable-scrolling');
+    }
+
+    const removeOnScrollListener = discovery.addHostElEventListener('scroll', ({ target }) => {
+        // to avoid expensive dom checks
+        if (el.classList.contains('disable-scrolling')) {
+            return;
+        }
+
+        // scrolled to top & target is an ancestor and not a descendant of el
+        // in other words, ignore scrolling inside the flamechart but take into account ancestors scrolling
+        if (target.contains(el) && !el.contains(target) && contentEl.scrollTop === 0) {
+            el.classList.add('disable-scrolling');
+        }
+    }, {
+        capture: true,
+        passive: true
+    });
+
+    let removeOnPointerDownListener = null;
+    destroyEl.onConnect = () => {
+        let cursor = el;
+
+        while (cursor !== null && cursor.parentNode !== discovery.dom.pageContent) {
+            cursor = cursor.parentNode;
+        }
+
+        if (cursor) {
+            cursor.addEventListener('pointerdown', enableScrolling, true);
+            removeOnPointerDownListener = () => cursor.removeEventListener('pointerdown', enableScrolling, true);
+        }
+    };
     destroyEl.onDestroy = () => {
+        removeOnPointerDownListener?.();
+        removeOnScrollListener();
         tooltip.destroy();
         chart.destroy();
     };
 }, { tag: 'div' });
 
 class FlameChartElement extends HTMLElement {
+    connectedCallback() {
+        this.onConnect();
+        this.onConnect = null;
+    }
     disconnectedCallback() {
         this.onDestroy();
         this.onDestroy = null;

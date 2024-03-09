@@ -1,12 +1,19 @@
 /* eslint-env node */
 const demoDataBase64 = require('../demo-data-base64.js').default;
+let fullpageMode = false;
 
 discovery.action.define('uploadDemoData', () => discovery.loadDataFromUrl(demoDataBase64));
 setTimeout(() => {
-    discovery.nav.primary.before('inspect', {
+    discovery.nav.primary.append({
         className: 'github',
         content: 'text:"GitHub"',
         data: { href: 'https://github.com/lahmatiy/cpupro' }
+    });
+    discovery.nav.primary.append({
+        className: 'full-page-mode',
+        content: 'text:"Exit full page"',
+        when: () => fullpageMode,
+        onClick: toggleFullPageFlamechart
     });
     discovery.nav.menu.append({
         when: true,
@@ -19,6 +26,34 @@ setTimeout(() => {
     });
     discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
 }, 1);
+
+function toggleFullPageFlamechart() {
+    // const params = { ...discovery.pageParams };
+
+    // if (enabled) {
+    //     params.fullScreen = true;
+    // } else {
+    //     delete params.fullScreen;
+    // }
+
+    // discovery.setPageParams(params);
+    // discovery.cancelScheduledRender();
+    fullpageMode = discovery.dom.container.classList.toggle('flamecharts-fullpage');
+    discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
+
+    const toggleEl = discovery.dom.container.querySelector('.flamechart-fullpage-toggle');
+    toggleEl.classList.toggle('checked');
+    // toggleEl.scrollIntoView(true);
+
+    // use timeout since on scroll handler may disable scrolling
+    setTimeout(() => {
+        const flamechartEl = discovery.dom.container.querySelector('.flamecharts .view-flamechart');
+        flamechartEl.classList.toggle(
+            'disable-scrolling',
+            !fullpageMode && flamechartEl.firstChild.scrollTop === 0
+        );
+    });
+}
 
 const areasTimeBars = {
     view: 'timing-bar',
@@ -197,28 +232,15 @@ const flamecharts = {
                 className: 'flamechart-fullpage-toggle',
                 // checked: '=#.params.fullScreen',
                 content: 'text:"Full page"',
-                onToggle() {
-                    // const params = { ...discovery.pageParams };
-
-                    // if (enabled) {
-                    //     params.fullScreen = true;
-                    // } else {
-                    //     delete params.fullScreen;
-                    // }
-
-                    // discovery.setPageParams(params);
-                    // discovery.cancelScheduledRender();
-                    discovery.dom.root.querySelector('.page').classList.toggle('flamecharts-fullpage');
-                    discovery.dom.root.querySelector('.flamechart-fullpage-toggle').classList.toggle('checked');
-                }
+                onToggle: toggleFullPageFlamechart
             }
         ]
     },
-    content: `flamechart:
-        $tree: $[#.dataset];
-        $children: $tree.root.children.[host | (#.showIdle or name != "(idle)") and (#.showProgram or name != "(program)") and (#.showGC or name != "(garbage collector)")];
-        { $tree, ...$tree.root, $children, totalTime: $children.sum(=>totalTime) }
-    `
+    content: {
+        view: 'flamechart',
+        tree: '=$[#.dataset]',
+        lockScrolling: true
+    }
 };
 
 discovery.page.define('default', {

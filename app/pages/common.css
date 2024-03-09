@@ -60,6 +60,9 @@
     color: #a4a4a4;
 }
 
+.discovery-nav {
+    position: fixed;
+}
 .discovery-nav > .github::before {
     --size: 15px;
     content: "";
@@ -75,6 +78,14 @@
 }
 .discovery-root-darkmode .discovery-nav > .github::before {
     background-image: url("../img/github-white.svg");
+}
+
+.discovery-nav > .full-page-mode {
+    background-color: rgba(78, 187, 255, .3);
+    border-radius: 0;
+}
+.discovery-nav > .full-page-mode:hover {
+    background-color: rgba(78, 187, 255, .2);
 }
 
 .logo {
