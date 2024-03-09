@@ -7,20 +7,20 @@ import { buildCallTreeAndCompareWithBaseline } from './build-trees-baseline.js';
 const compareWithBaseline = false;
 
 function finalizeArrays(
-    count: number,
-    dictSize: number,
-    firstChild: Uint32Array,
-    nextSibling: Uint32Array,
+    dictionarySize: number,
+    sourceNodes: Uint32Array,
     sourceToNode: Uint32Array,
     sourceToDictionary: Uint32Array,
-    sourceNodes: Uint32Array
+    nodesSize: number,
+    firstChild: Uint32Array,
+    nextSibling: Uint32Array
 ) {
-    const nodes = new Uint32Array(count);
-    const parent = new Uint32Array(count);
-    const subtreeSize = new Uint32Array(count);
-    const nested = new Uint32Array(count);
-    const nestedMask = new Uint32Array(dictSize);
-    const remap = new Uint32Array(count);
+    const nodes = new Uint32Array(nodesSize);
+    const parent = new Uint32Array(nodesSize);
+    const subtreeSize = new Uint32Array(nodesSize);
+    const nested = new Uint32Array(nodesSize);
+    const nestedMask = new Uint32Array(dictionarySize);
+    const remap = new Uint32Array(nodesSize);
     let index = 0;
     let cursor = 0;
 
@@ -71,32 +71,25 @@ function finalizeArrays(
     return { nodes, parent, subtreeSize, nested };
 }
 
-export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
-    sourceTree: CallTree<S>,
-    dictionary: D[],
-    dictionaryIndexBySourceTreeNode: (node: S) => number
+function rollupTreeByCommonValues(
+    dictionarySize: number,
+    sourceNodes: Uint32Array,
+    sourceToNode: Uint32Array,
+    sourceToDictionary: Uint32Array,
+    firstChild: Uint32Array,
+    nextSibling: Uint32Array
 ) {
-    const initTimeStart = Date.now();
-    const sourceNodes = sourceTree.nodes;
-    const sourceToDictionary = new Uint32Array(sourceTree.dictionary.length);
-    const sourceToNode = new Uint32Array(sourceNodes.length);
-    const { firstChild, nextSibling } = makeFirstNextArrays(sourceTree.parent, sourceTree.subtreeSize);
-    const valueToNodeEpoch = new Uint32Array(dictionary.length);
-    const valueToNode = new Uint32Array(dictionary.length);
+    const valueToNodeEpoch = new Uint32Array(dictionarySize);
+    const valueToNode = new Uint32Array(dictionarySize);
     const stack = [0];
     let nodesCount = 1;
 
-    for (let i = 0; i < sourceTree.dictionary.length; i++) {
-        sourceToDictionary[i] = dictionaryIndexBySourceTreeNode(sourceTree.dictionary[i]);
-    }
-
-    const rollupTreeStart = Date.now();
     while (stack.length > 0) {
         const nodeIndex = stack.pop();
         const nodeValue = sourceToDictionary[sourceNodes[nodeIndex]];
-
         let prevCursor = nodeIndex;
         let cursor = firstChild[nodeIndex];
+
         while (cursor !== 0) {
             const childValue = sourceToDictionary[sourceNodes[cursor]];
 
@@ -180,15 +173,43 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
         }
     }
 
-    const finalizeStart = Date.now();
-    const { nodes, parent, subtreeSize, nested } = finalizeArrays(
-        nodesCount,
+    return nodesCount;
+}
+
+export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
+    sourceTree: CallTree<S>,
+    dictionary: D[],
+    sourceNodeToDictionaryFn: (node: S) => number
+) {
+    const initTimeStart = Date.now();
+    const sourceNodes = sourceTree.nodes;
+    const sourceToDictionary = new Uint32Array(sourceTree.dictionary.length);
+    const sourceToNode = new Uint32Array(sourceNodes.length);
+    const { firstChild, nextSibling } = makeFirstNextArrays(sourceTree.parent, sourceTree.subtreeSize);
+
+    for (let i = 0; i < sourceTree.dictionary.length; i++) {
+        sourceToDictionary[i] = sourceNodeToDictionaryFn(sourceTree.dictionary[i]);
+    }
+
+    const rollupTreeStart = Date.now();
+    const nodesCount = rollupTreeByCommonValues(
         dictionary.length,
-        firstChild,
-        nextSibling,
+        sourceNodes,
         sourceToNode,
         sourceToDictionary,
-        sourceNodes
+        firstChild,
+        nextSibling
+    );
+
+    const finalizeStart = Date.now();
+    const { nodes, parent, subtreeSize, nested } = finalizeArrays(
+        dictionary.length,
+        sourceNodes,
+        sourceToNode,
+        sourceToDictionary,
+        nodesCount,
+        firstChild,
+        nextSibling
     );
 
     if (TIMINGS) {
@@ -209,13 +230,13 @@ function buildCallTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
     name: string,
     sourceTree: CallTree<S>,
     dictionary: D[],
-    dictionaryIndexBySourceTreeNode: (node: S) => number
+    sourceNodeToDictionaryFn: (node: S) => number
 ) {
     console.group(`Build tree for ${name}`);
     try {
         return compareWithBaseline
-            ? buildCallTreeAndCompareWithBaseline(sourceTree, dictionary, dictionaryIndexBySourceTreeNode).tree
-            : buildCallTree(sourceTree, dictionary, dictionaryIndexBySourceTreeNode);
+            ? buildCallTreeAndCompareWithBaseline(sourceTree, dictionary, sourceNodeToDictionaryFn).tree
+            : buildCallTree(sourceTree, dictionary, sourceNodeToDictionaryFn);
     } finally {
         console.groupEnd();
     }
