@@ -115,7 +115,16 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
             timeDeltas[0] = 0;
         }
     }
-    processSamples(
+    const {
+        functionsTimings,
+        functionsTreeTimings,
+        modulesTimings,
+        modulesTreeTimings,
+        packagesTimings,
+        packagesTreeTimings,
+        areasTimings,
+        areasTreeTimings
+    } = processSamples(
         samples,
         timeDeltas,
         callFramesTree,
@@ -129,8 +138,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     addQueryHelpers(joraQueryHelpers);
 
     // annotations for struct view
-    addValueAnnotation('#.key = "selfTime" and $ and { text: duration() }');
-    addValueAnnotation('#.key = "totalTime" and $ and { text: duration() }');
+    addValueAnnotation('#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }');
 
     markTime('producing result');
     const areasSet = new Set(areas.map(area => area.name));
@@ -150,13 +158,21 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         callFrames,
         callFramesTree,
         functions,
+        functionsTimings,
         functionsTree,
+        functionsTreeTimings,
         modules,
+        modulesTimings,
         modulesTree,
+        modulesTreeTimings,
         packages,
+        packagesTimings,
         packagesTree,
+        packagesTreeTimings,
         areas,
+        areasTimings,
         areasTree,
+        areasTreeTimings,
         samples,
         samplesCount,
         samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1], // TODO: speedup

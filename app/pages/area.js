@@ -29,6 +29,7 @@ discovery.page.define('area', {
         {
             view: 'block',
             className: 'indicators',
+            data: '#.data.areasTimings.entries[=>entry = @].entry',
             content: [
                 {
                     view: 'page-indicator',
@@ -60,15 +61,18 @@ discovery.page.define('area', {
         {
             view: 'context',
             when: 'name = "script"',
-            data: '#.data.packages.[area = @].sort(selfTime desc, totalTime desc)',
+            data: '#.data.packagesTimings.entries.[entry.area = @].sort(selfTime desc, totalTime desc)',
             content: [
                 { view: 'h2', content: ['text:"Packages "', 'badge:size()'] },
                 {
                     view: 'table',
                     cols: [
                         { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                        { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
                         { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Package', sorting: 'name asc', content: 'package-badge' }
+                        { header: 'Package', sorting: 'entry.name asc', content: 'package-badge:entry' },
+                        { header: 'Modules', data: 'entry.modules' },
+                        { header: 'Functions', data: 'entry.modules.functions' }
                     ]
                 }
             ]
@@ -76,28 +80,19 @@ discovery.page.define('area', {
 
         {
             view: 'context',
-            data: '#.data.modules.[area = @].sort(selfTime desc, totalTime desc)',
+            data: '#.data.modulesTimings.entries.[entry.area = @].sort(selfTime desc, totalTime desc)',
             content: [
                 { view: 'h2', content: ['text:"Modules "', 'badge:size()'] },
                 {
                     view: 'table',
                     cols: [
                         { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                        { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
                         { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Module', sorting: 'name ascN',content: 'module-badge' }
+                        { header: 'Module', sorting: 'entry.name ascN',content: 'module-badge:entry' },
+                        { header: 'Functions', data: 'entry.functions' }
                     ]
                 }
-            ]
-        },
-
-        'h2:"Areas calls"',
-        {
-            view: 'table',
-            data: 'children.sort(selfTime desc, totalTime desc)',
-            cols: [
-                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Area', content: 'auto-link:to' }
             ]
         }
     ]
