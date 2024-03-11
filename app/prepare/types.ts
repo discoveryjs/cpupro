@@ -39,43 +39,25 @@ export type CpuProCallFrame = {
     functionName: string;
     lineNumber: number;
     columnNumber: number;
+    function: CpuProFunction;
+    module: CpuProModule;
+    package: CpuProPackage;
+    area: CpuProArea;
+    selfTime: number;
+    totalTime: number;
+};
+
+export type CpuProFunction = {
+    id: number; // starts with 1
+    name: string;
     area: CpuProArea;
     package: CpuProPackage;
     module: CpuProModule;
-    function: CpuProFunction;
-    selfTime: number;
-    totalTime: number;
+    regexp: string | null;
+    loc: string | null;
+    selfTime: 0;
+    totalTime: 0;
 };
-
-export type CpuProArea = {
-    id: number;
-    name: string;
-    selfTime: number;
-    totalTime: number;
-};
-
-export type PackageType =
-    | 'unknown'
-    | WellKnownType
-    | 'npm'
-    | 'script'
-    | 'regexp'
-    | 'node'
-    | 'webpack/runtime'
-    | 'electron'
-    | 'wasm'
-    | 'chrome-extension'
-    | 'internals';
-export type CpuProPackage = {
-    id: number; // starts with 1
-    type: PackageType;
-    name: string;
-    path: string | null;
-    area: CpuProArea;
-    selfTime: number;
-    totalTime: number;
-    modules: CpuProModule[];
-}
 
 export type ModuleType =
     | 'unknown'
@@ -105,12 +87,32 @@ export type CpuProModule = {
     functions: CpuProFunction[];
 };
 
-export type CpuProFunction = {
+export type PackageType =
+    | 'unknown'
+    | WellKnownType
+    | 'npm'
+    | 'script'
+    | 'regexp'
+    | 'node'
+    | 'webpack/runtime'
+    | 'electron'
+    | 'wasm'
+    | 'chrome-extension'
+    | 'internals';
+export type CpuProPackage = {
     id: number; // starts with 1
+    type: PackageType;
     name: string;
-    module: CpuProModule;
-    regexp: string | null;
-    loc: string | null;
-    selfTime: 0;
-    totalTime: 0;
+    path: string | null;
+    area: CpuProArea;
+    selfTime: number;
+    totalTime: number;
+    modules: CpuProModule[];
+};
+
+export type CpuProArea = {
+    id: number;
+    name: string;
+    selfTime: number;
+    totalTime: number;
 };

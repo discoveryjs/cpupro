@@ -158,7 +158,7 @@ function resolvePackage(
         case 'internals':
             ref = moduleType;
             type = moduleType;
-            name = `(${moduleType})`;
+            name = moduleType !== 'gc' ? `(${moduleType})` : '(garbage collector)';
             break;
 
             // case 'root':
@@ -357,6 +357,8 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
             functions.set(functionRef, callFrameFunction = {
                 id: functions.size + 1, // id starts with 1
                 name,
+                area: callFrameModule.area,
+                package: callFrameModule.package,
                 module: callFrameModule,
                 regexp,
                 loc: callFrameModule.path ? `${callFrameModule.path}:${lineNumber}:${columnNumber}` : null,
