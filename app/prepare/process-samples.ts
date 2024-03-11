@@ -260,6 +260,11 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[], maxN
 
     const gcNodeIdByPrevNodeId = new Map<number, number>();
     const gcNodeId = gcNode.id;
+    const nodeIdToIndex = new Uint32Array(maxNodeId + 1);
+
+    for (let i = 0; i < nodes.length; i++) {
+        nodeIdToIndex[nodes[i].id] = i;
+    }
 
     for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
         const nodeId = samples[i];
@@ -274,7 +279,7 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[], maxN
                     // create new GC node
                     sampleGcNodeId = ++maxNodeId;
 
-                    const parentNode = nodes[prevNodeId];
+                    const parentNode = nodes[nodeIdToIndex[prevNodeId]];
 
                     if (Array.isArray(parentNode.children)) {
                         parentNode.children.push(sampleGcNodeId);
