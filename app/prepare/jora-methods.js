@@ -1,6 +1,47 @@
 import { typeColor, typeColorComponents, typeOrder } from './const.js';
 import { CallTree } from './call-tree.js';
 
+function makeSampleBins(n, mask, samples, timeDeltas, totalTime) {
+    const bins = new Float64Array(n);
+    const step = totalTime / n;
+    let end = step;
+    let binIdx = 0;
+
+    for (let i = 0, offset = 0; i < samples.length; i++) {
+        const accept = mask[samples[i]];
+        const delta = timeDeltas[i];
+
+        if (offset + delta < end) {
+            if (accept) {
+                bins[binIdx] += delta;
+            }
+        } else {
+            if (accept) {
+                const dx = end - offset;
+                let x = delta - dx;
+                let i = 1;
+                while (x > step) {
+                    bins[binIdx + i] = step;
+                    i++;
+                    x -= step;
+                }
+
+                bins[binIdx] += dx;
+                bins[binIdx + i] = x;
+            }
+
+            while (offset + delta > end) {
+                binIdx += 1;
+                end += step;
+            }
+        }
+
+        offset += delta;
+    }
+
+    return bins;
+}
+
 export default {
     order(value) {
         return typeOrder[value] || 100;
@@ -46,56 +87,65 @@ export default {
             }
         }
     },
+    // TODO: optimize
+    subtreeSamples(tree, test, includeSelf = false) {
+        const mapToIndex = tree.mapToIndex;
+        const sampleIds = new Set(mapToIndex);
+        const selected = new Set();
+        const selectedEntries = new Set();
+        const selectedSamples = new Set();
+        const selectedSelfSamples = new Set();
+        const mask = new Uint8Array(mapToIndex.length);
+
+        for (const nodeIndex of tree.selectNodes(test)) {
+            if (sampleIds.has(nodeIndex)) {
+                selectedSelfSamples.add(nodeIndex);
+            }
+
+            for (const subtreeNodeIndex of tree.subtree(nodeIndex)) {
+                if (sampleIds.has(subtreeNodeIndex)) {
+                    selected.add(subtreeNodeIndex);
+                    selectedEntries.add(tree.dictionary[tree.nodes[subtreeNodeIndex]]);
+                }
+            }
+        }
+
+        for (let i = 0; i < mapToIndex.length; i++) {
+            if (selected.has(mapToIndex[i]) || (includeSelf && selectedSelfSamples.has(mapToIndex[i]))) {
+                mask[i] = 1;
+                selectedSamples.add(i);
+            }
+        }
+
+        return {
+            entries: [...selectedEntries],
+            selectedSamples,
+            mask,
+            sampleSelector: (_, sampleIndex) => selectedSamples.has(sampleIndex)
+        };
+    },
+    binCallsFromMask(mask, n = 500) {
+        const { samples, timeDeltas, totalTime } = this.context.data;
+        const bins = makeSampleBins(n, mask, samples, timeDeltas, totalTime);
+
+        return Array.from(bins);
+    },
     binCalls(_, tree, test, n = 500) {
         const { samples, timeDeltas, totalTime } = this.context.data;
         const { dictionary, nodes, mapToIndex } = tree;
-        const mask = new Uint8Array(tree.dictionary.length);
-        const bins = new Float64Array(n);
-        const step = totalTime / n;
-        let end = step;
-        let binIdx = 0;
+        const acceptFn = typeof test === 'function' ? test : (entry) => entry === test;
+        const mask = new Uint8Array(mapToIndex.length);
 
         for (let i = 0; i < mask.length; i++) {
-            const accept = typeof test === 'function'
-                ? test(dictionary[i])
-                : test === dictionary[i];
+            const nodeIndex = mapToIndex[i];
+            const accept = acceptFn(dictionary[nodes[nodeIndex]], i);
+
             if (accept) {
                 mask[i] = 1;
             }
         }
 
-        const x = samples.length;
-        for (let i = 0, offset = 0; i < x; i++) {
-            const accept = mask[nodes[mapToIndex[samples[i]]]];
-            const delta = timeDeltas[i];
-
-            if (offset + delta < end) {
-                if (accept) {
-                    bins[binIdx] += delta;
-                }
-            } else {
-                if (accept) {
-                    const dx = end - offset;
-                    let x = delta - dx;
-                    let i = 1;
-                    while (x > step) {
-                        bins[binIdx + i] = step;
-                        i++;
-                        x -= step;
-                    }
-
-                    bins[binIdx] += dx;
-                    bins[binIdx + i] = x;
-                }
-
-                while (offset + delta > end) {
-                    binIdx += 1;
-                    end += step;
-                }
-            }
-
-            offset += delta;
-        }
+        const bins = makeSampleBins(n, mask, samples, timeDeltas, totalTime);
 
         // let sum = 0;
         // for (let i = 0; i < bins.length; i++) {

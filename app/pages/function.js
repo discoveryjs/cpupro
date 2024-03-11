@@ -1,6 +1,6 @@
 discovery.page.define('function', {
     view: 'context',
-    data: 'functionsTree.dictionary[=>id = +#.id]',
+    data: 'functions[=>id = +#.id]',
     content: [
         {
             view: 'page-header',
@@ -20,15 +20,52 @@ discovery.page.define('function', {
         {
             view: 'block',
             className: 'subject-timeline',
+            data: `{
+                $subtree: #.data.functionsTree.subtreeSamples(@);
+
+                subject: @,
+                $subtree,
+                totalTimeBins: $subtree.mask.binCallsFromMask(500)
+            }`,
             content: [
                 'time-ruler{ duration: #.data.totalTime, captions: "top" }',
                 {
                     view: 'timeline-segments-bin',
-                    bins: '=binCalls(#.data.functionsTree, $, 500)',
+                    bins: '=binCalls(#.data.functionsTree, subject, 500)',
+                    presence: '=totalTimeBins',
                     max: '=#.data.totalTime / 500',
                     binsMax: true,
-                    color: '=module.area.name.color()',
+                    color: '=subject.area.name.color()',
                     height: 30
+                },
+                {
+                    view: 'timeline-segments-bin',
+                    className: 'total-time',
+                    bins: '=totalTimeBins',
+                    max: '=#.data.totalTime / 500',
+                    binsMax: true,
+                    color: '=subject.area.name.color()',
+                    height: 30
+                },
+                {
+                    view: 'list',
+                    className: 'nested-work',
+                    whenData: true,
+                    data: `
+                        $selector: subtree.sampleSelector;
+                        subtree.entries.area.sort(id asc).(
+                            $area:$;
+                            { $area, bins: binCalls(#.data.areasTree, =>($=$area and $selector($$)), 500) }
+                        )
+                    `,
+                    item: {
+                        view: 'timeline-segments-bin',
+                        bins: '=bins',
+                        max: '=#.data.totalTime / 500',
+                        binsMax: true,
+                        color: '=area.name.color()',
+                        height: 20
+                    }
                 }
             ]
         },
@@ -106,6 +143,7 @@ discovery.page.define('function', {
                                                 { content: 'auto-link:host' }
                                             ]
                                         },
+                                        { view: 'text', when: 'subtreeSize', data: '` (${subtreeSize}) `' },
                                         {
                                             view: 'block',
                                             className: 'grouped',

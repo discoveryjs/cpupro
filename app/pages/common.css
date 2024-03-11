@@ -45,6 +45,16 @@
 .page .subject-timeline .view-timeline-segments {
     border-top: 1px solid #0004;
 }
+.page .subject-timeline .nested-work .view-timeline-segments {
+    border-top: none;
+    /* transform: scaleY(-1); */
+    margin: 0;
+}
+.page .subject-timeline .view-timeline-segments-bin.total-time {
+    transform: scaleY(-1);
+    margin-top: -1px;
+    border-bottom: none;
+}
 
 .hint-tooltip {
     max-width: 400px !important;

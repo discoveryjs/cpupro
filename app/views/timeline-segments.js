@@ -45,7 +45,7 @@ function generateSmoothPath(points, height) {
     return pathData.join(' ');
 }
 
-function generateSquarePath(points, height, maxValue) {
+function generateSquarePath(points, height, maxValue, presence) {
     const chartWidth = points.length;
     const stepX = chartWidth / (points.length - 1);
     const pathData = [];
@@ -55,7 +55,7 @@ function generateSquarePath(points, height, maxValue) {
     pathData.push('M', 0, height);
 
     for (let i = 0; i < points.length - 1; ++i) {
-        const y = points[i] / maxValue;
+        const y = (points[i] || (presence?.[i] || 0)) / maxValue;
 
         if (y > 0) {
             pathData.push(
@@ -123,6 +123,7 @@ function ensureArray(value) {
 }
 
 discovery.view.define('timeline-segments-bin', function(el, config, data) {
+    const presence = config.presence;
     const bins = ensureArray(config.bins || data);
     const height = config.height || 20;
     const maxValue = Math.max(...bins);
@@ -137,7 +138,7 @@ discovery.view.define('timeline-segments-bin', function(el, config, data) {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-    pathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, config.max || maxValue));
+    pathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, config.max || maxValue, presence));
     svgEl.setAttribute('viewBox', `0 0 ${bins.length} ${height}`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');
