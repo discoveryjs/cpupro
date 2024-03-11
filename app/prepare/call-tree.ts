@@ -115,7 +115,7 @@ export class CallTree<T> {
         }
     }
 
-    *selectNodes(value: number | T) {
+    *selectNodes(value: number | T, includeNested = false) {
         if (typeof value !== 'number') {
             value = this.dictionary.indexOf(value);
         }
@@ -123,10 +123,23 @@ export class CallTree<T> {
         for (let i = 0; i < this.nodes.length; i++) {
             if (this.nodes[i] === value) {
                 yield i;
+
+                // skip subtree since nested nodes are not accepted
+                if (!includeNested) {
+                    i += this.subtreeSize[i];
+                }
             }
         }
     }
 
+    *ancestors(nodeIndex: number) {
+        nodeIndex = this.parent[nodeIndex];
+
+        while (nodeIndex !== 0) {
+            yield nodeIndex;
+            nodeIndex = this.parent[nodeIndex];
+        }
+    }
     *children(nodeIndex: number) {
         const end = nodeIndex + this.subtreeSize[nodeIndex];
 
@@ -135,12 +148,11 @@ export class CallTree<T> {
             nodeIndex += this.subtreeSize[nodeIndex];
         }
     }
-    *ancestors(nodeIndex: number) {
-        nodeIndex = this.parent[nodeIndex];
+    *subtree(nodeIndex: number) {
+        const end = nodeIndex + this.subtreeSize[nodeIndex];
 
-        while (nodeIndex !== 0) {
-            yield nodeIndex;
-            nodeIndex = this.parent[nodeIndex];
+        while (nodeIndex < end) {
+            yield ++nodeIndex;
         }
     }
 }

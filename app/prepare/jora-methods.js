@@ -33,6 +33,9 @@ export default {
                 case 'children':
                     iterator = tree.children(...args);
                     break;
+                case 'subtree':
+                    iterator = tree.subtree(...args);
+                    break;
                 case 'ancestors':
                     iterator = tree.ancestors(...args);
                     break;
