@@ -168,19 +168,17 @@ function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
     const samplesMap = []; // -> callFramesTree.nodes
     let sampledNodesCount = 0;
 
-    // populate samplesMap
+    // remap samples -> samplesMap, populate samplesMap
     for (let i = 0; i < samples.length; i++) {
         const id = samples[i];
 
         if (tmpMap[id] === 0) {
             tmpMap[id] = ++sampledNodesCount;
             samplesMap.push(nodeById[id]);
+            samples[i] = sampledNodesCount - 1;
+        } else {
+            samples[i] = tmpMap[samples[i]] - 1;
         }
-    }
-
-    // remap samples -> samplesMap
-    for (let i = 0; i < samples.length; i++) {
-        samples[i] = tmpMap[samples[i]] - 1;
     }
 
     // convert to typed array for faster processing
@@ -198,6 +196,7 @@ export function processSamples(
 ) {
     const remapSamplesStart = Date.now();
     let sampleToNode = remapSamples(samples, callFramesTree.mapToIndex);
+    callFramesTree.mapToIndex = sampleToNode;
     TIMINGS && console.log('re-map samples', Date.now() - remapSamplesStart);
 
     // let prev = samples[0];
