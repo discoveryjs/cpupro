@@ -13,7 +13,7 @@
     --badge-icon-left: 5px;
 }
 
-.view-badge.function:not(.function-type_internals) .prefix {
+.view-badge.function:not(.function-type_internals, .function-type_regexp) .prefix {
     padding-left: var(--badge-padding-left);
     margin-left: calc(-1 * var(--badge-padding-left));
 }

@@ -4,6 +4,7 @@ import { convertValidate } from './prepare/index.js';
 import { processCallFrames } from './prepare/process-call-frames.js';
 import { processNodes } from './prepare/process-nodes.js';
 import { processPaths } from './prepare/process-paths.js';
+import { processDisplayNames } from './prepare/process-module-names.js';
 import { gcReparenting, processSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { buildTrees } from './prepare/build-trees.js';
@@ -78,17 +79,22 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     markTime('processPaths()');
     processPaths(packages, modules, functions);
 
-    markTime('sorting & marking hierarchy nodes');
+    // process display names
+    markTime('processDisplayNames()');
+    processDisplayNames(modules);
+
+    // sort dictionaries and remap ids in ascending order
+    markTime('sort dictionaries & remap ids');
     areas.sort((a, b) => a.id < b.id ? -1 : 0).forEach(remapId);
-    areas.forEach(markAsArea);
-
     packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
-    packages.forEach(markAsPackage);
-
     modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1).forEach(remapId);
-    modules.forEach(markAsModule);
-
     functions.forEach(remapId);
+
+    // apply object marker
+    markTime('apply discovery object markers');
+    areas.forEach(markAsArea);
+    packages.forEach(markAsPackage);
+    modules.forEach(markAsModule);
     functions.forEach(markAsFunction);
 
     // build trees should be performed after dictionaries are sorted and remaped
@@ -148,7 +154,9 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
             areasSet.has('electron') ? 'Electron'
                 : areasSet.has('node') ? 'Node.js'
                     : areasSet.has('chrome-extension') ? 'Chromium'
-                        : 'Unknown',
+                        : packages.find(pkg => /^https?:/.test(pkg.path))
+                            ? 'Chromium'
+                            : 'Unknown',
         startTime,
         startOverheadTime,
         endTime,

@@ -102,22 +102,26 @@ discovery.page.define('package', {
             content: [
                 { view: 'h2', content: ['text:"Modules "', 'badge:size()'] },
                 {
-                    view: 'table',
-                    cols: [
-                        { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                        { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
-                        { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Module', sorting: '(entry | packageRelPath or name or path) asc', content: 'module-badge:entry' },
-                        { header: 'Functions', data: 'entry.functions' },
-                        { header: 'Histogram', content: {
-                            view: 'timeline-segments-bin',
-                            bins: '=binCalls(#.data.modulesTree, entry, 100)',
-                            max: '=#.data.totalTime / 100',
-                            binsMax: true,
-                            color: '=entry.area.name.color()',
-                            height: 22
-                        } }
-                    ]
+                    view: 'content-filter',
+                    content: {
+                        view: 'table',
+                        data: '.[(entry | packageRelPath or name) ~= #.filter]',
+                        cols: [
+                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
+                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                            { header: 'Module', sorting: 'entry.name ascN', content: 'module-badge:entry' },
+                            { header: 'Functions', data: 'entry.functions' },
+                            { header: 'Histogram', content: {
+                                view: 'timeline-segments-bin',
+                                bins: '=binCalls(#.data.modulesTree, entry, 100)',
+                                max: '=#.data.totalTime / 100',
+                                binsMax: true,
+                                color: '=entry.area.name.color()',
+                                height: 22
+                            } }
+                        ]
+                    }
                 }
             ]
         }

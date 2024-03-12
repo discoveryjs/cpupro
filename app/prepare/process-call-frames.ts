@@ -134,6 +134,9 @@ function resolvePackage(
             ref = '(wasm)';
             type = 'wasm';
             name = '(wasm)';
+            path = moduleRef.path.startsWith('wasm://wasm/')
+                ? 'wasm://wasm/'
+                : null;
 
             break;
         }
@@ -344,7 +347,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
         }
 
         // function
-        const functionRef = `${Number(scriptId !== 0)}:${functionName}:${lineNumber}:${columnNumber}:${url}`;
+        const functionRef = `${Number(scriptId !== 0)}:${functionName}:${lineNumber}:${columnNumber}:${url || scriptId}`;
         let callFrameFunction = functions.get(functionRef);
 
         if (callFrameFunction === undefined) {

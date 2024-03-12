@@ -110,7 +110,7 @@ const areasTimeline = {
 
 const packagesList = {
     view: 'section',
-    data: 'packagesTimings.entries',
+    data: 'packagesTimings.entries.sort(selfTime desc, totalTime desc)',
     header: [
         'text:"Packages & areas "',
         { view: 'badge', content: 'text-numeric:size()' }
@@ -119,7 +119,7 @@ const packagesList = {
         view: 'content-filter',
         content: {
             view: 'table',
-            data: 'sort(selfTime desc, totalTime desc).[entry.name ~= #.filter]',
+            data: '.[entry.name ~= #.filter]',
             limit: 15,
             cols: [
                 { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
@@ -132,7 +132,7 @@ const packagesList = {
 
 const modulesList = {
     view: 'section',
-    data: 'modulesTimings.entries',
+    data: 'modulesTimings.entries.sort(selfTime desc, totalTime desc)',
     header: [
         'text:"Modules "',
         { view: 'badge', content: 'text-numeric:size()' }
@@ -141,12 +141,12 @@ const modulesList = {
         view: 'content-filter',
         content: {
             view: 'table',
-            data: 'sort(selfTime desc, totalTime desc).[(entry | name or (package.name + "/" + packageRelPath)) ~= #.filter]',
+            data: '.[entry.name ~= #.filter]',
             limit: 15,
             cols: [
                 { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
                 { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Module', className: 'main', sorting: '(entry | name or (package.name + "/" + packageRelPath)) ascN', content: 'module-badge:entry' }
+                { header: 'Module', className: 'main', sorting: 'entry.name ascN', content: 'module-badge:entry' }
             ]
         }
     }
@@ -154,7 +154,7 @@ const modulesList = {
 
 const functionList = {
     view: 'section',
-    data: 'functionsTimings.entries',
+    data: 'functionsTimings.entries.sort(selfTime desc, totalTime desc)',
     header: [
         'text:"Functions "',
         { view: 'badge', content: 'text-numeric:size()' }
@@ -163,7 +163,7 @@ const functionList = {
         view: 'content-filter',
         content: {
             view: 'table',
-            data: 'sort(selfTime desc, totalTime desc).[entry.name ~= #.filter]',
+            data: '.[entry.name ~= #.filter]',
             limit: 15,
             cols: [
                 { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
