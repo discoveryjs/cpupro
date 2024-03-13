@@ -111,6 +111,36 @@
 .page-default .indicators {
     margin-bottom: 4px;
 }
+.page-default .indicators .runtime:is(.nodejs, .chromium, .electron, .unknown) .value::before {
+    content: "";
+    display: inline-block;
+    vertical-align: baseline;
+    height: 1em;
+    aspect-ratio: 1/1;
+    background: center no-repeat;
+    background-size: 100%;
+    margin-right: .5ex;
+    margin-bottom: -.125em;
+}
+.discovery-root-darkmode .page-default .indicators .runtime .value::before {
+    filter: brightness(.85);
+}
+.page-default .indicators .runtime:is(.nodejs) .value::before {
+    background-image: url("../img/runtime-nodejs.png");
+}
+.page-default .indicators .runtime:is(.chromium) .value::before {
+    background-image: url("../img/runtime-chromium.svg");
+}
+.page-default .indicators .runtime:is(.electron) .value::before {
+    background-image: url("../img/runtime-electron.svg");
+}
+.page-default .indicators .runtime:is(.unknown) .value::before {
+    background-image: url("../img/runtime-v8.svg");
+}
+.discovery-root-darkmode .page-default .indicators .runtime:is(.unknown) .value::before {
+    background-image: url("../img/runtime-v8-outline.svg");
+}
+
 .page-default .view-expand.timelines > .header > .header-content {
     background: var(--discovery-background-color);
     padding: 0;

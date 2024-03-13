@@ -299,9 +299,9 @@ discovery.page.define('default', {
                         content: [
                             {
                                 view: 'page-indicator',
-                                className: 'runtime',
+                                className: '=`runtime ${runtime.code}`',
                                 title: 'Runtime',
-                                value: '=runtime != "Unknown" ? runtime : `Unknown/${engine}`'
+                                value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
                             }
                         ]
                     },

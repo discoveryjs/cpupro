@@ -7,6 +7,7 @@ import { processPaths } from './prepare/process-paths.js';
 import { processDisplayNames } from './prepare/process-module-names.js';
 import { gcReparenting, processSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
+import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/build-trees.js';
 import joraQueryHelpers from './prepare/jora-methods.js';
 
@@ -147,16 +148,9 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
     addValueAnnotation('#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }');
 
     markTime('producing result');
-    const areasSet = new Set(areas.map(area => area.name));
     const result = {
         engine: 'V8',
-        runtime:
-            areasSet.has('electron') ? 'Electron'
-                : areasSet.has('node') ? 'Node.js'
-                    : areasSet.has('chrome-extension') ? 'Chromium'
-                        : packages.find(pkg => /^https?:/.test(pkg.path))
-                            ? 'Chromium'
-                            : 'Unknown',
+        runtime: detectRuntime(areas, packages),
         startTime,
         startOverheadTime,
         endTime,
