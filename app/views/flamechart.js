@@ -1,4 +1,3 @@
-/* eslint-env node */
 const { utils } = require('@discoveryjs/discovery');
 const { FlameChart } = require('./flamechart/index');
 const Tooltip = require('./flamechart/tooltip').default;
@@ -13,40 +12,37 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         onclick: enableScrolling
     }, 'Start interacting with the chart or click the button to enable scrolling');
 
-    const tooltip = new Tooltip(discovery, (el, nodeIndex) => {
-        el.innerHTML = '';
-        discovery.view.render(el, [
-            {
-                view: 'switch',
-                data: 'host',
-                content: [
-                    { when: 'marker("package")', content: [
-                        'package-badge'
-                    ] },
-                    { when: 'marker("module")', content: [
-                        'module-badge'
-                    ] },
-                    { when: 'marker("function")', content: [
-                        'module-badge:module',
-                        { view: 'block', content: 'text:name' }
-                    ] },
-                    { content: [
-                        { view: 'block', content: 'text:name' }
-                    ] }
-                ]
-            },
-            {
-                view: 'duration',
-                className: 'total',
-                data: '{ time: totalTime, total: #.data.totalTime }'
-            },
-            {
-                view: 'duration',
-                className: 'self',
-                data: '{ time: selfTime, total: #.data.totalTime }'
-            }
-        ], tree.getEntry(nodeIndex), context);
-    });
+    const tooltip = new Tooltip(discovery, (el, nodeIndex) => this.render(el, [
+        {
+            view: 'switch',
+            data: 'host',
+            content: [
+                { when: 'marker("package")', content: [
+                    'package-badge'
+                ] },
+                { when: 'marker("module")', content: [
+                    'module-badge'
+                ] },
+                { when: 'marker("function")', content: [
+                    'module-badge:module',
+                    { view: 'block', content: 'text:name' }
+                ] },
+                { content: [
+                    { view: 'block', content: 'text:name' }
+                ] }
+            ]
+        },
+        {
+            view: 'duration',
+            className: 'total',
+            data: '{ time: totalTime, total: #.data.totalTime }'
+        },
+        {
+            view: 'duration',
+            className: 'self',
+            data: '{ time: selfTime, total: #.data.totalTime }'
+        }
+    ], tree.getEntry(nodeIndex), context));
 
     const chart = new FlameChart(contentEl)
         .on('frame:enter', tooltip.show)

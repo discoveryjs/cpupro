@@ -3,7 +3,9 @@ export default function(host, render) {
     let renderedFrame = null;
     let popup = new host.view.Popup({
         className: 'flamechart-tooltip',
-        position: 'pointer'
+        position: 'pointer',
+        positionMode: 'natural',
+        showDelay: 150
     });
 
     return {
