@@ -1,5 +1,5 @@
 /* eslint-env node */
-const demoDataBase64 = require('../demo-data-base64.js').default;
+const demoDataBase64 = require('../demo/demo-data-base64.js').default;
 let fullpageMode = false;
 
 discovery.action.define('uploadDemoData', () => discovery.loadDataFromUrl(demoDataBase64));
