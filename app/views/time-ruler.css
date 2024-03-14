@@ -26,3 +26,28 @@
 .view-time-ruler .line::after {
   bottom: 2px;
 }
+
+.view-time-ruler.hovered::before {
+  content: '';
+  position: absolute;
+  width: calc((100% - 2px) / var(--segments-count) - 0.1px);
+  left: calc(1px + var(--segment) * (100% - 1px) / var(--segments-count));
+  top: 0;
+  bottom: 0;
+  background: rgba(165, 165, 165, .3);
+}
+
+.view-time-ruler-tooltip {
+  padding: 5px 10px;
+  min-width: 200px;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, .75);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+.discovery-root-darkmode .view-time-ruler-tooltip {
+  background: rgba(36, 36, 36, .8);
+}

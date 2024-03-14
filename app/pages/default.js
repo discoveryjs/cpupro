@@ -74,34 +74,71 @@ const areasTimeBars = {
 const areasTimeline = {
     view: 'block',
     className: 'area-timelines',
+    data: `
+        $binCount: 500;
+        $totalTime: #.data.totalTime;
+        $binSamples: $binCount.countSamples();
+
+        areas.[selfTime].({
+            area: $,
+            totalTime: $totalTime,
+            binTime: $totalTime / $binCount,
+            $binSamples,
+            bins: binCalls(#.data.areasTree, $, $binCount),
+            color: name.color(),
+            href: marker("area").href
+        })
+    `,
     content: [
-        'time-ruler{ duration: #.data.totalTime, captions: "top" }',
+        {
+            view: 'time-ruler',
+            duration: '=totalTime',
+            captions: 'top',
+            segments: '=$[].bins.size()',
+            details: [
+                {
+                    view: 'block',
+                    className: 'timeline-segment-info',
+                    content: [
+                        { view: 'block', content: 'text:`Range: ${binTime * #.startSegment | formatMicrosecondsTime(@.totalTime)} – ${binTime * (#.startSegment + 1) | formatMicrosecondsTime(@.totalTime)}`' },
+                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: binTime, total: totalTime }'] },
+                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.startSegment]}`' }
+                    ]
+                },
+                {
+                    view: 'list',
+                    className: 'area-timings-list',
+                    itemConfig: {
+                        className: '=bins[#.startSegment] = 0 ? "no-time"',
+                        postRender: (el, config, data) => el.style.setProperty('--color', data.color),
+                        content: [
+                            'block{ className: "area-name", content: "text:area.name" }',
+                            'duration{ data: { time: bins[#.startSegment], total: binTime } }'
+                        ]
+                    }
+                }
+            ]
+        },
         {
             view: 'list',
             className: 'area-timelines-list',
-            data: 'areas.[selfTime]',
             item: {
                 view: 'link',
                 className: 'area-timelines-item',
-                data: '{ area: $, href: marker("area").href }',
                 content: [
-                    'duration:{ time: area.selfTime, total: #.data.totalTime }',
+                    'duration:{ time: area.selfTime, total: totalTime }',
                     {
                         view: 'block',
                         className: 'label',
-                        content: 'text:area.name | $ != "garbage collector" ?: "gc"'
+                        content: 'text:area.name'
                     },
                     {
                         view: 'timeline-segments-bin',
-                        bins: '=binCalls(#.data.areasTree, area, 500)',
-                        max: '=#.data.totalTime / 500',
+                        bins: '=bins',
+                        max: '=totalTime / 500',
                         binsMax: true,
-                        color: '=area.name.color()'
+                        color: '=color'
                     }
-                ],
-                tooltip: [
-                    'text:area.name',
-                    'duration:{ time: area.selfTime, total: #.data.totalTime }'
                 ]
             }
         }

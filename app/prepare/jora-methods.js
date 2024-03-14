@@ -1,4 +1,5 @@
 import { typeColor, typeColorComponents, typeOrder } from './const.js';
+import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './call-tree.js';
 
 function makeSampleBins(n, mask, samples, timeDeltas, totalTime) {
@@ -42,6 +43,42 @@ function makeSampleBins(n, mask, samples, timeDeltas, totalTime) {
     return bins;
 }
 
+function countSamples(n, samples, timeDeltas, totalTime) {
+    const bins = new Uint32Array(n);
+    const step = totalTime / n;
+    let end = step;
+    let binIdx = 0;
+
+    for (let i = 0, offset = 0; i < samples.length; i++) {
+        const delta = timeDeltas[i];
+
+        if (offset + delta < end) {
+            bins[binIdx]++;
+        } else {
+            const dx = end - offset;
+            let x = delta - dx;
+            let i = 1;
+            while (x > step) {
+                bins[binIdx + i]++;
+                i++;
+                x -= step;
+            }
+
+            bins[binIdx]++;
+            bins[binIdx + i]++;
+
+            while (offset + delta > end) {
+                binIdx += 1;
+                end += step;
+            }
+        }
+
+        offset += delta;
+    }
+
+    return bins;
+}
+
 export default {
     order(value) {
         return typeOrder[value] || 100;
@@ -63,6 +100,7 @@ export default {
     ms(value) {
         return (value / 1000).toFixed(1) + 'ms';
     },
+    formatMicrosecondsTime,
     select(tree, type, ...args) {
         if (tree instanceof CallTree) {
             let iterator;
@@ -130,6 +168,11 @@ export default {
 
         return Array.from(bins);
     },
+    countSamples(n = 500) {
+        const { samples, timeDeltas, totalTime } = this.context.data;
+
+        return countSamples(n, samples, timeDeltas, totalTime);
+    },
     binCalls(_, tree, test, n = 500) {
         const { samples, timeDeltas, totalTime } = this.context.data;
         const { dictionary, nodes, mapToIndex } = tree;
@@ -154,7 +197,7 @@ export default {
         // }
         // bins[0] = step;
 
-        return Array.from(bins);
+        return bins;
     },
     groupByCallSiteRef: `
         group(=>callFrame.ref).({

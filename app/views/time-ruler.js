@@ -1,8 +1,7 @@
-function pad(n, d) {
-    return String(n).padStart(d, '0');
-}
+const { utils } = require('@discoveryjs/discovery');
+const { formatMicrosecondsTime } = require('../prepare/time-utils.js');
 
-function base(n) {
+function computeStep(n) {
     let b = 1;
 
     while (n > 10) {
@@ -13,9 +12,86 @@ function base(n) {
     return n > 5 ? b : n >= 2.5 ? b / 2 : b / 4;
 }
 
-discovery.view.define('time-ruler', (el, config) => {
-    const { duration, captions } = config;
-    const timeRulerStep = base(duration);
+const viewByEl = new WeakMap();
+let prevViewEl = null;
+let prevStartSegment = null;
+let prevEndSegment = null;
+const detailsPopup = new discovery.view.Popup({
+    className: 'view-time-ruler-tooltip',
+    position: 'pointer',
+    positionMode: 'natural',
+    pointerOffsetX: 30,
+    pointerOffsetY: 15,
+    showDelay: 150
+});
+
+utils.pointerXY.subscribe(({ x, y }) => {
+    const elementsFromPoint = discovery.dom.root.elementsFromPoint(x, y);
+    const candidateEl = elementsFromPoint.find(el => viewByEl.has(el)) || null;
+
+    // check for closest element to cursor is in a subtree of the common parent,
+    // this excludes displaying a details popup when the cursor is over another popup or sticky element (e.g. page-header)
+    const timeRulerEl = candidateEl && candidateEl.parentNode.contains(elementsFromPoint[0])
+        ? candidateEl
+        : null;
+
+    // register time-ruler element is found and met all the conditions
+    if (timeRulerEl) {
+        const rect = timeRulerEl.getBoundingClientRect();
+        const { options, data, context, render } = viewByEl.get(timeRulerEl);
+        const width = timeRulerEl.clientWidth;
+        const segmentsCount = options.segments || width;
+        const segment = Math.floor((Math.max(0, x - rect.left) / width) * segmentsCount);
+
+        // console.log(
+        //     { x, l: rect.x + width },
+        //     (Math.max(0, x - rect.left) / width),
+        //     segmentsCount,
+        //     segment,
+        //     '/',
+        //     Math.min(prevStartSegment || prevEndSegment, prevEndSegment)
+        // );
+
+        // console.log(x, y, timeRulerEl, options, rect);
+
+        if (timeRulerEl !== prevViewEl) {
+            timeRulerEl.classList.add('hovered');
+            timeRulerEl.style.setProperty('--segments-count', segmentsCount);
+            prevStartSegment = null;
+            prevEndSegment = null;
+        }
+
+        if (segment !== prevEndSegment) {
+            const startSegment = Math.min(prevStartSegment || segment, segment);
+            const endSegment = Math.max(prevStartSegment || segment, segment);
+            // const startTime = 
+
+            timeRulerEl.style.setProperty('--segment', segment);
+            prevEndSegment = segment;
+
+            detailsPopup.show(timeRulerEl, (el) =>
+                render(el, options.details, data, {
+                    ...context,
+                    startSegment,
+                    endSegment
+                })
+            );
+        }
+    } else if (prevViewEl) {
+        prevViewEl.classList.remove('hovered');
+        detailsPopup.hide();
+    }
+
+    prevViewEl = timeRulerEl;
+});
+
+discovery.view.define('time-ruler', function(el, options, data, context) {
+    const { duration, captions, details } = options;
+    const timeRulerStep = computeStep(duration);
+
+    if (details) {
+        viewByEl.set(el, { options, data, context, render: this.render });
+    }
 
     switch (captions) {
         case 'top':
@@ -34,19 +110,9 @@ discovery.view.define('time-ruler', (el, config) => {
         time += timeRulerStep
     ) {
         const lineEl = el.appendChild(document.createElement('div'));
-        const m = Math.floor(time / (60 * 1000 * 1000));
-        const s = Math.floor(time / (1000 * 1000)) % 60;
-        const ms = Math.floor(time / 1000) % 1000;
-        // const ns = time % 1000;
-
-        // console.log({ m, s, ms, ns, duration, time, timeRulerStep });
 
         lineEl.className = 'line';
         lineEl.style.setProperty('--offset', time / duration);
-        lineEl.dataset.title =
-            duration < 100_000 ? `${(time / 1000).toFixed(1)}ms`
-                : duration < 1_000_000 ? `${Math.floor(time / 1000)}ms`
-                    : duration < 60_000_000 ? `${s}.${pad(ms, 3)}s`.replace(/(\.000|0+)s/, 's')
-                        : `${m}:${pad(s, 2)}.${pad(ms, 3)}`.replace(/(\.000|0+)$/, '');
+        lineEl.dataset.title = formatMicrosecondsTime(time, duration);
     }
 });

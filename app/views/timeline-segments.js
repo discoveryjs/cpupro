@@ -1,3 +1,5 @@
+const { utils } = require('@discoveryjs/discovery');
+
 function generateSmoothPath(points, height) {
     const chartWidth = points.length;
     const maxValue = Math.max(...points) || 1;
@@ -47,14 +49,14 @@ function generateSmoothPath(points, height) {
 
 function generateSquarePath(points, height, maxValue, presence) {
     const chartWidth = points.length;
-    const stepX = chartWidth / (points.length - 1);
+    const stepX = chartWidth / points.length;
     const pathData = [];
     const gap = 0.1;
     const minNonZeroHeight = 1.5;
 
     pathData.push('M', 0, height);
 
-    for (let i = 0; i < points.length - 1; ++i) {
+    for (let i = 0; i < points.length; ++i) {
         const y = (points[i] || (presence?.[i] || 0)) / maxValue;
 
         if (y > 0) {
@@ -76,9 +78,7 @@ function generateSquarePath(points, height, maxValue, presence) {
 }
 
 discovery.view.define('timeline-segments', function(el, config, data, context) {
-    if (!Array.isArray(data)) {
-        data = [];
-    }
+    data = ensureArray(data);
 
     const count = 500;
     const totalTime = context.data.totalTime;
@@ -119,7 +119,7 @@ discovery.view.define('timeline-segments', function(el, config, data, context) {
 });
 
 function ensureArray(value) {
-    return Array.isArray(value) ? value : [];
+    return utils.isArray(value) ? value : [];
 }
 
 discovery.view.define('timeline-segments-bin', function(el, config, data) {
