@@ -36,7 +36,7 @@ export function createMarkTime() {
     let markTimeTimestamp = Date.now();
     let markTimeStep = null;
 
-    return (name) => {
+    return (name: string) => {
         const newTimestamp = Date.now();
 
         if (markTimeStep !== null) {

@@ -149,8 +149,8 @@ const packagesList = {
     view: 'section',
     data: 'packagesTimings.entries.sort(selfTime desc, totalTime desc)',
     header: [
-        'text:"Packages & areas "',
-        { view: 'badge', content: 'text-numeric:size()' }
+        'text:"Packages "',
+        { view: 'pill-badge', content: 'text-numeric:size()' }
     ],
     content: {
         view: 'content-filter',
@@ -172,7 +172,7 @@ const modulesList = {
     data: 'modulesTimings.entries.sort(selfTime desc, totalTime desc)',
     header: [
         'text:"Modules "',
-        { view: 'badge', content: 'text-numeric:size()' }
+        { view: 'pill-badge', content: 'text-numeric:size()' }
     ],
     content: {
         view: 'content-filter',
@@ -194,7 +194,7 @@ const functionList = {
     data: 'functionsTimings.entries.sort(selfTime desc, totalTime desc)',
     header: [
         'text:"Functions "',
-        { view: 'badge', content: 'text-numeric:size()' }
+        { view: 'pill-badge', content: 'text-numeric:size()' }
     ],
     content: {
         view: 'content-filter',

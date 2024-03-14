@@ -177,7 +177,7 @@ export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
     buildCallFrameTree(
         nodes[0].id,
         nodes,
-        callFramesTree.mapToIndex, // pass arrays as separate values reduces property read number, good for performance
+        callFramesTree.mapToIndex, // pass arrays as separate values to reduce property reads, good for performance
         callFramesTree.nodes,
         callFramesTree.parent,
         callFramesTree.subtreeSize

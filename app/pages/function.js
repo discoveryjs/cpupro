@@ -122,8 +122,8 @@ discovery.page.define('function', {
                             {
                                 view: 'tree',
                                 data: `
-                                    #.data.functionsTree.select('nodes', $)
                                     | sort(totalTime desc, selfTime desc, host.name ascN)
+                                    #.data.functionsTree.select('nodes', $, true)
                                 `,
                                 children: `
                                     children
@@ -186,8 +186,8 @@ discovery.page.define('function', {
                                 view: 'tree',
                                 expanded: 3,
                                 data: `
-                                    #.data.functionsTree.select('nodes', $)
                                     | sort(totalTime desc)
+                                    #.data.functionsTree.select('nodes', $, true)
                                 `,
                                 children: `
                                     parent ? [parent]

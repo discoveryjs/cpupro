@@ -4,6 +4,7 @@
         "es6": true
     },
     "globals": {
+        "require": "readonly",
         "discovery": "readonly"
     },
     "parserOptions": {

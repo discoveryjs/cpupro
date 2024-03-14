@@ -254,7 +254,7 @@ export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[], maxN
     );
 
     if (gcNode === undefined) {
-        return;
+        return maxNodeId;
     }
 
     const gcNodeIdByPrevNodeId = new Map<number, number>();
