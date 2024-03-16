@@ -4,22 +4,22 @@ discovery.view.define('page-indicator-timings', {
         {
             title: 'Self time',
             value: '=selfTime | ? ms() : "—"',
-            unit: '=selfTime > 0'
+            unit: true
         },
         {
             title: 'Self time, %',
             value: '=selfTime | ? totalPercent() : "—"',
-            unit: '=selfTime > 0'
+            unit: true
         },
         {
             title: 'Nested time',
             value: '=nestedTime | ? ms() : "—"',
-            unit: '=nestedTime > 0'
+            unit: true
         },
         {
             title: 'Nested time, %',
             value: '=nestedTime | ? totalPercent() : "—"',
-            unit: '=nestedTime > 0'
+            unit: true
         },
         {
             title: 'Total time',

@@ -181,7 +181,7 @@ const areasTimeline = {
                     {
                         view: 'block',
                         className: 'total-percent',
-                        content: 'text:timings.selfTime.totalPercent()'
+                        content: 'text:timings.selfTime.totalPercent().replace("%", "")'
                     },
                     {
                         view: 'timeline-segments-bin',

@@ -56,7 +56,7 @@ discovery.page.define('module', {
             view: 'context',
             data: '#.data.functionsTimings.entries.[entry.module = @].sort(selfTime desc, totalTime desc)',
             content: [
-                { view: 'h2', content: ['text:"Functions "', 'badge:size()'] },
+                { view: 'h2', content: ['text:"Functions "', 'pill-badge:size()'] },
                 {
                     view: 'content-filter',
                     content: {

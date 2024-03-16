@@ -25,7 +25,7 @@ discovery.page.define('area', {
             when: 'name = "script"',
             data: '#.data.packagesTimings.entries.[entry.area = @].sort(selfTime desc, totalTime desc)',
             content: [
-                { view: 'h2', content: ['text:"Packages "', 'badge:size()'] },
+                { view: 'h2', content: ['text:"Packages "', 'pill-badge:size()'] },
                 {
                     view: 'content-filter',
                     content: {
@@ -48,7 +48,7 @@ discovery.page.define('area', {
             view: 'context',
             data: '#.data.modulesTimings.entries.[entry.area = @].sort(selfTime desc, totalTime desc)',
             content: [
-                { view: 'h2', content: ['text:"Modules "', 'badge:size()'] },
+                { view: 'h2', content: ['text:"Modules "', 'pill-badge:size()'] },
                 {
                     view: 'content-filter',
                     content: {

@@ -194,6 +194,12 @@
     border-bottom: 1px solid #0004;
     color: #888;
 }
+.page-default .area-timelines-item > .total-percent::after {
+    content: '%';
+    font-size: 8px;
+    opacity: .5;
+    padding-left: 1px;
+}
 .page-default .view-list-item:first-child .area-timelines-item > * {
     border-top: 1px solid #0004;
 }

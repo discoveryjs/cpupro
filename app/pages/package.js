@@ -55,7 +55,7 @@ discovery.page.define('package', {
             view: 'context',
             data: '#.data.modulesTimings.entries.[entry.package = @].sort(selfTime desc, totalTime desc)',
             content: [
-                { view: 'h2', content: ['text:"Modules "', 'badge:size()'] },
+                { view: 'h2', content: ['text:"Modules "', 'pill-badge:size()'] },
                 {
                     view: 'content-filter',
                     content: {
