@@ -155,7 +155,7 @@
 .page-default .view-expand.timelines > .content {
     padding: 2px 0 0;
     margin-left: calc(8px - var(--discovery-page-padding-left));
-    margin-right: calc(-1px - var(--discovery-page-padding-right));
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
 .page-default .area-timelines {
     position: relative;

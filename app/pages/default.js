@@ -82,6 +82,7 @@ const areasTimeline = {
         areas.[selfTime].({
             area: $,
             totalTime: $totalTime,
+            $binCount,
             binTime: $totalTime / $binCount,
             $binSamples,
             bins: binCalls(#.data.areasTree, $, $binCount),
@@ -92,28 +93,28 @@ const areasTimeline = {
     content: [
         {
             view: 'time-ruler',
-            duration: '=totalTime',
             captions: 'top',
-            segments: '=$[].bins.size()',
+            duration: '=totalTime',
+            segments: '=binCount',
             details: [
                 {
                     view: 'block',
                     className: 'timeline-segment-info',
                     content: [
-                        { view: 'block', content: 'text:`Range: ${binTime * #.startSegment | formatMicrosecondsTime(@.totalTime)} – ${binTime * (#.startSegment + 1) | formatMicrosecondsTime(@.totalTime)}`' },
-                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: binTime, total: totalTime }'] },
-                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.startSegment]}`' }
+                        { view: 'block', content: 'text:`Range: ${#.startTime.formatMicrosecondsTime(totalTime)} – ${#.endTime.formatMicrosecondsTime(totalTime)}`' },
+                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.startSegment:#.endSegment + 1].sum()}`' },
+                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: #.endTime - #.startTime, total: totalTime }'] }
                     ]
                 },
                 {
                     view: 'list',
                     className: 'area-timings-list',
                     itemConfig: {
-                        className: '=bins[#.startSegment] = 0 ? "no-time"',
-                        postRender: (el, config, data) => el.style.setProperty('--color', data.color),
+                        className: '=bins[#.startSegment:#.endSegment + 1].sum() = 0 ? "no-time"',
+                        postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
                             'block{ className: "area-name", content: "text:area.name" }',
-                            'duration{ data: { time: bins[#.startSegment], total: binTime } }'
+                            'duration{ data: { time: bins[#.startSegment:#.endSegment + 1].sum(), total: binTime } }'
                         ]
                     }
                 }
@@ -135,7 +136,7 @@ const areasTimeline = {
                     {
                         view: 'timeline-segments-bin',
                         bins: '=bins',
-                        max: '=totalTime / 500',
+                        max: '=binTime',
                         binsMax: true,
                         color: '=color'
                     }

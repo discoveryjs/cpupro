@@ -10,57 +10,7 @@ discovery.page.define('area', {
             content: 'h1:name'
         },
 
-        {
-            view: 'block',
-            className: 'subject-timeline',
-            data: `{
-                $subtree: #.data.areasTree.subtreeSamples(@);
-
-                subject: @,
-                $subtree,
-                totalTimeBins: $subtree.mask.binCallsFromMask(500)
-            }`,
-            content: [
-                'time-ruler{ duration: #.data.totalTime, captions: "top" }',
-                {
-                    view: 'timeline-segments-bin',
-                    bins: '=binCalls(#.data.areasTree, subject, 500)',
-                    presence: '=totalTimeBins',
-                    max: '=#.data.totalTime / 500',
-                    binsMax: true,
-                    color: '=subject.name.color()',
-                    height: 30
-                },
-                {
-                    view: 'timeline-segments-bin',
-                    className: 'total-time',
-                    bins: '=totalTimeBins',
-                    max: '=#.data.totalTime / 500',
-                    binsMax: true,
-                    color: '=subject.name.color()',
-                    height: 30
-                },
-                {
-                    view: 'list',
-                    className: 'nested-work',
-                    data: `
-                        $selector: subtree.sampleSelector;
-                        subtree.entries.sort(id asc).(
-                            $area:$;
-                            { $area, bins: binCalls(#.data.areasTree, =>($=$area and $selector($$)), 500) }
-                        )
-                    `,
-                    item: {
-                        view: 'timeline-segments-bin',
-                        bins: '=bins',
-                        max: '=#.data.totalTime / 500',
-                        binsMax: true,
-                        color: '=area.name.color()',
-                        height: 20
-                    }
-                }
-            ]
-        },
+        'subject-with-nested-timeline:{ subject: @, tree: #.data.areasTree }',
 
         {
             view: 'block',

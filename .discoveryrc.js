@@ -34,6 +34,8 @@ module.exports = {
             './views/package-badge.js',
             './views/page-indicator.css',
             './views/page-indicator.js',
+            './views/subject-with-nested-timeline.css',
+            './views/subject-with-nested-timeline.js',
             './views/time.css',
             './views/time.js',
             './views/time-ruler.css',

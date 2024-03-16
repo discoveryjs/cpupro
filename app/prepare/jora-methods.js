@@ -76,7 +76,7 @@ function countSamples(n, samples, timeDeltas, totalTime) {
         offset += delta;
     }
 
-    return bins;
+    return Array.from(bins); // TODO: remove when jora has support for TypedArrays
 }
 
 export default {
