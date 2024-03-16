@@ -55,6 +55,49 @@ function toggleFullPageFlamechart() {
     });
 }
 
+const pageIndicators = {
+    view: 'page-indicators',
+    content: [
+        {
+            className: '=`runtime ${runtime.code}`',
+            title: 'Runtime',
+            value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
+        },
+        {
+            view: 'page-indicator-group',
+            content: [
+                {
+                    title: 'Samples',
+                    value: '=samplesCount'
+                },
+                {
+                    title: 'Sampling interval',
+                    value: '=samplesInterval',
+                    unit: 'μs'
+                },
+                {
+                    title: 'Total time',
+                    value: '=totalTime.ms()',
+                    unit: true
+                }
+            ]
+        },
+        {
+            view: 'page-indicator-group',
+            content: [
+                {
+                    title: 'Call tree nodes',
+                    value: '=callFramesTree.nodes.size()'
+                },
+                {
+                    title: 'Call frames',
+                    value: '=callFramesTree.dictionary.size()'
+                }
+            ]
+        }
+    ]
+};
+
 const areasTimeBars = {
     view: 'timing-bar',
     data: `areas.({
@@ -327,48 +370,7 @@ discovery.page.define('default', {
                 ]
             },
 
-            {
-                view: 'page-indicators',
-                content: [
-                    {
-                        className: '=`runtime ${runtime.code}`',
-                        title: 'Runtime',
-                        value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
-                    },
-                    {
-                        view: 'page-indicator-group',
-                        content: [
-                            {
-                                title: 'Total time',
-                                value: '=totalTime.ms()',
-                                unit: true
-                            },
-                            {
-                                title: 'Samples',
-                                value: '=samplesCount'
-                            },
-                            {
-                                title: 'Sampling interval',
-                                value: '=samplesInterval',
-                                unit: 'μs'
-                            }
-                        ]
-                    },
-                    {
-                        view: 'page-indicator-group',
-                        content: [
-                            {
-                                title: 'Call tree nodes',
-                                value: '=callFramesTree.nodes.size()'
-                            },
-                            {
-                                title: 'Call frames',
-                                value: '=callFramesTree.dictionary.size()'
-                            }
-                        ]
-                    }
-                ]
-            },
+            pageIndicators,
 
             {
                 view: 'timeline-profiles',
