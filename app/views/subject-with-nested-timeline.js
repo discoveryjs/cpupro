@@ -13,7 +13,7 @@ discovery.view.define('subject-with-nested-timeline', {
         {
             $subject,
             $subtree,
-            bins: binCalls($tree, $subject, $binCount),
+            bins: $tree.binCalls($subject, $binCount),
             $binCount,
             $binTime,
             $binSamples,
@@ -27,7 +27,7 @@ discovery.view.define('subject-with-nested-timeline', {
                     $area,
                     color: name.color(),
                     $binTime,
-                    bins: binCalls(#.data.areasTree, =>($=$area and $selector($$)), $binCount),
+                    bins: #.data.areasTree.binCalls(=>($=$area and $selector($$)), $binCount),
                 })
             )
         }

@@ -39,7 +39,7 @@ discovery.page.define('package', {
                             { header: 'Functions', data: 'entry.functions' },
                             { header: 'Histogram', content: {
                                 view: 'timeline-segments-bin',
-                                bins: '=binCalls(#.data.modulesTree, entry, 100)',
+                                bins: '=#.data.modulesTree.binCalls(entry, 100)',
                                 max: '=#.data.totalTime / 100',
                                 binsMax: true,
                                 color: '=entry.area.name.color()',

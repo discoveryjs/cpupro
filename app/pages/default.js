@@ -128,7 +128,7 @@ const areasTimeline = {
             $binCount,
             binTime: $totalTime / $binCount,
             $binSamples,
-            bins: binCalls(#.data.areasTree, $, $binCount),
+            bins: #.data.areasTree.binCalls($, $binCount),
             color: name.color(),
             href: marker("area").href
         })

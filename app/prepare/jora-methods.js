@@ -173,7 +173,7 @@ export default {
 
         return countSamples(n, samples, timeDeltas, totalTime);
     },
-    binCalls(_, tree, test, n = 500) {
+    binCalls(tree, test, n = 500) {
         const { samples, timeDeltas, totalTime } = this.context.data;
         const { dictionary, nodes, mapToIndex } = tree;
         const acceptFn = typeof test === 'function' ? test : (entry) => entry === test;
@@ -198,6 +198,8 @@ export default {
         // bins[0] = step;
 
         return bins;
+
+        return Array.from(bins); // TODO: remove when jora has support for TypedArrays
     },
     groupByCallSiteRef: `
         group(=>callFrame.ref).({
