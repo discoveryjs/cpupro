@@ -22,6 +22,36 @@ discovery.page.define('package', {
         },
 
         {
+            view: 'tree',
+            data: `
+                $functions: #.data.packagesTree.nestedTimings($, #.data.functionsTree);
+                $totalTime: $functions.sum(=>selfTime);
+
+                $functions
+                    .({ function: entry, time: selfTime, total: $totalTime })
+                    .sort(time desc)
+                    .group(=>function.module)
+                        .({ module: key, time: value.sum(=>time), total: $totalTime, functions: value })
+                        .sort(time desc)
+                    .group(=>module.package)
+                        .({ package: key, time: value.sum(=>time), total: $totalTime, modules: value })
+                        .sort(time desc)
+            `,
+            expanded: false,
+            itemConfig: {
+                content: ['package-badge:package', 'duration'],
+                children: 'modules',
+                itemConfig: {
+                    content: ['module-badge:module', 'duration'],
+                    children: 'functions',
+                    itemConfig: {
+                        content: ['function-badge:function', 'duration']
+                    }
+                }
+            }
+        },
+
+        {
             view: 'context',
             data: '#.data.modulesTimings.entries.[entry.package = @].sort(selfTime desc, totalTime desc)',
             content: [

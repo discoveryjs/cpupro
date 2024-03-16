@@ -126,16 +126,16 @@ export default {
         }
     },
     // TODO: optimize
-    subtreeSamples(tree, test, includeSelf = false) {
+    subtreeSamples(tree, subject, includeSelf = false) {
         const mapToIndex = tree.mapToIndex;
         const sampleIds = new Set(mapToIndex);
         const selected = new Set();
         const selectedEntries = new Set();
         const selectedSamples = new Set();
         const mask = new Uint8Array(mapToIndex.length);
-        const selfId = typeof test === 'number' ? test : tree.dictionary.indexOf(test);
+        const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
 
-        for (const nodeIndex of tree.selectNodes(test)) {
+        for (const nodeIndex of tree.selectNodes(subject)) {
             if (includeSelf && sampleIds.has(nodeIndex)) {
                 selected.add(nodeIndex);
             }
@@ -167,6 +167,45 @@ export default {
         const bins = makeSampleBins(n, mask, samples, timeDeltas, totalTime);
 
         return Array.from(bins);
+    },
+    nestedTimings(tree, subject, tree2 = tree) {
+        const mapToIndex = tree.mapToIndex;
+        const sampleIds = new Set(mapToIndex);
+        const selected = new Set();
+        const visited = new Set();
+        const tree2dict = new Uint32Array(tree2.dictionary.length);
+        const result = [];
+        const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
+
+        for (const nodeIndex of tree.selectNodes(subject)) {
+            for (const subtreeNodeIndex of tree.subtree(nodeIndex)) {
+                if (sampleIds.has(subtreeNodeIndex) && tree.nodes[subtreeNodeIndex] !== selfId) {
+                    selected.add(subtreeNodeIndex);
+                }
+            }
+        }
+
+        for (let i = 0; i < mapToIndex.length; i++) {
+            if (selected.has(mapToIndex[i])) {
+                const nodeIndex = tree2.mapToIndex[i];
+
+                if (!visited.has(nodeIndex)) {
+                    tree2dict[tree2.nodes[nodeIndex]] += tree2.selfTimes[nodeIndex];
+                    visited.add(nodeIndex);
+                }
+            }
+        }
+
+        for (let i = 0; i < tree2.dictionary.length; i++) {
+            if (tree2dict[i] > 0) {
+                result.push({
+                    entry: tree2.dictionary[i],
+                    selfTime: tree2dict[i]
+                });
+            }
+        }
+
+        return result;
     },
     countSamples(n = 500) {
         const { samples, timeDeltas, totalTime } = this.context.data;
