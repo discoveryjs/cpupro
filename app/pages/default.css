@@ -154,7 +154,7 @@
 }
 .page-default .view-expand.timelines > .content {
     padding: 2px 0 0;
-    margin-left: calc(8px - var(--discovery-page-padding-left));
+    margin-left: calc(-1 * var(--discovery-page-padding-left));
     margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
 .page-default .area-timelines {
@@ -182,15 +182,17 @@
     background: rgba(165,165,165,.3);
 }
 .page-default .area-timelines-item > .label {
-    font-size: 10px;
+    font-size: 11px;
     text-align: right;
-    padding: 2px 4px 0 4px;
+    padding: 2px 4px 0 12px;
     border-bottom: 1px solid #0004;
 }
-.page-default .area-timelines-item .view-duration {
-    padding: 2px 4px 0 2px;
-    font-size: 10px;
+.page-default .area-timelines-item > .total-percent {
+    text-align: right;
+    font-size: 11px;
+    padding: 2px 8px 0 8px;
     border-bottom: 1px solid #0004;
+    color: #888;
 }
 .page-default .view-list-item:first-child .area-timelines-item > * {
     border-top: 1px solid #0004;

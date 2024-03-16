@@ -3,12 +3,13 @@ discovery.view.define('subject-with-nested-timeline', {
     data: `
         $subject;
         $tree;
+        $subtree: $tree.subtreeSamples($subject);
         $getArea: $subject.marker('area') ? =>$ : =>area;
         $totalTime: #.data.totalTime;
         $binCount: 500;
         $binTime: $totalTime / $binCount;
         $binSamples: $binCount.countSamples();
-        $subtree: $tree.subtreeSamples($subject);
+        $totalTimeBins: $subtree.mask.binCallsFromMask($binCount);
 
         {
             $subject,
@@ -18,7 +19,7 @@ discovery.view.define('subject-with-nested-timeline', {
             $binTime,
             $binSamples,
             totalTime: $totalTime,
-            totalTimeBins: $subtree.mask.binCallsFromMask($binCount),
+            $totalTimeBins,
             color: $subject.$getArea().name.color(),
             nested: (
                 $selector: $subtree.sampleSelector;
@@ -28,6 +29,7 @@ discovery.view.define('subject-with-nested-timeline', {
                     color: name.color(),
                     $binTime,
                     bins: #.data.areasTree.binCalls(=>($=$area and $selector($$)), $binCount),
+                    $totalTimeBins
                 })
             )
         }
@@ -65,7 +67,7 @@ discovery.view.define('subject-with-nested-timeline', {
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
                             'block{ className: "area-name", content: "text:area.name" }',
-                            'duration{ data: { time: bins[#.startSegment:#.endSegment + 1].sum(), total: binTime } }'
+                            'duration{ data: { time: bins[#.startSegment:#.endSegment + 1].sum(), total: totalTimeBins[#.startSegment:#.endSegment + 1].sum() } }'
                         ]
                     }
                 }

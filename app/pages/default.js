@@ -100,11 +100,11 @@ const pageIndicators = {
 
 const areasTimeBars = {
     view: 'timing-bar',
-    data: `areas.({
-        text: name,
+    data: `areasTimings.entries.[selfTime].({
+        text: entry.name,
         duration: selfTime,
-        color: name.color(),
-        href: marker("area").href
+        color: entry.name.color(),
+        href: entry.marker("area").href
     }).sort(duration desc)`,
     segment: {
         tooltip: [
@@ -122,15 +122,18 @@ const areasTimeline = {
         $totalTime: #.data.totalTime;
         $binSamples: $binCount.countSamples();
 
-        areas.[selfTime].({
-            area: $,
-            totalTime: $totalTime,
+        areasTimings.entries.[selfTime].({
+            $area: entry;
+
+            $area,
+            timings: $,
+            $totalTime,
             $binCount,
             binTime: $totalTime / $binCount,
             $binSamples,
-            bins: #.data.areasTree.binCalls($, $binCount),
-            color: name.color(),
-            href: marker("area").href
+            bins: #.data.areasTree.binCalls($area, $binCount),
+            color: $area.name.color(),
+            href: $area.marker("area").href
         })
     `,
     content: [
@@ -157,7 +160,7 @@ const areasTimeline = {
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
                             'block{ className: "area-name", content: "text:area.name" }',
-                            'duration{ data: { time: bins[#.startSegment:#.endSegment + 1].sum(), total: binTime } }'
+                            'duration{ data: { time: bins[#.startSegment:#.endSegment + 1].sum(), total: #.endTime - #.startTime } }'
                         ]
                     }
                 }
@@ -170,11 +173,15 @@ const areasTimeline = {
                 view: 'link',
                 className: 'area-timelines-item',
                 content: [
-                    'duration:{ time: area.selfTime, total: totalTime }',
                     {
                         view: 'block',
                         className: 'label',
                         content: 'text:area.name'
+                    },
+                    {
+                        view: 'block',
+                        className: 'total-percent',
+                        content: 'text:timings.selfTime.totalPercent()'
                     },
                     {
                         view: 'timeline-segments-bin',
