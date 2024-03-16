@@ -328,38 +328,26 @@ discovery.page.define('default', {
             },
 
             {
-                view: 'block',
-                className: 'indicators',
+                view: 'page-indicators',
                 content: [
                     {
-                        view: 'block',
-                        className: 'indicators__group',
-                        content: [
-                            {
-                                view: 'page-indicator',
-                                className: '=`runtime ${runtime.code}`',
-                                title: 'Runtime',
-                                value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
-                            }
-                        ]
+                        className: '=`runtime ${runtime.code}`',
+                        title: 'Runtime',
+                        value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
                     },
                     {
-                        view: 'block',
-                        className: 'indicators__group',
+                        view: 'page-indicator-group',
                         content: [
                             {
-                                view: 'page-indicator',
                                 title: 'Total time',
                                 value: '=totalTime.ms()',
                                 unit: true
                             },
                             {
-                                view: 'page-indicator',
                                 title: 'Samples',
                                 value: '=samplesCount'
                             },
                             {
-                                view: 'page-indicator',
                                 title: 'Sampling interval',
                                 value: '=samplesInterval',
                                 unit: 'μs'
@@ -367,16 +355,13 @@ discovery.page.define('default', {
                         ]
                     },
                     {
-                        view: 'block',
-                        className: 'indicators__group',
+                        view: 'page-indicator-group',
                         content: [
                             {
-                                view: 'page-indicator',
                                 title: 'Call tree nodes',
                                 value: '=callFramesTree.nodes.size()'
                             },
                             {
-                                view: 'page-indicator',
                                 title: 'Call frames',
                                 value: '=callFramesTree.dictionary.size()'
                             }

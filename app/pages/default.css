@@ -108,10 +108,10 @@
     font-size: 12px;
 }
 
-.page-default .indicators {
+.page-default .view-page-indicators {
     margin-bottom: 4px;
 }
-.page-default .indicators .runtime:is(.nodejs, .chromium, .electron, .unknown) .value::before {
+.page-default .view-page-indicators .runtime:is(.nodejs, .chromium, .electron, .unknown) .value::before {
     content: "";
     display: inline-block;
     vertical-align: baseline;
@@ -122,22 +122,22 @@
     margin-right: .5ex;
     margin-bottom: -.125em;
 }
-.discovery-root-darkmode .page-default .indicators .runtime .value::before {
+.discovery-root-darkmode .page-default .view-page-indicators .runtime .value::before {
     filter: brightness(.85);
 }
-.page-default .indicators .runtime:is(.nodejs) .value::before {
+.page-default .view-page-indicators .runtime:is(.nodejs) .value::before {
     background-image: url("../img/runtime-nodejs.png");
 }
-.page-default .indicators .runtime:is(.chromium) .value::before {
+.page-default .view-page-indicators .runtime:is(.chromium) .value::before {
     background-image: url("../img/runtime-chromium.svg");
 }
-.page-default .indicators .runtime:is(.electron) .value::before {
+.page-default .view-page-indicators .runtime:is(.electron) .value::before {
     background-image: url("../img/runtime-electron.svg");
 }
-.page-default .indicators .runtime:is(.unknown) .value::before {
+.page-default .view-page-indicators .runtime:is(.unknown) .value::before {
     background-image: url("../img/runtime-v8.svg");
 }
-.discovery-root-darkmode .page-default .indicators .runtime:is(.unknown) .value::before {
+.discovery-root-darkmode .page-default .view-page-indicators .runtime:is(.unknown) .value::before {
     background-image: url("../img/runtime-v8-outline.svg");
 }
 

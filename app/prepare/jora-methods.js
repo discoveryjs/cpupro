@@ -90,7 +90,7 @@ export default {
     totalPercent(value) {
         const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
         const percent = 100 * value / totalTime;
-        return percent >= 0.1 ? percent.toFixed(2) + '%' : '<0.1%';
+        return percent >= 0.1 ? percent.toFixed(2) + '%' : percent !== 0 ? '<0.1%' : '0%';
     },
     duration(value) {
         const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context

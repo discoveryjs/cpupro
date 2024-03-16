@@ -11,38 +11,14 @@ discovery.page.define('package', {
             content: 'h1:name'
         },
 
-        'subject-with-nested-timeline:{ subject: @, tree: #.data.packagesTree }',
+        {
+            view: 'subject-with-nested-timeline',
+            data: '{ subject: @, tree: #.data.packagesTree }'
+        },
 
         {
-            view: 'block',
-            className: 'indicators',
-            data: '#.data.packagesTimings.entries[=>entry = @].entry',
-            content: [
-                {
-                    view: 'page-indicator',
-                    title: 'Self time',
-                    value: '=selfTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Self time, %',
-                    value: '=selfTime.totalPercent()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time',
-                    value: '=totalTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time, %',
-                    value: '=totalTime.totalPercent()',
-                    unit: true
-                }
-            ]
+            view: 'page-indicator-timings',
+            data: '#.data.packagesTimings.entries[=>entry = @]'
         },
 
         {

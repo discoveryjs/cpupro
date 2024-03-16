@@ -12,38 +12,14 @@ discovery.page.define('module', {
             content: 'h1:packageRelPath or name or path'
         },
 
-        'subject-with-nested-timeline:{ subject: @, tree: #.data.modulesTree }',
+        {
+            view: 'subject-with-nested-timeline',
+            data: '{ subject: @, tree: #.data.modulesTree }'
+        },
 
         {
-            view: 'block',
-            className: 'indicators',
-            data: '#.data.modulesTimings.entries[=>entry = @]',
-            content: [
-                {
-                    view: 'page-indicator',
-                    title: 'Self time',
-                    value: '=selfTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Self time, %',
-                    value: '=selfTime.totalPercent()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time',
-                    value: '=totalTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time, %',
-                    value: '=totalTime.totalPercent()',
-                    unit: true
-                }
-            ]
+            view: 'page-indicator-timings',
+            data: '#.data.modulesTimings.entries[=>entry = @]'
         },
 
         {

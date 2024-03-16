@@ -1,15 +1,7 @@
 
-.page > .indicators {
-    display: flex;
-    gap: 1px;
-    margin: 0 0 8px;
-}
-.page > .indicators:has(.indicators__group) {
-    gap: 1px 3px;
-}
-.page > .indicators .indicators__group {
-    display: flex;
-    gap: 1px;
+.view-page-indicators,
+:not(.view-page-indicators) > .view-page-indicator-group {
+    margin-bottom: 8px;
 }
 
 .page .view-page-header__prelude .view-badge + .view-badge:not(:last-child) {
