@@ -26,31 +26,35 @@ export function processPaths(
     functions: CpuProFunction[]
 ) {
     // shorthand paths
-    let longestCommonModulePath: string[] | null = null;
+    const longestCommonModulePath: Record<string, string[] | null> = Object.create(null);
 
     for (const module of modules.values()) {
         // module path processing
         const modulePath = module.path || '';
 
         if (modulePath) {
-            if (module.package.type === 'script' && module.package.path === 'file:') {
-                longestCommonModulePath = getLongestCommonPath(longestCommonModulePath, modulePath);
+            const pkg = module.package;
+
+            if (pkg.type === 'script' && pkg.path && pkg.path.includes(':') && !/^https?:/.test(pkg.path)) {
+                longestCommonModulePath[pkg.path] = getLongestCommonPath(longestCommonModulePath[pkg.path] || null, modulePath);
             }
         }
     }
 
-    if (longestCommonModulePath !== null && longestCommonModulePath.length > 0) {
-        const path = longestCommonModulePath.join('/');
+    for (const [pkgPath, longestPath] of Object.entries(longestCommonModulePath)) {
+        if (longestPath !== null && longestPath.length > 0) {
+            const path = longestPath.join('/');
 
-        for (const pkg of packages.values()) {
-            if (pkg.type === 'script' && pkg.path === 'file:') {
-                pkg.path = path;
+            for (const pkg of packages.values()) {
+                if (pkg.type === 'script' && pkg.path === pkgPath) {
+                    pkg.path = path;
+                }
             }
-        }
 
-        for (const fn of functions.values()) {
-            if (fn.loc && fn.loc.startsWith(path + '/')) {
-                fn.loc = './' + fn.loc.slice(path.length + 1);
+            for (const fn of functions.values()) {
+                if (fn.loc && fn.loc.startsWith(path + '/')) {
+                    fn.loc = './' + fn.loc.slice(path.length + 1);
+                }
             }
         }
     }

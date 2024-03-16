@@ -88,9 +88,18 @@ function resolvePackage(
                     name = host;
                     path = origin;
                 } else if (modulePath) {
-                    ref = '(script)';
-                    name = '(script)';
-                    path = modulePath.slice(0, modulePath.indexOf(':') + 1);
+                    const protocolMatch = modulePath.match(/^[a-z\d]{2,}:/i) || ['file:'];
+                    const protocol = protocolMatch[0];
+
+                    if (protocol !== 'file:') {
+                        ref = `(${protocol}script)`;
+                        name = ref;
+                        path = protocol;
+                    } else {
+                        ref = '(script)';
+                        name = ref;
+                        path = modulePath.slice(0, modulePath.indexOf(':') + 1);
+                    }
                 } else {
                     ref = '(compiled script)';
                     name = '(compiled script)';
@@ -255,7 +264,7 @@ function resolveModule(
             case 'webpack':
             case 'webpack-internal':
                 entry.type = 'bundle';
-                entry.path = url;
+                entry.path = url.replace(/\?$/, '');
                 break;
 
             case 'node':
@@ -347,7 +356,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
         }
 
         // function
-        const functionRef = `${Number(scriptId !== 0)}:${functionName}:${lineNumber}:${columnNumber}:${url || scriptId}`;
+        const functionRef = `${callFrameModule.id}:${functionName}:${lineNumber}:${columnNumber}`;
         let callFrameFunction = functions.get(functionRef);
 
         if (callFrameFunction === undefined) {
