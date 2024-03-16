@@ -132,16 +132,16 @@ export default {
         const selected = new Set();
         const selectedEntries = new Set();
         const selectedSamples = new Set();
-        const selectedSelfSamples = new Set();
         const mask = new Uint8Array(mapToIndex.length);
+        const selfId = typeof test === 'number' ? test : tree.dictionary.indexOf(test);
 
         for (const nodeIndex of tree.selectNodes(test)) {
-            if (sampleIds.has(nodeIndex)) {
-                selectedSelfSamples.add(nodeIndex);
+            if (includeSelf && sampleIds.has(nodeIndex)) {
+                selected.add(nodeIndex);
             }
 
             for (const subtreeNodeIndex of tree.subtree(nodeIndex)) {
-                if (sampleIds.has(subtreeNodeIndex)) {
+                if (sampleIds.has(subtreeNodeIndex) && (includeSelf || tree.nodes[subtreeNodeIndex] !== selfId)) {
                     selected.add(subtreeNodeIndex);
                     selectedEntries.add(tree.dictionary[tree.nodes[subtreeNodeIndex]]);
                 }
@@ -149,7 +149,7 @@ export default {
         }
 
         for (let i = 0; i < mapToIndex.length; i++) {
-            if (selected.has(mapToIndex[i]) || (includeSelf && selectedSelfSamples.has(mapToIndex[i]))) {
+            if (selected.has(mapToIndex[i])) {
                 mask[i] = 1;
                 selectedSamples.add(i);
             }

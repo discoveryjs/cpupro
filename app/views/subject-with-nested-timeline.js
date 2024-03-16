@@ -86,14 +86,14 @@ discovery.view.define('subject-with-nested-timeline', {
             bins: '=totalTimeBins',
             max: '=binTime',
             binsMax: true,
-            color: '=color',
+            color: '=nested.size() > 1 ? color : nested[].color',
             height: 30
         },
         {
             view: 'list',
             className: 'nested-work',
             data: 'nested',
-            whenData: true,
+            whenData: 'size() > 1',
             item: {
                 view: 'timeline-segments-bin',
                 bins: '=bins',
