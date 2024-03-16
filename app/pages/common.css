@@ -4,6 +4,10 @@
     margin-bottom: 8px;
 }
 
+.page .view-page-header .view-h1 {
+    font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
+    font-weight: 200;
+}
 .page .view-page-header__prelude .view-badge + .view-badge:not(:last-child) {
     margin-right: 1px;
     border-top-right-radius: 0;
