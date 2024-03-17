@@ -236,8 +236,6 @@ export default {
         // }
         // bins[0] = step;
 
-        return bins;
-
         return Array.from(bins); // TODO: remove when jora has support for TypedArrays
     },
     groupByCallSiteRef: `
