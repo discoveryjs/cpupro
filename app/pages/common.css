@@ -157,3 +157,54 @@ h2 .logo {
 .view-time-ruler-tooltip .area-timings-list .no-time .view-duration {
     opacity: 0;
 }
+
+/* Call tree */
+.page .call-tree .view-tree-leaf-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1px;
+    padding-bottom: 1px;
+}
+.page .call-tree .view-tree-leaf-content > * {
+    line-height: 20px;
+    height: 22px;
+}
+.page .call-tree .view-tree-leaf-content .view-badge,
+.page .call-tree .view-tree-leaf-content .view-pill-badge {
+    --badge-padding-left: 25px;
+    --badge-icon-top-bottom: 4px;
+    --badge-icon-left: 5px;
+    height: 18px;
+    margin-right: 0px;
+    margin-left: 3px;
+}
+.page .call-tree .view-tree-leaf-content .view-badge.module {
+    margin-right: 0 !important;
+}
+.page .call-tree .view-tree-leaf-content .function-loc {
+    padding: 1px 5px 3px 2px;
+    color: #aaa;
+}
+.page .call-tree .view-tree-leaf-content .view-link {
+    margin-right: 4px;
+}
+.page .call-tree .self {
+    display: inline;
+    background-color: #f5e69a;
+    padding: 0 6px;
+    margin-left: -3px;
+    margin-right: 4px;
+    border-radius: 3px;
+}
+.discovery-root-darkmode .page .call-tree .self {
+    background-color: #68624685;
+    color: #b6aa6a;
+}
+
+.page .call-tree .grouped {
+    display: inline-block;
+    font-size: 10px;
+    padding-right: 4px;
+    color: #888;
+}

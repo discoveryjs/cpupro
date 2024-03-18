@@ -77,9 +77,10 @@ discovery.page.define('function', {
                             'h2:"Subtree"',
                             {
                                 view: 'tree',
+                                className: 'call-tree',
                                 data: `
-                                    | sort(totalTime desc, selfTime desc, host.name ascN)
                                     #.data.functionsTree.select('nodes', $, true)
+                                    | sort(totalTime desc, selfTime desc, host.name ascN)
                                 `,
                                 children: `
                                     children
@@ -140,10 +141,11 @@ discovery.page.define('function', {
                             'h2:"Ancestor call sites"',
                             {
                                 view: 'tree',
+                                className: 'call-tree',
                                 expanded: 3,
                                 data: `
-                                    | sort(totalTime desc)
                                     #.data.functionsTree.select('nodes', $, true)
+                                    | sort(totalTime desc)
                                 `,
                                 children: `
                                     parent ? [parent]
