@@ -3,7 +3,7 @@ const { FlameChart } = require('./flamechart/index');
 const Tooltip = require('./flamechart/tooltip').default;
 
 discovery.view.define('flamechart', function(el, config, data, context) {
-    const { tree, lockScrolling } = config;
+    const { tree, timings, lockScrolling } = config;
     const contentEl = utils.createElement('div', 'view-flamechart__content');
     const destroyEl = utils.createElement('destroy-flamechart');
     const enableScrolling = (e) => e.which !== 3 && setTimeout(() => el.classList.remove('disable-scrolling'), 0);
@@ -55,12 +55,14 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     `);
 
     const setDataStart = Date.now();
-    const { nestedTimes, selfTimes } = tree;
-
-    chart.setData(tree, {
+    const { selfTimes, nestedTimes } = timings;
+    const setData = () => chart.setData(tree, {
         name: host => host.name || host.packageRelPath,
         value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex]
     });
+
+    const unsubscribeTimings = timings.on(setData);
+    setData();
 
     console.log('Flamechart.setData()', Date.now() - setDataStart);
 
@@ -103,6 +105,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     destroyEl.onDestroy = () => {
         removeOnPointerDownListener?.();
         removeOnScrollListener();
+        unsubscribeTimings();
         tooltip.destroy();
         chart.destroy();
     };

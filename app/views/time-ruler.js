@@ -1,5 +1,6 @@
 const { utils } = require('@discoveryjs/discovery');
 const { formatMicrosecondsTime } = require('../prepare/time-utils.js');
+const usage = require('./time-ruler.usage.js').default;
 
 function computeStep(n) {
     let b = 1;
@@ -12,11 +13,42 @@ function computeStep(n) {
     return n > 5 ? b : n >= 2.5 ? b / 2 : b / 4;
 }
 
+function createNullState() {
+    return {
+        segmentStart: null,
+        segmentEnd: null,
+        timeStart: null,
+        timeEnd: null
+    };
+}
+
+function timeToSegment(time = null, duration, segments) {
+    return time === null ? null : Math.floor((time / duration) * (segments - 1));
+}
+
+function createStateFromState({ duration, segments }, timeStart = null, timeEnd = null) {
+    const segmentStart = timeToSegment(timeStart, duration, segments);
+    const segmentEnd = timeToSegment(timeEnd, duration, segments);
+
+    return {
+        duration,
+        segments,
+        segmentStart,
+        segmentEnd,
+        timeStart,
+        timeEnd
+    };
+}
+
+function createState(duration, segments, selectionStart, selectionEnd) {
+    return createStateFromState({ duration, segments }, selectionStart, selectionEnd);
+}
+
 let startSelectingRange = null;
-let startSelectingX = null;
+let startSelectingPointerX = null;
+let prevSegmentStart = null;
+let prevSegmentEnd = null;
 let currentViewEl = null;
-let prevStartSegment = null;
-let prevEndSegment = null;
 const viewByEl = new WeakMap();
 const detailsPopup = new discovery.view.Popup({
     className: 'view-time-ruler-tooltip',
@@ -24,39 +56,7 @@ const detailsPopup = new discovery.view.Popup({
     positionMode: 'natural',
     pointerOffsetX: 30,
     pointerOffsetY: 15,
-    showDelay: 150
-});
-
-discovery.addGlobalEventListener('pointerup', () => {
-    startSelectingRange = null;
-});
-discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x }) => {
-    if (currentViewEl === null || (buttons & 1) === 0) {
-        return;
-    }
-
-    const { segment } = getRulerSegmentForPoint(currentViewEl, x);
-
-    if (currentViewEl.dataset.state === 'selected') {
-        currentViewEl.dataset.state = 'hovered';
-    }
-
-    prevStartSegment = null;
-    prevEndSegment = null;
-    startSelectingX = x;
-    updateRulerSelection(currentViewEl, x);
-
-    startSelectingRange = () => {
-        startSelectingRange = null;
-        prevStartSegment = segment;
-        currentViewEl.dataset.state = 'selecting';
-
-        currentViewEl.setPointerCapture(pointerId);
-        currentViewEl.addEventListener('pointerup', () => {
-            currentViewEl.releasePointerCapture(pointerId);
-            currentViewEl.dataset.state = 'selected';
-        }, { capture: true, once: true });
-    };
+    showDelay: 100
 });
 
 function getRulerSegmentForPoint(timeRulerEl, x) {
@@ -72,13 +72,18 @@ function getRulerSegmentForPoint(timeRulerEl, x) {
 
 function updateRulerSelection(timeRulerEl, x) {
     const { segment, segmentsCount } = getRulerSegmentForPoint(timeRulerEl, x);
+    const { options, data, context, render, state: currentState } = viewByEl.get(timeRulerEl);
 
     if (timeRulerEl !== currentViewEl) {
-        prevStartSegment = null;
-        prevEndSegment = null;
         timeRulerEl.style.setProperty('--segments-count', segmentsCount);
+
         if (timeRulerEl.dataset.state !== 'selected') {
+            prevSegmentStart = null;
+            prevSegmentEnd = null;
             timeRulerEl.dataset.state = 'hovered';
+        } else {
+            prevSegmentStart = timeToSegment(currentState.timeStart, currentState.duration, segmentsCount);
+            prevSegmentEnd = timeToSegment(currentState.timeEnd, currentState.duration, segmentsCount);
         }
     }
 
@@ -86,35 +91,77 @@ function updateRulerSelection(timeRulerEl, x) {
         return;
     }
 
-    if (segment !== prevEndSegment) {
-        const { options, data, context, render } = viewByEl.get(timeRulerEl);
-        const startSegment = Math.min(prevStartSegment || segment, segment);
-        const endSegment = Math.max(prevStartSegment || segment, segment);
+    if (segment !== prevSegmentEnd) {
+        const segmentStart = Math.min(prevSegmentStart !== null ? prevSegmentStart : segment, segment);
+        const segmentEnd = Math.max(prevSegmentStart !== null ? prevSegmentStart : segment, segment);
         const segmentDuration = options.duration / segmentsCount;
-        const startTime = startSegment * segmentDuration;
-        const endTime = (endSegment + 1) * segmentDuration;
+        const timeStart = segmentStart * segmentDuration | 0;
+        const timeEnd = (segmentEnd + 1) * segmentDuration | 0;
+        const newState = prevSegmentStart !== null
+            ? createStateFromState(currentState, timeStart, timeEnd)
+            : createStateFromState(currentState);
 
-        timeRulerEl.style.setProperty('--segment-start', startSegment);
-        timeRulerEl.style.setProperty('--segment-end', endSegment);
+        prevSegmentEnd = segment;
 
-        prevEndSegment = segment;
+        timeRulerEl.style.setProperty('--segment-start', segmentStart);
+        timeRulerEl.style.setProperty('--segment-end', segmentEnd);
 
         // display tooltip
-        detailsPopup.show(timeRulerEl, (el) =>
-            render(el, options.details, data, {
-                ...context,
-                startSegment,
-                startTime,
-                endSegment,
-                endTime
-            })
-        );
+        if (options.details) {
+            detailsPopup.show(timeRulerEl, (el) =>
+                render(el, options.details, data, {
+                    ...context,
+                    ...currentState
+                })
+            );
+        }
+
+        // update state if needed
+        if (!utils.equal(newState, currentState)) {
+            Object.assign(currentState, newState);
+
+            if (typeof options.onChange === 'function') {
+                options.onChange(timeRulerEl, newState, data, context);
+            }
+        }
     }
 }
 
+discovery.addGlobalEventListener('pointerup', () => {
+    startSelectingRange = null;
+});
+discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x }) => {
+    if (currentViewEl === null || (buttons & 1) === 0) {
+        return;
+    }
+
+    const { segment } = getRulerSegmentForPoint(currentViewEl, x);
+
+    if (currentViewEl.dataset.state === 'selected') {
+        currentViewEl.dataset.state = 'hovered';
+    }
+
+    prevSegmentStart = null;
+    prevSegmentEnd = null;
+    startSelectingPointerX = x;
+    updateRulerSelection(currentViewEl, x);
+
+    startSelectingRange = () => {
+        startSelectingRange = null;
+        prevSegmentStart = segment;
+        currentViewEl.dataset.state = 'selecting';
+
+        currentViewEl.setPointerCapture(pointerId);
+        currentViewEl.addEventListener('pointerup', () => {
+            currentViewEl.releasePointerCapture(pointerId);
+            currentViewEl.dataset.state = 'selected';
+        }, { capture: true, once: true });
+    };
+});
+
 utils.pointerXY.subscribe(({ x, y }) => {
     if (startSelectingRange !== null) {
-        if (Math.abs(startSelectingX - x) < 2) {
+        if (Math.abs(startSelectingPointerX - x) < 2) {
             return;
         }
 
@@ -150,10 +197,27 @@ utils.pointerXY.subscribe(({ x, y }) => {
 });
 
 discovery.view.define('time-ruler', function(el, options, data, context) {
-    const { duration, captions, details } = options;
+    const {
+        duration,
+        segments,
+        selectionStart,
+        selectionEnd,
+        captions = 'top',
+        onInit
+    } = options;
     const timeRulerStep = computeStep(duration);
+    const state = createState(duration, segments, selectionStart, selectionEnd);
 
-    el.dataset.state = 'none';
+    viewByEl.set(el, { options, data, context, state, render: this.render });
+
+    if (state.segmentStart !== null) {
+        el.dataset.state = 'selected';
+        el.style.setProperty('--segments-count', state.segments);
+        el.style.setProperty('--segment-start', state.segmentStart);
+        el.style.setProperty('--segment-end', state.segmentEnd);
+    } else {
+        el.dataset.state = 'none';
+    }
 
     switch (captions) {
         case 'top':
@@ -164,10 +228,6 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         case 'both':
             el.classList.add('captions-top', 'captions-bottom');
             break;
-    }
-
-    if (details) {
-        viewByEl.set(el, { options, data, context, render: this.render });
     }
 
     const selectionOverlayEl = el.appendChild(document.createElement('div'));
@@ -184,4 +244,8 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         lineEl.style.setProperty('--offset', time / duration);
         lineEl.dataset.title = formatMicrosecondsTime(time, duration);
     }
-});
+
+    if (typeof onInit === 'function') {
+        onInit(el, state, data, context);
+    }
+}, { usage });

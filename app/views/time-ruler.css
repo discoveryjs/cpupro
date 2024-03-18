@@ -4,6 +4,10 @@
 
     position: absolute;
     inset: 0;
+  }
+.view-time-ruler, .view-time-ruler * {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .view-time-ruler.selecting {
   background-color: red;
@@ -72,8 +76,8 @@
   z-index: -1;
   width: var(--width);
   left: var(--left);
-  top: -1px;
-  bottom: -1px;
+  top: 0;
+  bottom: 0;
   background: rgba(165, 165, 165, .3);
   background-color: rgba(0, 152, 251, .28);
   pointer-events: none;

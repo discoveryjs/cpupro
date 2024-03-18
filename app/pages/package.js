@@ -17,68 +17,52 @@ discovery.page.define('package', {
         },
 
         {
-            view: 'page-indicator-timings',
-            data: '#.data.packagesTimings.entries[=>entry = @]'
-        },
-
-        {
-            view: 'tree',
-            data: `
-                $functions: #.data.packagesTree.nestedTimings($, #.data.functionsTree);
-                $totalTime: $functions.sum(=>selfTime);
-
-                $functions
-                    .({ function: entry, time: selfTime, total: $totalTime })
-                    .sort(time desc)
-                    .group(=>function.module)
-                        .({ module: key, time: value.sum(=>time), total: $totalTime, functions: value })
-                        .sort(time desc)
-                    .group(=>module.package)
-                        .({ package: key, time: value.sum(=>time), total: $totalTime, modules: value })
-                        .sort(time desc)
-            `,
-            expanded: false,
-            itemConfig: {
-                content: ['package-badge:package', 'duration'],
-                children: 'modules',
-                itemConfig: {
-                    content: ['module-badge:module', 'duration'],
-                    children: 'functions',
-                    itemConfig: {
-                        content: ['function-badge:function', 'duration']
-                    }
-                }
+            view: 'draft-timings-related',
+            source: '=#.data.packagesTimings',
+            content: {
+                view: 'page-indicator-timings',
+                data: '#.data.packagesTimings.entries[=>entry = @]'
             }
         },
 
+        'nested-timings-tree:{ subject: @, tree: #.data.packagesTree, timings: #.data.packagesTimings }',
+
         {
-            view: 'context',
-            data: '#.data.modulesTimings.entries.[entry.package = @].sort(selfTime desc, totalTime desc)',
+            view: 'h2',
             content: [
-                { view: 'h2', content: ['text:"Modules "', 'pill-badge:size()'] },
-                {
-                    view: 'content-filter',
-                    content: {
-                        view: 'table',
-                        data: '.[(entry | packageRelPath or name) ~= #.filter]',
-                        cols: [
-                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
-                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                            { header: 'Module', sorting: 'entry.name ascN', content: 'module-badge:entry' },
-                            { header: 'Functions', data: 'entry.functions' },
-                            { header: 'Histogram', content: {
-                                view: 'timeline-segments-bin',
-                                bins: '=#.data.modulesTree.binCalls(entry, 100)',
-                                max: '=#.data.totalTime / 100',
-                                binsMax: true,
-                                color: '=entry.area.name.color()',
-                                height: 22
-                            } }
-                        ]
-                    }
-                }
+                'text:"Modules "',
+                { view: 'pill-badge', content: {
+                    view: 'draft-timings-related',
+                    source: '=#.data.modulesTimings',
+                    content: 'text-numeric:#.data.modulesTimings.entries.[totalTime and entry.package = @].size()'
+                } }
             ]
+        },
+        {
+            view: 'content-filter',
+            content: {
+                view: 'draft-timings-related',
+                source: '=#.data.packagesTimings',
+                content: {
+                    view: 'table',
+                    data: '#.data.modulesTimings.entries.[totalTime and entry.package = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                    cols: [
+                        { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                        { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
+                        { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                        { header: 'Module', sorting: 'entry.name ascN', content: 'module-badge:entry' },
+                        { header: 'Functions', data: 'entry.functions' }
+                        // { header: 'Histogram', content: {
+                        //     view: 'timeline-segments-bin',
+                        //     bins: '=#.data.modulesTree.binCalls(entry, 100)',
+                        //     max: '=#.data.totalTime / 100',
+                        //     binsMax: true,
+                        //     color: '=entry.area.name.color()',
+                        //     height: 22
+                        // } }
+                    ]
+                }
+            }
         }
     ]
 });

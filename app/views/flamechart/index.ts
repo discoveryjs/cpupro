@@ -230,7 +230,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
     }
 
     setData(tree: CallTree<T>, options?: SetDataOptions) {
-        this.resetFrameRefs();
+        // this.resetFrameRefs();
 
         options = options || {};
 

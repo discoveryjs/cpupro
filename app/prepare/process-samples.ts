@@ -10,16 +10,68 @@ import {
     V8CpuProfileNode
 } from './types';
 
-class SamplesTiminigs {
+function binarySearch(array: Uint32Array, value: number): number {
+    let left = 0;
+    let right = array.length - 1;
+
+    while (left <= right) {
+        const mid = (left + right) >> 1;
+        const midValue = array[mid];
+
+        if (midValue === value) {
+            return mid;
+        }
+
+        if (midValue < value) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+
+    return right;
+}
+
+type Listener = { fn: () => void };
+class TimingsObserver {
+    listeners: Listener[] = [];
+    on(fn: () => void) {
+        let listener = { fn };
+        this.listeners.push(listener);
+
+        return () => {
+            if (listener !== null) {
+                this.listeners = this.listeners.filter(el => el !== listener);
+                listener = null;
+            }
+        };
+    }
+
+    notify() {
+        for (const { fn } of this.listeners) {
+            fn();
+        }
+    }
+}
+
+class SamplesTiminigs extends TimingsObserver {
     epoch: number;
     samples: Uint32Array;
     timeDeltas: Uint32Array;
+    originalDeltas: Uint32Array;
+    timestamps: Uint32Array;
+    rangeStart: number | null = null;
+    rangeEnd: number | null = null;
     selfTimes: Uint32Array;
 
     constructor(size: number, samples: Uint32Array, timeDeltas: Uint32Array) {
+        super();
+
         this.epoch = 0;
         this.samples = samples;
         this.timeDeltas = timeDeltas;
+        this.originalDeltas = timeDeltas;
+        this.timestamps = null;
         this.selfTimes = new Uint32Array(size);
         this.compute();
     }
@@ -34,10 +86,59 @@ class SamplesTiminigs {
         for (let i = 0; i < samples.length; i++) {
             selfTimes[samples[i]] += timeDeltas[i];
         }
+
+        this.notify();
+    }
+
+    resetRange() {
+        this.rangeStart = null;
+        this.rangeEnd = null;
+
+        if (this.timeDeltas !== this.originalDeltas) {
+            this.timeDeltas = this.originalDeltas;
+        }
+    }
+    setRange(start: number, end: number) {
+        const { originalDeltas } = this;
+        let { timeDeltas, timestamps } = this;
+
+        this.rangeStart = start;
+        this.rangeEnd = end;
+
+        if (timeDeltas === this.originalDeltas) {
+            this.timeDeltas = timeDeltas = new Uint32Array(timeDeltas.length);
+        } else {
+            timeDeltas.fill(0);
+        }
+
+        if (timestamps === null) {
+            this.timestamps = timestamps = new Uint32Array(timeDeltas.length);
+
+            for (let i = 1; i < timestamps.length; i++) {
+                timestamps[i] = originalDeltas[i - 1] + timestamps[i - 1];
+            }
+        }
+
+        const startIndex = binarySearch(timestamps, start);
+        const endIndex = binarySearch(timestamps, end);
+
+        if (startIndex !== endIndex) {
+            timeDeltas[startIndex] = originalDeltas[startIndex] - (start - timestamps[startIndex]);
+            timeDeltas[endIndex] = end - timestamps[endIndex];
+
+            if (startIndex + 1 < endIndex) {
+                timeDeltas.set(this.originalDeltas.subarray(startIndex + 1, endIndex), startIndex + 1);
+            }
+        } else {
+            timeDeltas[startIndex] = end - start;
+        }
+
+        // let sum = timeDeltas.reduce((s, i) => s + i, 0);
+        // console.log('setRange', Date.now() - t, {start, end}, startIndex, endIndex, { range: end - start, sum });
     }
 }
 
-class TreeTiminigs<T extends CpuProNode> {
+class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
     epoch: number;
     tree: CallTree<T>;
     sampleToNode: Uint32Array;
@@ -46,6 +147,8 @@ class TreeTiminigs<T extends CpuProNode> {
     nestedTimes: Uint32Array;
 
     constructor(tree: CallTree<T>, sampleToNode: Uint32Array, sourceTimings: SamplesTiminigs) {
+        super();
+
         this.epoch = 0;
         this.tree = tree;
         this.sampleToNode = sampleToNode;
@@ -72,6 +175,8 @@ class TreeTiminigs<T extends CpuProNode> {
         for (let i = selfTimes.length - 1; i > 0; i--) {
             nestedTimes[parent[i]] += selfTimes[i] + nestedTimes[i];
         }
+
+        this.notify();
     }
 }
 
@@ -81,19 +186,24 @@ type DictionaryTiminig<T> = {
     nestedTime: number;
     totalTime: number;
 };
-class DictionaryTiminigs<T extends CpuProNode> {
+class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
     epoch: number;
-    sourceTimings: TreeTiminigs<T>;
+    sourceTreeTimings: TreeTiminigs<T>;
     selfTimes: Uint32Array;
     totalTimes: Uint32Array;
     entries: DictionaryTiminig<T>[];
 
-    constructor(sourceTimings: TreeTiminigs<T>) {
+    constructor(sourceTreeTimings: TreeTiminigs<T>) {
+        const { dictionary } = sourceTreeTimings.tree;
+
+        super();
+
         this.epoch = 0;
-        this.sourceTimings = sourceTimings;
-        this.selfTimes = new Uint32Array(sourceTimings.tree.dictionary.length);
-        this.totalTimes = new Uint32Array(sourceTimings.tree.dictionary.length);
-        this.entries = sourceTimings.tree.dictionary.map(entry => ({
+        this.sourceTreeTimings = sourceTreeTimings;
+        this.selfTimes = new Uint32Array(dictionary.length);
+        this.totalTimes = new Uint32Array(dictionary.length);
+        this.entries = dictionary.map((entry, entryIndex) => ({
+            entryIndex,
             entry,
             selfTime: 0,
             nestedTime: 0,
@@ -104,16 +214,16 @@ class DictionaryTiminigs<T extends CpuProNode> {
     }
 
     compute() {
-        const { selfTimes, totalTimes: nestedTimes } = this;
+        const { selfTimes, totalTimes, entries } = this;
         const {
+            tree: { nodes, nested },
             selfTimes: sourceSelfTimings,
-            nestedTimes: sourceNestedTimings,
-            tree: { nodes, nested }
-        } = this.sourceTimings;
+            nestedTimes: sourceNestedTimings
+        } = this.sourceTreeTimings;
 
         if (this.epoch++ > 0) {
             selfTimes.fill(0);
-            nestedTimes.fill(0);
+            totalTimes.fill(0);
         }
 
         for (let i = nodes.length - 1; i >= 0; i--) {
@@ -123,27 +233,21 @@ class DictionaryTiminigs<T extends CpuProNode> {
             selfTimes[index] += selfTime;
 
             if (nested[i] === 0) {
-                nestedTimes[index] += selfTime + sourceNestedTimings[i];
+                totalTimes[index] += selfTime + sourceNestedTimings[i];
             }
         }
-    }
-
-    applyTimesToDictionary() {
-        const { entries, selfTimes, totalTimes } = this;
-        const { tree: { dictionary } } = this.sourceTimings;
 
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i];
+            const selfTime = selfTimes[i];
+            const totalTime = totalTimes[i];
 
-            entry.selfTime = selfTimes[i];
-            entry.nestedTime = totalTimes[i] - selfTimes[i];
-            entry.totalTime = totalTimes[i];
+            entry.selfTime = selfTime;
+            entry.nestedTime = totalTime - selfTime;
+            entry.totalTime = totalTime;
         }
 
-        for (let i = 0; i < dictionary.length; i++) {
-            dictionary[i].selfTime = selfTimes[i];
-            dictionary[i].totalTime = totalTimes[i];
-        }
+        this.notify();
     }
 }
 
@@ -158,7 +262,12 @@ function computeTimings<T extends CpuProNode>(
 
     tree.selfTimes = treeTimings.selfTimes;
     tree.nestedTimes = treeTimings.nestedTimes;
-    dictionaryTimings.applyTimesToDictionary();
+
+    for (const { entry, selfTime, totalTime } of dictionaryTimings.entries) {
+        entry.selfTime = selfTime;
+        // entry.nestedTime = nestedTime;
+        entry.totalTime = totalTime;
+    }
 
     return { treeTimings, dictionaryTimings };
 }
@@ -245,6 +354,10 @@ export function processSamples(
     TIMINGS && console.groupEnd();
 
     return result;
+    return {
+        samplesTimings,
+        ...result
+    };
 }
 
 

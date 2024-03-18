@@ -24,12 +24,12 @@ discovery.view.define('page-indicator-timings', {
         {
             title: 'Total time',
             value: '=totalTime | ? ms() : "—"',
-            unit: '=totalTime > 0'
+            unit: true
         },
         {
             title: 'Total time, %',
             value: '=totalTime | ? totalPercent() : "—"',
-            unit: '=totalTime > 0'
+            unit: true
         }
     ]
 }, { tag: false });

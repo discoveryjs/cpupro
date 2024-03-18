@@ -40,22 +40,43 @@ discovery.view.define('subject-with-nested-timeline', {
             captions: 'top',
             duration: '=totalTime',
             segments: '=binCount',
+            selectionStart: '=#.data.samplesTimings.rangeStart',
+            selectionEnd: '=#.data.samplesTimings.rangeEnd',
+            onChange: (_, state, data, context) => {
+                console.log('change', state);
+                if (state.timeStart !== null) {
+                    context.data.samplesTimings.setRange(state.timeStart, state.timeEnd);
+                } else {
+                    context.data.samplesTimings.resetRange();
+                }
+                const t = Date.now();
+                context.data.samplesTimings.compute();
+                context.data.functionsTreeTimings.compute();
+                context.data.functionsTimings.compute();
+                context.data.modulesTreeTimings.compute();
+                context.data.modulesTimings.compute();
+                context.data.packagesTreeTimings.compute();
+                context.data.packagesTimings.compute();
+                context.data.areasTreeTimings.compute();
+                context.data.areasTimings.compute();
+                console.log('comput', Date.now() - t);
+            },
             details: [
                 {
                     view: 'block',
                     className: 'timeline-segment-info',
                     content: [
-                        { view: 'block', content: 'text:`Range: ${#.startTime.formatMicrosecondsTime(totalTime)} – ${#.endTime.formatMicrosecondsTime(totalTime)}`' },
-                        { view: 'block', content: 'text:`Samples: ${binSamples[#.startSegment:#.endSegment + 1].sum()}`' },
-                        { view: 'block', content: ['text:"Duration: "', 'duration:{ time: #.endTime - #.startTime, total: totalTime }'] }
+                        { view: 'block', content: 'text:`Range: ${#.timeStart.formatMicrosecondsTime(totalTime)} – ${#.timeEnd.formatMicrosecondsTime(totalTime)}`' },
+                        { view: 'block', content: 'text:`Samples: ${binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' },
+                        { view: 'block', content: ['text:"Duration: "', 'duration:{ time: #.timeEnd - #.timeStart, total: totalTime }'] }
                     ]
                 },
                 {
                     view: 'block',
                     className: 'timeline-segment-info',
                     content: [
-                        { view: 'block', content: ['text:"Self time: "', 'duration:{ time: bins[#.startSegment:#.endSegment + 1].sum(), total: totalTime }'] },
-                        { view: 'block', content: ['text:"Nested time: "', 'duration:{ time: totalTimeBins[#.startSegment:#.endSegment + 1].sum(), total: totalTime }'] }
+                        { view: 'block', content: ['text:"Self time: "', 'duration:{ time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalTime }'] },
+                        { view: 'block', content: ['text:"Nested time: "', 'duration:{ time: totalTimeBins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalTime }'] }
                     ]
                 },
                 {
@@ -63,11 +84,11 @@ discovery.view.define('subject-with-nested-timeline', {
                     className: 'area-timings-list',
                     data: 'nested',
                     itemConfig: {
-                        className: '=bins[#.startSegment:#.endSegment + 1].sum() = 0 ? "no-time"',
+                        className: '=bins[#.segmentStart:#.segmentEnd + 1].sum() = 0 ? "no-time"',
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
                             'block{ className: "area-name", content: "text:area.name" }',
-                            'duration{ data: { time: bins[#.startSegment:#.endSegment + 1].sum(), total: totalTimeBins[#.startSegment:#.endSegment + 1].sum() } }'
+                            'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalTimeBins[#.segmentStart:#.segmentEnd + 1].sum() } }'
                         ]
                     }
                 }

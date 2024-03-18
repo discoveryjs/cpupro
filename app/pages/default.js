@@ -140,27 +140,49 @@ const areasTimeline = {
         {
             view: 'time-ruler',
             captions: 'top',
-            duration: '=totalTime',
-            segments: '=binCount',
+            duration: '=$[].totalTime',
+            segments: '=$[].binCount',
+            selectionStart: '=#.data.samplesTimings.rangeStart',
+            selectionEnd: '=#.data.samplesTimings.rangeEnd',
+            onInit: (_, state) => console.log('init', state),
+            onChange: (_, state, data, context) => {
+                console.log('change', state);
+                if (state.timeStart !== null) {
+                    context.data.samplesTimings.setRange(state.timeStart, state.timeEnd);
+                } else {
+                    context.data.samplesTimings.resetRange();
+                }
+                const t = Date.now();
+                context.data.samplesTimings.compute();
+                context.data.functionsTreeTimings.compute();
+                context.data.functionsTimings.compute();
+                context.data.modulesTreeTimings.compute();
+                context.data.modulesTimings.compute();
+                context.data.packagesTreeTimings.compute();
+                context.data.packagesTimings.compute();
+                context.data.areasTreeTimings.compute();
+                context.data.areasTimings.compute();
+                console.log('comput', Date.now() - t);
+            },
             details: [
                 {
                     view: 'block',
                     className: 'timeline-segment-info',
                     content: [
-                        { view: 'block', content: 'text:`Range: ${#.startTime.formatMicrosecondsTime(totalTime)} – ${#.endTime.formatMicrosecondsTime(totalTime)}`' },
-                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.startSegment:#.endSegment + 1].sum()}`' },
-                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: #.endTime - #.startTime, total: totalTime }'] }
+                        { view: 'block', content: 'text:`Range: ${#.timeStart.formatMicrosecondsTime(totalTime)} – ${#.timeEnd.formatMicrosecondsTime(totalTime)}`' },
+                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' },
+                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: #.timeEnd - #.timeStart, total: totalTime }'] }
                     ]
                 },
                 {
                     view: 'list',
                     className: 'area-timings-list',
                     itemConfig: {
-                        className: '=bins[#.startSegment:#.endSegment + 1].sum() = 0 ? "no-time"',
+                        className: '=bins[#.segmentStart:#.segmentEnd + 1].sum() = 0 ? "no-time"',
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
                             'block{ className: "area-name", content: "text:area.name" }',
-                            'duration{ data: { time: bins[#.startSegment:#.endSegment + 1].sum(), total: #.endTime - #.startTime } }'
+                            'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: #.timeEnd - #.timeStart } }'
                         ]
                     }
                 }
@@ -176,6 +198,7 @@ const areasTimeline = {
                     {
                         view: 'block',
                         className: 'label',
+                        postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: 'text:area.name'
                     },
                     {
@@ -198,66 +221,88 @@ const areasTimeline = {
 
 const packagesList = {
     view: 'section',
-    data: 'packagesTimings.entries.sort(selfTime desc, totalTime desc)',
+    data: 'packagesTimings',
     header: [
         'text:"Packages "',
-        { view: 'pill-badge', content: 'text-numeric:size()' }
+        {
+            view: 'draft-timings-related',
+            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
+        }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'table',
-            data: '.[entry.name ~= #.filter]',
-            limit: 15,
-            cols: [
-                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Package', className: 'main', sorting: 'entry.name asc', content: 'package-badge:entry' }
-            ]
+            view: 'draft-timings-related',
+            debounce: true,
+            content: {
+                view: 'table',
+                data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                limit: 15,
+                cols: [
+                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                    { header: 'Package', className: 'main', sorting: 'entry.name asc', content: 'package-badge:entry' }
+                ]
+            }
         }
     }
 };
 
 const modulesList = {
     view: 'section',
-    data: 'modulesTimings.entries.sort(selfTime desc, totalTime desc)',
+    data: 'modulesTimings',
     header: [
         'text:"Modules "',
-        { view: 'pill-badge', content: 'text-numeric:size()' }
+        {
+            view: 'draft-timings-related',
+            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
+        }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'table',
-            data: '.[entry.name ~= #.filter]',
-            limit: 15,
-            cols: [
-                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Module', className: 'main', sorting: 'entry.name ascN', content: 'module-badge:entry' }
-            ]
+            view: 'draft-timings-related',
+            content: {
+                view: 'table',
+                data: `entries
+                    .[totalTime and entry.name ~= #.filter]
+                    .sort(selfTime desc, totalTime desc)
+                `,
+                limit: 15,
+                cols: [
+                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                    { header: 'Module', className: 'main', sorting: 'entry.name ascN', content: 'module-badge:entry' }
+                ]
+            }
         }
     }
 };
 
 const functionList = {
     view: 'section',
-    data: 'functionsTimings.entries.sort(selfTime desc, totalTime desc)',
+    data: 'functionsTimings',
     header: [
         'text:"Functions "',
-        { view: 'pill-badge', content: 'text-numeric:size()' }
+        {
+            view: 'draft-timings-related',
+            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
+        }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'table',
-            data: '.[entry.name ~= #.filter]',
-            limit: 15,
-            cols: [
-                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Function', className: 'main', sorting: 'entry.name ascN', content: 'function-badge:entry' }
-            ]
+            view: 'draft-timings-related',
+            content: {
+                view: 'table',
+                data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                limit: 15,
+                cols: [
+                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                    { header: 'Function', className: 'main', sorting: 'entry.name ascN', content: 'function-badge:entry' }
+                ]
+            }
         }
     }
 };
@@ -329,6 +374,7 @@ const flamecharts = {
     content: {
         view: 'flamechart',
         tree: '=$[#.dataset]',
+        timings: '=$[#.dataset + "Timings"]',
         lockScrolling: true
     }
 };

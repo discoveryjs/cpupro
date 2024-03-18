@@ -162,11 +162,17 @@
     display: grid;
     grid-template-columns: auto auto 1fr;
     padding: 15px 0 0;
+    user-select: none;
 }
 .page-default .area-timelines .view-time-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
 }
+.page-default .area-timelines .view-time-ruler::before {
+    top: -1px;
+    bottom: -3px;
+}
+
 .page-default .area-timelines-list,
 .page-default .area-timelines-list > .view-list-item {
     display: contents;
@@ -182,15 +188,27 @@
     background: rgba(165,165,165,.3);
 }
 .page-default .area-timelines-item > .label {
-    font-size: 11px;
+    font-size: 12px;
     text-align: right;
-    padding: 2px 4px 0 12px;
+    padding: 0px 4px 0 12px;
     border-bottom: 1px solid #0004;
+}
+.page-default .area-timelines-item > .label::after {
+    content: '';
+    display: inline-block;
+    vertical-align: middle;
+    width: .75em;
+    aspect-ratio: 1/1;
+    margin-left: 8px;
+    margin-right: -6px;
+    margin-top: -1px;
+    background: var(--color, #888);
+    border-radius: 50%;
 }
 .page-default .area-timelines-item > .total-percent {
     text-align: right;
     font-size: 11px;
-    padding: 2px 8px 0 8px;
+    padding: 1px 8px 0 8px;
     border-bottom: 1px solid #0004;
     color: #888;
 }
@@ -210,28 +228,31 @@
     gap: 10px;
     margin-bottom: 8px;
 }
-.page-default .hierarchical-components > .content > .view-section {
+.page-default .hierarchical-components > .content .view-draft-timings-related {
+    display: contents;
+}
+.page-default .hierarchical-components > .content .view-section {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: clip;
     margin-bottom: 0;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-header {
+.page-default .hierarchical-components > .content .view-section > .view-header {
     margin: 0;
     font-size: inherit;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter {
+.page-default .hierarchical-components > .content .view-section > .view-content-filter {
     display: contents;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content {
+.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content {
     overflow: auto;
     max-height: 418px;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table {
+.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content > .view-table {
     min-width: 100%;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table th,
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table .view-table-cell.main {
+.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content > .view-table th,
+.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content > .view-table .view-table-cell.main {
     min-width: 100%;
 }

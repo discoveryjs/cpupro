@@ -23,39 +23,15 @@ discovery.page.define('function', {
         },
 
         {
-            view: 'page-indicator-timings',
-            data: '#.data.functionsTimings.entries[=>entry = @]'
-        },
-
-        {
-            view: 'tree',
-            data: `
-                $functions: #.data.functionsTree.nestedTimings($);
-                $totalTime: $functions.sum(=>selfTime);
-
-                $functions
-                    .({ function: entry, time: selfTime, total: $totalTime })
-                    .sort(time desc)
-                    .group(=>function.module)
-                        .({ module: key, time: value.sum(=>time), total: $totalTime, functions: value })
-                        .sort(time desc)
-                    .group(=>module.package)
-                        .({ package: key, time: value.sum(=>time), total: $totalTime, modules: value })
-                        .sort(time desc)
-            `,
-            expanded: false,
-            itemConfig: {
-                content: ['package-badge:package', 'duration'],
-                children: 'modules',
-                itemConfig: {
-                    content: ['module-badge:module', 'duration'],
-                    children: 'functions',
-                    itemConfig: {
-                        content: ['function-badge:function', 'duration']
-                    }
-                }
+            view: 'draft-timings-related',
+            source: '=#.data.functionsTimings',
+            content: {
+                view: 'page-indicator-timings',
+                data: '#.data.functionsTimings.entries[=>entry = @]'
             }
         },
+
+        'nested-timings-tree:{ subject: @, tree: #.data.functionsTree, timings: #.data.functionsTimings }',
 
         {
             view: 'context',

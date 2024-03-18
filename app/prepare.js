@@ -123,6 +123,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         }
     }
     const {
+        samplesTimings,
         functionsTimings,
         functionsTreeTimings,
         modulesTimings,
@@ -178,6 +179,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         samples,
         samplesCount,
         samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1], // TODO: speedup
+        samplesTimings,
         timeDeltas
     };
 

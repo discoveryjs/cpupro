@@ -16,8 +16,12 @@ discovery.page.define('area', {
         },
 
         {
-            view: 'page-indicator-timings',
-            data: '#.data.areasTimings.entries[=>entry = @]'
+            view: 'draft-timings-related',
+            source: '=#.data.areasTimings',
+            content: {
+                view: 'page-indicator-timings',
+                data: '#.data.areasTimings.entries[=>entry = @]'
+            }
         },
 
         {
@@ -45,25 +49,33 @@ discovery.page.define('area', {
         },
 
         {
-            view: 'context',
-            data: '#.data.modulesTimings.entries.[entry.area = @].sort(selfTime desc, totalTime desc)',
+            view: 'h2',
             content: [
-                { view: 'h2', content: ['text:"Modules "', 'pill-badge:size()'] },
+                'text:"Modules "',
                 {
-                    view: 'content-filter',
-                    content: {
-                        view: 'table',
-                        data: '.[entry.name ~= #.filter]',
-                        cols: [
-                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
-                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                            { header: 'Module', sorting: 'entry.name ascN',content: 'module-badge:entry' },
-                            { header: 'Functions', data: 'entry.functions' }
-                        ]
-                    }
+                    view: 'draft-timings-related',
+                    source: '=#.data.modulesTimings',
+                    content: { view: 'pill-badge', content: 'text-numeric:#.data.modulesTimings.entries.[totalTime and entry.area = @].size()' }
                 }
             ]
+        },
+        {
+            view: 'content-filter',
+            content: {
+                view: 'draft-timings-related',
+                source: '=#.data.modulesTimings',
+                content: {
+                    view: 'table',
+                    data: '#.data.modulesTimings.entries.[totalTime and entry.area = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                    cols: [
+                        { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                        { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
+                        { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                        { header: 'Module', sorting: 'entry.name ascN',content: 'module-badge:entry' },
+                        { header: 'Functions', data: 'entry.functions' }
+                    ]
+                }
+            }
         }
     ]
 });
