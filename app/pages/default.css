@@ -1,8 +1,3 @@
-.page-default > .view-expand > .header {
-    --discovery-view-expand-trigger-size: calc(var(--discovery-page-padding-left) - 2px);
-    margin-right: calc(-1 * var(--discovery-page-padding-right));
-}
-
 .page-default .flamecharts > .content {
     margin-bottom: calc(-1 * var(--discovery-page-padding-bottom));
     margin-right: calc(1px - var(--discovery-page-padding-right));
@@ -227,6 +222,8 @@
     flex-direction: row;
     gap: 10px;
     margin-bottom: 8px;
+    margin-left: calc(10px - var(--discovery-page-padding-left));
+    margin-right: calc(10px - var(--discovery-page-padding-right));
 }
 .page-default .hierarchical-components > .content .view-draft-timings-related {
     display: contents;
@@ -240,19 +237,26 @@
 }
 .page-default .hierarchical-components > .content .view-section > .view-header {
     margin: 0;
+    padding-left: 2px;
     font-size: inherit;
 }
 .page-default .hierarchical-components > .content .view-section > .view-content-filter {
     display: contents;
 }
+.page-default .hierarchical-components > .content .view-section > .view-content-filter > .view-input {
+    margin: 4px 0 1px;
+}
 .page-default .hierarchical-components > .content .view-section > .view-content-filter > .content {
     overflow: auto;
     max-height: 418px;
 }
-.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content > .view-table {
+.page-default .hierarchical-components > .content .view-section .view-table {
     min-width: 100%;
 }
-.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content > .view-table th,
-.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content > .view-table .view-table-cell.main {
-    min-width: 100%;
+.page-default .hierarchical-components > .content .view-section .view-table th {
+    white-space: nowrap;
+}
+.page-default .hierarchical-components > .content .view-section .view-table th:last-child,
+.page-default .hierarchical-components > .content .view-section .view-table .view-table-cell.main {
+    width: 100%;
 }

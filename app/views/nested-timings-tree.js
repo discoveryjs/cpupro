@@ -4,6 +4,8 @@ discovery.view.define('nested-timings-tree', {
     content: {
         view: 'tree',
         limitLines: 10,
+        expanded: false,
+        emptyText: 'No nesting calls',
         data: `
             $tree;
             $subject;
@@ -20,7 +22,6 @@ discovery.view.define('nested-timings-tree', {
                     .({ package: key, time: value.sum(=>time), total: $totalTime, modules: value })
                     .sort(time desc)
         `,
-        expanded: false,
         itemConfig: {
             content: ['package-badge:package', 'duration'],
             children: 'modules',

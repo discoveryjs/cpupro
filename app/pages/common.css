@@ -1,7 +1,7 @@
 
 .view-page-indicators,
 :not(.view-page-indicators) > .view-page-indicator-group {
-    margin-bottom: 8px;
+    margin-bottom: 1px;
 }
 
 .page .view-page-header .view-h1 {
@@ -115,6 +115,15 @@ h2 .logo {
     color: var(--color1, black);
     padding: .3em .5em;
     border-radius: 0 0 2px 2px;
+}
+
+.page > .view-expand.trigger-outside > .header {
+    --discovery-view-expand-trigger-size: calc(var(--discovery-page-padding-left) - 2px);
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
+}
+
+.table-content-filter > .view-input {
+    margin: 1px 0;
 }
 
 .view-table-cell > .view-timeline-segments-bin {
