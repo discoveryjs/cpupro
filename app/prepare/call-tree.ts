@@ -6,19 +6,34 @@ type Entry<T> = {
     children?: Entry<T>[];
 };
 
+type TreeMemory = {
+    buffer: ArrayBuffer;
+    sourceDictMap: Uint32Array;
+    sourceNodesMap: Uint32Array;
+    nodes: Uint32Array;
+    parent: Uint32Array;
+    subtreeSize: Uint32Array;
+    nested: Uint32Array;
+    compute1: Uint32Array;
+    compute2: Uint32Array;
+}
+
 type NumericArray =
     // | number[]
     // | Uint8Array
     // | Uint16Array
     | Uint32Array;
 
+const NULL_ARRAY = new Uint32Array();
+
 export class CallTree<T> {
-    dictionary: T[];            // entries
-    mapToIndex: NumericArray;   // sourceNodeId -> index of nodes
-    nodes: NumericArray;        // nodeIndex -> index of dictionary
-    parent: NumericArray;       // nodeIndex -> index of nodes
-    subtreeSize: NumericArray;  // nodeIndex -> number of nodes in subtree, 0 when no children
-    nested: NumericArray;       // nodeIndex -> index of nodes
+    dictionary: T[];              // entries
+    sourceIdToNode: NumericArray; // sourceNodeId -> index of nodes
+    sampleIdToNode: NumericArray; // sampleId  -> index of nodes
+    nodes: NumericArray;          // nodeIndex -> index of dictionary
+    parent: NumericArray;         // nodeIndex -> index of nodes
+    subtreeSize: NumericArray;    // nodeIndex -> number of nodes in subtree, 0 when no children
+    nested: NumericArray;         // nodeIndex -> index of nodes
 
     root: Entry<T>;
     entryRefMap: Map<number, WeakRef<Entry<T>>>;
@@ -29,14 +44,15 @@ export class CallTree<T> {
 
     constructor(
         dictionary: T[],
-        mapToIndex: NumericArray,
+        sourceIdToNode: NumericArray,
         nodes?: NumericArray,
         parent?: NumericArray,
         subtreeSize?: NumericArray,
         nested?: NumericArray
     ) {
         this.dictionary = dictionary;
-        this.mapToIndex = mapToIndex;
+        this.sourceIdToNode = sourceIdToNode;
+        this.sampleIdToNode = NULL_ARRAY; // setting up later
 
         this.nodes = nodes || new Uint32Array(dictionary.length);
         this.parent = parent || new Uint32Array(nodes.length);

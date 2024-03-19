@@ -127,12 +127,12 @@ export default {
     },
     // TODO: optimize
     subtreeSamples(tree, subject, includeSelf = false) {
-        const mapToIndex = tree.mapToIndex;
-        const sampleIds = new Set(mapToIndex);
+        const sampleIdToNode = tree.sampleIdToNode;
+        const sampleIds = new Set(sampleIdToNode);
         const selected = new Set();
         const selectedEntries = new Set();
         const selectedSamples = new Set();
-        const mask = new Uint8Array(mapToIndex.length);
+        const mask = new Uint8Array(sampleIdToNode.length);
         const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
 
         for (const nodeIndex of tree.selectNodes(subject)) {
@@ -148,8 +148,8 @@ export default {
             }
         }
 
-        for (let i = 0; i < mapToIndex.length; i++) {
-            if (selected.has(mapToIndex[i])) {
+        for (let i = 0; i < sampleIdToNode.length; i++) {
+            if (selected.has(sampleIdToNode[i])) {
                 mask[i] = 1;
                 selectedSamples.add(i);
             }
@@ -169,8 +169,8 @@ export default {
         return Array.from(bins);
     },
     nestedTimings(tree, subject, tree2 = tree) {
-        const mapToIndex = tree.mapToIndex;
-        const sampleIds = new Set(mapToIndex);
+        const sampleIdToNode = tree.sampleIdToNode;
+        const sampleIds = new Set(sampleIdToNode);
         const selected = new Set();
         const visited = new Set();
         const tree2dict = new Uint32Array(tree2.dictionary.length);
@@ -185,9 +185,9 @@ export default {
             }
         }
 
-        for (let i = 0; i < mapToIndex.length; i++) {
-            if (selected.has(mapToIndex[i])) {
-                const nodeIndex = tree2.mapToIndex[i];
+        for (let i = 0; i < sampleIdToNode.length; i++) {
+            if (selected.has(sampleIdToNode[i])) {
+                const nodeIndex = tree2.sampleIdToNode[i];
 
                 if (!visited.has(nodeIndex)) {
                     tree2dict[tree2.nodes[nodeIndex]] += tree2.selfTimes[nodeIndex];
@@ -214,12 +214,12 @@ export default {
     },
     binCalls(tree, test, n = 500) {
         const { samples, timeDeltas, totalTime } = this.context.data;
-        const { dictionary, nodes, mapToIndex } = tree;
+        const { dictionary, nodes, sampleIdToNode } = tree;
         const acceptFn = typeof test === 'function' ? test : (entry) => entry === test;
-        const mask = new Uint8Array(mapToIndex.length);
+        const mask = new Uint8Array(sampleIdToNode.length);
 
         for (let i = 0; i < mask.length; i++) {
-            const nodeIndex = mapToIndex[i];
+            const nodeIndex = sampleIdToNode[i];
             const accept = acceptFn(dictionary[nodes[nodeIndex]], i);
 
             if (accept) {

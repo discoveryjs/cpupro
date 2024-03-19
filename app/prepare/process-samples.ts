@@ -141,17 +141,17 @@ class SamplesTiminigs extends TimingsObserver {
 class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
     epoch: number;
     tree: CallTree<T>;
-    sampleToNode: Uint32Array;
+    sampleIdToNode: Uint32Array;
     sourceTimings: SamplesTiminigs;
     selfTimes: Uint32Array;
     nestedTimes: Uint32Array;
 
-    constructor(tree: CallTree<T>, sampleToNode: Uint32Array, sourceTimings: SamplesTiminigs) {
+    constructor(tree: CallTree<T>, sampleIdToNode: Uint32Array, sourceTimings: SamplesTiminigs) {
         super();
 
         this.epoch = 0;
         this.tree = tree;
-        this.sampleToNode = sampleToNode;
+        this.sampleIdToNode = sampleIdToNode;
         this.sourceTimings = sourceTimings;
         this.selfTimes = new Uint32Array(tree.nodes.length);
         this.nestedTimes = new Uint32Array(tree.nodes.length);
@@ -161,7 +161,7 @@ class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
     compute() {
         const { selfTimes: sourceSelfTimings } = this.sourceTimings;
         const { parent } = this.tree;
-        const { sampleToNode, selfTimes, nestedTimes } = this;
+        const { sampleIdToNode, selfTimes, nestedTimes } = this;
 
         if (this.epoch++ > 0) {
             selfTimes.fill(0);
@@ -169,7 +169,7 @@ class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
         }
 
         for (let i = 0; i < sourceSelfTimings.length; i++) {
-            selfTimes[sampleToNode[i]] += sourceSelfTimings[i];
+            selfTimes[sampleIdToNode[i]] += sourceSelfTimings[i];
         }
 
         for (let i = selfTimes.length - 1; i > 0; i--) {
@@ -254,10 +254,10 @@ class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
 function computeTimings<T extends CpuProNode>(
     name: string,
     tree: CallTree<T>,
-    sampleToNode: Uint32Array,
+    sampleIdToNode: Uint32Array,
     samplesTimings: SamplesTiminigs
 ) {
-    const treeTimings = new TreeTiminigs(tree, sampleToNode, samplesTimings);
+    const treeTimings = new TreeTiminigs(tree, sampleIdToNode, samplesTimings);
     const dictionaryTimings = new DictionaryTiminigs(treeTimings);
 
     tree.selfTimes = treeTimings.selfTimes;
@@ -304,8 +304,8 @@ export function processSamples(
     areasTree: CallTree<CpuProArea>
 ) {
     const remapSamplesStart = Date.now();
-    let sampleToNode = remapSamples(samples, callFramesTree.mapToIndex);
-    callFramesTree.mapToIndex = sampleToNode;
+    let sampleIdToNode = remapSamples(samples, callFramesTree.sourceIdToNode);
+    callFramesTree.sampleIdToNode = sampleIdToNode;
     TIMINGS && console.log('re-map samples', Date.now() - remapSamplesStart);
 
     // let prev = samples[0];
@@ -323,11 +323,11 @@ export function processSamples(
     // }
 
     const t = Date.now();
-    const samplesTimings = new SamplesTiminigs(sampleToNode.length, samples, timeDeltas);
+    const samplesTimings = new SamplesTiminigs(sampleIdToNode.length, samples, timeDeltas);
     console.log('SamplesTiminigs', Date.now() - t);
 
     const computeTimingsStart = Date.now();
-    const result = Object.create(null);
+    const result = { samplesTimings };
     TIMINGS && console.group('Compute timings');
 
     for (const { name, tree } of [
@@ -338,10 +338,10 @@ export function processSamples(
     ] as const) {
         const startTime = Date.now();
 
-        sampleToNode = sampleToNode.map(id => tree.mapToIndex[id]);
-        tree.mapToIndex = sampleToNode;
+        sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
+        tree.sampleIdToNode = sampleIdToNode;
 
-        const { treeTimings, dictionaryTimings } = computeTimings(name, tree, sampleToNode, samplesTimings);
+        const { treeTimings, dictionaryTimings } = computeTimings(name, tree, sampleIdToNode, samplesTimings);
         result[`${name}TreeTimings`] = treeTimings;
         result[`${name}Timings`] = dictionaryTimings;
 
@@ -354,10 +354,6 @@ export function processSamples(
     TIMINGS && console.groupEnd();
 
     return result;
-    return {
-        samplesTimings,
-        ...result
-    };
 }
 
 

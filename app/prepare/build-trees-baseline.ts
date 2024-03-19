@@ -10,7 +10,7 @@ function rollupTree<T>(
     // input
     inputTree: CallTree<T>,
     // output
-    indexBySource: CallTree<T>['mapToIndex'],
+    indexBySource: CallTree<T>['sourceIdToNode'],
     outputNodes: number[],
     hierarhyTree: HierarhyTree,
     // state
@@ -169,7 +169,7 @@ export function buildCallTreeAndCompareWithBaseline<S extends CpuProNode, D exte
         '\n  parent:', isEqualArrays(baselineTree.parent, tree.parent),
         '\n  nested:', isEqualArrays(baselineTree.nested, tree.nested),
         '\n  subtreeSize:', isEqualArrays(baselineTree.subtreeSize, tree.subtreeSize),
-        '\n  mapToIndex:', isEqualArrays(baselineTree.mapToIndex, tree.mapToIndex)
+        '\n  sourceIdToNode:', isEqualArrays(baselineTree.sourceIdToNode, tree.sourceIdToNode)
     );
 
     return { baselineTree, tree };

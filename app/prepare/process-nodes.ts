@@ -123,18 +123,18 @@ function getCallFrame(
 function buildCallFrameTree(
     nodeId: number,
     sourceNodes: V8CpuProfileNode[],
-    mapToIndex: Uint32Array,
+    sourceIdToNode: Uint32Array,
     nodes: Uint32Array,
     parent: Uint32Array,
     subtreeSize: Uint32Array,
     cursor = 0
 ) {
-    const idx = mapToIndex[nodeId];
+    const idx = sourceIdToNode[nodeId];
     const node = sourceNodes[idx];
     const nodeIndex = cursor++;
 
     nodes[nodeIndex] = idx;
-    mapToIndex[nodeId] = nodeIndex;
+    sourceIdToNode[nodeId] = nodeIndex;
 
     if (Array.isArray(node.children) && node.children.length > 0) {
         for (const childId of node.children) {
@@ -142,7 +142,7 @@ function buildCallFrameTree(
             cursor = buildCallFrameTree(
                 childId,
                 sourceNodes,
-                mapToIndex,
+                sourceIdToNode,
                 nodes,
                 parent,
                 subtreeSize,
@@ -177,7 +177,7 @@ export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
     buildCallFrameTree(
         nodes[0].id,
         nodes,
-        callFramesTree.mapToIndex, // pass arrays as separate values to reduce property reads, good for performance
+        callFramesTree.sourceIdToNode, // pass arrays as separate values to reduce property reads, good for performance
         callFramesTree.nodes,
         callFramesTree.parent,
         callFramesTree.subtreeSize
