@@ -37,12 +37,12 @@ discovery.view.define('subject-with-nested-timeline', {
     content: [
         {
             view: 'time-ruler',
-            captions: 'top',
+            labels: 'top',
             duration: '=totalTime',
             segments: '=binCount',
             selectionStart: '=#.data.samplesTimings.rangeStart',
             selectionEnd: '=#.data.samplesTimings.rangeEnd',
-            onChange: (_, state, data, context) => {
+            onChange: (state, name, el, data, context) => {
                 console.log('change', state);
                 if (state.timeStart !== null) {
                     context.data.samplesTimings.setRange(state.timeStart, state.timeEnd);

@@ -4,11 +4,6 @@
     margin: 1px 0;
 }
 
-.view-timeline-segments, .view-timeline-segments * {
-    -webkit-user-drag: none;
-    user-select: none;
-}
-
 .view-timeline-segments svg {
     display: block;
     margin-bottom: -.5px;

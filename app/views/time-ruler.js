@@ -13,26 +13,48 @@ function computeStep(n) {
     return n > 5 ? b : n >= 2.5 ? b / 2 : b / 4;
 }
 
-function createNullState() {
-    return {
-        segmentStart: null,
-        segmentEnd: null,
-        timeStart: null,
-        timeEnd: null
-    };
+function nullIfNotNumber(value) {
+    return Number.isFinite(value) ? value : null;
 }
+function createState(duration, segments, selectionStart = null, selectionEnd = null) {
+    selectionStart = nullIfNotNumber(selectionStart);
+    selectionEnd = nullIfNotNumber(selectionEnd);
 
-function timeToSegment(time = null, duration, segments) {
-    return time === null ? null : Math.floor((time / duration) * (segments - 1));
-}
+    if (!segments) {
+        segments = 1000;
+    }
 
-function createStateFromState({ duration, segments }, timeStart = null, timeEnd = null) {
-    const segmentStart = timeToSegment(timeStart, duration, segments);
-    const segmentEnd = timeToSegment(timeEnd, duration, segments);
+    let segmentStart = null;
+    let segmentEnd = null;
+    let timeStart = null;
+    let timeEnd = null;
+    let start = null;
+    let end = null;
+
+    if (selectionStart !== null && selectionEnd !== null) {
+        // align selection range to segment boundaries
+        segmentStart = Math.min(Math.floor(selectionStart * segments), segments - 1);
+        segmentEnd = Math.min(Math.floor(selectionEnd * segments), segments - 1);
+
+        if (segmentEnd === selectionEnd * segments && segmentStart !== segmentEnd) {
+            segmentEnd--;
+        }
+
+        // align time range to segment boundaries
+        const segmentDuration = duration / segments;
+        timeStart = Math.floor(segmentStart * segmentDuration);
+        timeEnd = Math.min(Math.floor((segmentEnd + 1) * segmentDuration), duration);
+
+        // align fraction to segment boundaries
+        start = segmentStart / segments;
+        end = (segmentEnd + 1) / segments;
+    }
 
     return {
         duration,
         segments,
+        start,
+        end,
         segmentStart,
         segmentEnd,
         timeStart,
@@ -40,17 +62,14 @@ function createStateFromState({ duration, segments }, timeStart = null, timeEnd 
     };
 }
 
-function createState(duration, segments, selectionStart, selectionEnd) {
-    return createStateFromState({ duration, segments }, selectionStart, selectionEnd);
-}
-
 let startSelectingRange = null;
 let startSelectingPointerX = null;
-let prevSegmentStart = null;
-let prevSegmentEnd = null;
+let startSelectingPointerY = null;
+let prevAnchorStart = null;
+let prevAnchorEnd = null;
 let currentViewEl = null;
 const viewByEl = new WeakMap();
-const detailsPopup = new discovery.view.Popup({
+const detailsTooltip = new discovery.view.Popup({
     className: 'view-time-ruler-tooltip',
     position: 'pointer',
     positionMode: 'natural',
@@ -60,95 +79,133 @@ const detailsPopup = new discovery.view.Popup({
 });
 
 function getRulerSegmentForPoint(timeRulerEl, x) {
-    const { options } = viewByEl.get(timeRulerEl);
+    const { segments } = viewByEl.get(timeRulerEl);
     const rect = timeRulerEl.getBoundingClientRect();
-    const width = timeRulerEl.clientWidth - 2;
-    const segmentsCount = options.segments || width;
-    const fraction = Math.min(width, Math.max(0, x - rect.left)) / width;
-    const segment = Math.floor(fraction * (segmentsCount - 1));
+    const width = timeRulerEl.clientWidth;
+    const segmentsCount = segments || width;
+    const fractionRaw = Math.min(width, Math.max(0, x - rect.left)) / width;
+    const fraction = Math.round(fractionRaw * width) / width; // round to pixel
+    // const segment = Math.min(Math.floor(fraction * segmentsCount), segmentsCount - 1);
+    // console.log(fraction, segment);
 
-    return { segment, segmentsCount };
+    return { fraction, segmentsCount };
 }
 
 function updateRulerSelection(timeRulerEl, x) {
-    const { segment, segmentsCount } = getRulerSegmentForPoint(timeRulerEl, x);
-    const { options, data, context, render, state: currentState } = viewByEl.get(timeRulerEl);
+    let { fraction, segmentsCount } = getRulerSegmentForPoint(timeRulerEl, x);
+    const hasSelection = timeRulerEl?.dataset.state === 'selected';
+    const {
+        data,
+        context,
+        render,
+        state: currentState,
+        duration,
+        name,
+        details,
+        onChange
+    } = viewByEl.get(timeRulerEl);
 
     if (timeRulerEl !== currentViewEl) {
-        timeRulerEl.style.setProperty('--segments-count', segmentsCount);
+        detailsTooltip.hide();
 
-        if (timeRulerEl.dataset.state !== 'selected') {
-            prevSegmentStart = null;
-            prevSegmentEnd = null;
-            timeRulerEl.dataset.state = 'hovered';
+        if (hasSelection) {
+            prevAnchorStart = currentState.start;
+            prevAnchorEnd = currentState.end;
         } else {
-            prevSegmentStart = timeToSegment(currentState.timeStart, currentState.duration, segmentsCount);
-            prevSegmentEnd = timeToSegment(currentState.timeEnd, currentState.duration, segmentsCount);
+            timeRulerEl.dataset.state = 'hovered';
+            prevAnchorStart = null;
+            prevAnchorEnd = null;
         }
     }
 
-    if (timeRulerEl.dataset.state === 'selected') {
-        return;
-    }
+    if (fraction !== prevAnchorEnd || hasSelection) {
+        if (!hasSelection) {
+            prevAnchorEnd = fraction;
+        } else {
+            // debugger;
+        }
 
-    if (segment !== prevSegmentEnd) {
-        const segmentStart = Math.min(prevSegmentStart !== null ? prevSegmentStart : segment, segment);
-        const segmentEnd = Math.max(prevSegmentStart !== null ? prevSegmentStart : segment, segment);
-        const segmentDuration = options.duration / segmentsCount;
-        const timeStart = segmentStart * segmentDuration | 0;
-        const timeEnd = (segmentEnd + 1) * segmentDuration | 0;
-        const newState = prevSegmentStart !== null
-            ? createStateFromState(currentState, timeStart, timeEnd)
-            : createStateFromState(currentState);
+        // create new state
+        const selectionStart = Math.min(prevAnchorStart !== null ? prevAnchorStart : prevAnchorEnd, prevAnchorEnd);
+        const selectionEnd = Math.max(prevAnchorStart !== null ? prevAnchorStart : prevAnchorEnd, prevAnchorEnd);
+        const hoverState = createState(duration, segmentsCount, selectionStart, selectionEnd);
+        const newState = prevAnchorStart !== null
+            ? hoverState
+            : createState(duration, segmentsCount);
 
-        prevSegmentEnd = segment;
+        if (!hasSelection) {
+            timeRulerEl.style.setProperty('--selection-start', hoverState.start);
+            timeRulerEl.style.setProperty('--selection-end', hoverState.end);
+        }
 
-        timeRulerEl.style.setProperty('--segment-start', segmentStart);
-        timeRulerEl.style.setProperty('--segment-end', segmentEnd);
-
-        // display tooltip
-        if (options.details) {
-            detailsPopup.show(timeRulerEl, (el) =>
-                render(el, options.details, data, {
-                    ...context,
-                    ...currentState
-                })
-            );
+        // display details tooltip if needed
+        if (details) {
+            if (!hasSelection || (fraction >= selectionStart && fraction <= selectionEnd)) {
+                detailsTooltip.show(timeRulerEl, (el) =>
+                    render(el, details, data, {
+                        ...context,
+                        ...hasSelection
+                            ? newState
+                            : hoverState
+                    })
+                );
+            } else {
+                detailsTooltip.hide();
+            }
         }
 
         // update state if needed
-        if (!utils.equal(newState, currentState)) {
+        if (!utils.equal(currentState, newState)) {
             Object.assign(currentState, newState);
 
-            if (typeof options.onChange === 'function') {
-                options.onChange(timeRulerEl, newState, data, context);
+            if (typeof onChange === 'function') {
+                onChange(newState, name, timeRulerEl, data, context);
             }
         }
     }
 }
 
+// prevent issues when a potential selection started on dragable or text selectable element
+discovery.addHostElEventListener('dragstart', (e) => {
+    if (currentViewEl !== null) {
+        e.preventDefault();
+    }
+}, true);
+discovery.addHostElEventListener('selectstart', (e) => {
+    if (currentViewEl !== null) {
+        e.preventDefault();
+    }
+}, true);
+
+// track pointer pointer buttons
 discovery.addGlobalEventListener('pointerup', () => {
+    // cancel selection if not started
     startSelectingRange = null;
 });
-discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x }) => {
+discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y }) => {
+    // do nothing when not over a time-ruler element or not a main button is pressed
     if (currentViewEl === null || (buttons & 1) === 0) {
         return;
     }
 
-    const { segment } = getRulerSegmentForPoint(currentViewEl, x);
-
+    // move time-ruler in hover mode when no selected range
     if (currentViewEl.dataset.state === 'selected') {
         currentViewEl.dataset.state = 'hovered';
     }
 
-    prevSegmentStart = null;
-    prevSegmentEnd = null;
+    // reset selection state and remenber a selection start point coordinates
+    prevAnchorStart = null;
+    prevAnchorEnd = null;
     startSelectingPointerX = x;
+    startSelectingPointerY = y;
     updateRulerSelection(currentViewEl, x);
 
+    // create a callback on selection start
     startSelectingRange = () => {
+        const { fraction } = getRulerSegmentForPoint(currentViewEl, startSelectingPointerX);
+
         startSelectingRange = null;
-        prevSegmentStart = segment;
+        prevAnchorStart = fraction;
         currentViewEl.dataset.state = 'selecting';
 
         currentViewEl.setPointerCapture(pointerId);
@@ -159,80 +216,106 @@ discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x }) => {
     };
 });
 
+// thack pointer to determine the pointer is over a time-ruler;
+// using such an approach since time-ruler might be overlaped by another content
 utils.pointerXY.subscribe(({ x, y }) => {
     if (startSelectingRange !== null) {
-        if (Math.abs(startSelectingPointerX - x) < 2) {
+        // ignore if pointer is not moved from selection start point at least 2px
+        if (Math.abs(startSelectingPointerX - x) < 2 && Math.abs(startSelectingPointerY - y) < 2) {
             return;
         }
 
         startSelectingRange();
     }
 
+    // if there is a time-ruler in selecting mode then just update a selection,
+    // no need to check elements under the pointer
     if (currentViewEl?.dataset.state === 'selecting') {
         updateRulerSelection(currentViewEl, x);
         return;
     }
 
+    // get time-ruler element candidate under the pointer
     const elementsFromPoint = discovery.dom.root.elementsFromPoint(x, y);
     const candidateEl = elementsFromPoint.find(el => viewByEl.has(el)) || null;
 
     // check for closest element to cursor is in a subtree of the common parent,
     // this excludes displaying a details popup when the cursor is over another popup or sticky element (e.g. page-header)
-    const timeRulerEl = candidateEl && candidateEl.parentNode.contains(elementsFromPoint[0])
+    const timeRulerEl = candidateEl?.parentNode.contains(elementsFromPoint[0])
         ? candidateEl
         : null;
 
-    // register time-ruler element is found and met all the conditions
+    // update time-ruler selection when its element is found and met all the conditions
     if (timeRulerEl) {
         updateRulerSelection(timeRulerEl, x);
     } else if (currentViewEl) {
-        detailsPopup.hide();
+        // there is no time-ruler element under the pointer that met the conditions,
+        // but we had such previously, so hide its details popup and reset the state if needed
+        detailsTooltip.hide();
 
         if (currentViewEl.dataset.state !== 'selected') {
             currentViewEl.dataset.state = 'none';
         }
     }
 
+    // remember time-ruler element as current if any
     currentViewEl = timeRulerEl;
 });
 
 discovery.view.define('time-ruler', function(el, options, data, context) {
     const {
         duration,
-        segments,
-        selectionStart,
-        selectionEnd,
-        captions = 'top',
-        onInit
+        segments: segmentsRaw,
+        selectionStart = null,
+        selectionEnd = null,
+        labels = 'top',
+        name = 'ruler',
+        details,
+        onInit,
+        onChange
     } = options;
-    const timeRulerStep = computeStep(duration);
-    const state = createState(duration, segments, selectionStart, selectionEnd);
+    const segments = Number.isFinite(segmentsRaw) ? Math.min(segmentsRaw, duration) : null;
 
-    viewByEl.set(el, { options, data, context, state, render: this.render });
+    // create state
+    const state = createState(
+        duration,
+        segments,
+        selectionStart === null ? null : selectionStart / duration,
+        selectionEnd === null ? null : selectionEnd / duration
+    );
 
-    if (state.segmentStart !== null) {
+    if (state.start !== null) {
         el.dataset.state = 'selected';
-        el.style.setProperty('--segments-count', state.segments);
-        el.style.setProperty('--segment-start', state.segmentStart);
-        el.style.setProperty('--segment-end', state.segmentEnd);
+        el.style.setProperty('--selection-start', state.start);
+        el.style.setProperty('--selection-end', state.end);
     } else {
         el.dataset.state = 'none';
     }
 
-    switch (captions) {
-        case 'top':
-        case 'bottom':
-            el.classList.add(`captions-${captions}`);
-            break;
+    // register the view
+    viewByEl.set(el, {
+        data,
+        context,
+        state,
+        render: this.render,
+        duration,
+        segments,
+        name,
+        details,
+        onChange
+    });
 
-        case 'both':
-            el.classList.add('captions-top', 'captions-bottom');
-            break;
-    }
-
+    // overlay element
     const selectionOverlayEl = el.appendChild(document.createElement('div'));
     selectionOverlayEl.className = 'view-time-ruler__selection-overlay';
 
+    // apply interval marker labels position if any
+    el.dataset.labels = ['top', 'bottom', 'both'].includes(labels)
+        ? labels
+        : 'none';
+
+    // draw interval markers
+    const timeRulerStep = computeStep(duration);
     for (
         let time = 0;
         time < duration - timeRulerStep / 10;
@@ -245,7 +328,8 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         lineEl.dataset.title = formatMicrosecondsTime(time, duration);
     }
 
+    // call init state callback if any
     if (typeof onInit === 'function') {
-        onInit(el, state, data, context);
+        onInit(state, name, el, data, context);
     }
 }, { usage });

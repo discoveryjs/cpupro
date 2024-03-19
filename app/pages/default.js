@@ -139,13 +139,12 @@ const areasTimeline = {
     content: [
         {
             view: 'time-ruler',
-            captions: 'top',
             duration: '=$[].totalTime',
             segments: '=$[].binCount',
             selectionStart: '=#.data.samplesTimings.rangeStart',
             selectionEnd: '=#.data.samplesTimings.rangeEnd',
-            onInit: (_, state) => console.log('init', state),
-            onChange: (_, state, data, context) => {
+            onInit: (state) => console.log('init', state),
+            onChange: (state, name, el, data, context) => {
                 console.log('change', state);
                 if (state.timeStart !== null) {
                     context.data.samplesTimings.setRange(state.timeStart, state.timeEnd);

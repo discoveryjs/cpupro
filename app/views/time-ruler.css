@@ -1,6 +1,6 @@
 .view-time-ruler {
-    --left: calc(1px + var(--segment-start) * (100% - 2px) / var(--segments-count));
-    --width: calc((var(--segment-end) - var(--segment-start) + 1) * (100% - 2px) / var(--segments-count) - 0.2px);
+    --left: calc(var(--selection-start) * 100%);
+    --width: calc((var(--selection-end) - var(--selection-start)) * 100% - 0.2px);
 
     position: absolute;
     inset: 0;
@@ -55,8 +55,8 @@
     border-left: 1px solid #6666;
     color: #888b;
 }
-.view-time-ruler.captions-top .line::before,
-.view-time-ruler.captions-bottom .line::after {
+.view-time-ruler:is([data-labels="both"], [data-labels="top"]) .line::before,
+.view-time-ruler:is([data-labels="both"], [data-labels="bottom"]) .line::after {
   content: attr(data-title);
   position: absolute;
   left: 3px;

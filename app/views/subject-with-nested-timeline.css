@@ -3,10 +3,6 @@
     padding-top: 15px;
     margin-bottom: 2px;
 }
-.view-subject-with-nested-timeline, .view-subject-with-nested-timeline * {
-    -webkit-user-drag: none;
-    user-select: none;
-}
 .view-subject-with-nested-timeline .view-timeline-segments {
     border-top: 1px solid #0004;
     margin-left: 1px;
