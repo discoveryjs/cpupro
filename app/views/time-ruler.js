@@ -40,14 +40,15 @@ function createState(duration, segments, selectionStart = null, selectionEnd = n
             segmentEnd--;
         }
 
-        // align time range to segment boundaries
-        const segmentDuration = duration / segments;
-        timeStart = Math.floor(segmentStart * segmentDuration);
-        timeEnd = Math.min(Math.floor((segmentEnd + 1) * segmentDuration), duration);
-
         // align fraction to segment boundaries
         start = segmentStart / segments;
         end = (segmentEnd + 1) / segments;
+
+        // align time range to segment boundaries
+        // use ceil() for timeStart and floor() for timeEnd to ensure a division by duration
+        // will give a range inside of selection
+        timeStart = Math.ceil(start * duration);
+        timeEnd = Math.min(Math.floor(end * duration), duration);
     }
 
     return {
@@ -121,8 +122,6 @@ function updateRulerSelection(timeRulerEl, x) {
     if (fraction !== prevAnchorEnd || hasSelection) {
         if (!hasSelection) {
             prevAnchorEnd = fraction;
-        } else {
-            // debugger;
         }
 
         // create new state
@@ -133,6 +132,7 @@ function updateRulerSelection(timeRulerEl, x) {
             ? hoverState
             : createState(duration, segmentsCount);
 
+        // update visual bound of the selection
         if (!hasSelection) {
             timeRulerEl.style.setProperty('--selection-start', hoverState.start);
             timeRulerEl.style.setProperty('--selection-end', hoverState.end);
@@ -190,6 +190,12 @@ discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y }) =
 
     // move time-ruler in hover mode when no selected range
     if (currentViewEl.dataset.state === 'selected') {
+        const { fraction } = getRulerSegmentForPoint(currentViewEl, x);
+
+        if (fraction > prevAnchorStart && fraction < prevAnchorEnd) {
+            return;
+        }
+
         currentViewEl.dataset.state = 'hovered';
     }
 
@@ -305,10 +311,6 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         onChange
     });
 
-    // overlay element
-    const selectionOverlayEl = el.appendChild(document.createElement('div'));
-    selectionOverlayEl.className = 'view-time-ruler__selection-overlay';
-
     // apply interval marker labels position if any
     el.dataset.labels = ['top', 'bottom', 'both'].includes(labels)
         ? labels
@@ -321,12 +323,16 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         time < duration - timeRulerStep / 10;
         time += timeRulerStep
     ) {
-        const lineEl = el.appendChild(document.createElement('div'));
+        const intervalMarkerEl = el.appendChild(document.createElement('div'));
 
-        lineEl.className = 'line';
-        lineEl.style.setProperty('--offset', time / duration);
-        lineEl.dataset.title = formatMicrosecondsTime(time, duration);
+        intervalMarkerEl.className = 'interval-marker';
+        intervalMarkerEl.style.setProperty('--offset', time / duration);
+        intervalMarkerEl.dataset.title = formatMicrosecondsTime(time, duration);
     }
+
+    // overlay element
+    const selectionOverlayEl = el.appendChild(document.createElement('div'));
+    selectionOverlayEl.className = 'view-time-ruler__selection-overlay';
 
     // call init state callback if any
     if (typeof onInit === 'function') {

@@ -43,12 +43,13 @@ discovery.view.define('subject-with-nested-timeline', {
             selectionStart: '=#.data.samplesTimings.rangeStart',
             selectionEnd: '=#.data.samplesTimings.rangeEnd',
             onChange: (state, name, el, data, context) => {
-                console.log('change', state);
+                // console.log('change', state);
                 if (state.timeStart !== null) {
                     context.data.samplesTimings.setRange(state.timeStart, state.timeEnd);
                 } else {
                     context.data.samplesTimings.resetRange();
                 }
+
                 const t = Date.now();
                 context.data.samplesTimings.compute();
                 context.data.functionsTreeTimings.compute();
@@ -59,7 +60,7 @@ discovery.view.define('subject-with-nested-timeline', {
                 context.data.packagesTimings.compute();
                 context.data.areasTreeTimings.compute();
                 context.data.areasTimings.compute();
-                console.log('comput', Date.now() - t);
+                console.log('compute', Date.now() - t);
             },
             details: [
                 {

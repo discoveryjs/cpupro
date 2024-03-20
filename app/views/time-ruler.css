@@ -46,7 +46,7 @@
   backdrop-filter: grayscale(1);
 }
 
-.view-time-ruler .line {
+.view-time-ruler .interval-marker {
     position: absolute;
     z-index: -1;
     left: calc(100% * var(--offset));
@@ -55,18 +55,18 @@
     border-left: 1px solid #6666;
     color: #888b;
 }
-.view-time-ruler:is([data-labels="both"], [data-labels="top"]) .line::before,
-.view-time-ruler:is([data-labels="both"], [data-labels="bottom"]) .line::after {
+.view-time-ruler:is([data-labels="both"], [data-labels="top"]) .interval-marker::before,
+.view-time-ruler:is([data-labels="both"], [data-labels="bottom"]) .interval-marker::after {
   content: attr(data-title);
   position: absolute;
   left: 3px;
   font-size: 10px;
   line-height: 10px;
 }
-.view-time-ruler .line::before {
+.view-time-ruler .interval-marker::before {
   top: 2px;
 }
-.view-time-ruler .line::after {
+.view-time-ruler .interval-marker::after {
   bottom: 2px;
 }
 

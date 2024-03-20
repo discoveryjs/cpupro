@@ -162,10 +162,14 @@
 .page-default .area-timelines .view-time-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
+    margin: 0 1px;
 }
 .page-default .area-timelines .view-time-ruler::before {
     top: -1px;
     bottom: -3px;
+}
+.page-default .area-timelines .view-time-ruler .interval-marker:first-child {
+    margin-left: -1px;
 }
 
 .page-default .area-timelines-list,
