@@ -87,10 +87,11 @@ export default {
         const dict = comp ? typeColorComponents : typeColor;
         return dict[value] || dict.unknown;
     },
-    totalPercent(value) {
+    totalPercent(value, prec = 2) {
         const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
         const percent = 100 * value / totalTime;
-        return percent >= 0.1 ? percent.toFixed(2) + '%' : percent !== 0 ? '<0.1%' : '0%';
+        const min = 1 / Math.pow(10, prec || 1);
+        return percent >= min ? percent.toFixed(prec || 1) + '%' : percent !== 0 ? '<' + min + '%' : '0%';
     },
     duration(value) {
         const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
