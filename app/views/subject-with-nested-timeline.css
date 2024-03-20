@@ -1,0 +1,25 @@
+.view-subject-with-nested-timeline {
+    position: relative;
+    padding-top: 15px;
+    margin-bottom: 2px;
+}
+.view-subject-with-nested-timeline .view-time-ruler {
+    margin-left: 1px;
+}
+.view-subject-with-nested-timeline .view-time-ruler .interval-marker {
+    margin-left: -1px;
+}
+.view-subject-with-nested-timeline .view-timeline-segments {
+    border-top: 1px solid #0004;
+    margin-left: 1px;
+}
+.view-subject-with-nested-timeline .nested-work .view-timeline-segments {
+    border-top: none;
+    /* transform: scaleY(-1); */
+    margin-block: 0;
+}
+.view-subject-with-nested-timeline .view-timeline-segments-bin.total-time {
+    transform: scaleY(-1);
+    margin-top: -1px;
+    border-bottom: none;
+}

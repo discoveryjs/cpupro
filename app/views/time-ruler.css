@@ -1,28 +1,99 @@
 .view-time-ruler {
+    --left: calc(var(--selection-start) * 100%);
+    --width: calc((var(--selection-end) - var(--selection-start)) * 100% - 0.2px);
+
     position: absolute;
     inset: 0;
-    z-index: -1;
-    border-right: 1px solid #6666;
+  }
+.view-time-ruler, .view-time-ruler * {
+  -webkit-user-drag: none;
+  user-select: none;
 }
-.view-time-ruler .line {
+.view-time-ruler.selecting {
+  background-color: red;
+}
+
+.view-time-ruler__selection-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  /* background: rgb(0, 0, 0, .0001); */
+  z-index: 100;
+}
+.view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay,
+.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay {
+  display: block;
+}
+.view-time-ruler__selection-overlay::before,
+.view-time-ruler__selection-overlay::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--left);
+  opacity: 0;
+  transition: backdrop-filter .25s ease-in;
+}
+.view-time-ruler .view-time-ruler__selection-overlay::after {
+  left: calc(var(--left) + var(--width));
+  right: 0;
+  width: auto;
+}
+.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay::before,
+.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay::after {
+  opacity: 1;
+  backdrop-filter: grayscale(1);
+}
+
+.view-time-ruler .interval-marker {
     position: absolute;
+    z-index: -1;
+    left: calc(100% * var(--offset));
+    top: 0;
+    bottom: 0;
     border-left: 1px solid #6666;
     color: #888b;
-    top: 0;
-    left: calc(100% * var(--offset));
-    bottom: 0;
 }
-.view-time-ruler.top .line::before,
-.view-time-ruler.bottom .line::after {
+.view-time-ruler:is([data-labels="both"], [data-labels="top"]) .interval-marker::before,
+.view-time-ruler:is([data-labels="both"], [data-labels="bottom"]) .interval-marker::after {
   content: attr(data-title);
   position: absolute;
   left: 3px;
   font-size: 10px;
   line-height: 10px;
 }
-.view-time-ruler .line::before {
+.view-time-ruler .interval-marker::before {
   top: 2px;
 }
-.view-time-ruler .line::after {
+.view-time-ruler .interval-marker::after {
   bottom: 2px;
+}
+
+.view-time-ruler:not([data-state="none"])::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: var(--width);
+  left: var(--left);
+  top: 0;
+  bottom: 0;
+  background: rgba(165, 165, 165, .3);
+  background-color: rgba(0, 152, 251, .28);
+  pointer-events: none;
+}
+
+.view-time-ruler-tooltip {
+  padding: 5px 10px;
+  min-width: 200px;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, .75);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+.discovery-root-darkmode .view-time-ruler-tooltip {
+  background: rgba(36, 36, 36, .8);
 }

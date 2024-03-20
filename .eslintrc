@@ -4,10 +4,11 @@
         "es6": true
     },
     "globals": {
+        "require": "readonly",
         "discovery": "readonly"
     },
     "parserOptions": {
-        "ecmaVersion": 2020,
+        "ecmaVersion": 2022,
         "sourceType": "module"
     },
     "parser": "@typescript-eslint/parser",
@@ -31,7 +32,8 @@
             {
                 "boolean": true,
                 "string": true,
-                "number": true
+                "number": true,
+                "allow": ["*"]
             }
         ],
         "no-with": 2,

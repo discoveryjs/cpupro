@@ -12,76 +12,66 @@ discovery.page.define('package', {
         },
 
         {
-            view: 'block',
-            className: 'subject-timeline',
-            content: [
-                'time-ruler{ duration: #.data.totalTime, captions: "top" }',
-                {
-                    view: 'timeline-segments-bin',
-                    bins: '=binCalls(=>module.package=@, 500)',
-                    max: '=#.data.totalTime / 500',
-                    binsMax: true,
-                    color: '=area.name.color()',
-                    height: 30
-                }
-            ]
+            view: 'subject-with-nested-timeline',
+            data: '{ subject: @, tree: #.data.packagesTree }'
         },
 
         {
-            view: 'block',
-            className: 'indicators',
-            content: [
-                {
-                    view: 'page-indicator',
-                    title: 'Self time',
-                    value: '=selfTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Self time, %',
-                    value: '=selfTime.totalPercent()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time',
-                    value: '=totalTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time, %',
-                    value: '=totalTime.totalPercent()',
-                    unit: true
-                }
-            ]
+            view: 'draft-timings-related',
+            source: '=#.data.packagesTimings',
+            content: {
+                view: 'page-indicator-timings',
+                data: '#.data.packagesTimings.entries[=>entry = @]'
+            }
         },
 
         {
-            view: 'context',
-            data: 'modules.sort(selfTime desc, totalTime desc)',
-            content: [
-                { view: 'h2', content: ['text:"Modules "', 'badge:size()'] },
-                {
-                    view: 'table',
-                    cols: [
-                        { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                        { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Module', sorting: '(packageRelPath or name or path) asc', content: 'module-badge' },
-                        { header: 'Histogram', content: {
-                            view: 'timeline-segments-bin',
-                            bins: '=binCalls(=>module=@, 100)',
-                            max: '=#.data.totalTime / 100',
-                            binsMax: true,
-                            color: '=area.name.color()',
-                            height: 22
-                        } }
-                    ]
-                }
-            ]
+            view: 'expand',
+            expanded: true,
+            className: 'trigger-outside',
+            header: 'text:"Nested timings"',
+            content: 'nested-timings-tree:{ subject: @, tree: #.data.packagesTree, timings: #.data.packagesTimings }'
         },
 
-        'flow'
+        {
+            view: 'expand',
+            expanded: true,
+            className: 'trigger-outside',
+            header: [
+                'text:"Modules "',
+                { view: 'pill-badge', content: {
+                    view: 'draft-timings-related',
+                    source: '=#.data.modulesTimings',
+                    content: 'text-numeric:#.data.modulesTimings.entries.[totalTime and entry.package = @].size()'
+                } }
+            ],
+            content: {
+                view: 'content-filter',
+                className: 'table-content-filter',
+                content: {
+                    view: 'draft-timings-related',
+                    source: '=#.data.packagesTimings',
+                    content: {
+                        view: 'table',
+                        data: '#.data.modulesTimings.entries.[totalTime and entry.package = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                        cols: [
+                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
+                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                            { header: 'Module', sorting: 'entry.name ascN', content: 'module-badge:entry' },
+                            { header: 'Functions', data: 'entry.functions' }
+                            // { header: 'Histogram', content: {
+                            //     view: 'timeline-segments-bin',
+                            //     bins: '=#.data.modulesTree.binCalls(entry, 100)',
+                            //     max: '=#.data.totalTime / 100',
+                            //     binsMax: true,
+                            //     color: '=entry.area.name.color()',
+                            //     height: 22
+                            // } }
+                        ]
+                    }
+                }
+            }
+        }
     ]
 });

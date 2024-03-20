@@ -185,15 +185,18 @@ export function extractCpuProfilesFromChromiumTimeline(
         }
 
         for (const node of profile.nodes) {
-            node.children = [];
             nodeById.set(node.id, node);
         }
 
         for (const node of profile.nodes) {
-            if (node.parent !== undefined) {
+            if (typeof node.parent === 'number') {
                 const parent = nodeById.get(node.parent);
 
-                parent.children.push(node.id);
+                if (Array.isArray(parent.children)) {
+                    parent.children.push(node.id);
+                } else {
+                    parent.children = [node.id];
+                }
             }
         }
 

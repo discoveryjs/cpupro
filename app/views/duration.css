@@ -1,5 +1,6 @@
 .view-duration {
     max-width: 18ex;
+    height: 19.5px;
     display: flex;
     text-align: right;
     align-items: baseline;

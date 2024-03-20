@@ -1,10 +1,11 @@
-.page-default > .view-expand > .header {
-    --discovery-view-expand-trigger-size: 38px;
-    margin-right: -40px;
-}
-
 .page-default .flamecharts > .content {
-    margin-bottom: -30px;
+    margin-bottom: calc(-1 * var(--discovery-page-padding-bottom));
+    margin-right: calc(1px - var(--discovery-page-padding-right));
+    margin-left: calc(1px - var(--discovery-page-padding-left));
+}
+.page-default .flamecharts .view-flamechart {
+    padding: 0;
+    margin: 0;
 }
 .page-default .view-flamechart__content {
     --height: calc(100vh
@@ -20,12 +21,19 @@
     margin-top: 8px;
 }
 .flamecharts-fullpage {
+    --discovery-page-padding-right: 0px;
+}
+.flamecharts-fullpage .page {
     visibility: hidden;
+}
+.flamecharts-fullpage .flamecharts {
+    height: 100vh;
 }
 .flamecharts-fullpage .flamecharts > .content {
     visibility: visible;
     position: fixed;
-    top: calc(var(--discovery-nav-height) + 5px);
+    margin: 0;
+    top: 0px;
     left: 2px;
     right: 2px;
     bottom: 2px;
@@ -34,18 +42,41 @@
 }
 .flamecharts-fullpage .view-flamechart {
     flex: 1;
+    height: auto;
 }
 .flamecharts-fullpage .view-flamechart__content {
+    max-height: none;
     min-height: 100%;
 }
 
 .flamecharts .toolbar {
     display: flex;
-    gap: 6px;
+    gap: 0px 8px;
     margin: 1px 0;
+}
+.flamecharts-fullpage .flamecharts .toolbar {
+    gap: 0px 4px;
+    flex-wrap: wrap;
+    padding-right: calc(var(--discovery-nav-width) + var(--discovery-page-padding-right) + 16px);
+}
+.flamecharts-fullpage .flamechart-fullpage-toggle {
+    display: none;
+    align-self: start;
+    cursor: pointer;
+}
+.page-default .flamechart-fullpage-toggle:hover {
+    background-color: rgba(78, 187, 255, .2)
+}
+
+.flamecharts-fullpage .flamecharts .toolbar .view-toggle-group {
+    min-height: calc(var(--discovery-nav-height) - 1px);
 }
 .flamecharts .toolbar .filters {
     flex: 1;
+}
+.flamecharts-fullpage .flamecharts .toolbar .filters {
+    white-space: nowrap;
+    padding: 2px 6px;
 }
 .flamecharts .toolbar .filters .discovery-view-has-tooltip > .view-checkbox__label {
     padding-right: 18px;
@@ -59,11 +90,11 @@
     font-size: 11px;
     border-radius: 0;
 }
-
-.flamecharts .view-flamechart {
-    padding: 0;
-    margin: 0;
+.flamecharts-fullpage .flamecharts .view-toggle {
+    align-self: stretch;
+    padding-top: 5px;
 }
+
 .flamecharts .view-checkbox {
     --discovery-checkbox-size: 13px;
     white-space: nowrap;
@@ -72,9 +103,39 @@
     font-size: 12px;
 }
 
-.page-default .indicators {
+.page-default .view-page-indicators {
     margin-bottom: 4px;
 }
+.page-default .view-page-indicators .runtime:is(.nodejs, .chromium, .electron, .unknown) .value::before {
+    content: "";
+    display: inline-block;
+    vertical-align: baseline;
+    height: 1em;
+    aspect-ratio: 1/1;
+    background: center no-repeat;
+    background-size: 100%;
+    margin-right: .5ex;
+    margin-bottom: -.125em;
+}
+.discovery-root-darkmode .page-default .view-page-indicators .runtime .value::before {
+    filter: brightness(.85);
+}
+.page-default .view-page-indicators .runtime:is(.nodejs) .value::before {
+    background-image: url("../img/runtime-nodejs.png");
+}
+.page-default .view-page-indicators .runtime:is(.chromium) .value::before {
+    background-image: url("../img/runtime-chromium.svg");
+}
+.page-default .view-page-indicators .runtime:is(.electron) .value::before {
+    background-image: url("../img/runtime-electron.svg");
+}
+.page-default .view-page-indicators .runtime:is(.unknown) .value::before {
+    background-image: url("../img/runtime-v8.svg");
+}
+.discovery-root-darkmode .page-default .view-page-indicators .runtime:is(.unknown) .value::before {
+    background-image: url("../img/runtime-v8-outline.svg");
+}
+
 .page-default .view-expand.timelines > .header > .header-content {
     background: var(--discovery-background-color);
     padding: 0;
@@ -84,21 +145,33 @@
     border-left-width: 0;
     padding-top: 3px;
     padding-bottom: 5px;
-    pointer-events: auto;
+    /* pointer-events: auto; */
 }
 .page-default .view-expand.timelines > .content {
-    padding: 2px 0 10px;
+    padding: 2px 0 0;
+    margin-left: calc(-1 * var(--discovery-page-padding-left));
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
 .page-default .area-timelines {
     position: relative;
     display: grid;
     grid-template-columns: auto auto 1fr;
     padding: 15px 0 0;
+    user-select: none;
 }
 .page-default .area-timelines .view-time-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
+    margin: 0 1px;
 }
+.page-default .area-timelines .view-time-ruler::before {
+    top: -1px;
+    bottom: -3px;
+}
+.page-default .area-timelines .view-time-ruler .interval-marker:first-child {
+    margin-left: -1px;
+}
+
 .page-default .area-timelines-list,
 .page-default .area-timelines-list > .view-list-item {
     display: contents;
@@ -114,21 +187,38 @@
     background: rgba(165,165,165,.3);
 }
 .page-default .area-timelines-item > .label {
-    font-size: 10px;
+    font-size: 12px;
     text-align: right;
-    padding: 2px 4px 0 4px;
+    padding: 0px 4px 0 12px;
     border-bottom: 1px solid #0004;
 }
-.page-default .area-timelines-item .view-duration {
-    padding: 2px 4px 0 2px;
-    font-size: 10px;
+.page-default .area-timelines-item > .label::after {
+    content: '';
+    display: inline-block;
+    vertical-align: middle;
+    width: .75em;
+    aspect-ratio: 1/1;
+    margin-left: 8px;
+    margin-right: -6px;
+    margin-top: -1px;
+    background: var(--color, #888);
+    border-radius: 50%;
+}
+.page-default .area-timelines-item > .total-percent {
+    text-align: right;
+    font-size: 11px;
+    padding: 1px 8px 0 8px;
     border-bottom: 1px solid #0004;
+    color: #888;
+}
+.page-default .area-timelines-item > .total-percent::after {
+    content: '%';
+    font-size: 8px;
+    opacity: .5;
+    padding-left: 1px;
 }
 .page-default .view-list-item:first-child .area-timelines-item > * {
     border-top: 1px solid #0004;
-}
-.page-default .view-page-indicator.runtime {
-    margin-left: 2px;
 }
 
 .page-default .hierarchical-components > .content {
@@ -136,29 +226,41 @@
     flex-direction: row;
     gap: 10px;
     margin-bottom: 8px;
+    margin-left: calc(10px - var(--discovery-page-padding-left));
+    margin-right: calc(10px - var(--discovery-page-padding-right));
 }
-.page-default .hierarchical-components > .content > .view-section {
+.page-default .hierarchical-components > .content .view-draft-timings-related {
+    display: contents;
+}
+.page-default .hierarchical-components > .content .view-section {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: clip;
     margin-bottom: 0;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-header {
+.page-default .hierarchical-components > .content .view-section > .view-header {
     margin: 0;
+    padding-left: 2px;
     font-size: inherit;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter {
+.page-default .hierarchical-components > .content .view-section > .view-content-filter {
     display: contents;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content {
+.page-default .hierarchical-components > .content .view-section > .view-content-filter > .view-input {
+    margin: 4px 0 1px;
+}
+.page-default .hierarchical-components > .content .view-section > .view-content-filter > .content {
     overflow: auto;
     max-height: 418px;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table {
+.page-default .hierarchical-components > .content .view-section .view-table {
     min-width: 100%;
 }
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table th,
-.page-default .hierarchical-components > .content > .view-section > .view-content-filter > .content > .view-table .view-table-cell.main {
-    min-width: 100%;
+.page-default .hierarchical-components > .content .view-section .view-table th {
+    white-space: nowrap;
+}
+.page-default .hierarchical-components > .content .view-section .view-table th:last-child,
+.page-default .hierarchical-components > .content .view-section .view-table .view-table-cell.main {
+    width: 100%;
 }

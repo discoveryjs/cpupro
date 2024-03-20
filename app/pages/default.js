@@ -1,12 +1,19 @@
 /* eslint-env node */
-const demoDataBase64 = require('../demo-data-base64.js').default;
+const demoDataBase64 = require('../demo/demo-data-base64.js').default;
+let fullpageMode = false;
 
 discovery.action.define('uploadDemoData', () => discovery.loadDataFromUrl(demoDataBase64));
 setTimeout(() => {
-    discovery.nav.primary.before('inspect', {
+    discovery.nav.primary.append({
         className: 'github',
         content: 'text:"GitHub"',
         data: { href: 'https://github.com/lahmatiy/cpupro' }
+    });
+    discovery.nav.primary.append({
+        className: 'full-page-mode',
+        content: 'text:"Exit full page"',
+        when: () => fullpageMode,
+        onClick: toggleFullPageFlamechart
     });
     discovery.nav.menu.append({
         when: true,
@@ -20,13 +27,84 @@ setTimeout(() => {
     discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
 }, 1);
 
+function toggleFullPageFlamechart() {
+    // const params = { ...discovery.pageParams };
+
+    // if (enabled) {
+    //     params.fullScreen = true;
+    // } else {
+    //     delete params.fullScreen;
+    // }
+
+    // discovery.setPageParams(params);
+    // discovery.cancelScheduledRender();
+    fullpageMode = discovery.dom.container.classList.toggle('flamecharts-fullpage');
+    discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
+
+    const toggleEl = discovery.dom.container.querySelector('.flamechart-fullpage-toggle');
+    toggleEl.classList.toggle('checked');
+    // toggleEl.scrollIntoView(true);
+
+    // use timeout since on scroll handler may disable scrolling
+    setTimeout(() => {
+        const flamechartEl = discovery.dom.container.querySelector('.flamecharts .view-flamechart');
+        flamechartEl.classList.toggle(
+            'disable-scrolling',
+            !fullpageMode && flamechartEl.firstChild.scrollTop === 0
+        );
+    });
+}
+
+const pageIndicators = {
+    view: 'page-indicators',
+    content: [
+        {
+            className: '=`runtime ${runtime.code}`',
+            title: 'Runtime',
+            value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
+        },
+        {
+            view: 'page-indicator-group',
+            content: [
+                {
+                    title: 'Samples',
+                    value: '=sourceInfo.samples'
+                },
+                {
+                    title: 'Sampling interval',
+                    value: '=sourceInfo.samplesInterval',
+                    unit: 'μs'
+                },
+                {
+                    title: 'Total time',
+                    value: '=totalTime.ms()',
+                    unit: true
+                }
+            ]
+        },
+        {
+            view: 'page-indicator-group',
+            content: [
+                {
+                    title: 'Call tree nodes',
+                    value: '=sourceInfo.nodes'
+                },
+                {
+                    title: 'Call frames',
+                    value: '=callFrames.size()'
+                }
+            ]
+        }
+    ]
+};
+
 const areasTimeBars = {
     view: 'timing-bar',
-    data: `areas.({
-        text: name,
+    data: `areasTimings.entries.[selfTime].({
+        text: entry.name,
         duration: selfTime,
-        color: name.color(),
-        href: marker("area").href
+        color: entry.name.color(),
+        href: entry.marker("area").href
     }).sort(duration desc)`,
     segment: {
         tooltip: [
@@ -39,34 +117,101 @@ const areasTimeBars = {
 const areasTimeline = {
     view: 'block',
     className: 'area-timelines',
+    data: `
+        $binCount: 500;
+        $totalTime: #.data.totalTime;
+        $binSamples: $binCount.countSamples();
+
+        areasTimings.entries.[selfTime].({
+            $area: entry;
+
+            $area,
+            timings: $,
+            $totalTime,
+            $binCount,
+            binTime: $totalTime / $binCount,
+            $binSamples,
+            bins: #.data.areasTree.binCalls($area, $binCount),
+            color: $area.name.color(),
+            href: $area.marker("area").href
+        })
+    `,
     content: [
-        'time-ruler{ duration: #.data.totalTime, captions: "top" }',
+        {
+            view: 'time-ruler',
+            duration: '=$[].totalTime',
+            segments: '=$[].binCount',
+            selectionStart: '=#.data.samplesTimings.rangeStart',
+            selectionEnd: '=#.data.samplesTimings.rangeEnd',
+            onChange: (state, name, el, data, context) => {
+                // console.log('change', state);
+                if (state.timeStart !== null) {
+                    context.data.samplesTimings.setRange(state.timeStart, state.timeEnd);
+                } else {
+                    context.data.samplesTimings.resetRange();
+                }
+
+                const t = Date.now();
+                context.data.samplesTimings.compute();
+                context.data.functionsTreeTimings.compute();
+                context.data.functionsTimings.compute();
+                context.data.modulesTreeTimings.compute();
+                context.data.modulesTimings.compute();
+                context.data.packagesTreeTimings.compute();
+                context.data.packagesTimings.compute();
+                context.data.areasTreeTimings.compute();
+                context.data.areasTimings.compute();
+                console.log('compute', Date.now() - t);
+            },
+            details: [
+                {
+                    view: 'block',
+                    className: 'timeline-segment-info',
+                    content: [
+                        { view: 'block', content: 'text:`Range: ${#.timeStart.formatMicrosecondsTime(totalTime)} – ${#.timeEnd.formatMicrosecondsTime(totalTime)}`' },
+                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' },
+                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: #.timeEnd - #.timeStart, total: totalTime }'] }
+                    ]
+                },
+                {
+                    view: 'list',
+                    className: 'area-timings-list',
+                    itemConfig: {
+                        className: '=bins[#.segmentStart:#.segmentEnd + 1].sum() = 0 ? "no-time"',
+                        postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                        content: [
+                            'block{ className: "area-name", content: "text:area.name" }',
+                            'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: #.timeEnd - #.timeStart } }'
+                        ]
+                    }
+                }
+            ]
+        },
         {
             view: 'list',
             className: 'area-timelines-list',
-            data: 'areas.[selfTime]',
             item: {
                 view: 'link',
                 className: 'area-timelines-item',
-                data: '{ area: $, href: marker("area").href }',
                 content: [
-                    'duration:{ time: area.selfTime, total: #.data.totalTime }',
                     {
                         view: 'block',
                         className: 'label',
-                        content: 'text:area.name | $ != "garbage collector" ?: "gc"'
+                        postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                        content: 'text:area.name'
+                    },
+                    {
+                        view: 'block',
+                        className: 'total-percent',
+                        content: 'text:timings.selfTime.totalPercent().replace("%", "")'
                     },
                     {
                         view: 'timeline-segments-bin',
-                        bins: '=binCalls(=>module.area=@.area, 500)',
-                        max: '=#.data.totalTime / 500',
+                        bins: '=bins',
+                        max: '=binTime',
                         binsMax: true,
-                        color: '=area.name.color()'
+                        color: '=color'
                     }
-                ],
-                tooltip: [
-                    'text:area.name',
-                    'duration:{ time: area.selfTime, total: #.data.totalTime }'
                 ]
             }
         }
@@ -75,64 +220,88 @@ const areasTimeline = {
 
 const packagesList = {
     view: 'section',
-    when: 'packages.size() > 1',
+    data: 'packagesTimings',
     header: [
-        'text:"Packages & areas "',
-        { view: 'badge', content: 'text-numeric:packages.size()' }
+        'text:"Packages "',
+        {
+            view: 'draft-timings-related',
+            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
+        }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'table',
-            data: 'packages.sort(selfTime desc, totalTime desc).[name ~= #.filter]',
-            limit: 15,
-            cols: [
-                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Package', className: 'main', sorting: 'name asc', content: 'package-badge' }
-            ]
+            view: 'draft-timings-related',
+            debounce: true,
+            content: {
+                view: 'table',
+                data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                limit: 15,
+                cols: [
+                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                    { header: 'Package', className: 'main', sorting: 'entry.name asc', content: 'package-badge:entry' }
+                ]
+            }
         }
     }
 };
 
 const modulesList = {
     view: 'section',
+    data: 'modulesTimings',
     header: [
         'text:"Modules "',
-        { view: 'badge', content: 'text-numeric:modules.size()' }
+        {
+            view: 'draft-timings-related',
+            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
+        }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'table',
-            data: 'modules.sort(selfTime desc, totalTime desc).[(name or (package.name + "/" + packageRelPath)) ~= #.filter]',
-            limit: 15,
-            cols: [
-                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Module', className: 'main', sorting: '(name or (package.name + "/" + packageRelPath)) ascN', content: 'module-badge' }
-            ]
+            view: 'draft-timings-related',
+            content: {
+                view: 'table',
+                data: `entries
+                    .[totalTime and entry.name ~= #.filter]
+                    .sort(selfTime desc, totalTime desc)
+                `,
+                limit: 15,
+                cols: [
+                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                    { header: 'Module', className: 'main', sorting: 'entry.name ascN', content: 'module-badge:entry' }
+                ]
+            }
         }
     }
 };
 
 const functionList = {
     view: 'section',
+    data: 'functionsTimings',
     header: [
         'text:"Functions "',
-        { view: 'badge', content: 'text-numeric:functions.size()' }
+        {
+            view: 'draft-timings-related',
+            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
+        }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'table',
-            data: 'functions.sort(selfTime desc, totalTime desc).[name ~= #.filter]',
-            limit: 15,
-            cols: [
-                { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                { header: 'Function', className: 'main', sorting: 'name ascN', content: 'function-badge' }
-            ]
+            view: 'draft-timings-related',
+            content: {
+                view: 'table',
+                data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                limit: 15,
+                cols: [
+                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                    { header: 'Function', className: 'main', sorting: 'entry.name ascN', content: 'function-badge:entry' }
+                ]
+            }
         }
     }
 };
@@ -147,49 +316,49 @@ const flamecharts = {
                 view: 'toggle-group',
                 name: 'dataset',
                 data: [
-                    { text: 'Areas', value: 'areaTree' },
-                    { text: 'Packages', value: 'packageTree', active: true },
-                    { text: 'Modules', value: 'moduleTree' },
-                    { text: 'Functions', value: 'functionTree' }
+                    { text: 'Areas', value: 'areasTree' },
+                    { text: 'Packages', value: 'packagesTree', active: true },
+                    { text: 'Modules', value: 'modulesTree' },
+                    { text: 'Functions', value: 'functionsTree' }
                 ]
             },
             {
                 view: 'block',
                 className: 'filters',
                 content: [
-                    {
-                        view: 'checkbox',
-                        name: 'showIdle',
-                        checked: true,
-                        content: 'text:"(idle)"',
-                        tooltip: {
-                            showDelay: true,
-                            className: 'hint-tooltip',
-                            content: 'md:"Time when the engine is waiting for tasks or not actively executing any JavaScript code. This could be due to waiting for I/O operations, timer delays, or simply because there\'s no code to execute at that moment."'
-                        }
-                    },
-                    {
-                        view: 'checkbox',
-                        name: 'showProgram',
-                        checked: true,
-                        content: 'text:"(program)"',
-                        tooltip: {
-                            showDelay: true,
-                            className: 'hint-tooltip',
-                            content: 'text:"Time spent by the engine on tasks other than executing JavaScript code. This includes overheads like JIT compilation, managing execution contexts, and time in engine\'s internal code. It reflects the internal processing and environment setup necessary for running JavaScript code, rather than the execution of the code itself."'
-                        }
-                    },
-                    {
-                        view: 'checkbox',
-                        name: 'showGC',
-                        checked: true,
-                        content: 'text:"(garbage collector)"',
-                        tooltip: {
-                            showDelay: true,
-                            className: 'hint-tooltip',
-                            content: 'text:"When the CPU profile shows time spent in the garbage collector, it indicates the time consumed in these memory management activities. Frequent or prolonged garbage collection periods might be a sign of inefficient memory use in the application, like creating too many short-lived objects or holding onto unnecessary references."'
-                        }
-                    }
+                    // {
+                    //     view: 'checkbox',
+                    //     name: 'showIdle',
+                    //     checked: true,
+                    //     content: 'text:"(idle)"',
+                    //     tooltip: {
+                    //         showDelay: true,
+                    //         className: 'hint-tooltip',
+                    //         content: 'md:"Time when the engine is waiting for tasks or not actively executing any JavaScript code. This could be due to waiting for I/O operations, timer delays, or simply because there\'s no code to execute at that moment."'
+                    //     }
+                    // },
+                    // {
+                    //     view: 'checkbox',
+                    //     name: 'showProgram',
+                    //     checked: true,
+                    //     content: 'text:"(program)"',
+                    //     tooltip: {
+                    //         showDelay: true,
+                    //         className: 'hint-tooltip',
+                    //         content: 'text:"Time spent by the engine on tasks other than executing JavaScript code. This includes overheads like JIT compilation, managing execution contexts, and time in engine\'s internal code. It reflects the internal processing and environment setup necessary for running JavaScript code, rather than the execution of the code itself."'
+                    //     }
+                    // },
+                    // {
+                    //     view: 'checkbox',
+                    //     name: 'showGC',
+                    //     checked: true,
+                    //     content: 'text:"(garbage collector)"',
+                    //     tooltip: {
+                    //         showDelay: true,
+                    //         className: 'hint-tooltip',
+                    //         content: 'text:"When the CPU profile shows time spent in the garbage collector, it indicates the time consumed in these memory management activities. Frequent or prolonged garbage collection periods might be a sign of inefficient memory use in the application, like creating too many short-lived objects or holding onto unnecessary references."'
+                    //     }
+                    // }
                 ]
             },
             {
@@ -197,28 +366,16 @@ const flamecharts = {
                 className: 'flamechart-fullpage-toggle',
                 // checked: '=#.params.fullScreen',
                 content: 'text:"Full page"',
-                onToggle() {
-                    // const params = { ...discovery.pageParams };
-
-                    // if (enabled) {
-                    //     params.fullScreen = true;
-                    // } else {
-                    //     delete params.fullScreen;
-                    // }
-
-                    // discovery.setPageParams(params);
-                    // discovery.cancelScheduledRender();
-                    discovery.dom.root.querySelector('.page').classList.toggle('flamecharts-fullpage');
-                    discovery.dom.root.querySelector('.flamechart-fullpage-toggle').classList.toggle('checked');
-                }
+                onToggle: toggleFullPageFlamechart
             }
         ]
     },
-    content: `flamechart:
-        $root: $[#.dataset];
-        $children: $root.children.[host | (#.showIdle or name != "(idle)") and (#.showProgram or name != "(program)") and (#.showGC or name != "(garbage collector)")];
-        { ...$root, $children, totalTime: $children.sum(=>totalTime) }
-    `
+    content: {
+        view: 'flamechart',
+        tree: '=$[#.dataset]',
+        timings: '=$[#.dataset + "Timings"]',
+        lockScrolling: true
+    }
 };
 
 discovery.page.define('default', {
@@ -265,40 +422,7 @@ discovery.page.define('default', {
                 ]
             },
 
-            {
-                view: 'block',
-                className: 'indicators',
-                content: [
-                    {
-                        view: 'page-indicator',
-                        title: 'Total time',
-                        value: '=totalTime.ms()',
-                        unit: true
-                    },
-                    {
-                        view: 'page-indicator',
-                        title: 'Samples',
-                        value: '=samplesCount'
-                    },
-                    {
-                        view: 'page-indicator',
-                        title: 'Sampling interval',
-                        value: '=samplesInterval',
-                        unit: 'μs'
-                    },
-                    {
-                        view: 'page-indicator',
-                        className: 'runtime',
-                        title: 'Runtime',
-                        value: '=#.data.meta.runtime'
-                    },
-                    {
-                        view: 'page-indicator',
-                        title: 'Engine',
-                        value: '=#.data.meta.engine'
-                    }
-                ]
-            },
+            pageIndicators,
 
             {
                 view: 'timeline-profiles',

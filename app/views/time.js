@@ -13,7 +13,7 @@ function formatDuration(time) {
 }
 
 function createRender(getter) {
-    return function render(el, config, data) {
+    return function render(el, config, data, context) {
         const time = typeof data === 'number' ? data : getter(data);
         const valueEl = document.createElement('span');
         const value = time !== 0 ? formatDuration(time) : '—';
@@ -29,7 +29,7 @@ function createRender(getter) {
         if (time) {
             const fractionEl = document.createElement('span');
             fractionEl.className = 'fraction';
-            fractionEl.append(discovery.query('totalPercent()', time));
+            fractionEl.append(discovery.query('totalPercent()', time, context));
             el.append(fractionEl);
         }
     };

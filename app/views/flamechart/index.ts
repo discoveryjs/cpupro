@@ -1,9 +1,10 @@
+import { CallTree } from '../../prepare/call-tree';
 import { generateColorVector, calculateColor } from './color-utils';
 import { EventEmitter } from './event-emmiter';
 
 type FrameElement = HTMLElement;
 type FrameData = any;
-type FrameColorGenerator = (frame: Frame, colorHue: string | null) => string;
+type FrameColorGenerator<T> = (frame: T, colorHue: string | null) => string;
 type SetDataOptions = {
     name?(data: FrameData): string;
     value?(data: FrameData): number;
@@ -12,45 +13,26 @@ type SetDataOptions = {
     childrenSort?: true | ((a: FrameData, b: FrameData) => number);
 }
 type Events = {
-    select(frame: Frame | null, prevFrame: Frame | null): void;
-    zoom(frame: Frame | null): void;
-    'frame:click'(frame: Frame, element: FrameElement): void;
-    'frame:enter'(frame: Frame, element: FrameElement): void;
+    select(nodeIndex: number, prevNodeIndex: number): void;
+    zoom(nodeIndex: number): void;
+    'frame:click'(nodeIndex: number, element: FrameElement): void;
+    'frame:enter'(nodeIndex: number, element: FrameElement): void;
     'frame:leave'(): void;
     destroy(): void;
 }
 
-class Frame {
-    parent: Frame | null;
-    next: Frame | null;
-    nextSibling: Frame | null;
-    data: FrameData;
+type Frame<T> = {
+    nodeIndex: number;
+    host: T;
     name: string;
-    value: number;
-    depth: number;
+    color: string;
     x0: number;
     x1: number;
-    fade: boolean;
-    selected: boolean;
-
-    constructor(parent: Frame | null, data: FrameData) {
-        this.parent = parent;
-        this.next = null;
-        this.nextSibling = null;
-        this.data = data;
-        this.name = '';
-        this.value = 0;
-        this.depth = 0;
-        this.x0 = 0;
-        this.x1 = 1;
-        this.fade = false;
-        this.selected = false;
-    }
-}
+    depth: number;
+};
 
 const defaultGetName: Exclude<SetDataOptions['name'], undefined> = (frameData: FrameData) => frameData.name;
 const defaultGetValue: Exclude<SetDataOptions['value'], undefined> = (frameData: FrameData) => frameData.value;
-const defaultGetChildren: Exclude<SetDataOptions['children'], undefined> = (frameData: FrameData) => frameData.children;
 
 function ensureFunction<T, U>(value: T, fallback: U) {
     return typeof value === 'function' ? value : fallback;
@@ -60,7 +42,7 @@ function ensureFunction<T, U>(value: T, fallback: U) {
 //     return `${frame.name} (${(100 * frame.value / rootFrameNode.value).toFixed(2)}%, ${frame.value} ms)`;
 // };
 
-function defaultColorMapper(frame: Frame, colorHue: string | null = null) {
+function defaultColorMapper(frame: FrameData, colorHue: string | null = null) {
     const { name } = frame;
     const vector = generateColorVector(name);
     const libtype = undefined;
@@ -86,11 +68,11 @@ function defaultColorMapper(frame: Frame, colorHue: string | null = null) {
     return calculateColor(hue, vector);
 }
 
-export class FlameChart extends EventEmitter<Events> {
+export class FlameChart<T> extends EventEmitter<Events> {
     el: HTMLElement;
     #resizeObserver: ResizeObserver | null = null;
 
-    #colorMapper: FrameColorGenerator = defaultColorMapper;
+    #colorMapper: FrameColorGenerator<T> = defaultColorMapper;
     #colorHue: string | null = null;
     #scheduleRenderTimer: Promise<void> | null = null;
 
@@ -99,25 +81,32 @@ export class FlameChart extends EventEmitter<Events> {
     zoomStart = 0;
     zoomEnd = 1;
 
-    selectedFrame: Frame | null = null;
-    selectedFramesStack: Frame[] = [];
-    rootFrame: Frame | null = null;
-    fadedFrames = new Set<Frame>();
-    frameEls = new Map<Frame, HTMLElement>();
-    frameByEl = new WeakMap();
+    tree: CallTree<T>;
+    nodesMaxDepth: number;
+    nodesDepth: Uint32Array;
+    nodesWidth: Uint32Array;
+    nodesX: Uint32Array;
+    nodesNames: string[];
+    nodesColors: string[];
+
+    selectedNode = 0;
+    selectedNodesStack: number[] = [];
+    fadedFrames = new Set<number>();
+    frameEls = new Map<number, HTMLElement>();
+    frameByEl = new WeakMap<Node, Frame<T>>();
 
     constructor() {
         super();
 
         // create chart element
         this.el = this.createElement(this);
-        this.on('frame:click', (frame) => {
-            this.selectFrame(frame);
-            this.zoomFrame(this.selectedFrame);
+        this.on('frame:click', (nodeIndex) => {
+            this.selectFrame(nodeIndex);
+            this.zoomFrame(this.selectedNode);
         });
     }
 
-    createElement(chart: FlameChart) {
+    createElement(chart: FlameChart<T>) {
         const chartEl = document.createElement('div');
 
         chartEl.className = 'flamechart';
@@ -125,14 +114,14 @@ export class FlameChart extends EventEmitter<Events> {
             const result = chart.findFrameByEl(event.target as Node);
 
             if (result !== null) {
-                chart.emit('frame:click', result.frame, result.element as FrameElement);
+                chart.emit('frame:click', result.frame.nodeIndex, result.element as FrameElement);
             }
         }, true);
         chartEl.addEventListener('pointerenter', event => {
             const result = chart.findFrameByEl(event.target as Node);
 
             if (result !== null) {
-                chart.emit('frame:enter', result.frame, result.element as FrameElement);
+                chart.emit('frame:enter', result.frame.nodeIndex, result.element as FrameElement);
             }
         }, true);
         chartEl.addEventListener('pointerleave', () => {
@@ -200,61 +189,53 @@ export class FlameChart extends EventEmitter<Events> {
         return null;
     }
 
-    selectFrame(frame: Frame) {
-        const prevSelected = this.selectedFrame;
+    selectFrame(nodeIndex: number) {
+        const prevSelected = this.selectedNode;
+        const nodesDepth = this.nodesDepth;
 
-        if (this.selectedFrame !== frame && frame !== this.rootFrame) {
-            if (this.selectedFrame !== null) {
-                this.selectedFrame.selected = false;
+        if (this.selectedNode !== nodeIndex && nodeIndex !== 0) {
+            if (this.selectedNode !== 0) {
+                this.selectedNodesStack = this.selectedNodesStack
+                    .filter(item => nodesDepth[item] < nodesDepth[nodeIndex]);
 
-                this.selectedFramesStack = this.selectedFramesStack
-                    .filter(item => item.depth < frame.depth);
-
-                if (this.selectedFrame.depth < frame.depth) {
-                    this.selectedFramesStack.push(this.selectedFrame);
+                if (nodesDepth[this.selectedNode] < nodesDepth[nodeIndex]) {
+                    this.selectedNodesStack.push(this.selectedNode);
                 }
             }
 
-            this.selectedFrame = frame;
-            this.selectedFrame.selected = true;
-        } else if (this.selectedFrame === frame) {
-            this.selectedFrame.selected = false;
-            this.selectedFrame = null;
+            this.selectedNode = nodeIndex;
+        } else if (this.selectedNode === nodeIndex) {
+            this.selectedNode = 0;
 
-            if (this.selectedFramesStack.length > 0) {
-                this.selectedFrame = this.selectedFramesStack.pop() as Frame;
-                this.selectedFrame.selected = true;
+            if (this.selectedNodesStack.length > 0) {
+                this.selectedNode = this.selectedNodesStack.pop();
             }
-        } else if (this.selectedFrame !== null) {
-            this.selectedFrame.selected = false;
-            this.selectedFrame = null;
-            this.selectedFramesStack = [];
+        } else if (this.selectedNode !== 0) {
+            this.selectedNode = 0;
+            this.selectedNodesStack = [];
         }
 
-        this.emit('select', this.selectedFrame, prevSelected);
+        this.emit('select', this.selectedNode, prevSelected);
         this.scheduleRender();
 
-        return this.selectedFrame;
+        return this.selectedNode;
     }
 
     resetFrameRefs() {
-        this.selectedFrame = null;
-        this.selectedFramesStack = [];
-        this.rootFrame = null;
+        this.selectedNode = null;
+        this.selectedNodesStack = [];
         this.fadedFrames.clear();
         this.frameByEl = new WeakMap();
         this.frameEls.clear();
     }
 
-    setData(rootData: FrameData, options?: SetDataOptions) {
-        this.resetFrameRefs();
+    setData(tree: CallTree<T>, options?: SetDataOptions) {
+        // this.resetFrameRefs();
 
         options = options || {};
 
         const getName = ensureFunction(options.name, defaultGetName);
         const getValue = ensureFunction(options.value, defaultGetValue);
-        const getOffset = ensureFunction(options.offset, (() => x0) as (child: FrameData, parent: FrameData) => number);
-        const getChildren = ensureFunction(options.children, defaultGetChildren);
         const childrenSort = ensureFunction(options.childrenSort !== true ? options.childrenSort : (a: FrameData, b: FrameData) => {
             const nameA = getName(a);
             const nameB = getName(b);
@@ -262,83 +243,80 @@ export class FlameChart extends EventEmitter<Events> {
             return nameA > nameB ? 1 : nameA < nameB ? -1 : 0;
         }, false);
 
-        // creating a precomputed hierarchical structure
-        let parent: Frame | null = this.rootFrame = new Frame(null, rootData);
-        let x0 = 0;
-        parent.name = getName(rootData);
-        parent.value = getValue(rootData);
+        const nodes = tree.nodes;
+        const parent = tree.parent;
+        const depth = new Uint32Array(nodes.length);
+        const width = new Uint32Array(nodes.length);
+        const x = new Uint32Array(nodes.length);
+        const x0 = [0];
+        const x1 = [0];
+        let maxDepth = 0;
 
-        while (parent !== null) {
-            let children = getChildren(parent.data);
+        width[0] = getValue(0);
+        for (let i = 1, prevDepth = 0; i < nodes.length; i++) {
+            const nodeDepth = depth[parent[i]] + 1;
+            const nodeValue = getValue(i);
 
-            if (Array.isArray(children)) {
-                if (childrenSort !== false) {
-                    // use slice() to avoid data mutation
-                    children = children.slice().sort(childrenSort);
-                }
+            depth[i] = nodeDepth;
+            width[i] = nodeValue;
 
-                const parentNext: Frame | null = parent.next;
-                let prev: Frame | null = null;
-
-                x0 = parent.x0;
-
-                for (const childData of children) {
-                    const child = new Frame(parent, childData);
-
-                    child.depth = parent.depth + 1;
-                    child.name = getName(childData);
-                    child.value = getValue(childData);
-                    child.x0 = x0 = getOffset(childData, parent.data);
-                    child.x1 = x0 += child.value / this.rootFrame.value;
-
-                    if (prev === null) {
-                        parent.next = child;
-                    } else {
-                        prev.next = prev.nextSibling = child;
-                    }
-
-                    prev = child;
-                }
-
-                if (prev !== null) {
-                    prev.next = parentNext;
-                }
+            if (nodeDepth <= prevDepth) {
+                x[i] = x0[nodeDepth] = x1[nodeDepth];
+            } else if (nodeDepth > prevDepth) {
+                x[i] = x0[nodeDepth] = x1[nodeDepth] = x0[nodeDepth - 1];
             }
 
-            parent = parent.next;
+            x1[nodeDepth] += nodeValue;
+            prevDepth = nodeDepth;
+
+            if (maxDepth < nodeDepth) {
+                maxDepth = nodeDepth;
+            }
         }
+
+        this.nodesMaxDepth = maxDepth;
+        this.nodesDepth = depth;
+        this.nodesWidth = width;
+        this.nodesX = x;
+        this.nodesNames = tree.dictionary.map(getName);
+        this.nodesColors = tree.dictionary.map(entry => this.#colorMapper(entry, this.#colorHue));
+        this.tree = tree;
 
         this.scheduleRender();
     }
 
     getVisibleFrames(
-        root = this.rootFrame,
         start = this.zoomStart,
         end = this.zoomEnd,
         minScale = 0
     ) {
-        if (root === null) {
+        if (this.tree === null) {
             return [];
         }
 
-        const minValue = (end - start) * root.value * minScale;
-        const nodeList: Frame[] = [];
-        let node: Frame | null = root;
+        const { nodesX, nodesWidth, nodesDepth } = this;
+        const { dictionary, nodes, subtreeSize } = this.tree;
+        const rootWidth = nodesWidth[0];
+        const minValue = (end - start) * rootWidth * minScale;
+        const nodeList: Frame<T>[] = [];
 
-        while (node !== null) {
-            if (node.x0 < end && node.x1 > start && node.value >= minValue) {
-                nodeList.push(node);
+        for (let i = 0; i < nodes.length; i++) {
+            const nodeWidth = nodesWidth[i];
+            const x0 = nodesX[i] / rootWidth;
+            const x1 = x0 + nodeWidth / rootWidth;
 
-                node = node.next;
+            if (x0 < end && x1 > start && nodeWidth >= minValue) {
+                nodeList.push({
+                    nodeIndex: i,
+                    host: dictionary[nodes[i]],
+                    name: this.nodesNames[nodes[i]],
+                    color: this.nodesColors[nodes[i]],
+                    x0,
+                    x1,
+                    depth: nodesDepth[i]
+                });
             } else {
-                while (node !== null) {
-                    if (node.nextSibling !== null) {
-                        node = node.nextSibling;
-                        break;
-                    }
-
-                    node = node.parent;
-                }
+                i += subtreeSize[i];
             }
         }
 
@@ -349,8 +327,14 @@ export class FlameChart extends EventEmitter<Events> {
         if (this.#scheduleRenderTimer === null) {
             const task = Promise.resolve().then(() => {
                 if (this.#scheduleRenderTimer === task) {
+                    const renderStart = Date.now();
+
                     this.#scheduleRenderTimer = null;
                     this.render();
+
+                    if (this.#width) {
+                        console.log('Flamechart.render()', Date.now() - renderStart);
+                    }
                 }
             });
 
@@ -371,7 +355,6 @@ export class FlameChart extends EventEmitter<Events> {
         const firstEnter = !this.frameEls.size;
         const removeFrames = new Set(this.frameEls.keys());
         const visibleFrames = this.getVisibleFrames(
-            this.rootFrame,
             this.zoomStart,
             this.zoomEnd,
             this.#minFrameWidth * widthScale
@@ -383,10 +366,13 @@ export class FlameChart extends EventEmitter<Events> {
 
         // add / update frame elements
         for (const frame of visibleFrames) {
-            const className = `frame${frame.fade ? ' fade' : ''}${frame.selected ? ' selected' : ''}`;
+            const nodeIndex = frame.nodeIndex;
+            const className = nodeIndex === 0
+                ? 'frame'
+                : `frame${this.fadedFrames.has(nodeIndex) ? ' fade' : ''}${this.selectedNode === nodeIndex ? ' selected' : ''}`;
             const x0 = Math.max(0, frame.x0 * xScale - xOffset);
             const x1 = Math.max(0, frame.x1 * xScale - xOffset);
-            let frameEl = this.frameEls.get(frame);
+            let frameEl = this.frameEls.get(frame.nodeIndex);
 
             if (frame.depth > maxDepth) {
                 maxDepth = frame.depth;
@@ -399,7 +385,7 @@ export class FlameChart extends EventEmitter<Events> {
                 frameEl.style.setProperty('--x0', x0.toFixed(8));
                 frameEl.style.setProperty('--x1', x1.toFixed(8));
                 frameEl.style.setProperty('--depth', String(frame.depth));
-                frameEl.style.setProperty('--color', this.#colorMapper(frame, this.#colorHue));
+                frameEl.style.setProperty('--color', frame.color);
 
                 const labelEl = frameEl.appendChild(document.createElement('div'));
 
@@ -408,7 +394,7 @@ export class FlameChart extends EventEmitter<Events> {
 
                 enterFramesGroupEl.append(frameEl);
                 this.frameByEl.set(frameEl, frame);
-                this.frameEls.set(frame, frameEl);
+                this.frameEls.set(frame.nodeIndex, frameEl);
             } else {
                 // update
                 frameEl.className = className;
@@ -416,7 +402,7 @@ export class FlameChart extends EventEmitter<Events> {
                 frameEl.style.setProperty('--x1', x1.toFixed(8));
             }
 
-            removeFrames.delete(frame);
+            removeFrames.delete(frame.nodeIndex);
         }
 
         // remove non-visible frames
@@ -436,40 +422,32 @@ export class FlameChart extends EventEmitter<Events> {
         this.el.style.setProperty('--width-scale', widthScale.toFixed(8));
     }
 
-    zoomFrame(frame: Frame | null = null) {
-        frame = frame || this.rootFrame;
+    zoomFrame(nodeIndex = 0) {
+        const rootWidth = this.nodesWidth[0];
 
-        if (frame === null) {
-            return;
-        }
-
-        this.zoomStart = frame.x0;
-        this.zoomEnd = frame.x1;
+        this.zoomStart = this.nodesX[nodeIndex] / rootWidth;
+        this.zoomEnd = this.zoomStart + this.nodesWidth[nodeIndex] / rootWidth;
 
         // unfade nodes
-        for (const node of this.fadedFrames) {
-            this.fadedFrames.delete(node);
-            node.fade = false;
-        }
+        this.fadedFrames.clear();
 
         // fade ancestors
-        let cursor = frame.parent;
+        let cursor = nodeIndex;
 
-        while (cursor !== null) {
+        while (cursor !== 0) {
             this.fadedFrames.add(cursor);
-            cursor.fade = true;
-            cursor = cursor.parent;
+            cursor = this.tree.parent[cursor];
         }
 
         // emit event
-        this.emit('zoom', frame);
+        this.emit('zoom', nodeIndex);
 
         // schedule render
         this.scheduleRender();
     }
 
     resetZoom() {
-        this.zoomFrame(this.rootFrame); // zoom to root
+        this.zoomFrame(0); // zoom to root
     }
 
     get colorHue() {
@@ -483,7 +461,7 @@ export class FlameChart extends EventEmitter<Events> {
     get colorMapper() {
         return this.#colorMapper;
     }
-    set colorMapper(colorMapper: FrameColorGenerator) {
+    set colorMapper(colorMapper: FrameColorGenerator<T>) {
         this.#colorMapper = colorMapper;
         this.scheduleRender();
     }

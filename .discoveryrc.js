@@ -1,6 +1,7 @@
 module.exports = {
     name: 'CPU (pro)file',
     basedir: __dirname + '/app',
+    darkmode: 'only',
     embed: true,
     upload: {
         accept: ['.cpuprofile', '.json', '.jsonxl']
@@ -9,8 +10,6 @@ module.exports = {
     data: './data',
     view: {
         assets: [
-            './mode-regexp.css',
-            './mode-regexp.js',
             './pages/common.css',
             './pages/default.js',
             './pages/default.css',
@@ -19,6 +18,9 @@ module.exports = {
             './pages/function.js',
             './pages/module.js',
             './pages/package.js',
+            './views/misc/mode-regexp.css',
+            './views/misc/mode-regexp.js',
+            './views/draft-timings-related.js',
             './views/duration.css',
             './views/duration.js',
             './views/flamechart.css',
@@ -29,12 +31,14 @@ module.exports = {
             './views/loc-badge.js',
             './views/module-badge.css',
             './views/module-badge.js',
+            './views/nested-timings-tree.js',
             './views/package-badge.css',
             './views/package-badge.js',
             './views/page-indicator.css',
             './views/page-indicator.js',
-            './views/the-spice-must-flow.css',
-            './views/the-spice-must-flow.js',
+            './views/page-indicator-timings.js',
+            './views/subject-with-nested-timeline.css',
+            './views/subject-with-nested-timeline.js',
             './views/time.css',
             './views/time.js',
             './views/time-ruler.css',

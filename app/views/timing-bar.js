@@ -23,7 +23,7 @@ discovery.view.define('timing-bar-segment', function(el, config, data) {
     const { text = '?', duration, href, color } = data || {};
     const durationText = `${(duration / 1000).toFixed(1)}ms`;
     const durationPercentText = `${(100 * duration / total).toFixed(1)}%`;
-    const title = `${text} (${durationText} / ${durationPercentText})`;
+    const title = `${text} - ${durationText} - ${durationPercentText}`;
 
     el.style.setProperty('--fraction', duration / total);
     el.style.setProperty('--color', color);

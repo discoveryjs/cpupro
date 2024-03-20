@@ -14,6 +14,31 @@
     overflow: scroll;
     overflow-x: hidden;
 }
+.view-flamechart.disable-scrolling .view-flamechart__content {
+    overflow-y: clip;
+}
+
+.view-flamechart:not(.disable-scrolling) .view-flamechart__enable-scrolling-button {
+    opacity: 0;
+    pointer-events: none;
+}
+.view-flamechart__enable-scrolling-button {
+    position: absolute;
+    bottom: 4px;
+    z-index: 10;
+    background: var(--discovery-background-color);
+    left: 50%;
+    transform: translate(-50%);
+    padding: 4px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    opacity: .75;
+    cursor: pointer;
+    transition: opacity .25s ease-in-out;
+}
+.view-flamechart__enable-scrolling-button:hover {
+    opacity: .95;
+}
 
 .discovery-root-darkmode .flamechart .frame:hover {
     --fill-opacity: .3;

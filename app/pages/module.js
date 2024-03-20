@@ -13,67 +13,58 @@ discovery.page.define('module', {
         },
 
         {
-            view: 'block',
-            className: 'subject-timeline',
-            content: [
-                'time-ruler{ duration: #.data.totalTime, captions: "top" }',
-                {
-                    view: 'timeline-segments-bin',
-                    bins: '=binCalls(=>module=@, 500)',
-                    max: '=#.data.totalTime / 500',
-                    binsMax: true,
-                    color: '=area.name.color()',
-                    height: 30
-                }
-            ]
+            view: 'subject-with-nested-timeline',
+            data: '{ subject: @, tree: #.data.modulesTree }'
         },
 
         {
-            view: 'block',
-            className: 'indicators',
-            content: [
-                {
-                    view: 'page-indicator',
-                    title: 'Self time',
-                    value: '=selfTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Self time, %',
-                    value: '=selfTime.totalPercent()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time',
-                    value: '=totalTime.ms()',
-                    unit: true
-                },
-                {
-                    view: 'page-indicator',
-                    title: 'Total time, %',
-                    value: '=totalTime.totalPercent()',
-                    unit: true
-                }
-            ]
+            view: 'draft-timings-related',
+            source: '=#.data.modulesTimings',
+            content: {
+                view: 'page-indicator-timings',
+                data: '#.data.modulesTimings.entries[=>entry = @]'
+            }
         },
 
         {
-            view: 'context',
-            data: 'functions.sort(selfTime desc, totalTime desc)',
-            content: [
-                { view: 'h2', content: ['text:"Functions "', 'badge:size()'] },
-                {
-                    view: 'table',
-                    cols: [
-                        { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                        { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Function', content: 'auto-link' },
-                        { header: 'Loc', content: ['module-badge', 'loc-badge'] }
-                    ]
+            view: 'expand',
+            expanded: true,
+            className: 'trigger-outside',
+            header: 'text:"Nested timings"',
+            content: 'nested-timings-tree:{ subject: @, tree: #.data.modulesTree, timings: #.data.modulesTimings }'
+        },
+
+        {
+            view: 'expand',
+            expanded: true,
+            className: 'trigger-outside',
+            header: [
+                'text:"Functions "',
+                { view: 'pill-badge', content: {
+                    view: 'draft-timings-related',
+                    source: '=#.data.functionsTimings',
+                    content: 'text-numeric:#.data.functionsTimings.entries.[totalTime and entry.module = @].size()'
+                } }
+            ],
+            content: {
+                view: 'content-filter',
+                className: 'table-content-filter',
+                content: {
+                    view: 'draft-timings-related',
+                    source: '=#.data.functionsTimings',
+                    content: {
+                        view: 'table',
+                        data: '#.data.functionsTimings.entries.[totalTime and entry.module = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                        cols: [
+                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
+                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
+                            { header: 'Function', sorting: 'entry.name ascN', content: 'auto-link{ data: entry, content: "text-match:{ ..., match: #.filter }" }' },
+                            { header: 'Loc', data: 'entry', sorting: 'entry.loc ascN', content: ['module-badge', 'loc-badge'] }
+                        ]
+                    }
                 }
-            ]
+            }
         }
     ]
 });
