@@ -68,11 +68,11 @@ const pageIndicators = {
             content: [
                 {
                     title: 'Samples',
-                    value: '=samplesCount'
+                    value: '=sourceInfo.samples'
                 },
                 {
                     title: 'Sampling interval',
-                    value: '=samplesInterval',
+                    value: '=sourceInfo.samplesInterval',
                     unit: 'μs'
                 },
                 {
@@ -87,11 +87,11 @@ const pageIndicators = {
             content: [
                 {
                     title: 'Call tree nodes',
-                    value: '=callFramesTree.nodes.size()'
+                    value: '=sourceInfo.nodes'
                 },
                 {
                     title: 'Call frames',
-                    value: '=callFramesTree.dictionary.size()'
+                    value: '=callFrames.size()'
                 }
             ]
         }

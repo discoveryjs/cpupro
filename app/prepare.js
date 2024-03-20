@@ -11,15 +11,16 @@ import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/build-trees.js';
 import joraQueryHelpers from './prepare/jora-methods.js';
 
-export default function(data, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
-    const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
+export default function(input, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
+    const markAsCallFrame = defineObjectMarker('callFrame', { ref: 'id', title: 'name' });
+    const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
     const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
-    const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
+    const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
     const markTime = TIMINGS ? createMarkTime() : () => undefined;
 
     markTime('convertValidate()');
-    data = convertValidate(data, rejectData);
+    const data = convertValidate(input, rejectData);
     // let ids = new Set();
     // console.log(data.nodes[0].callFrame);
     // for (let i = 0; i < data.nodes.length; i++) {
@@ -86,17 +87,18 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     // sort dictionaries and remap ids in ascending order
     markTime('sort dictionaries & remap ids');
-    areas.sort((a, b) => a.id < b.id ? -1 : 0).forEach(remapId);
-    packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
-    modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1).forEach(remapId);
     functions.forEach(remapId);
+    modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1).forEach(remapId);
+    packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
+    areas.sort((a, b) => a.id < b.id ? -1 : 0).forEach(remapId);
 
     // apply object marker
     markTime('apply discovery object markers');
-    areas.forEach(markAsArea);
-    packages.forEach(markAsPackage);
-    modules.forEach(markAsModule);
+    callFrames.forEach(markAsCallFrame);
     functions.forEach(markAsFunction);
+    modules.forEach(markAsModule);
+    packages.forEach(markAsPackage);
+    areas.forEach(markAsArea);
 
     // build trees should be performed after dictionaries are sorted and remaped
     markTime('buildTrees()');
@@ -150,13 +152,19 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
 
     markTime('producing result');
     const result = {
-        engine: 'V8',
         runtime: detectRuntime(areas, packages),
+        sourceInfo: {
+            nodes: nodesCount,
+            samples: samplesCount,
+            samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1] // TODO: speedup
+        },
         startTime,
         startOverheadTime,
         endTime,
         totalTime,
-        nodesCount,
+        samples,
+        samplesTimings,
+        timeDeltas,
         wellKnownCallFrames,
         callFrames,
         callFramesTree,
@@ -175,12 +183,7 @@ export default function(data, { rejectData, defineObjectMarker, addValueAnnotati
         areas,
         areasTimings,
         areasTree,
-        areasTreeTimings,
-        samples,
-        samplesCount,
-        samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1], // TODO: speedup
-        samplesTimings,
-        timeDeltas
+        areasTreeTimings
     };
 
     markTime('finish');
