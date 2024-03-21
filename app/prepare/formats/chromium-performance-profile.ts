@@ -56,10 +56,10 @@ export interface CPUProfile {
     timeDeltas: number[];
 }
 
-export function isChromiumPerformanceProfile(data: any): boolean {
+export function isChromiumPerformanceProfile(data: unknown): boolean {
     if (!Array.isArray(data)) {
         // JSON Object Format
-        return data && 'traceEvents' in data
+        return typeof data === 'object' && data !== null && 'traceEvents' in data
             ? isChromiumPerformanceProfile(data.traceEvents)
             : false;
     }
@@ -103,6 +103,9 @@ export function extractFromChromiumPerformanceProfile(
         )
         .sort((a, b) => a.ts - b.ts);
 
+    // properties of nodes
+    let hasParent = false;
+
     for (const event of events) {
         if (event.name === 'CpuProfile') {
             // Create an arbitrary profile id.
@@ -144,12 +147,18 @@ export function extractFromChromiumPerformanceProfile(
             }
 
             if (chunk.cpuProfile) {
-                if (chunk.cpuProfile.nodes) {
-                    cpuProfile.nodes.push(...chunk.cpuProfile.nodes);
+                const { nodes, samples } = chunk.cpuProfile;
+
+                if (Array.isArray(nodes) && nodes.length > 0) {
+                    cpuProfile.nodes.push(...nodes);
+
+                    if (!hasParent) {
+                        hasParent = nodes.find(node => typeof node.parent === 'number');
+                    }
                 }
 
-                if (chunk.cpuProfile.samples) {
-                    cpuProfile.samples.push(...chunk.cpuProfile.samples);
+                if (samples) {
+                    cpuProfile.samples.push(...samples);
                 }
             }
 
@@ -172,10 +181,10 @@ export function extractFromChromiumPerformanceProfile(
     }
 
     const profiles: CPUProfile[] = [];
-    const nodeById = new Map<number, CPUProfileNode>();
     let indexToView = -1;
 
     for (const [profileId, profile] of cpuProfileById) {
+        const nodeWithNoChildrenById = new Map<number, CPUProfileNode>();
         const processName: string | null = processNameId.get(parseInt(profileId)) || 'Unknown';
 
         profile.name = processName;
@@ -184,22 +193,33 @@ export function extractFromChromiumPerformanceProfile(
             indexToView = profiles.length;
         }
 
-        for (const node of profile.nodes) {
-            nodeById.set(node.id, node);
-        }
+        // nodes may missing children field but have parent field, rebuild children arrays then;
+        // avoid updating children when nodes have parent and children fields
+        if (hasParent) {
+            // build map for nodes with no children only
+            for (const node of profile.nodes) {
+                if (!Array.isArray(node.children) || node.children.length === 0) {
+                    nodeWithNoChildrenById.set(node.id, node);
+                }
+            }
 
-        for (const node of profile.nodes) {
-            if (typeof node.parent === 'number') {
-                const parent = nodeById.get(node.parent);
+            // rebuild children for nodes which missed it
+            if (nodeWithNoChildrenById.size > 0) {
+                for (const node of profile.nodes) {
+                    if (typeof node.parent === 'number') {
+                        const parent = nodeWithNoChildrenById.get(node.parent);
 
-                if (Array.isArray(parent.children)) {
-                    parent.children.push(node.id);
-                } else {
-                    parent.children = [node.id];
+                        if (parent !== undefined) {
+                            if (Array.isArray(parent.children)) {
+                                parent.children.push(node.id);
+                            } else {
+                                parent.children = [node.id];
+                            }
+                        }
+                    }
                 }
             }
         }
-
 
         if (!profile.endTime && profile.timeDeltas) {
             profile.endTime = profile.timeDeltas.reduce(
