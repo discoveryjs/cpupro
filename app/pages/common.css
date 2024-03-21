@@ -1,3 +1,7 @@
+.view-alert-warning .view-link {
+    color: inherit;
+    text-decoration-color: inherit;
+}
 
 .view-page-indicators,
 :not(.view-page-indicators) > .view-page-indicator-group {

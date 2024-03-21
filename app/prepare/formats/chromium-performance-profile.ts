@@ -56,11 +56,11 @@ export interface CPUProfile {
     timeDeltas: number[];
 }
 
-export function isChromiumTimeline(data: any): boolean {
+export function isChromiumPerformanceProfile(data: any): boolean {
     if (!Array.isArray(data)) {
         // JSON Object Format
         return data && 'traceEvents' in data
-            ? isChromiumTimeline(data.traceEvents)
+            ? isChromiumPerformanceProfile(data.traceEvents)
             : false;
     }
 
@@ -77,7 +77,7 @@ export function isChromiumTimeline(data: any): boolean {
     return true;
 }
 
-export function extractCpuProfilesFromChromiumTimeline(
+export function extractFromChromiumPerformanceProfile(
     events: ChromiumTimeline | ChromiumTimelineEvent[]
 ): ProfileGroup {
     // It seems like sometimes Chrome timeline files contain multiple CpuProfiles?

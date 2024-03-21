@@ -1,6 +1,7 @@
 ## next
 
 - Report
+    - Added support for [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces)
     - Reworked the layout and UX of the main page
     - Added "Try demo CPU profile" button when no CPU profile is loaded
     - Adjusted call frame reference computation by omitting line and column when they are not specified or less than zero

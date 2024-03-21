@@ -1,5 +1,6 @@
 /* eslint-env node */
 const demoDataBase64 = require('../demo/demo-data-base64.js').default;
+const { supportedFormats } = require('../prepare/index.js');
 let fullpageMode = false;
 
 discovery.action.define('uploadDemoData', () => discovery.loadDataFromUrl(demoDataBase64));
@@ -394,8 +395,7 @@ discovery.page.define('default', {
                         'A viewer for CPU profiles collected in Node.js or Chromium browsers.',
                         '',
                         'Supported formats:',
-                        '* [V8 CPU profile](https://v8.dev/docs/profile) (.cpuprofile)',
-                        '* [Chromium timeline](https://www.debugbear.com/blog/devtools-performance#recording-a-performance-profile) / [Trace Event](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview) format (.json)'
+                        ...supportedFormats
                     ]
                 },
                 'html:"<br>"',

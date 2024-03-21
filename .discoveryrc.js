@@ -4,7 +4,7 @@ module.exports = {
     darkmode: 'only',
     embed: true,
     upload: {
-        accept: ['.cpuprofile', '.json', '.jsonxl']
+        accept: ['.cpuprofile', '.devtools', '.json', '.jsonxl']
     },
     prepare: './prepare',
     data: './data',
