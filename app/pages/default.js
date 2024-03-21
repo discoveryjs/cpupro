@@ -142,26 +142,26 @@ const areasTimeline = {
             view: 'time-ruler',
             duration: '=$[].totalTime',
             segments: '=$[].binCount',
-            selectionStart: '=#.data.samplesTimings.rangeStart',
-            selectionEnd: '=#.data.samplesTimings.rangeEnd',
+            selectionStart: '=#.data.samplesTimingsFiltered.rangeStart',
+            selectionEnd: '=#.data.samplesTimingsFiltered.rangeEnd',
             onChange: (state, name, el, data, context) => {
                 // console.log('change', state);
                 if (state.timeStart !== null) {
-                    context.data.samplesTimings.setRange(state.timeStart, state.timeEnd);
+                    context.data.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    context.data.samplesTimings.resetRange();
+                    context.data.samplesTimingsFiltered.resetRange();
                 }
 
                 const t = Date.now();
-                context.data.samplesTimings.compute();
-                context.data.functionsTreeTimings.compute();
-                context.data.functionsTimings.compute();
-                context.data.modulesTreeTimings.compute();
-                context.data.modulesTimings.compute();
-                context.data.packagesTreeTimings.compute();
-                context.data.packagesTimings.compute();
-                context.data.areasTreeTimings.compute();
-                context.data.areasTimings.compute();
+                context.data.samplesTimingsFiltered.compute();
+                context.data.functionsTreeTimingsFiltered.compute();
+                context.data.functionsTimingsFiltered.compute();
+                context.data.modulesTreeTimingsFiltered.compute();
+                context.data.modulesTimingsFiltered.compute();
+                context.data.packagesTreeTimingsFiltered.compute();
+                context.data.packagesTimingsFiltered.compute();
+                context.data.areasTreeTimingsFiltered.compute();
+                context.data.areasTimingsFiltered.compute();
                 console.log('compute', Date.now() - t);
             },
             details: [
@@ -221,7 +221,7 @@ const areasTimeline = {
 
 const packagesList = {
     view: 'section',
-    data: 'packagesTimings',
+    data: 'packagesTimingsFiltered',
     header: [
         'text:"Packages "',
         {
@@ -250,7 +250,7 @@ const packagesList = {
 
 const modulesList = {
     view: 'section',
-    data: 'modulesTimings',
+    data: 'modulesTimingsFiltered',
     header: [
         'text:"Modules "',
         {
@@ -281,7 +281,7 @@ const modulesList = {
 
 const functionList = {
     view: 'section',
-    data: 'functionsTimings',
+    data: 'functionsTimingsFiltered',
     header: [
         'text:"Functions "',
         {
@@ -374,7 +374,7 @@ const flamecharts = {
     content: {
         view: 'flamechart',
         tree: '=$[#.dataset]',
-        timings: '=$[#.dataset + "Timings"]',
+        timings: '=$[#.dataset + "TimingsFiltered"]',
         lockScrolling: true
     }
 };

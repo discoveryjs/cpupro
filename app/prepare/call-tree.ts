@@ -67,9 +67,6 @@ export class CallTree<T> {
             enumerable: true,
             get: () => this.getEntry(0)
         });
-
-        this.selfTimes = new Uint32Array();
-        this.nestedTimes = new Uint32Array();
     }
 
     createEntry(nodeIndex: number): Entry<T> {
@@ -77,9 +74,7 @@ export class CallTree<T> {
             nodeIndex,
             host: this.dictionary[this.nodes[nodeIndex]],
             parent: null,
-            subtreeSize: this.subtreeSize[nodeIndex],
-            selfTime: this.selfTimes[nodeIndex],
-            totalTime: this.selfTimes[nodeIndex] + this.nestedTimes[nodeIndex]
+            subtreeSize: this.subtreeSize[nodeIndex]
         };
 
         if (nodeIndex !== 0) {
@@ -148,11 +143,16 @@ export class CallTree<T> {
         }
     }
 
-    *ancestors(nodeIndex: number) {
+    *ancestors(nodeIndex: number, depth = Infinity) {
         nodeIndex = this.parent[nodeIndex];
 
         while (nodeIndex !== 0) {
             yield nodeIndex;
+
+            if (--depth <= 0) {
+                break;
+            }
+
             nodeIndex = this.parent[nodeIndex];
         }
     }
@@ -161,6 +161,7 @@ export class CallTree<T> {
 
         while (nodeIndex < end) {
             yield ++nodeIndex;
+
             nodeIndex += this.subtreeSize[nodeIndex];
         }
     }

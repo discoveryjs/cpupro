@@ -1,6 +1,7 @@
 import { typeColor, typeColorComponents, typeOrder } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './call-tree.js';
+import { TreeTiminigs } from './process-samples.js';
 
 function makeSampleBins(n, mask, samples, timeDeltas, totalTime) {
     const bins = new Float64Array(n);
@@ -103,6 +104,13 @@ export default {
     },
     formatMicrosecondsTime,
     select(tree, type, ...args) {
+        let treeTimings = null;
+
+        if (tree instanceof TreeTiminigs) {
+            treeTimings = tree;
+            tree = tree.tree;
+        }
+
         if (tree instanceof CallTree) {
             let iterator;
 
@@ -116,12 +124,33 @@ export default {
                 case 'subtree':
                     iterator = tree.subtree(...args);
                     break;
+                case 'parent':
+                    iterator = tree.ancestors(args[0], 1);
+                    break;
                 case 'ancestors':
                     iterator = tree.ancestors(...args);
                     break;
             }
 
             if (iterator !== undefined) {
+                if (treeTimings) {
+                    const result = [];
+
+                    for (const node of tree.map(iterator)) {
+                        const selfTime = treeTimings.selfTimes[node.nodeIndex];
+                        const nestedTime = treeTimings.nestedTimes[node.nodeIndex];
+
+                        result.push({
+                            node,
+                            selfTime,
+                            nestedTime,
+                            totalTime: selfTime + nestedTime
+                        });
+                    }
+
+                    return result;
+                }
+
                 return [...tree.map(iterator)];
             }
         }
@@ -169,7 +198,8 @@ export default {
 
         return Array.from(bins);
     },
-    nestedTimings(tree, subject, tree2 = tree) {
+    nestedTimings(tree, subject, treeTimings2) {
+        const tree2 = treeTimings2.tree;
         const sampleIdToNode = tree.sampleIdToNode;
         const sampleIds = new Set(sampleIdToNode);
         const selected = new Set();
@@ -191,7 +221,7 @@ export default {
                 const nodeIndex = tree2.sampleIdToNode[i];
 
                 if (!visited.has(nodeIndex)) {
-                    tree2dict[tree2.nodes[nodeIndex]] += tree2.selfTimes[nodeIndex];
+                    tree2dict[tree2.nodes[nodeIndex]] += treeTimings2.selfTimes[nodeIndex];
                     visited.add(nodeIndex);
                 }
             }

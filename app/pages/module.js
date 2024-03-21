@@ -19,10 +19,10 @@ discovery.page.define('module', {
 
         {
             view: 'draft-timings-related',
-            source: '=#.data.modulesTimings',
+            source: '=#.data.modulesTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
-                data: '#.data.modulesTimings.entries[=>entry = @]'
+                data: '#.data.modulesTimingsFiltered.entries[=>entry = @]'
             }
         },
 
@@ -31,7 +31,7 @@ discovery.page.define('module', {
             expanded: true,
             className: 'trigger-outside',
             header: 'text:"Nested timings"',
-            content: 'nested-timings-tree:{ subject: @, tree: #.data.modulesTree, timings: #.data.modulesTimings }'
+            content: 'nested-timings-tree:{ subject: @, tree: #.data.modulesTree, timings: #.data.modulesTimingsFiltered }'
         },
 
         {
@@ -42,8 +42,8 @@ discovery.page.define('module', {
                 'text:"Functions "',
                 { view: 'pill-badge', content: {
                     view: 'draft-timings-related',
-                    source: '=#.data.functionsTimings',
-                    content: 'text-numeric:#.data.functionsTimings.entries.[totalTime and entry.module = @].size()'
+                    source: '=#.data.functionsTimingsFiltered',
+                    content: 'text-numeric:#.data.functionsTimingsFiltered.entries.[totalTime and entry.module = @].size()'
                 } }
             ],
             content: {
@@ -51,10 +51,10 @@ discovery.page.define('module', {
                 className: 'table-content-filter',
                 content: {
                     view: 'draft-timings-related',
-                    source: '=#.data.functionsTimings',
+                    source: '=#.data.functionsTimingsFiltered',
                     content: {
                         view: 'table',
-                        data: '#.data.functionsTimings.entries.[totalTime and entry.module = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                        data: '#.data.functionsTimingsFiltered.entries.[totalTime and entry.module = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
                         cols: [
                             { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
                             { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },

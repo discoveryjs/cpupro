@@ -126,14 +126,23 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     }
     const {
         samplesTimings,
+        samplesTimingsFiltered,
         functionsTimings,
+        functionsTimingsFiltered,
         functionsTreeTimings,
+        functionsTreeTimingsFiltered,
         modulesTimings,
+        modulesTimingsFiltered,
         modulesTreeTimings,
+        modulesTreeTimingsFiltered,
         packagesTimings,
+        packagesTimingsFiltered,
         packagesTreeTimings,
+        packagesTreeTimingsFiltered,
         areasTimings,
-        areasTreeTimings
+        areasTimingsFiltered,
+        areasTreeTimings,
+        areasTreeTimingsFiltered
     } = processSamples(
         samples,
         timeDeltas,
@@ -165,25 +174,34 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         samples,
         samplesTimings,
         timeDeltas,
+        samplesTimingsFiltered,
         wellKnownCallFrames,
         callFrames,
         callFramesTree,
         functions,
         functionsTimings,
+        functionsTimingsFiltered,
         functionsTree,
         functionsTreeTimings,
+        functionsTreeTimingsFiltered,
         modules,
         modulesTimings,
+        modulesTimingsFiltered,
         modulesTree,
         modulesTreeTimings,
+        modulesTreeTimingsFiltered,
         packages,
         packagesTimings,
+        packagesTimingsFiltered,
         packagesTree,
         packagesTreeTimings,
+        packagesTreeTimingsFiltered,
         areas,
         areasTimings,
+        areasTimingsFiltered,
         areasTree,
-        areasTreeTimings
+        areasTreeTimings,
+        areasTreeTimingsFiltered
     };
 
     markTime('finish');

@@ -6,12 +6,12 @@ const descendantTree = {
             view: 'tree',
             className: 'call-tree',
             data: `
-                #.data.functionsTree.select('nodes', $, true)
-                | sort(totalTime desc, selfTime desc, host.name ascN)
+                #.data.functionsTreeTimings.select('nodes', @, true)
+                | sort(totalTime desc, selfTime desc)
             `,
             children: `
-                children
-                | sort(totalTime desc, selfTime desc, host.name ascN)
+                #.data.functionsTreeTimings.select('children', node.nodeIndex)
+                | sort(totalTime desc, selfTime desc, node.host.name ascN)
             `,
             item: {
                 view: 'context',
@@ -19,12 +19,12 @@ const descendantTree = {
                     {
                         view: 'switch',
                         content: [
-                            { when: 'host.id = +#.id', content: {
+                            { when: 'node.host.id = +#.id', content: {
                                 view: 'block',
                                 className: 'self',
-                                content: 'text:host.name'
+                                content: 'text:node.host.name'
                             } },
-                            { content: 'auto-link:host' }
+                            { content: 'auto-link:node.host' }
                         ]
                     },
                     { view: 'text', when: 'subtreeSize', data: '` (${subtreeSize}) `' },
@@ -54,8 +54,8 @@ const descendantTree = {
                         }
                     },
                     // { view: 'total-time', when: 'children', data: 'totalTime' },
-                    'module-badge:host',
-                    'loc-badge:host'
+                    'module-badge:node.host',
+                    'loc-badge:node.host'
                 ]
             }
         }
@@ -71,11 +71,11 @@ const ancestorsTree = {
             className: 'call-tree',
             expanded: 3,
             data: `
-                #.data.functionsTree.select('nodes', $, true)
+                #.data.functionsTreeTimings.select('nodes', $, true)
                 | sort(totalTime desc)
             `,
             children: `
-                parent ? [parent]
+                node.parent ? #.data.functionsTreeTimings.select('parent', node.nodeIndex)
                 | sort(totalTime desc)
             `,
             item: {
@@ -84,12 +84,12 @@ const ancestorsTree = {
                     {
                         view: 'switch',
                         content: [
-                            { when: 'host.id = +#.id', content: {
+                            { when: 'node.host.id = +#.id', content: {
                                 view: 'block',
                                 className: 'self',
-                                content: 'text:host.name'
+                                content: 'text:node.host.name'
                             } },
-                            { content: 'auto-link:host' }
+                            { content: 'auto-link:node.host' }
                         ]
                     },
                     {
@@ -107,8 +107,8 @@ const ancestorsTree = {
                             content: 'text:"Total time – the entire duration spent on the execution of a function. This includes both the \'self time\', which is the time taken by the function itself to execute its own code, and the \'nested time\', which is the time spent on executing all the other functions that are called from within this function"'
                         }
                     },
-                    'module-badge:host',
-                    'loc-badge:host'
+                    'module-badge:node.host',
+                    'loc-badge:node.host'
                 ]
             }
         }
@@ -141,10 +141,10 @@ discovery.page.define('function', {
 
         {
             view: 'draft-timings-related',
-            source: '=#.data.functionsTimings',
+            source: '=#.data.functionsTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
-                data: '#.data.functionsTimings.entries[=>entry = @]'
+                data: '#.data.functionsTimingsFiltered.entries[=>entry = @]'
             }
         },
 
@@ -153,7 +153,7 @@ discovery.page.define('function', {
             expanded: true,
             className: 'trigger-outside',
             header: 'text:"Nested timings"',
-            content: 'nested-timings-tree:{ subject: @, tree: #.data.functionsTree, timings: #.data.functionsTimings }'
+            content: 'nested-timings-tree:{ subject: @, tree: #.data.functionsTree, timings: #.data.functionsTimingsFiltered }'
         },
 
         {

@@ -9,7 +9,7 @@ discovery.view.define('nested-timings-tree', {
         data: `
             $tree;
             $subject;
-            $functions: $tree.nestedTimings($subject, #.data.functionsTree);
+            $functions: $tree.nestedTimings($subject, #.data.functionsTreeTimingsFiltered);
             $totalTime: $functions.sum(=>selfTime);
 
             $functions
