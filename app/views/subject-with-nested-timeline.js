@@ -106,7 +106,7 @@ discovery.view.define('subject-with-nested-timeline', {
         },
         {
             view: 'timeline-segments-bin',
-            className: 'total-time',
+            className: 'nested-time',
             bins: '=totalTimeBins',
             max: '=binTime',
             binsMax: true,
