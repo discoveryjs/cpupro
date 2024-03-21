@@ -58,7 +58,7 @@ class SamplesTiminigs extends TimingsObserver {
     epoch: number;
     samples: Uint32Array;
     timeDeltas: Uint32Array;
-    originalDeltas: Uint32Array;
+    originalTimeDeltas: Uint32Array;
     timestamps: Uint32Array;
     rangeStart: number | null = null;
     rangeEnd: number | null = null;
@@ -70,7 +70,7 @@ class SamplesTiminigs extends TimingsObserver {
         this.epoch = 0;
         this.samples = samples;
         this.timeDeltas = timeDeltas;
-        this.originalDeltas = timeDeltas;
+        this.originalTimeDeltas = timeDeltas;
         this.timestamps = null;
         this.selfTimes = new Uint32Array(size);
         this.compute();
@@ -94,18 +94,18 @@ class SamplesTiminigs extends TimingsObserver {
         this.rangeStart = null;
         this.rangeEnd = null;
 
-        if (this.timeDeltas !== this.originalDeltas) {
-            this.timeDeltas = this.originalDeltas;
+        if (this.timeDeltas !== this.originalTimeDeltas) {
+            this.timeDeltas = this.originalTimeDeltas;
         }
     }
     setRange(start: number, end: number) {
-        const { originalDeltas } = this;
+        const { originalTimeDeltas } = this;
         let { timeDeltas, timestamps } = this;
 
         this.rangeStart = start;
         this.rangeEnd = end;
 
-        if (timeDeltas === this.originalDeltas) {
+        if (timeDeltas === this.originalTimeDeltas) {
             this.timeDeltas = timeDeltas = new Uint32Array(timeDeltas.length);
         } else {
             timeDeltas.fill(0);
@@ -115,7 +115,7 @@ class SamplesTiminigs extends TimingsObserver {
             this.timestamps = timestamps = new Uint32Array(timeDeltas.length);
 
             for (let i = 1; i < timestamps.length; i++) {
-                timestamps[i] = originalDeltas[i - 1] + timestamps[i - 1];
+                timestamps[i] = originalTimeDeltas[i - 1] + timestamps[i - 1];
             }
         }
 
@@ -123,11 +123,11 @@ class SamplesTiminigs extends TimingsObserver {
         const endIndex = binarySearch(timestamps, end);
 
         if (startIndex !== endIndex) {
-            timeDeltas[startIndex] = originalDeltas[startIndex] - (start - timestamps[startIndex]);
+            timeDeltas[startIndex] = originalTimeDeltas[startIndex] - (start - timestamps[startIndex]);
             timeDeltas[endIndex] = end - timestamps[endIndex];
 
             if (startIndex + 1 < endIndex) {
-                timeDeltas.set(this.originalDeltas.subarray(startIndex + 1, endIndex), startIndex + 1);
+                timeDeltas.set(this.originalTimeDeltas.subarray(startIndex + 1, endIndex), startIndex + 1);
             }
         } else {
             timeDeltas[startIndex] = end - start;
