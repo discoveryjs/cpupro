@@ -314,9 +314,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
             if (moduleArea === undefined) {
                 areas.set(areaRef.ref, moduleArea = {
                     id: typeOrder[areaRef.name] || areas.unknownTypeOrder++,
-                    name: areaRef.name,
-                    selfTime: 0,
-                    totalTime: 0
+                    name: areaRef.name
                 });
             }
 
@@ -328,8 +326,6 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                     name: packageRef.name,
                     path: packageRef.path,
                     area: moduleArea,
-                    selfTime: 0,
-                    totalTime: 0,
                     modules: []
                 });
             }
@@ -343,8 +339,6 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                 area: moduleArea,
                 package: modulePackage,
                 packageRelPath: null,
-                selfTime: 0,
-                totalTime: 0,
                 functions: []
             });
 
@@ -373,9 +367,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                 package: callFrameModule.package,
                 module: callFrameModule,
                 regexp,
-                loc: callFrameModule.path ? `${callFrameModule.path}:${lineNumber}:${columnNumber}` : null,
-                selfTime: 0,
-                totalTime: 0
+                loc: callFrameModule.path ? `${callFrameModule.path}:${lineNumber}:${columnNumber}` : null
             });
 
             callFrameModule.functions.push(callFrameFunction);

@@ -43,8 +43,6 @@ export type CpuProCallFrame = {
     module: CpuProModule;
     package: CpuProPackage;
     area: CpuProArea;
-    selfTime: number;
-    totalTime: number;
 };
 
 export type CpuProFunction = {
@@ -55,8 +53,6 @@ export type CpuProFunction = {
     module: CpuProModule;
     regexp: string | null;
     loc: string | null;
-    selfTime: 0;
-    totalTime: 0;
 };
 
 export type ModuleType =
@@ -82,8 +78,6 @@ export type CpuProModule = {
     area: CpuProArea;
     package: CpuProPackage;
     packageRelPath: string | null;
-    selfTime: number;
-    totalTime: number;
     functions: CpuProFunction[];
 };
 
@@ -105,14 +99,10 @@ export type CpuProPackage = {
     name: string;
     path: string | null;
     area: CpuProArea;
-    selfTime: number;
-    totalTime: number;
     modules: CpuProModule[];
 };
 
 export type CpuProArea = {
     id: number;
     name: string;
-    selfTime: number;
-    totalTime: number;
 };

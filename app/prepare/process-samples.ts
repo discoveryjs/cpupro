@@ -263,12 +263,6 @@ function computeTimings<T extends CpuProNode>(
     tree.selfTimes = treeTimings.selfTimes;
     tree.nestedTimes = treeTimings.nestedTimes;
 
-    for (const { entry, selfTime, totalTime } of dictionaryTimings.entries) {
-        entry.selfTime = selfTime;
-        // entry.nestedTime = nestedTime;
-        entry.totalTime = totalTime;
-    }
-
     return { treeTimings, dictionaryTimings };
 }
 
