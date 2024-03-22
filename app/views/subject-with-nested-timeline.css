@@ -11,10 +11,10 @@
     position: absolute;
     width: calc(2 * var(--main-histogram-height) + 1px);
     top: 16.5px;
-    left: -2px;
+    left: -5px;
     transform: translate(-100%, -100%) translateX(-15.5px) rotate(-90deg);
     transform-origin: bottom right;
-    padding: 1px 0 0;
+    padding: 3px 0;
     font-size: 8px;
     text-align: center;
     letter-spacing: .75px;
@@ -62,12 +62,16 @@
     left: -2px;
     transform: rotate(-90deg);
     transform-origin: bottom left;
-    padding: 1px 0 0;
+    padding: 2px 0;
     font-size: 9px;
     text-align: center;
     letter-spacing: .5px;
     color: #888;
     background-color: color-mix(in srgb, var(--discovery-color) 10%, var(--discovery-background-color));
+}
+.view-subject-with-nested-timeline > .view-timeline-segments-bin.self-time::before {
+    bottom: -.5px;
+    padding-left: .5px;
 }
 .view-subject-with-nested-timeline > .view-timeline-segments-bin.nested-time::before {
     content: "NEST";
