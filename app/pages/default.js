@@ -225,15 +225,14 @@ const packagesList = {
     header: [
         'text:"Packages "',
         {
-            view: 'draft-timings-related',
+            view: 'update-on-timings-change',
             content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
         }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'draft-timings-related',
-            debounce: true,
+            view: 'update-on-timings-change',
             content: {
                 view: 'table',
                 data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
@@ -254,14 +253,14 @@ const modulesList = {
     header: [
         'text:"Modules "',
         {
-            view: 'draft-timings-related',
+            view: 'update-on-timings-change',
             content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
         }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'draft-timings-related',
+            view: 'update-on-timings-change',
             content: {
                 view: 'table',
                 data: `entries
@@ -285,14 +284,14 @@ const functionList = {
     header: [
         'text:"Functions "',
         {
-            view: 'draft-timings-related',
+            view: 'update-on-timings-change',
             content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
         }
     ],
     content: {
         view: 'content-filter',
         content: {
-            view: 'draft-timings-related',
+            view: 'update-on-timings-change',
             content: {
                 view: 'table',
                 data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',

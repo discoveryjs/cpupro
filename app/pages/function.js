@@ -140,8 +140,8 @@ discovery.page.define('function', {
         },
 
         {
-            view: 'draft-timings-related',
-            source: '=#.data.functionsTimingsFiltered',
+            view: 'update-on-timings-change',
+            timings: '=#.data.functionsTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
                 data: '#.data.functionsTimingsFiltered.entries[=>entry = @]'

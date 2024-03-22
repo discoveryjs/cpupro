@@ -16,8 +16,8 @@ discovery.page.define('area', {
         },
 
         {
-            view: 'draft-timings-related',
-            source: '=#.data.areasTimingsFiltered',
+            view: 'update-on-timings-change',
+            timings: '=#.data.areasTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
                 data: '#.data.areasTimingsFiltered.entries[=>entry = @]'
@@ -34,8 +34,8 @@ discovery.page.define('area', {
                 header: [
                     'text:"Packages "',
                     {
-                        view: 'draft-timings-related',
-                        source: '=#.data.packagesTimingsFiltered',
+                        view: 'update-on-timings-change',
+                        timings: '=#.data.packagesTimingsFiltered',
                         content: { view: 'pill-badge', content: 'text-numeric:#.data.packagesTimingsFiltered.entries.[totalTime and entry.area = @].size()' }
                     }
                 ],
@@ -43,8 +43,8 @@ discovery.page.define('area', {
                     view: 'content-filter',
                     className: 'table-content-filter',
                     content: {
-                        view: 'draft-timings-related',
-                        source: '=#.data.packagesTimingsFiltered',
+                        view: 'update-on-timings-change',
+                        timings: '=#.data.packagesTimingsFiltered',
                         content: {
                             view: 'table',
                             data: '#.data.packagesTimingsFiltered.entries.[totalTime and entry.area = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
@@ -69,8 +69,8 @@ discovery.page.define('area', {
             header: [
                 'text:"Modules "',
                 {
-                    view: 'draft-timings-related',
-                    source: '=#.data.modulesTimingsFiltered',
+                    view: 'update-on-timings-change',
+                    timings: '=#.data.modulesTimingsFiltered',
                     content: { view: 'pill-badge', content: 'text-numeric:#.data.modulesTimingsFiltered.entries.[totalTime and entry.area = @].size()' }
                 }
             ],
@@ -78,8 +78,8 @@ discovery.page.define('area', {
                 view: 'content-filter',
                 className: 'table-content-filter',
                 content: {
-                    view: 'draft-timings-related',
-                    source: '=#.data.modulesTimingsFiltered',
+                    view: 'update-on-timings-change',
+                    timings: '=#.data.modulesTimingsFiltered',
                     content: {
                         view: 'table',
                         data: '#.data.modulesTimingsFiltered.entries.[totalTime and entry.area = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',

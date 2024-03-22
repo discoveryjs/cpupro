@@ -1,7 +1,7 @@
 const { utils } = require('@discoveryjs/discovery');
 
-discovery.view.define('draft-timings-related', function(el, config, data, context) {
-    const { source = data, debounce, content } = config;
+discovery.view.define('update-on-timings-change', function(el, config, data, context) {
+    const { timings = data, debounce, content } = config;
     let scheduledRender = null;
     const updateRender = () => {
         if (scheduledRender) {
@@ -16,7 +16,7 @@ discovery.view.define('draft-timings-related', function(el, config, data, contex
         });
     };
 
-    const unsubscribeSource = source.on(
+    const unsubscribeSource = timings.on(
         debounce
             ? utils.debounce(updateRender, debounce !== true ? debounce : { wait: 16, maxWait: 32 })
             : updateRender
@@ -27,9 +27,9 @@ discovery.view.define('draft-timings-related', function(el, config, data, contex
     };
 
     return this.render(el, content, data, context);
-}, { tag: 'draft-timings-related' });
+}, { tag: 'update-on-timings-change' });
 
-class DrafTimingsRelated extends HTMLElement {
+class UpdateOnTimingsChange extends HTMLElement {
     connectedCallback() {
         this.onConnect?.();
         this.onConnect = null;
@@ -40,4 +40,4 @@ class DrafTimingsRelated extends HTMLElement {
     }
 }
 
-customElements.define('draft-timings-related', DrafTimingsRelated);
+customElements.define('update-on-timings-change', UpdateOnTimingsChange);

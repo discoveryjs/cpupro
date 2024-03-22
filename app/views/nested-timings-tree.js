@@ -1,6 +1,6 @@
 discovery.view.define('nested-timings-tree', {
-    view: 'draft-timings-related',
-    source: '=timings',
+    view: 'update-on-timings-change',
+    timings: '=timings',
     content: {
         view: 'tree',
         limitLines: 10,

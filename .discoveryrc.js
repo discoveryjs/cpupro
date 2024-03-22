@@ -20,7 +20,6 @@ module.exports = {
             './pages/package.js',
             './views/misc/mode-regexp.css',
             './views/misc/mode-regexp.js',
-            './views/draft-timings-related.js',
             './views/duration.css',
             './views/duration.js',
             './views/flamechart.css',
@@ -48,7 +47,9 @@ module.exports = {
             './views/timeline-segments.css',
             './views/timeline-segments.js',
             './views/timing-bar.css',
-            './views/timing-bar.js'
+            './views/timing-bar.js',
+            './views/update-on-timings-change.css',
+            './views/update-on-timings-change.js'
         ]
     }
 };

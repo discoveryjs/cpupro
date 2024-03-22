@@ -17,8 +17,8 @@ discovery.page.define('package', {
         },
 
         {
-            view: 'draft-timings-related',
-            source: '=#.data.packagesTimingsFiltered',
+            view: 'update-on-timings-change',
+            timings: '=#.data.packagesTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
                 data: '#.data.packagesTimingsFiltered.entries[=>entry = @]'
@@ -40,8 +40,8 @@ discovery.page.define('package', {
             header: [
                 'text:"Modules "',
                 { view: 'pill-badge', content: {
-                    view: 'draft-timings-related',
-                    source: '=#.data.modulesTimingsFiltered',
+                    view: 'update-on-timings-change',
+                    timings: '=#.data.modulesTimingsFiltered',
                     content: 'text-numeric:#.data.modulesTimingsFiltered.entries.[totalTime and entry.package = @].size()'
                 } }
             ],
@@ -49,8 +49,8 @@ discovery.page.define('package', {
                 view: 'content-filter',
                 className: 'table-content-filter',
                 content: {
-                    view: 'draft-timings-related',
-                    source: '=#.data.packagesTimingsFiltered',
+                    view: 'update-on-timings-change',
+                    timings: '=#.data.packagesTimingsFiltered',
                     content: {
                         view: 'table',
                         data: '#.data.modulesTimingsFiltered.entries.[totalTime and entry.package = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',

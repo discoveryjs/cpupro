@@ -229,9 +229,6 @@
     margin-left: calc(10px - var(--discovery-page-padding-left));
     margin-right: calc(10px - var(--discovery-page-padding-right));
 }
-.page-default .hierarchical-components > .content .view-draft-timings-related {
-    display: contents;
-}
 .page-default .hierarchical-components > .content .view-section {
     flex: 1;
     display: flex;
