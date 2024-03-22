@@ -1,0 +1,19 @@
+.view-page-indicator-timings .annotation {
+    min-width: 48px;
+}
+.view-page-indicator-timings .annotation .view-badge {
+    background: #6d5135;
+    font-size: 11px;
+    text-transform: capitalize;
+    margin: 0;
+    padding-top: 2px;
+}
+.view-page-indicator-timings .view-text-with-unit {
+    display: block;
+}
+.view-page-indicator-timings .view-text-with-unit + .view-text-with-unit {
+    visibility: hidden;
+    overflow: hidden;
+    overflow: clip;
+    height: 0;
+}

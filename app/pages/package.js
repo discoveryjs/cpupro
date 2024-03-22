@@ -21,7 +21,10 @@ discovery.page.define('package', {
             timings: '=#.data.packagesTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
-                data: '#.data.packagesTimingsFiltered.entries[=>entry = @]'
+                data: `{
+                    full: #.data.packagesTimings.entries[=>entry = @],
+                    filtered: #.data.packagesTimingsFiltered.entries[=>entry = @]
+                }`
             }
         },
 

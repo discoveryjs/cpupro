@@ -38,11 +38,10 @@ discovery.view.define('page-indicator-group', function(el, config, data, context
 });
 
 discovery.view.define('page-indicator', function(el, config, data, context) {
-    const { title, value, unit, content } = config;
+    const { title, value, unit, annotation, content } = config;
 
     const titleEl = document.createElement('span');
     const valueEl = document.createElement('span');
-    const valueText = unit === true ? String(value).replace(/[^\d]+$/, '') : value;
 
     titleEl.className = 'title';
     valueEl.className = 'value';
@@ -52,17 +51,17 @@ discovery.view.define('page-indicator', function(el, config, data, context) {
     if (content) {
         discovery.view.render(valueEl, content, data, context);
     } else {
-        discovery.view.render(valueEl, 'text-numeric', valueText, context);
-    }
-
-    if (unit) {
-        const unitEl = document.createElement('span');
-
-        unitEl.className = 'unit';
-        unitEl.textContent = unit === true ? String(value).slice(String(value).replace(/[^\d]+$/, '').length) : unit;
-
-        valueEl.append(unitEl);
+        discovery.view.render(valueEl, { view: 'text-with-unit', value, unit, content }, data, context);
     }
 
     el.append(titleEl, valueEl);
+
+    if (annotation) {
+        const annotationEl = document.createElement('span');
+
+        annotationEl.className = 'annotation';
+
+        this.render(annotationEl, annotation, data, context);
+        el.append(annotationEl);
+    }
 });

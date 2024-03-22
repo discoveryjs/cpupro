@@ -144,7 +144,10 @@ discovery.page.define('function', {
             timings: '=#.data.functionsTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
-                data: '#.data.functionsTimingsFiltered.entries[=>entry = @]'
+                data: `{
+                    full: #.data.functionsTimings.entries[=>entry = @],
+                    filtered: #.data.functionsTimingsFiltered.entries[=>entry = @]
+                }`
             }
         },
 

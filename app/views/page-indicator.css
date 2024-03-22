@@ -9,11 +9,18 @@
 }
 
 .view-page-indicator {
-    background: #9b9b9b26;
+    display: grid;
+    grid-template:
+        'title annotation'
+        'value value';
+    grid-template-columns: auto 1fr;
+    gap: 0 5px;
     padding: 4px 12px;
     min-width: 100px;
+    background: #9b9b9b26;
 }
 .view-page-indicator > .title {
+    grid-area: title;
     display: block;
     margin-top: 2px;
     margin-bottom: -2px;
@@ -21,14 +28,22 @@
     font-size: 11px;
 }
 .view-page-indicator > .value {
+    grid-area: value;
     display: block;
     font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
     font-size: 180%;
     font-weight: 200;
     text-align: right;
 }
-.view-page-indicator > .value > .unit {
+.view-page-indicator > .value .unit {
     font-size: 65%;
     color: #888;
     padding-left: .25ex;
+}
+.view-page-indicator > .annotation {
+    grid-area: annotation;
+    display: block;
+    height: 22px;
+    margin-top: -2px;
+    margin-bottom: -5px;
 }

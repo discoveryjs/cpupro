@@ -20,7 +20,10 @@ discovery.page.define('area', {
             timings: '=#.data.areasTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
-                data: '#.data.areasTimingsFiltered.entries[=>entry = @]'
+                data: `{
+                    full: #.data.areasTimings.entries[=>entry = @],
+                    filtered: #.data.areasTimingsFiltered.entries[=>entry = @]
+                }`
             }
         },
 

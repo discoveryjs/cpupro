@@ -22,7 +22,10 @@ discovery.page.define('module', {
             timings: '=#.data.modulesTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
-                data: '#.data.modulesTimingsFiltered.entries[=>entry = @]'
+                data: `{
+                    full: #.data.modulesTimings.entries[=>entry = @],
+                    filtered: #.data.modulesTimingsFiltered.entries[=>entry = @]
+                }`
             }
         },
 
