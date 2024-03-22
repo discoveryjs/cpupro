@@ -90,7 +90,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     functions.forEach(remapId);
     modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1).forEach(remapId);
     packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
-    areas.sort((a, b) => a.id < b.id ? -1 : 0).forEach(remapId);
+    areas.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
 
     // apply object marker
     markTime('apply discovery object markers');
