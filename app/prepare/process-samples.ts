@@ -227,6 +227,7 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
     selfTimes: Uint32Array;
     totalTimes: Uint32Array;
     entries: DictionaryTiminig<T>[];
+    entriesMap: Map<T, DictionaryTiminig<T>>;
 
     constructor(sourceTreeTimings: TreeTiminigs<T>) {
         const { dictionary } = sourceTreeTimings.tree;
@@ -309,6 +310,27 @@ function createTimings<T extends CpuProNode>(
     };
 }
 
+// Merging sequentially identical samples and coresponsing timeDeltas.
+// Usually it allows to reduce number of samples for further processing at least by x2
+function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array) {
+    let k = 1;
+
+    for (let i = 1; i < samples.length; i++) {
+        if (samples[i] !== samples[i - 1]) {
+            timeDeltas[k] = timeDeltas[i];
+            samples[k] = samples[i];
+            k++;
+        } else {
+            timeDeltas[k - 1] += timeDeltas[i];
+        }
+    }
+
+    return {
+        samples: k !== samples.length ? samples.slice(0, k) : samples,
+        timeDeltas: k !== timeDeltas.length ? timeDeltas.slice(0, k) : timeDeltas
+    };
+}
+
 function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
     const tmpMap = new Uint32Array(nodeById.length);
     const samplesMap = []; // -> callFramesTree.nodes
@@ -332,32 +354,22 @@ function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
 }
 
 export function processSamples(
-    samples: Uint32Array,
-    timeDeltas: Uint32Array,
+    rawSamples: Uint32Array,
+    rawTimeDeltas: Uint32Array,
     callFramesTree: CallTree<CpuProCallFrame>,
     functionsTree: CallTree<CpuProFunction>,
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
     areasTree: CallTree<CpuProArea>
 ) {
+    const mergeSamplesStart = Date.now();
+    const { samples, timeDeltas } = mergeSamples(rawSamples, rawTimeDeltas);
+    TIMINGS && console.log('merge samples', Date.now() - mergeSamplesStart);
+
     const remapSamplesStart = Date.now();
     let sampleIdToNode = remapSamples(samples, callFramesTree.sourceIdToNode);
     callFramesTree.sampleIdToNode = sampleIdToNode;
     TIMINGS && console.log('re-map samples', Date.now() - remapSamplesStart);
-
-    // let prev = samples[0];
-    // let k = 0;
-    // samples[0] = nodeById[prev];
-    // for (let i = 1, k = 1; i < samples.length; i++) {
-    //     const sample = samples[i];
-    //     if (sample !== prev) {
-    //         timeDeltas[k] = timeDeltas[i];
-    //         samples[k++] = nodeById[sample];
-    //         prev = sample;
-    //     } else {
-    //         timeDeltas[k - 1] += timeDeltas[i];
-    //     }
-    // }
 
     const t = Date.now();
     const samplesTimings = new SamplesTiminigs(sampleIdToNode.length, samples, timeDeltas);
