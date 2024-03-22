@@ -15,7 +15,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     const tooltip = new Tooltip(discovery, (el, nodeIndex) => this.render(el, [
         {
             view: 'switch',
-            data: 'host',
+            data: 'value',
             content: [
                 { when: 'marker("package")', content: [
                     'package-badge'
@@ -57,7 +57,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     const setDataStart = Date.now();
     const { selfTimes, nestedTimes } = timings;
     const setData = () => chart.setData(tree, {
-        name: host => host.name || host.packageRelPath,
+        name: value => value.name || value.packageRelPath,
         value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex]
     });
 

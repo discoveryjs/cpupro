@@ -23,7 +23,7 @@ type Events = {
 
 type Frame<T> = {
     nodeIndex: number;
-    host: T;
+    value: T;
     name: string;
     color: string;
     x0: number;
@@ -308,7 +308,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
             if (x0 < end && x1 > start && nodeWidth >= minValue) {
                 nodeList.push({
                     nodeIndex: i,
-                    host: dictionary[nodes[i]],
+                    value: dictionary[nodes[i]],
                     name: this.nodesNames[nodes[i]],
                     color: this.nodesColors[nodes[i]],
                     x0,

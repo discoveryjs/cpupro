@@ -11,7 +11,7 @@ const descendantTree = {
             `,
             children: `
                 #.data.functionsTreeTimings.select('children', node.nodeIndex)
-                | sort(totalTime desc, selfTime desc, node.host.name ascN)
+                | sort(totalTime desc, selfTime desc, node.value.name ascN)
             `,
             item: {
                 view: 'context',
@@ -19,12 +19,12 @@ const descendantTree = {
                     {
                         view: 'switch',
                         content: [
-                            { when: 'node.host.id = +#.id', content: {
+                            { when: 'node.value.id = +#.id', content: {
                                 view: 'block',
                                 className: 'self',
-                                content: 'text:node.host.name'
+                                content: 'text:node.value.name'
                             } },
-                            { content: 'auto-link:node.host' }
+                            { content: 'auto-link:node.value' }
                         ]
                     },
                     { view: 'text', when: 'subtreeSize', data: '` (${subtreeSize}) `' },
@@ -54,8 +54,8 @@ const descendantTree = {
                         }
                     },
                     // { view: 'total-time', when: 'children', data: 'totalTime' },
-                    'module-badge:node.host',
-                    'loc-badge:node.host'
+                    'module-badge:node.value',
+                    'loc-badge:node.value'
                 ]
             }
         }
@@ -84,12 +84,12 @@ const ancestorsTree = {
                     {
                         view: 'switch',
                         content: [
-                            { when: 'node.host.id = +#.id', content: {
+                            { when: 'node.value.id = +#.id', content: {
                                 view: 'block',
                                 className: 'self',
-                                content: 'text:node.host.name'
+                                content: 'text:node.value.name'
                             } },
-                            { content: 'auto-link:node.host' }
+                            { content: 'auto-link:node.value' }
                         ]
                     },
                     {
@@ -107,8 +107,8 @@ const ancestorsTree = {
                             content: 'text:"Total time – the entire duration spent on the execution of a function. This includes both the \'self time\', which is the time taken by the function itself to execute its own code, and the \'nested time\', which is the time spent on executing all the other functions that are called from within this function"'
                         }
                     },
-                    'module-badge:node.host',
-                    'loc-badge:node.host'
+                    'module-badge:node.value',
+                    'loc-badge:node.value'
                 ]
             }
         }

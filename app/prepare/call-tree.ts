@@ -1,6 +1,6 @@
 type Entry<T> = {
     nodeIndex: number;
-    host: T;
+    value: T;
     parent: Entry<T> | null;
     subtreeSize: number;
     children?: Entry<T>[];
@@ -39,8 +39,6 @@ export class CallTree<T> {
     entryRefMap: Map<number, WeakRef<Entry<T>>>;
     childrenRefMap: Map<number, WeakRef<Entry<T>[]>>;
 
-    selfTimes: Uint32Array;
-    nestedTimes: Uint32Array;
 
     constructor(
         dictionary: T[],
@@ -72,7 +70,7 @@ export class CallTree<T> {
     createEntry(nodeIndex: number): Entry<T> {
         const entry = {
             nodeIndex,
-            host: this.dictionary[this.nodes[nodeIndex]],
+            value: this.dictionary[this.nodes[nodeIndex]],
             parent: null,
             subtreeSize: this.subtreeSize[nodeIndex]
         };
