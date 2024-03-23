@@ -2,7 +2,7 @@ import { typeColor, typeColorComponents, typeOrder } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { trackExecutionTime } from './jora-methods-bench.js';
 import { CallTree } from './call-tree.js';
-import { TreeTiminigs } from './process-samples.js';
+import { TreeTiminigs } from './compute-timings.js';
 
 function makeDictMask(tree, test) {
     const { dictionary } = tree;
