@@ -26,6 +26,20 @@ type NumericArray =
 
 const NULL_ARRAY = new Uint32Array();
 
+function makeDictMask(tree, test) {
+    const { dictionary } = tree;
+    const accept = typeof test === 'function' ? test : (entry) => entry === test;
+    const mask = new Uint8Array(dictionary.length);
+
+    for (let i = 0; i < mask.length; i++) {
+        if (accept(dictionary[i])) {
+            mask[i] = 1;
+        }
+    }
+
+    return mask;
+}
+
 export class CallTree<T> {
     dictionary: T[];              // entries
     sourceIdToNode: NumericArray; // sourceNodeId -> index of nodes
@@ -139,6 +153,19 @@ export class CallTree<T> {
                 }
             }
         }
+    }
+    *selectBy(test: T | ((entry: T) => boolean)) {
+        const { nodes } = this;
+        const mask = makeDictMask(this, test);
+        const result = [];
+
+        for (let i = 0; i < nodes.length; i++) {
+            if (mask[nodes[i]]) {
+                yield i;
+            }
+        }
+
+        return result;
     }
 
     *ancestors(nodeIndex: number, depth = Infinity) {

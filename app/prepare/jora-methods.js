@@ -3,6 +3,36 @@ import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './call-tree.js';
 import { TreeTiminigs } from './process-samples.js';
 
+function makeDictMask(tree, test) {
+    const { dictionary } = tree;
+    const accept = typeof test === 'function' ? test : (entry) => entry === test;
+    const mask = new Uint8Array(dictionary.length);
+
+    for (let i = 0; i < mask.length; i++) {
+        if (accept(dictionary[i])) {
+            mask[i] = 1;
+        }
+    }
+
+    return mask;
+}
+
+function makeSamplesMask(tree, test) {
+    const { dictionary, sampleIdToNode, nodes } = tree;
+    const accept = typeof test === 'function' ? test : (entry) => entry === test;
+    const mask = new Uint8Array(sampleIdToNode.length);
+
+    for (let i = 0; i < mask.length; i++) {
+        const nodeIndex = sampleIdToNode[i];
+
+        if (accept(dictionary[nodes[nodeIndex]], i)) {
+            mask[i] = 1;
+        }
+    }
+
+    return mask;
+}
+
 function makeSampleBins(n, mask, samples, timeDeltas, totalTime) {
     const bins = new Float64Array(n);
     const step = totalTime / n;
@@ -116,7 +146,9 @@ export default {
 
             switch (type) {
                 case 'nodes':
-                    iterator = tree.selectNodes(...args);
+                    iterator = typeof args[0] === 'function'
+                        ? tree.selectBy(...args)
+                        : tree.selectNodes(...args);
                     break;
                 case 'children':
                     iterator = tree.children(...args);
@@ -205,8 +237,8 @@ export default {
         const selected = new Set();
         const visited = new Set();
         const tree2dict = new Uint32Array(tree2.dictionary.length);
-        const result = [];
         const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
+        const result = [];
 
         for (const nodeIndex of tree.selectNodes(subject)) {
             for (const subtreeNodeIndex of tree.subtree(nodeIndex)) {
@@ -238,6 +270,19 @@ export default {
 
         return result;
     },
+    selectBy(tree, test) {
+        const { nodes } = tree;
+        const mask = makeDictMask(tree, test);
+        const result = [];
+
+        for (let i = 0; i < nodes.length; i++) {
+            if (mask[nodes[i]]) {
+                result.push(tree.getEntry(i));
+            }
+        }
+
+        return result;
+    },
     countSamples(n = 500) {
         const { samples, timeDeltas, totalTime } = this.context.data;
 
@@ -245,19 +290,7 @@ export default {
     },
     binCalls(tree, test, n = 500) {
         const { samples, timeDeltas, totalTime } = this.context.data;
-        const { dictionary, nodes, sampleIdToNode } = tree;
-        const acceptFn = typeof test === 'function' ? test : (entry) => entry === test;
-        const mask = new Uint8Array(sampleIdToNode.length);
-
-        for (let i = 0; i < mask.length; i++) {
-            const nodeIndex = sampleIdToNode[i];
-            const accept = acceptFn(dictionary[nodes[nodeIndex]], i);
-
-            if (accept) {
-                mask[i] = 1;
-            }
-        }
-
+        const mask = makeSamplesMask(tree, test);
         const bins = makeSampleBins(n, mask, samples, timeDeltas, totalTime);
 
         // let sum = 0;
@@ -268,14 +301,5 @@ export default {
         // bins[0] = step;
 
         return Array.from(bins); // TODO: remove when jora has support for TypedArrays
-    },
-    groupByCallSiteRef: `
-        group(=>callFrame.ref).({
-            grouped: value,
-            ...value[],
-            children: value.children,
-            selfTime: value.sum(=>selfTime),
-            totalTime: value | $ + ..children | .sum(=>selfTime),
-        })
-    `
+    }
 };
