@@ -1,5 +1,6 @@
 import { typeColor, typeColorComponents, typeOrder } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
+import { trackExecutionTime } from './jora-methods-bench.js';
 import { CallTree } from './call-tree.js';
 import { TreeTiminigs } from './process-samples.js';
 
@@ -110,7 +111,7 @@ function countSamples(n, samples, timeDeltas, totalTime) {
     return Array.from(bins); // TODO: remove when jora has support for TypedArrays
 }
 
-export default {
+const methods = {
     order(value) {
         return typeOrder[value] || 100;
     },
@@ -303,3 +304,6 @@ export default {
         return Array.from(bins); // TODO: remove when jora has support for TypedArrays
     }
 };
+
+trackExecutionTime(methods, ['select', 'selectBy', 'subtreeSamples', 'nestedTimings', 'binCalls']);
+export default methods;
