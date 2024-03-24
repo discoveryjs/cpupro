@@ -88,7 +88,7 @@ export function processSamples(
 
     const t = Date.now();
     const samplesTimings = new SamplesTiminigs(sampleIdToNode.length, samples, timeDeltas);
-    const samplesTimingsFiltered = samplesTimings.clone();
+    const samplesTimingsFiltered = new SamplesTiminigs(sampleIdToNode.length, samples, timeDeltas);
     console.log('SamplesTiminigs', Date.now() - t);
 
     const computeTimingsStart = Date.now();

@@ -58,8 +58,7 @@ export class SamplesTiminigs extends TimingsObserver {
     constructor(
         size: number,
         samples: Uint32Array,
-        timeDeltas: Uint32Array,
-        selfTimes?: Uint32Array
+        timeDeltas: Uint32Array
     ) {
         super();
 
@@ -68,23 +67,9 @@ export class SamplesTiminigs extends TimingsObserver {
         this.timeDeltas = timeDeltas;
         this.originalTimeDeltas = timeDeltas;
         this.timestamps = null;
-        this.selfTimes = selfTimes || new Uint32Array(size);
+        this.selfTimes = new Uint32Array(size);
 
-        if (!selfTimes) {
-            this.compute();
-        }
-    }
-
-    clone() {
-        return new SamplesTiminigs(
-            this.selfTimes.length,
-            this.samples,
-            this.originalTimeDeltas,
-            // skip compute when no filters applied
-            this.timeDeltas === this.originalTimeDeltas
-                ? this.selfTimes.slice()
-                : undefined
-        );
+        this.compute();
     }
 
     compute() {
@@ -215,13 +200,17 @@ export type DictionaryTiminig<T> = {
 export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
     epoch: number;
     sourceTreeTimings: TreeTiminigs<T>;
+    sampleIdToDict: Uint32Array;
+    totalNodes: Uint32Array;
+    totalNodeToDict: Uint32Array;
     selfTimes: Uint32Array;
     totalTimes: Uint32Array;
     entries: DictionaryTiminig<T>[];
     entriesMap: Map<T, DictionaryTiminig<T>>;
 
     constructor(sourceTreeTimings: TreeTiminigs<T>) {
-        const { dictionary } = sourceTreeTimings.tree;
+        const { sampleIdToNode } = sourceTreeTimings;
+        const { dictionary, nodes, nested } = sourceTreeTimings.tree;
         const entries = dictionary.map((entry, entryIndex) => ({
             entryIndex,
             entry,
@@ -232,8 +221,22 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
 
         super();
 
+        const totalNodes = new Uint32Array(nodes.length);
+        const totalNodeToDict = new Uint32Array(nodes.length);
+        let k = 0;
+        for (let i = 0; i < nodes.length; i++) {
+            if (nested[i] === 0) {
+                totalNodeToDict[k] = nodes[i];
+                totalNodes[k] = i;
+                k++;
+            }
+        }
+
         this.epoch = 0;
         this.sourceTreeTimings = sourceTreeTimings;
+        this.sampleIdToDict = sampleIdToNode.map(id => nodes[id]);
+        this.totalNodes = totalNodes.slice(0, k);
+        this.totalNodeToDict = totalNodeToDict.slice(0, k);
         this.selfTimes = new Uint32Array(dictionary.length);
         this.totalTimes = new Uint32Array(dictionary.length);
         this.entries = entries;
@@ -250,9 +253,10 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
     }
 
     compute() {
+        const { sampleIdToDict, totalNodes, totalNodeToDict } = this;
         const { selfTimes, totalTimes, entries } = this;
         const {
-            tree: { nodes, nested },
+            sourceTimings: { selfTimes: sourceSelfTime },
             selfTimes: sourceSelfTimings,
             nestedTimes: sourceNestedTimings
         } = this.sourceTreeTimings;
@@ -262,15 +266,16 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
             totalTimes.fill(0);
         }
 
-        for (let i = nodes.length - 1; i >= 0; i--) {
-            const index = nodes[i];
-            const selfTime = sourceSelfTimings[i];
+        for (let i = 0; i < sampleIdToDict.length; i++) {
+            selfTimes[sampleIdToDict[i]] += sourceSelfTime[i];
+        }
 
-            selfTimes[index] += selfTime;
+        for (let i = 0; i < totalNodes.length; i++) {
+            const nodeId = totalNodes[i];
+            const selfTime = sourceSelfTimings[nodeId];
+            const nestedTime = sourceNestedTimings[nodeId];
 
-            if (nested[i] === 0) {
-                totalTimes[index] += selfTime + sourceNestedTimings[i];
-            }
+            totalTimes[totalNodeToDict[i]] += selfTime + nestedTime;
         }
 
         for (let i = 0; i < entries.length; i++) {
