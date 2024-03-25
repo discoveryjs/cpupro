@@ -1,8 +1,7 @@
 import { TIMINGS } from './const.js';
 import { CallTree } from './call-tree.js';
-import { DictionaryTiminigs, SamplesTiminigs, TreeTiminigs } from './compute-timings.js';
+import { createTreeCompute } from './compute-timings.js';
 import {
-    CpuProNode,
     CpuProCallFrame,
     CpuProFunction,
     CpuProModule,
@@ -10,20 +9,6 @@ import {
     CpuProPackage,
     V8CpuProfileNode
 } from './types.js';
-
-function createTimings<T extends CpuProNode>(
-    tree: CallTree<T>,
-    sampleIdToNode: Uint32Array,
-    samplesTimings: SamplesTiminigs
-) {
-    const treeTimings = new TreeTiminigs(tree, sampleIdToNode, samplesTimings);
-    const dictionaryTimings = new DictionaryTiminigs(treeTimings);
-
-    return {
-        tree: treeTimings,
-        dictionary: dictionaryTimings
-    };
-}
 
 // Merging sequentially identical samples and coresponsing timeDeltas.
 // Usually it allows to reduce number of samples for further processing at least by x2
@@ -77,50 +62,63 @@ export function processSamples(
     packagesTree: CallTree<CpuProPackage>,
     areasTree: CallTree<CpuProArea>
 ) {
+    // merge samples
     const mergeSamplesStart = Date.now();
     const { samples, timeDeltas } = mergeSamples(rawSamples, rawTimeDeltas);
     TIMINGS && console.log('merge samples', Date.now() - mergeSamplesStart);
 
+    // re-map samples
     const remapSamplesStart = Date.now();
     let sampleIdToNode = remapSamples(samples, callFramesTree.sourceIdToNode);
     callFramesTree.sampleIdToNode = sampleIdToNode;
+
+    for (const tree of [functionsTree, modulesTree, packagesTree, areasTree] as const) {
+        tree.sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
+        sampleIdToNode = tree.sampleIdToNode;
+    }
+
     TIMINGS && console.log('re-map samples', Date.now() - remapSamplesStart);
 
-    const t = Date.now();
-    const samplesTimings = new SamplesTiminigs(sampleIdToNode.length, samples, timeDeltas);
-    const samplesTimingsFiltered = new SamplesTiminigs(sampleIdToNode.length, samples, timeDeltas);
-    console.log('SamplesTiminigs', Date.now() - t);
-
+    // create timings
     const computeTimingsStart = Date.now();
-    const result = { samplesTimings, samplesTimingsFiltered };
-    TIMINGS && console.group('Compute timings');
+    const result = {};
+    const names = ['functions', 'modules', 'packages', 'areas'];
+    {
+        const { samples: samplesTimings, trees, dictionaries } = createTreeCompute(samples, timeDeltas, [
+            functionsTree,
+            modulesTree,
+            packagesTree,
+            areasTree
+        ]);
 
-    for (const { name, tree } of [
-        { name: 'functions', tree: functionsTree },
-        { name: 'modules', tree: modulesTree },
-        { name: 'packages', tree: packagesTree },
-        { name: 'areas', tree: areasTree }
-    ] as const) {
-        const startTime = Date.now();
+        result.samplesTimings = samplesTimings;
 
-        sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
-        tree.sampleIdToNode = sampleIdToNode;
+        for (let i = 0; i < trees.length; i++) {
+            result[`${names[i]}TreeTimings`] = trees[i];
+        }
+        for (let i = 0; i < dictionaries.length; i++) {
+            result[`${names[i]}Timings`] = dictionaries[i];
+        }
+    }
+    {
+        const { samples: samplesTimings, trees, dictionaries } = createTreeCompute(samples, timeDeltas, [
+            functionsTree,
+            modulesTree,
+            packagesTree,
+            areasTree
+        ]);
 
-        const timings = createTimings(tree, sampleIdToNode, samplesTimings);
-        const timingsFiltered = createTimings(tree, sampleIdToNode, samplesTimingsFiltered);
+        result.samplesTimingsFiltered = samplesTimings;
 
-        result[`${name}Timings`] = timings.dictionary;
-        result[`${name}TreeTimings`] = timings.tree;
-        result[`${name}TimingsFiltered`] = timingsFiltered.dictionary;
-        result[`${name}TreeTimingsFiltered`] = timingsFiltered.tree;
-
-        if (TIMINGS) {
-            console.log(`${name}:`, Date.now() - startTime);
+        for (let i = 0; i < trees.length; i++) {
+            result[`${names[i]}TreeTimingsFiltered`] = trees[i];
+        }
+        for (let i = 0; i < dictionaries.length; i++) {
+            result[`${names[i]}TimingsFiltered`] = dictionaries[i];
         }
     }
 
-    TIMINGS && console.log('Total time:', Date.now() - computeTimingsStart);
-    TIMINGS && console.groupEnd();
+    TIMINGS && console.log('Compute timings:', Date.now() - computeTimingsStart);
 
     return result;
 }

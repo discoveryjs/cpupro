@@ -146,23 +146,15 @@ const areasTimeline = {
             selectionEnd: '=#.data.samplesTimingsFiltered.rangeEnd',
             onChange: (state, name, el, data, context) => {
                 // console.log('change', state);
+                const t = Date.now();
+
                 if (state.timeStart !== null) {
                     context.data.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
                 } else {
                     context.data.samplesTimingsFiltered.resetRange();
                 }
 
-                const t = Date.now();
-                context.data.samplesTimingsFiltered.compute();
-                context.data.functionsTreeTimingsFiltered.compute();
-                context.data.functionsTimingsFiltered.compute();
-                context.data.modulesTreeTimingsFiltered.compute();
-                context.data.modulesTimingsFiltered.compute();
-                context.data.packagesTreeTimingsFiltered.compute();
-                context.data.packagesTimingsFiltered.compute();
-                context.data.areasTreeTimingsFiltered.compute();
-                context.data.areasTimingsFiltered.compute();
-                console.log('compute', Date.now() - t);
+                console.log('compute timings', Date.now() - t);
             },
             details: [
                 {
