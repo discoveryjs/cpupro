@@ -39,13 +39,14 @@ function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
     // remap samples -> samplesMap, populate samplesMap
     for (let i = 0; i < samples.length; i++) {
         const id = samples[i];
+        const newSampleId = tmpMap[id];
 
-        if (tmpMap[id] === 0) {
-            tmpMap[id] = ++sampledNodesCount;
+        if (newSampleId === 0) {
             samplesMap.push(nodeById[id]);
+            tmpMap[id] = ++sampledNodesCount;
             samples[i] = sampledNodesCount - 1;
         } else {
-            samples[i] = tmpMap[samples[i]] - 1;
+            samples[i] = newSampleId - 1;
         }
     }
 
@@ -81,42 +82,30 @@ export function processSamples(
 
     // create timings
     const computeTimingsStart = Date.now();
-    const result = {};
     const names = ['functions', 'modules', 'packages', 'areas'];
-    {
-        const { samples: samplesTimings, trees, dictionaries } = createTreeCompute(samples, timeDeltas, [
-            functionsTree,
-            modulesTree,
-            packagesTree,
-            areasTree
-        ]);
+    const {
+        samplesTimings,
+        samplesTimingsFiltered,
+        treeTimings,
+        treeTimingsFiltered,
+        dictionaryTimings,
+        dictionaryTimingsFiltered
+    } = createTreeCompute(samples, timeDeltas, [
+        functionsTree,
+        modulesTree,
+        packagesTree,
+        areasTree
+    ]);
 
-        result.samplesTimings = samplesTimings;
+    const result = {
+        samplesTimings,
+        samplesTimingsFiltered
+    };
 
-        for (let i = 0; i < trees.length; i++) {
-            result[`${names[i]}TreeTimings`] = trees[i];
-        }
-        for (let i = 0; i < dictionaries.length; i++) {
-            result[`${names[i]}Timings`] = dictionaries[i];
-        }
-    }
-    {
-        const { samples: samplesTimings, trees, dictionaries } = createTreeCompute(samples, timeDeltas, [
-            functionsTree,
-            modulesTree,
-            packagesTree,
-            areasTree
-        ]);
-
-        result.samplesTimingsFiltered = samplesTimings;
-
-        for (let i = 0; i < trees.length; i++) {
-            result[`${names[i]}TreeTimingsFiltered`] = trees[i];
-        }
-        for (let i = 0; i < dictionaries.length; i++) {
-            result[`${names[i]}TimingsFiltered`] = dictionaries[i];
-        }
-    }
+    dictionaryTimings.forEach((timings, i) => result[`${names[i]}Timings`] = timings);
+    treeTimings.forEach((timings, i) => result[`${names[i]}TreeTimings`] = timings);
+    dictionaryTimingsFiltered.forEach((timings, i) => result[`${names[i]}TimingsFiltered`] = timings);
+    treeTimingsFiltered.forEach((timings, i) => result[`${names[i]}TreeTimingsFiltered`] = timings);
 
     TIMINGS && console.log('Compute timings:', Date.now() - computeTimingsStart);
 

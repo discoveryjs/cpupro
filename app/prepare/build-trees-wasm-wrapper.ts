@@ -1,6 +1,7 @@
 /* eslint-env browser */
-import buildTreesWasmSourceBase64 from './build-trees.wasm';
 import { USE_WASM } from './const';
+import { bytesToWasmMemoryPages, decodeBase64 } from './utils';
+import buildTreesWasmSourceBase64 from './build-trees.wasm';
 
 type BuildTreesWasmModuleInstance = {
     exports: {
@@ -24,49 +25,6 @@ let wasmApi: Api | null = null;
 let javaScriptApi: Api | null = null;
 let api: Api | null = null;
 
-const base64alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const base64map = new Uint8Array(256);
-const pageSize = 64 * 1024;
-
-for (let i = 0; i < base64alphabet.length; i++) {
-    base64map[base64alphabet.charCodeAt(i)] = i;
-}
-
-export function decodeBase64(input: string) {
-    let inputSize = input.length;
-
-    // ignore trailing "=" (padding)
-    while (inputSize > 0 && input[inputSize - 1] === '=') {
-        inputSize--;
-    }
-
-    const output = new Uint8Array(3 * Math.ceil(inputSize / 4));
-    let enc1 = 0;
-    let enc2 = 0;
-    let enc3 = 0;
-    let enc4 = 0;
-
-    // decode
-    for (let i = 0, j = 0; i < inputSize;) {
-        enc1 = base64map[input.charCodeAt(i++) & 0xff];
-        enc2 = base64map[input.charCodeAt(i++) & 0xff];
-        enc3 = base64map[input.charCodeAt(i++) & 0xff];
-        enc4 = base64map[input.charCodeAt(i++) & 0xff];
-
-        output[j++] = (enc1 << 2) | (enc2 >> 4);
-        output[j++] = (enc2 << 4) | (enc3 >> 2);
-        output[j++] = (enc3 << 6) | enc4;
-    }
-
-    return output.subarray(0,
-        // output size:
-        // (length / 4) * 3 +
-        ((inputSize >> 2) * 3) +
-        // (length % 4) * 6 / 8
-        (((inputSize % 4) * 6) >> 3)
-    );
-}
-
 function createWasmModule(source: string, imports = {}) {
     const sourceBytes = decodeBase64(source);
     const importObject = { imports };
@@ -77,8 +35,8 @@ function createWasmModule(source: string, imports = {}) {
 
 export function createWasmApi(): Api {
     const memory = new WebAssembly.Memory({ initial: 16 });
-    const inflateModule = createWasmModule(buildTreesWasmSourceBase64, { memory }) as BuildTreesWasmModuleInstance;
-    const { makeFirstNextArrays } = inflateModule.exports;
+    const wasmModule = createWasmModule(buildTreesWasmSourceBase64, { memory }) as BuildTreesWasmModuleInstance;
+    const { makeFirstNextArrays } = wasmModule.exports;
 
     return {
         makeFirstNextArrays(parent, subtreeSize) {
@@ -91,7 +49,7 @@ export function createWasmApi(): Api {
 
             // increase wasm module's memory if needed
             if (memoryNeeded > memory.buffer.byteLength) {
-                memory.grow(Math.ceil((memoryNeeded - memory.buffer.byteLength) / pageSize));
+                memory.grow(bytesToWasmMemoryPages(memoryNeeded - memory.buffer.byteLength));
             }
 
             const mem = new Uint8Array(memory.buffer);

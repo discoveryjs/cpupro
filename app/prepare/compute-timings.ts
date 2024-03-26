@@ -1,5 +1,15 @@
-import { CallTree } from './call-tree.js';
+import { USE_WASM } from './const.js';
 import { CpuProNode } from './types.js';
+import { CallTree } from './call-tree.js';
+import {
+    BufferDictionaryTimingsMap,
+    BufferMap,
+    BufferSamplesTimingsMap,
+    BufferTreeTimingsMap,
+    ComputeTimingsApi,
+    createJavaScriptApi,
+    createWasmApi
+} from './compute-timings-wasm-wrapper.js';
 
 function binarySearch(array: Uint32Array, value: number): number {
     let left = 0;
@@ -29,98 +39,15 @@ function computeTimestamps(timestamps: Uint32Array, timeDeltas: Uint32Array) {
     }
 }
 
-function computeTimings(
-    map: BufferSamplesTimingsMap,
-    clear = true
-) {
-    const {
-        samples,
-        timeDeltas,
-        samplesTimes
-    } = extractArrayFromMap(map);
-    const samplesCount = samples.length;
-
-    if (clear) {
-        samplesTimes.fill(0);
-    }
-
-    for (let i = 0; i < samplesCount; i++) {
-        samplesTimes[samples[i]] += timeDeltas[i];
-    }
-}
-
-function computeTreeTimings<T extends CpuProNode>(
-    map: BufferTreeTimingsMap<T>,
-    clear = true
-) {
-    const {
-        sourceSelfTimes,
-        sampleIdToNode,
-        parent,
-        selfTimes,
-        nestedTimes
-    } = extractArrayFromMap(map);
-    const sourceSelfTimesSize = sourceSelfTimes.length;
-    const nodesCount = selfTimes.length;
-
-    if (clear) {
-        selfTimes.fill(0);
-        nestedTimes.fill(0);
-    }
-
-    for (let i = 0; i < sourceSelfTimesSize; i++) {
-        selfTimes[sampleIdToNode[i]] += sourceSelfTimes[i];
-    }
-
-    for (let i = nodesCount - 1; i > 0; i--) {
-        nestedTimes[parent[i]] += selfTimes[i] + nestedTimes[i];
-    }
-}
-
-function computeDictionaryTimings<T extends CpuProNode>(
-    map: BufferDictionaryTimingsMap<T>,
-    clear = true
-) {
-    const {
-        samplesSelfTimes,
-        nodeSelfTimes,
-        nodeNestedTimes,
-        sampleIdToDict,
-        totalNodes,
-        totalNodeToDict,
-        selfTimes,
-        totalTimes
-    } = extractArrayFromMap(map);
-    const samplesSelfTimesSize = samplesSelfTimes.length;
-    const nodesCount = totalNodes.length;
-
-    if (clear) {
-        selfTimes.fill(0);
-        totalTimes.fill(0);
-    }
-
-    for (let i = 0; i < samplesSelfTimesSize; i++) {
-        selfTimes[sampleIdToDict[i]] += samplesSelfTimes[i];
-    }
-
-    for (let i = 0; i < nodesCount; i++) {
-        const nodeId = totalNodes[i];
-        const selfTime = nodeSelfTimes[nodeId];
-        const nestedTime = nodeNestedTimes[nodeId];
-
-        totalTimes[totalNodeToDict[i]] += selfTime + nestedTime;
-    }
-}
-
-function computeAll<T extends CpuProNode>(bufferMap: BufferMap<T>, clear = true) {
-    computeTimings(bufferMap.samples);
+function computeAll<T extends CpuProNode>(api: ComputeTimingsApi, bufferMap: BufferMap<T>, clear = true) {
+    api.computeTimings(bufferMap.samples, clear);
 
     for (const treeMap of bufferMap.tree) {
-        computeTreeTimings(treeMap, clear);
+        api.computeTreeTimings(treeMap, clear);
     }
 
     for (const dictMap of bufferMap.dict) {
-        computeDictionaryTimings(dictMap, clear);
+        api.computeDictionaryTimings(dictMap, clear);
     }
 }
 
@@ -148,13 +75,30 @@ export class TimingsObserver {
 
 export class SamplesTiminigs extends TimingsObserver {
     samples: Uint32Array;
-    samplesMask: Uint32Array;
     timeDeltas: Uint32Array;
-    originalTimeDeltas: Uint32Array;
     timestamps: Uint32Array;
+    selfTimes: Uint32Array;
+
+    constructor(
+        samples: Uint32Array,
+        timeDeltas: Uint32Array,
+        timestamps: Uint32Array,
+        selfTimes: Uint32Array
+    ) {
+        super();
+
+        this.samples = samples;
+        this.timeDeltas = timeDeltas;
+        this.timestamps = timestamps;
+        this.selfTimes = selfTimes;
+    }
+}
+
+export class SamplesTiminigsFiltered extends SamplesTiminigs {
+    samplesMask: Uint32Array;
+    originalTimeDeltas: Uint32Array;
     rangeStart: number | null = null;
     rangeEnd: number | null = null;
-    selfTimes: Uint32Array;
 
     constructor(
         samples: Uint32Array,
@@ -163,14 +107,15 @@ export class SamplesTiminigs extends TimingsObserver {
         timestamps: Uint32Array,
         selfTimes: Uint32Array
     ) {
-        super();
+        super(
+            samples,
+            timeDeltas,
+            timestamps,
+            selfTimes
+        );
 
-        this.samples = samples;
         this.samplesMask = samplesMask;
-        this.timeDeltas = timeDeltas;
         this.originalTimeDeltas = timeDeltas;
-        this.timestamps = timestamps;
-        this.selfTimes = selfTimes;
     }
 
     resetRange() {
@@ -289,42 +234,6 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
     }
 }
 
-type BufferMapRecord = { offset: number, array: Uint32Array };
-type BufferMap<T> = {
-    samples: BufferSamplesTimingsMap;
-    tree: BufferTreeTimingsMap<T>[];
-    dict: BufferDictionaryTimingsMap<T>[];
-};
-type BufferSamplesTimingsMap = {
-    buffer: Uint32Array;
-    samples: BufferMapRecord;
-    samplesMask: BufferMapRecord;
-    timeDeltas: BufferMapRecord;
-    timestamps: BufferMapRecord;
-    samplesTimes: BufferMapRecord;
-};
-type BufferTreeTimingsMap<T> = {
-    buffer: Uint32Array;
-    tree: CallTree<T>;
-    sourceSelfTimes: BufferMapRecord;
-    sampleIdToNode: BufferMapRecord;
-    parent: BufferMapRecord;
-    selfTimes: BufferMapRecord;
-    nestedTimes: BufferMapRecord;
-};
-type BufferDictionaryTimingsMap<T> = {
-    buffer: Uint32Array;
-    dictionary: T[];
-    samplesSelfTimes: BufferMapRecord;
-    nodeSelfTimes: BufferMapRecord;
-    nodeNestedTimes: BufferMapRecord;
-    sampleIdToDict: BufferMapRecord;
-    totalNodes: BufferMapRecord;
-    totalNodeToDict: BufferMapRecord;
-    selfTimes: BufferMapRecord;
-    totalTimes: BufferMapRecord;
-};
-
 function createMapsFromTree<T>(tree: CallTree<T>) {
     const { nodes, nested, sampleIdToNode } = tree;
     const totalNodes = new Uint32Array(nodes.length);
@@ -347,25 +256,11 @@ function createMapsFromTree<T>(tree: CallTree<T>) {
     };
 }
 
-function extractArrayFromMap<
-    T extends BufferSamplesTimingsMap | BufferTreeTimingsMap<U> | BufferDictionaryTimingsMap<U>,
-    U extends CpuProNode
->(map: T): Record<Exclude<keyof T, 'buffer'>, Uint32Array> {
-    const result: Record<keyof T, Uint32Array> = Object.create(null);
-
-    for (const [key, value] of Object.entries(map)) {
-        if ('array' in value) {
-            result[key] = value.array;
-        }
-    }
-
-    return result;
-}
-
 export function createTreeComputeBuffer<T>(
     samples: Uint32Array,
     timeDeltas: Uint32Array,
-    trees: CallTree<T>[]
+    trees: CallTree<T>[],
+    useWasm = true
 ) {
     const maps = trees.map(createMapsFromTree);
 
@@ -402,7 +297,10 @@ export function createTreeComputeBuffer<T>(
             2 * tree.dictionary.length;
     }
 
-    const buffer = new Uint32Array(bufferSize);
+    const memory = useWasm
+        ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
+        : new Uint32Array(4 * bufferSize);
+    const buffer = new Uint32Array(memory.buffer);
     let offset = 0;
     const samplesMap: BufferSamplesTimingsMap = {
         buffer,
@@ -413,6 +311,7 @@ export function createTreeComputeBuffer<T>(
         samplesTimes: alloc(samplesMapSize)
     };
     const bufferMap: BufferMap<T> = {
+        memory,
         samples: samplesMap,
         tree: [],
         dict: []
@@ -453,13 +352,13 @@ export function createTreeComputeBuffer<T>(
         const record = { offset, array: null };
 
         if (typeof array === 'number') {
-            offset += array;
+            offset += array << 2;
         } else {
-            buffer.set(array, offset);
-            offset += array.length;
+            buffer.set(array, offset >> 2);
+            offset += array.length << 2;
         }
 
-        record.array = buffer.subarray(record.offset, offset);
+        record.array = buffer.subarray(record.offset >> 2, offset >> 2);
 
         return record;
     }
@@ -470,16 +369,27 @@ export function createTreeCompute<T extends CpuProNode>(
     timeDeltas: Uint32Array,
     trees: CallTree<T>[]
 ) {
-    const bufferMap = createTreeComputeBuffer(samples, timeDeltas, trees);
+    const useWasm = USE_WASM;
+    const bufferMap = createTreeComputeBuffer(samples, timeDeltas, trees, useWasm);
     const {
+        memory,
         samples: samplesMap,
         tree: treeMaps,
         dict: dictMaps
     } = bufferMap;
+    const computeTimingsApi = useWasm
+        ? createWasmApi(memory as WebAssembly.Memory)
+        : createJavaScriptApi();
 
-    computeAll(bufferMap, false);
+    computeAll(computeTimingsApi, bufferMap, false);
 
     const samplesTimings = new SamplesTiminigs(
+        samples,
+        timeDeltas,
+        samplesMap.timestamps.array,
+        samplesMap.samplesTimes.array.slice()
+    );
+    const samplesTimingsFiltered = new SamplesTiminigsFiltered(
         samplesMap.samples.array,
         samplesMap.samplesMask.array,
         samplesMap.timeDeltas.array,
@@ -489,10 +399,22 @@ export function createTreeCompute<T extends CpuProNode>(
     const treeTimings = treeMaps.map((treeMap) =>
         new TreeTiminigs(
             treeMap.tree,
+            treeMap.selfTimes.array.slice(),
+            treeMap.nestedTimes.array.slice()
+        ));
+    const treeTimingsFiltered = treeMaps.map((treeMap) =>
+        new TreeTiminigs(
+            treeMap.tree,
             treeMap.selfTimes.array,
             treeMap.nestedTimes.array
         ));
-    const dictTimings = dictMaps.map((dictMap) =>
+    const dictionaryTimings = dictMaps.map((dictMap) =>
+        new DictionaryTiminigs(
+            dictMap.dictionary,
+            dictMap.selfTimes.array.slice(),
+            dictMap.totalTimes.array.slice()
+        ));
+    const dictionaryTimingsFiltered = dictMaps.map((dictMap) =>
         new DictionaryTiminigs(
             dictMap.dictionary,
             dictMap.selfTimes.array,
@@ -500,24 +422,27 @@ export function createTreeCompute<T extends CpuProNode>(
         ));
 
     // temporary solution
-    const { setRange, resetRange } = samplesTimings;
-    const notifySubjects = [samplesTimings, ...treeTimings, ...dictTimings];
-    samplesTimings.setRange = function(...args) {
+    const { setRange, resetRange } = samplesTimingsFiltered;
+    const notifySubjects = [samplesTimingsFiltered, ...treeTimingsFiltered, ...dictionaryTimingsFiltered];
+    samplesTimingsFiltered.setRange = function(...args) {
         setRange.call(this, ...args);
-        computeAll(bufferMap);
-        dictTimings.forEach(timings => timings.sync());
+        computeAll(computeTimingsApi, bufferMap);
+        dictionaryTimingsFiltered.forEach(timings => timings.sync());
         notifySubjects.forEach(timings => timings.notify());
     };
-    samplesTimings.resetRange = function(...args) {
+    samplesTimingsFiltered.resetRange = function(...args) {
         resetRange.call(this, ...args);
-        computeAll(bufferMap);
-        dictTimings.forEach(timings => timings.sync());
+        computeAll(computeTimingsApi, bufferMap);
+        dictionaryTimingsFiltered.forEach(timings => timings.sync());
         notifySubjects.forEach(timings => timings.notify());
     };
 
     return {
-        samples: samplesTimings,
-        trees: treeTimings,
-        dictionaries: dictTimings
+        samplesTimings,
+        samplesTimingsFiltered,
+        treeTimings,
+        treeTimingsFiltered,
+        dictionaryTimings,
+        dictionaryTimingsFiltered
     };
 }
