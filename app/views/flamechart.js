@@ -15,7 +15,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     const tooltip = new Tooltip(discovery, (el, nodeIndex) => this.render(el, [
         {
             view: 'switch',
-            data: 'value',
+            data: 'node.value',
             content: [
                 { when: 'marker("package")', content: [
                     'package-badge'
@@ -42,7 +42,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             className: 'self',
             data: '{ time: selfTime, total: #.data.totalTime }'
         }
-    ], tree.getEntry(nodeIndex), context));
+    ], timings.getTimings(nodeIndex), context));
 
     const chart = new FlameChart(contentEl)
         .on('frame:enter', tooltip.show)

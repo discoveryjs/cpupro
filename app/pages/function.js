@@ -45,8 +45,8 @@ const descendantTree = {
                     },
                     {
                         view: 'nested-time',
-                        when: 'children',
-                        data: 'totalTime - selfTime',
+                        data: 'nestedTime',
+                        whenData: true,
                         tooltip: {
                             showDelay: true,
                             className: 'hint-tooltip',
