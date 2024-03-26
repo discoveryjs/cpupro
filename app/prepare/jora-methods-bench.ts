@@ -1,3 +1,7 @@
+const safeRequestIdleCallback = typeof requestIdleCallback === 'function'
+    ? requestIdleCallback
+    : (fn: () => void) => setTimeout(fn, 100);
+
 export function trackExecutionTime(methods: Record<string, () => unknown>, trackMethodNames: string[]) {
     let scheduleTimingsLoggingBuffer = [[]];
     let scheduleTimingsLoggingFrameTimer = null;
@@ -23,7 +27,7 @@ export function trackExecutionTime(methods: Record<string, () => unknown>, track
                 }
 
                 if (scheduleTimingsLoggingTimer === null) {
-                    scheduleTimingsLoggingTimer = requestIdleCallback(() => {
+                    scheduleTimingsLoggingTimer = safeRequestIdleCallback(() => {
                         const buffer = scheduleTimingsLoggingBuffer;
 
                         cancelAnimationFrame(scheduleTimingsLoggingFrameTimer);
