@@ -9,8 +9,12 @@
   -webkit-user-drag: none;
   user-select: none;
 }
-.view-time-ruler.selecting {
-  background-color: red;
+.view-time-ruler[data-active-trigger="start"],
+.view-time-ruler[data-active-trigger="finish"] {
+  cursor: col-resize;
+}
+.view-time-ruler[data-active-trigger="both"] {
+  cursor: move;
 }
 
 .view-time-ruler__selection-overlay {
@@ -18,7 +22,44 @@
   position: absolute;
   inset: 0;
   /* background: rgb(0, 0, 0, .0001); */
-  z-index: 100;
+  z-index: 99;
+}
+.view-time-ruler__selection-overlay-mover {
+  position: absolute;
+  inset: 0;
+  left: var(--left);
+  width: var(--width);
+  z-index: 1;
+  cursor: move;
+}
+.view-time-ruler__selection-overlay-mover-start-trigger,
+.view-time-ruler__selection-overlay-mover-finish-trigger {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: #268fea66;
+  background-clip: content-box;
+  border: transparent solid;
+  border-width: 0 2px;
+  transition: .25s ease;
+  transition-property: background-color;
+}
+.view-time-ruler__selection-overlay-mover-start-trigger {
+  left: 0;
+  transform: translate(-50%);
+  cursor: col-resize;
+}
+.view-time-ruler__selection-overlay-mover-finish-trigger {
+  right: 0;
+  transform: translate(50%);
+  cursor: col-resize;
+}
+.view-time-ruler__selection-overlay-mover-start-trigger:hover,
+.view-time-ruler__selection-overlay-mover-finish-trigger:hover,
+.view-time-ruler[data-active-trigger="start"] .view-time-ruler__selection-overlay-mover-start-trigger,
+.view-time-ruler[data-active-trigger="finish"] .view-time-ruler__selection-overlay-mover-finish-trigger {
+  background-color: #268fea;
 }
 .view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay,
 .view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay {
@@ -70,7 +111,7 @@
   bottom: 2px;
 }
 
-.view-time-ruler:not([data-state="none"])::before {
+.view-time-ruler::before {
   content: '';
   position: absolute;
   z-index: -1;
@@ -78,9 +119,16 @@
   left: var(--left);
   top: 0;
   bottom: 0;
-  background: rgba(165, 165, 165, .3);
-  background-color: rgba(0, 152, 251, .28);
   pointer-events: none;
+  transition: .2s ease;
+  transition-property: background-color;
+}
+.view-time-ruler[data-state="hovered"]::before,
+.view-time-ruler[data-state="selecting"]::before {
+  background-color: rgba(0, 152, 251, .2);
+}
+.view-time-ruler[data-state="selected"]::before {
+  background-color: rgba(0, 152, 251, .1);
 }
 
 .view-time-ruler-tooltip {
