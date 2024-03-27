@@ -8,7 +8,7 @@
     margin-bottom: 1px;
 }
 
-.page .view-page-header .view-h1 {
+.page .view-page-header :is(.view-h1, .view-h2) {
     font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
     font-weight: 200;
 }
