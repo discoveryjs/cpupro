@@ -6,6 +6,7 @@
   (param $map i32) 
   (param $dest i32) 
   (local $offset i32) ;; Byte offset for iteration through the arrays.
+  (local $value i32)
   (local $resultAddr i32) ;; Address in $dest array.
 
   ;; for (let i = srcSize - 1; i >= 0; i--) {
@@ -32,6 +33,20 @@
         )
       )
 
+      ;; Continue if value equals zero
+      (br_if $loop
+        (i32.eqz
+          (local.tee $value
+            (i32.load 
+              (i32.add 
+                (local.get $src) 
+                (local.get $offset)
+              )
+            )
+          )
+        )
+      )
+
       ;; Calculate address in $dest array and store in $resultAddr.
       ;; resultAddr = dest + map[i] * 4  // dest[map[i]]
       (local.set $resultAddr
@@ -54,15 +69,8 @@
       (i32.store
         (local.get $resultAddr)
         (i32.add 
-          (i32.load 
-            (local.get $resultAddr)
-          )
-          (i32.load 
-            (i32.add 
-              (local.get $src) 
-              (local.get $offset)
-            )
-          )
+          (i32.load (local.get $resultAddr))
+          (local.get $value)
         )
       )
 
@@ -77,6 +85,7 @@
   (param $selfTimes i32)
   (param $nestedTimes i32)
   (local $offset i32) ;; Byte offset for iteration through the arrays.
+  (local $value i32)
   (local $resultAddr i32) ;; Address in $samplesTimes array.
 
   ;; for (let i = nodesCount - 1; i > 0; i--) {
@@ -101,6 +110,28 @@
         )
       )
 
+      ;; Continue if value equals zero
+      (br_if $loop
+        (i32.eqz
+          (local.tee $value
+            (i32.add
+              (i32.load
+                (i32.add
+                  (local.get $selfTimes)
+                  (local.get $offset)
+                )
+              )
+              (i32.load
+                (i32.add
+                  (local.get $nestedTimes)
+                  (local.get $offset)
+                )
+              )
+            )
+          )
+        )
+      )
+
       ;; Calculate address in $nestedTimes array and store in $resultAddr.
       (local.set $resultAddr
         (i32.add
@@ -121,23 +152,8 @@
       (i32.store
         (local.get $resultAddr)
         (i32.add
-          (i32.load
-            (local.get $resultAddr)
-          )
-          (i32.add
-            (i32.load
-              (i32.add
-                (local.get $selfTimes)
-                (local.get $offset)
-              )
-            )
-            (i32.load
-              (i32.add
-                (local.get $nestedTimes)
-                (local.get $offset)
-              )
-            )
-          )
+          (i32.load (local.get $resultAddr))
+          (local.get $value)
         )
       )
 
@@ -154,7 +170,8 @@
   (param $totalNodeToDict i32)
   (param $totalTimes i32)
   (local $offset i32) ;; Byte offset for iteration through the arrays.
-  (local $nodeId i32) ;; Byte offset for iteration through the arrays.
+  (local $nodeId i32)
+  (local $value i32)
   (local $resultAddr i32) ;; Address in $samplesTimes array.
 
   ;; for (let i = nodesCount - 1; i > 0; i--) {
@@ -179,6 +196,40 @@
         )
       )
 
+      (local.set $nodeId
+        (i32.shl
+          (i32.load
+            (i32.add
+              (local.get $totalNodes)
+              (local.get $offset)
+            )
+          )
+          (i32.const 2)
+        )
+      )
+
+      ;; Continue if value equals zero
+      (br_if $loop
+        (i32.eqz
+          (local.tee $value
+            (i32.add
+              (i32.load
+                (i32.add
+                  (local.get $nodeSelfTimes)
+                  (local.get $nodeId)
+                )
+              )
+              (i32.load
+                (i32.add
+                  (local.get $nodeNestedTimes)
+                  (local.get $nodeId)
+                )
+              )
+            )
+          )
+        )
+      )
+
       ;; Calculate address in $totalTimes array and store in $resultAddr.
       (local.set $resultAddr
         (i32.add
@@ -195,39 +246,12 @@
         )
       )
 
-      (local.set $nodeId
-        (i32.shl
-          (i32.load
-            (i32.add
-              (local.get $totalNodes)
-              (local.get $offset)
-            )
-          )
-          (i32.const 2)
-        )
-      )
-
       ;; Load the existing value at $resultAddr, add the self time and nested time, then store the result back
       (i32.store
         (local.get $resultAddr)
         (i32.add
-          (i32.load
-            (local.get $resultAddr)
-          )
-          (i32.add
-            (i32.load
-              (i32.add
-                (local.get $nodeSelfTimes)
-                (local.get $nodeId)
-              )
-            )
-            (i32.load
-              (i32.add
-                (local.get $nodeNestedTimes)
-                (local.get $nodeId)
-              )
-            )
-          )
+          (i32.load (local.get $resultAddr))
+          (local.get $value)
         )
       )
 
