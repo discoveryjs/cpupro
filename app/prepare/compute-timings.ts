@@ -128,13 +128,14 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
         }
     }
     setRange(start: number, end: number) {
-        const { originalTimeDeltas, timeDeltas, timestamps } = this;
+        const { timeDeltas, timestamps } = this;
+        let { originalTimeDeltas } = this;
 
         this.rangeStart = start;
         this.rangeEnd = end;
 
-        if (timeDeltas === this.originalTimeDeltas) {
-            this.originalTimeDeltas = timeDeltas.slice();
+        if (timeDeltas === originalTimeDeltas) {
+            this.originalTimeDeltas = originalTimeDeltas = timeDeltas.slice();
         }
 
         timeDeltas.fill(0);
