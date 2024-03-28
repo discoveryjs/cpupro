@@ -169,16 +169,17 @@ export class CallTree<T> {
     }
 
     *ancestors(nodeIndex: number, depth = Infinity) {
-        nodeIndex = this.parent[nodeIndex];
+        let parentIndex = this.parent[nodeIndex];
 
-        while (nodeIndex !== 0) {
-            yield nodeIndex;
+        while (parentIndex !== nodeIndex) {
+            yield parentIndex;
 
             if (--depth <= 0) {
                 break;
             }
 
-            nodeIndex = this.parent[nodeIndex];
+            nodeIndex = parentIndex;
+            parentIndex = this.parent[nodeIndex];
         }
     }
     *children(nodeIndex: number) {
