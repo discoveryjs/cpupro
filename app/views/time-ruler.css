@@ -21,8 +21,10 @@
   display: none;
   position: absolute;
   inset: 0;
-  /* background: rgb(0, 0, 0, .0001); */
   z-index: 99;
+}
+.view-time-ruler:not([data-state="none"]) .view-time-ruler__selection-overlay {
+  display: block;
 }
 .view-time-ruler__selection-overlay-mover {
   position: absolute;
@@ -31,39 +33,50 @@
   width: var(--width);
   z-index: 1;
   cursor: move;
+  transition: .2s ease;
+  transition-property: background-color;
 }
-.view-time-ruler__selection-overlay-mover-start-trigger,
-.view-time-ruler__selection-overlay-mover-finish-trigger {
+.view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay-mover,
+.view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay-mover {
+  pointer-events: none;
+  background-color: rgba(0, 152, 251, .2);
+}
+.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay-mover {
+  background-color: rgba(0, 152, 251, .1);
+}
+.view-time-ruler__selection-overlay-mover-trigger {
+  --extra-pointer-size: 2.5px;
+  --extra-pointer-inner-size: clamp(0px, (100% - 2 * var(--extra-pointer-size)) / 2, var(--extra-pointer-size));
+
   position: absolute;
   top: 0;
   bottom: 0;
   width: 1px;
   background-color: #268fea66;
   background-clip: content-box;
-  border: transparent solid;
-  border-width: 0 2px;
+  padding: 0 var(--extra-pointer-size);
   transition: .25s ease;
   transition-property: background-color;
-}
-.view-time-ruler__selection-overlay-mover-start-trigger {
-  left: 0;
-  transform: translate(-50%);
   cursor: col-resize;
 }
-.view-time-ruler__selection-overlay-mover-finish-trigger {
-  right: 0;
-  transform: translate(50%);
-  cursor: col-resize;
+.view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay-mover-trigger {
+  transition: none;
 }
-.view-time-ruler__selection-overlay-mover-start-trigger:hover,
-.view-time-ruler__selection-overlay-mover-finish-trigger:hover,
-.view-time-ruler[data-active-trigger="start"] .view-time-ruler__selection-overlay-mover-start-trigger,
-.view-time-ruler[data-active-trigger="finish"] .view-time-ruler__selection-overlay-mover-finish-trigger {
+.view-time-ruler__selection-overlay-mover-trigger[data-trigger="start"] {
+  left: calc(-1 * var(--extra-pointer-size));
+  padding-right: var(--extra-pointer-inner-size);
+}
+.view-time-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
+  right: calc(-1 * var(--extra-pointer-size));
+  padding-left: var(--extra-pointer-inner-size);
+}
+.view-time-ruler__selection-overlay-mover-trigger:hover,
+.view-time-ruler[data-active-trigger="start"] .view-time-ruler__selection-overlay-mover-trigger[data-trigger="start"],
+.view-time-ruler[data-active-trigger="finish"] .view-time-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
   background-color: #268fea;
 }
-.view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay,
-.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay {
-  display: block;
+.view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay-mover-trigger {
+  display: none;
 }
 .view-time-ruler__selection-overlay::before,
 .view-time-ruler__selection-overlay::after {
@@ -75,8 +88,9 @@
   width: var(--left);
   opacity: 0;
   transition: backdrop-filter .25s ease-in;
+  pointer-events: none;
 }
-.view-time-ruler .view-time-ruler__selection-overlay::after {
+.view-time-ruler__selection-overlay::after {
   left: calc(var(--left) + var(--width));
   right: 0;
   width: auto;
@@ -109,26 +123,6 @@
 }
 .view-time-ruler .interval-marker::after {
   bottom: 2px;
-}
-
-.view-time-ruler::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  width: var(--width);
-  left: var(--left);
-  top: 0;
-  bottom: 0;
-  pointer-events: none;
-  transition: .2s ease;
-  transition-property: background-color;
-}
-.view-time-ruler[data-state="hovered"]::before,
-.view-time-ruler[data-state="selecting"]::before {
-  background-color: rgba(0, 152, 251, .2);
-}
-.view-time-ruler[data-state="selected"]::before {
-  background-color: rgba(0, 152, 251, .1);
 }
 
 .view-time-ruler-tooltip {

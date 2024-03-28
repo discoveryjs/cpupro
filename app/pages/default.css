@@ -164,7 +164,7 @@
     box-sizing: border-box;
     margin: 0 1px;
 }
-.page-default .area-timelines .view-time-ruler::before {
+.page-default .area-timelines .view-time-ruler .view-time-ruler__selection-overlay {
     top: -1px;
     bottom: -3px;
 }

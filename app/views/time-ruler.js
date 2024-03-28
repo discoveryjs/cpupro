@@ -398,19 +398,17 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
     }
 
     // overlay element
-    let selectionOverlayMoveStartTriggerEl = utils.createElement('div', {
-        class: 'view-time-ruler__selection-overlay-mover-start-trigger',
-        'data-trigger': 'start'
-    });
-    let selectionOverlayMoveFinishTriggerEl = utils.createElement('div', {
-        class: 'view-time-ruler__selection-overlay-mover-finish-trigger',
-        'data-trigger': 'finish'
-    });
-    const selectionOverlayEl = el.appendChild(
+    el.appendChild(
         utils.createElement('div', 'view-time-ruler__selection-overlay', [
             utils.createElement('div', 'view-time-ruler__selection-overlay-mover', [
-                selectionOverlayMoveStartTriggerEl,
-                selectionOverlayMoveFinishTriggerEl
+                utils.createElement('div', {
+                    class: 'view-time-ruler__selection-overlay-mover-trigger',
+                    'data-trigger': 'start'
+                }),
+                utils.createElement('div', {
+                    class: 'view-time-ruler__selection-overlay-mover-trigger',
+                    'data-trigger': 'finish'
+                })
             ])
         ])
     );
