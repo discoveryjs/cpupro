@@ -1,4 +1,4 @@
-import { ModuleType, PackageType, WellKnownName, WellKnownType } from './types';
+import { PackageType, WellKnownName, WellKnownType } from './types';
 
 // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
 export const OLD_COMPUTATIONS = false;
@@ -25,19 +25,18 @@ export const knownChromeExtensions = {
     'dhdgffkkebhmkfjojejmpbldmpobfkfo': 'Tampermonkey'
 };
 export const typeColor: Record<PackageType, string> = {
-    'node': '#78b362a0',
-    'electron': '#9feaf9a0',
     'script': '#fee29ca0',
     'npm': '#f98e94a0',
     'wasm': '#9481ffa0',
-    // 'garbage collector': '#f1b6fda0',
-    'gc': '#f1b6fda0',
     'regexp': '#8db2f8a0',
+    'electron': '#9feaf9a0',
+    'node': '#78b362a0',
     'internals': '#fcb69aa0',
     'program': '#edfdd1a0',
     'chrome-extension': '#7dfacda0',
-    'root': '#444444a0',
     'webpack/runtime': '#888888a0',
+    'gc': '#f1b6fda0',
+    'root': '#444444a0',
     'idle': '#888888a0',
     'unknown': '#888888a0'
 };
@@ -50,4 +49,4 @@ export const typeColorComponents = Object.fromEntries(Object.entries(typeColor)
 );
 export const typeOrder = Object.fromEntries(
     Object.keys(typeColor).map((type, idx) => [type, idx + 1])
-) as Record<ModuleType, number>;
+) as Record<PackageType, number>;
