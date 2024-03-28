@@ -23,6 +23,9 @@
   inset: 0;
   z-index: 99;
 }
+.view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay {
+  pointer-events: none;
+}
 .view-time-ruler:not([data-state="none"]) .view-time-ruler__selection-overlay {
   display: block;
 }
