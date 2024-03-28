@@ -74,18 +74,25 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     #colorMapper: FrameColorGenerator<T> = defaultColorMapper;
     #colorHue: string | null = null;
-    #scheduleRenderTimer: Promise<void> | null = null;
+    #scheduleRenderTimer: number | null = null;
+    #lastVisibleFramesEpoch = 0;
+    #epoch = 0;
 
     #width = 0; // graph width
     #minFrameWidth = 2;
     zoomStart = 0;
     zoomEnd = 1;
 
+    #getValue: SetDataOptions['value'] = defaultGetValue;
+
     tree: CallTree<T>;
     nodesMaxDepth: number;
     nodesDepth: Uint32Array;
-    nodesWidth: Uint32Array;
+    nodesValue: Uint32Array;
     nodesX: Uint32Array;
+    children: Uint32Array;
+    childrenOffset: Uint32Array;
+    childrenComputed: Uint32Array;
     nodesNames: string[];
     nodesColors: string[];
 
@@ -245,43 +252,58 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         const nodes = tree.nodes;
         const parent = tree.parent;
+        const subtreeSize = tree.subtreeSize;
         const depth = new Uint32Array(nodes.length);
-        const width = new Uint32Array(nodes.length);
+        const children = new Uint32Array(nodes.length);
+        const childrenOffset = new Uint32Array(nodes.length);
+        const childrenComputed = new Uint32Array(nodes.length);
+        const values = new Uint32Array(nodes.length);
         const x = new Uint32Array(nodes.length);
-        const x0 = [0];
-        const x1 = [0];
+        const nodesLength = nodes.length;
         let maxDepth = 0;
+        let childrenCursor = 0;
 
-        width[0] = getValue(0);
-        for (let i = 1, prevDepth = 0; i < nodes.length; i++) {
-            const nodeDepth = depth[parent[i]] + 1;
-            const nodeValue = getValue(i);
+        for (let i = 0; i < nodes.length; i++) {
+            const nodeDepth = depth[parent[i]] + (i !== 0 ? 1 : 0);
+            let cursor = i + 1;
 
             depth[i] = nodeDepth;
-            width[i] = nodeValue;
-
-            if (nodeDepth <= prevDepth) {
-                x[i] = x0[nodeDepth] = x1[nodeDepth];
-            } else if (nodeDepth > prevDepth) {
-                x[i] = x0[nodeDepth] = x1[nodeDepth] = x0[nodeDepth - 1];
-            }
-
-            x1[nodeDepth] += nodeValue;
-            prevDepth = nodeDepth;
+            values[i] = getValue(i);
 
             if (maxDepth < nodeDepth) {
                 maxDepth = nodeDepth;
             }
+
+            if (cursor !== nodesLength && parent[cursor] === i) {
+                const end = i + subtreeSize[i];
+
+                while (cursor <= end) {
+                    children[childrenCursor++] = cursor;
+                    cursor += subtreeSize[cursor] + 1;
+                }
+            }
+
+            childrenOffset[i] = childrenCursor;
         }
 
+        this.#epoch++;
+        this.#getValue = getValue;
         this.nodesMaxDepth = maxDepth;
         this.nodesDepth = depth;
-        this.nodesWidth = width;
+        this.nodesValue = values;
         this.nodesX = x;
+        this.children = children;
+        this.childrenOffset = childrenOffset;
+        this.childrenComputed = childrenComputed;
         this.nodesNames = tree.dictionary.map(getName);
         this.nodesColors = tree.dictionary.map(entry => this.#colorMapper(entry, this.#colorHue));
         this.tree = tree;
 
+        this.scheduleRender();
+    }
+
+    resetValues() {
+        this.#epoch++;
         this.scheduleRender();
     }
 
@@ -294,18 +316,27 @@ export class FlameChart<T> extends EventEmitter<Events> {
             return [];
         }
 
-        const { nodesX, nodesWidth, nodesDepth } = this;
+        const { nodesX, nodesValue, nodesDepth, children, childrenOffset, childrenComputed } = this;
         const { dictionary, nodes, subtreeSize } = this.tree;
-        const rootWidth = nodesWidth[0];
+        const getValue = this.#getValue;
+
+        if (this.#lastVisibleFramesEpoch !== this.#epoch) {
+            this.#lastVisibleFramesEpoch = this.#epoch;
+            childrenComputed.fill(0);
+            nodesValue[0] = getValue(0);
+        }
+
+        const rootWidth = nodesValue[0];
         const minValue = (end - start) * rootWidth * minScale;
         const nodeList: Frame<T>[] = [];
 
         for (let i = 0; i < nodes.length; i++) {
-            const nodeWidth = nodesWidth[i];
-            const x0 = nodesX[i] / rootWidth;
-            const x1 = x0 + nodeWidth / rootWidth;
+            const nodeValue = nodesValue[i];
+            const nodeX = nodesX[i];
+            const x0 = nodeX / rootWidth;
+            const x1 = x0 + nodeValue / rootWidth;
 
-            if (x0 < end && x1 > start && nodeWidth >= minValue) {
+            if (x0 < end && x1 > start && nodeValue >= minValue) {
                 nodeList.push({
                     nodeIndex: i,
                     value: dictionary[nodes[i]],
@@ -315,6 +346,41 @@ export class FlameChart<T> extends EventEmitter<Events> {
                     x1,
                     depth: nodesDepth[i]
                 });
+
+                if (childrenComputed[i] === 0) {
+                    childrenComputed[i] = 1;
+
+                    if (subtreeSize[i] > 0) {
+                        const offsetEnd = childrenOffset[i];
+                        const count = offsetEnd - (i === 0 ? 0 : childrenOffset[i - 1]);
+                        const offset = offsetEnd - count;
+
+                        if (count > 1) {
+                            const array = children.subarray(offset, offset + count);
+
+                            for (let j = 0; j < array.length; j++) {
+                                const childId = array[j];
+
+                                nodesValue[childId] = getValue(childId);
+                            }
+
+                            array.sort((a, b) => nodesValue[b] - nodesValue[a]);
+
+                            for (let j = 0, childX = nodeX; j < array.length; j++) {
+                                const childId = array[j];
+
+                                nodesX[childId] = childX;
+                                childX += nodesValue[childId];
+                            }
+                        } else if (count === 1) {
+                            // no need for sort & loop through children
+                            const childId = children[offset];
+
+                            nodesValue[childId] = getValue(childId);
+                            nodesX[childId] = nodeX;
+                        }
+                    }
+                }
             } else {
                 i += subtreeSize[i];
             }
@@ -325,8 +391,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     scheduleRender() {
         if (this.#scheduleRenderTimer === null) {
-            const task = Promise.resolve().then(() => {
-                if (this.#scheduleRenderTimer === task) {
+            const requestId = requestAnimationFrame(() => {
+                if (this.#scheduleRenderTimer === requestId) {
                     const renderStart = Date.now();
 
                     this.#scheduleRenderTimer = null;
@@ -338,7 +404,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 }
             });
 
-            this.#scheduleRenderTimer = task;
+            this.#scheduleRenderTimer = requestId;
         }
     }
 
@@ -354,11 +420,13 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const xOffset = this.zoomStart * xScale;
         const firstEnter = !this.frameEls.size;
         const removeFrames = new Set(this.frameEls.keys());
+        const t = Date.now();
         const visibleFrames = this.getVisibleFrames(
             this.zoomStart,
             this.zoomEnd,
             this.#minFrameWidth * widthScale
         );
+        console.log('getVisibleFrames', Date.now() - t);
         const enterFramesGroupEl =
             this.el.querySelector('.frames-group:empty') ||
             document.createElement('div');
@@ -423,10 +491,10 @@ export class FlameChart<T> extends EventEmitter<Events> {
     }
 
     zoomFrame(nodeIndex = 0) {
-        const rootWidth = this.nodesWidth[0];
+        const rootValue = this.nodesValue[0];
 
-        this.zoomStart = this.nodesX[nodeIndex] / rootWidth;
-        this.zoomEnd = this.zoomStart + this.nodesWidth[nodeIndex] / rootWidth;
+        this.zoomStart = this.nodesX[nodeIndex] / rootValue;
+        this.zoomEnd = this.zoomStart + this.nodesValue[nodeIndex] / rootValue;
 
         // unfade nodes
         this.fadedFrames.clear();

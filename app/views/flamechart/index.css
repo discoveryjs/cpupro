@@ -6,6 +6,7 @@
 
     position: relative;
     height: calc(max(var(--max-depth) + 1, 10) * var(--frame-height) + 2px);
+    contain: strict;
 }
 
 .flamechart .frames-group {

@@ -56,13 +56,12 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
     const setDataStart = Date.now();
     const { selfTimes, nestedTimes } = timings;
-    const setData = () => chart.setData(tree, {
+    const unsubscribeTimings = timings.on(utils.debounce(() => chart.resetValues(), 16, { maxWait: 48 }));
+
+    chart.setData(tree, {
         name: value => value.name || value.packageRelPath,
         value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex]
     });
-
-    const unsubscribeTimings = timings.on(setData);
-    setData();
 
     console.log('Flamechart.setData()', Date.now() - setDataStart);
 
