@@ -23,12 +23,10 @@
 }
 .view-subject-with-nested-timeline .view-time-ruler {
     margin-left: 1px;
+    --overlay-offset-top: -1px;
+    --overlay-offset-bottom: -1px;
 }
-.view-subject-with-nested-timeline .view-time-ruler .view-time-ruler__selection-overlay {
-    top: -1px;
-    bottom: -1px;
-}
-.view-subject-with-nested-timeline .view-time-ruler .interval-marker {
+.view-subject-with-nested-timeline .view-time-ruler .interval-marker:first-child {
     margin-left: -1px;
 }
 .view-subject-with-nested-timeline .view-timeline-segments {

@@ -104,7 +104,7 @@
 }
 
 .page-default .view-page-indicators {
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 }
 .page-default .view-page-indicators .runtime:is(.nodejs, .chromium, .electron, .unknown) .value::before {
     content: "";
@@ -163,10 +163,8 @@
     grid-column: 3 / 4;
     box-sizing: border-box;
     margin: 0 1px;
-}
-.page-default .area-timelines .view-time-ruler .view-time-ruler__selection-overlay {
-    top: -1px;
-    bottom: -3px;
+    --overlay-offset-top: -1px;
+    --overlay-offset-bottom: -3px;
 }
 .page-default .area-timelines .view-time-ruler .interval-marker:first-child {
     margin-left: -1px;

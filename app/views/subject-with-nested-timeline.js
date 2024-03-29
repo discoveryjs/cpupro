@@ -116,7 +116,7 @@ discovery.view.define('subject-with-nested-timeline', {
                 bins: '=bins',
                 max: '=binTime',
                 binsMax: true,
-                color: '=area.name.color()',
+                color: '=color',
                 height: 20
             }
         }

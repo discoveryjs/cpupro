@@ -10,7 +10,7 @@
 }
 
 .view-timeline-segments path {
-    fill: var(--color, #79c33ec9);
+    fill: var(--color, #888);
 }
 .view-timeline-segments path.rel-path {
     opacity: .4;

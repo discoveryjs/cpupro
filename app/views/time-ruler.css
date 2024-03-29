@@ -4,104 +4,97 @@
 
     position: absolute;
     inset: 0;
-  }
+}
 .view-time-ruler, .view-time-ruler * {
-  -webkit-user-drag: none;
-  user-select: none;
+    -webkit-user-drag: none;
+    user-select: none;
 }
 .view-time-ruler[data-active-trigger="start"],
 .view-time-ruler[data-active-trigger="finish"] {
-  cursor: col-resize;
+    cursor: col-resize;
 }
 .view-time-ruler[data-active-trigger="both"] {
-  cursor: move;
+    cursor: move;
 }
 
 .view-time-ruler__selection-overlay {
-  display: none;
-  position: absolute;
-  inset: 0;
-  z-index: 99;
+    display: none;
+    position: absolute;
+    inset: 0;
+    top: var(--overlay-offset-top, 0);
+    bottom: var(--overlay-offset-bottom, 0);
+    z-index: 99;
 }
 .view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay {
-  pointer-events: none;
+    pointer-events: none;
 }
 .view-time-ruler:not([data-state="none"]) .view-time-ruler__selection-overlay {
-  display: block;
+    display: block;
 }
 .view-time-ruler__selection-overlay-mover {
-  position: absolute;
-  inset: 0;
-  left: var(--left);
-  width: var(--width);
-  z-index: 1;
-  cursor: move;
-  transition: .2s ease;
-  transition-property: background-color;
-}
-.view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay-mover,
-.view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay-mover {
-  pointer-events: none;
-  background-color: rgba(0, 152, 251, .2);
-}
-.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay-mover {
-  background-color: rgba(0, 152, 251, .1);
+    position: absolute;
+    inset: 0;
+    left: var(--left);
+    width: var(--width);
+    z-index: 1;
+    cursor: move;
 }
 .view-time-ruler__selection-overlay-mover-trigger {
-  --extra-pointer-size: 2.5px;
-  --extra-pointer-inner-size: clamp(0px, (100% - 2 * var(--extra-pointer-size)) / 2, var(--extra-pointer-size));
+    --extra-pointer-size: 2.5px;
+    --extra-pointer-inner-size: clamp(0px, (100% - 2 * var(--extra-pointer-size)) / 2, var(--extra-pointer-size));
 
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background-color: #268fea66;
-  background-clip: content-box;
-  padding: 0 var(--extra-pointer-size);
-  transition: .25s ease;
-  transition-property: background-color;
-  cursor: col-resize;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: #268fea66;
+    background-clip: content-box;
+    padding: 0 var(--extra-pointer-size);
+    transition: .25s ease;
+    transition-property: background-color;
+    cursor: col-resize;
 }
 .view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay-mover-trigger {
-  transition: none;
+    transition: none;
 }
 .view-time-ruler__selection-overlay-mover-trigger[data-trigger="start"] {
-  left: calc(-1 * var(--extra-pointer-size));
-  padding-right: var(--extra-pointer-inner-size);
+    left: calc(-1 * var(--extra-pointer-size));
+    padding-right: var(--extra-pointer-inner-size);
 }
 .view-time-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
-  right: calc(-1 * var(--extra-pointer-size));
-  padding-left: var(--extra-pointer-inner-size);
+    right: calc(-1 * var(--extra-pointer-size));
+    padding-left: var(--extra-pointer-inner-size);
 }
 .view-time-ruler__selection-overlay-mover-trigger:hover,
 .view-time-ruler[data-active-trigger="start"] .view-time-ruler__selection-overlay-mover-trigger[data-trigger="start"],
 .view-time-ruler[data-active-trigger="finish"] .view-time-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
-  background-color: #268fea;
+    background-color: #268fea;
 }
 .view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay-mover-trigger {
-  display: none;
+    display: none;
 }
 .view-time-ruler__selection-overlay::before,
 .view-time-ruler__selection-overlay::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: var(--left);
-  opacity: 0;
-  transition: backdrop-filter .25s ease-in;
-  pointer-events: none;
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--left);
+    opacity: 0;
+    transition: .25s ease-in;
+    transition-property: opacity, backdrop-filter;
+    pointer-events: none;
 }
 .view-time-ruler__selection-overlay::after {
-  left: calc(var(--left) + var(--width));
-  right: 0;
-  width: auto;
+    left: calc(var(--left) + var(--width));
+    right: 0;
+    width: auto;
 }
 .view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay::before,
 .view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay::after {
-  opacity: 1;
-  backdrop-filter: grayscale(1);
+    opacity: 1;
+    backdrop-filter: saturate(0);
 }
 
 .view-time-ruler .interval-marker {
@@ -115,30 +108,51 @@
 }
 .view-time-ruler:is([data-labels="both"], [data-labels="top"]) .interval-marker::before,
 .view-time-ruler:is([data-labels="both"], [data-labels="bottom"]) .interval-marker::after {
-  content: attr(data-title);
-  position: absolute;
-  left: 3px;
-  font-size: 10px;
-  line-height: 10px;
+    content: attr(data-title);
+    position: absolute;
+    left: 3px;
+    font-size: 10px;
+    line-height: 10px;
 }
 .view-time-ruler .interval-marker::before {
-  top: 2px;
+    top: 2px;
 }
 .view-time-ruler .interval-marker::after {
-  bottom: 2px;
+    bottom: 2px;
+}
+
+/* use pseudo instead styling for mover to not overlay content */
+.view-time-ruler::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    width: var(--width);
+    left: var(--left);
+    top: var(--overlay-offset-top, 0);
+    bottom: var(--overlay-offset-bottom, 0);
+    pointer-events: none;
+    transition: .2s ease;
+    transition-property: background-color;
+}
+.view-time-ruler[data-state="hovered"]::before,
+.view-time-ruler[data-state="selecting"]::before {
+    background-color: rgba(0, 152, 251, .2);
+}
+.view-time-ruler[data-state="selected"]::before {
+    background-color: rgba(0, 152, 251, .1);
 }
 
 .view-time-ruler-tooltip {
-  padding: 5px 10px;
-  min-width: 200px;
-  border: none;
-  border-radius: 3px;
-  font-size: 12px;
-  background: rgba(255, 255, 255, .75);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  pointer-events: none;
+    padding: 5px 10px;
+    min-width: 200px;
+    border: none;
+    border-radius: 3px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, .75);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    pointer-events: none;
 }
 .discovery-root-darkmode .view-time-ruler-tooltip {
-  background: rgba(36, 36, 36, .8);
+    background: rgba(36, 36, 36, .8);
 }

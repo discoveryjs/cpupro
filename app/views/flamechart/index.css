@@ -39,6 +39,10 @@
         var(--color, 128, 128, 128),
         var(--fill-opacity)
     );
+    background-color: color-mix(in srgb,
+        rgb(var(--color, 128, 128, 128)) calc(var(--fill-opacity)*100%),
+        var(--discovery-background-color)
+    );
     transition: var(--transition);
     transition-property: left, right, opacity;
 }
