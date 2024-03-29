@@ -225,6 +225,7 @@ const packagesList = {
         view: 'content-filter',
         content: {
             view: 'update-on-timings-change',
+            debounce: true,
             content: {
                 view: 'table',
                 data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
@@ -253,6 +254,7 @@ const modulesList = {
         view: 'content-filter',
         content: {
             view: 'update-on-timings-change',
+            debounce: true,
             content: {
                 view: 'table',
                 data: `entries
@@ -284,6 +286,7 @@ const functionList = {
         view: 'content-filter',
         content: {
             view: 'update-on-timings-change',
+            debounce: true,
             content: {
                 view: 'table',
                 data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
