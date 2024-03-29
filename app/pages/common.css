@@ -123,7 +123,7 @@ h2 .logo {
 
 .page > .view-expand.trigger-outside > .header {
     --discovery-view-expand-trigger-size: calc(var(--discovery-page-padding-left) - 2px);
-    margin-right: calc(-1 * var(--discovery-page-padding-right));
+    margin-right: calc(-1 * var(--discovery-page-padding-right) + 1px);
 }
 
 .table-content-filter > .view-input {

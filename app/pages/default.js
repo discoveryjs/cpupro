@@ -214,13 +214,7 @@ const areasTimeline = {
 const packagesList = {
     view: 'section',
     data: 'packagesTimingsFiltered',
-    header: [
-        'text:"Packages "',
-        {
-            view: 'update-on-timings-change',
-            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
-        }
-    ],
+    header: [],
     content: {
         view: 'content-filter',
         content: {
@@ -243,13 +237,7 @@ const packagesList = {
 const modulesList = {
     view: 'section',
     data: 'modulesTimingsFiltered',
-    header: [
-        'text:"Modules "',
-        {
-            view: 'update-on-timings-change',
-            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
-        }
-    ],
+    header: [],
     content: {
         view: 'content-filter',
         content: {
@@ -275,13 +263,7 @@ const modulesList = {
 const functionList = {
     view: 'section',
     data: 'functionsTimingsFiltered',
-    header: [
-        'text:"Functions "',
-        {
-            view: 'update-on-timings-change',
-            content: { view: 'pill-badge', content: 'text-numeric:entries.[totalTime].size()' }
-        }
-    ],
+    header: [],
     content: {
         view: 'content-filter',
         content: {
@@ -436,7 +418,34 @@ discovery.page.define('default', {
                 view: 'expand',
                 expanded: true,
                 className: 'hierarchical-components trigger-outside',
-                header: 'text:"Hierarchical components"',
+                postRender: (el, config, data, context) =>
+                    el.style.setProperty('--total-time-digits', String(context.data.totalTime).replace(/\D/g, '').length - 2),
+                header: [
+                    { view: 'block', content: [
+                        'text:"Packages "',
+                        {
+                            view: 'update-on-timings-change',
+                            data: 'packagesTimingsFiltered',
+                            content: 'text-numeric:entries.[totalTime].size()'
+                        }
+                    ] },
+                    { view: 'block', content: [
+                        'text:"Modules "',
+                        {
+                            view: 'update-on-timings-change',
+                            data: 'modulesTimingsFiltered',
+                            content: 'text-numeric:entries.[totalTime].size()'
+                        }
+                    ] },
+                    { view: 'block', content: [
+                        'text:"Functions "',
+                        {
+                            view: 'update-on-timings-change',
+                            data: 'functionsTimingsFiltered',
+                            content: 'text-numeric:entries.[totalTime].size()'
+                        }
+                    ] }
+                ],
                 content: [
                     packagesList,
                     modulesList,

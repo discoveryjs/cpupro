@@ -17,6 +17,12 @@
 .view-duration > .time {
     flex: 1;
 }
+.view-duration > .time::after {
+    content: 'ms';
+    color: #787878;
+    font-size: 90%;
+    padding-left: 1px;
+}
 
 .view-duration > .fraction {
     width: 3em;

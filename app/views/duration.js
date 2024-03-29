@@ -9,7 +9,7 @@ function formatDuration(time) {
             ? time.toFixed(1).replace(/\..+$|\B(?=(\d{3})+(\D|$))/g, m => m || delim)
             : time.toFixed(1);
 
-    return `${number}${delim}ms`;
+    return `${number}${delim}`;
 }
 
 discovery.view.define('duration', function(el, config, { time, total }) {
