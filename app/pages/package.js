@@ -6,7 +6,7 @@ discovery.page.define('package', {
             view: 'page-header',
             prelude: [
                 'badge{ className: "type-badge", text: "Package" }',
-                'badge{ className: "area-badge", text: area.name, href: area.marker().href, color: area.name.color() }'
+                'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }'
             ],
             content: 'h1:name'
         },
@@ -68,7 +68,7 @@ discovery.page.define('package', {
                             //     bins: '=#.data.modulesTree.binCalls(entry, 100)',
                             //     max: '=#.data.totalTime / 100',
                             //     binsMax: true,
-                            //     color: '=entry.area.name.color()',
+                            //     color: '=entry.category.name.color()',
                             //     height: 22
                             // } }
                         ]

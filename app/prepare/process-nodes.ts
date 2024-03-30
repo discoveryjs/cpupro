@@ -4,7 +4,7 @@ import {
     V8CpuProfileNode,
     V8CpuProfileCallFrame,
     CpuProCallFrame,
-    CpuProArea,
+    CpuProCategory,
     CpuProPackage,
     CpuProModule,
     CpuProFunction
@@ -105,7 +105,7 @@ function getCallFrame(
             lineNumber,
             columnNumber,
             // these field will be populated on call frames processing step
-            area: null as unknown as CpuProArea,
+            category: null as unknown as CpuProCategory,
             package: null as unknown as CpuProPackage,
             module: null as unknown as CpuProModule,
             function: null as unknown as CpuProFunction

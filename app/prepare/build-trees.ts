@@ -1,6 +1,6 @@
 import { TIMINGS } from './const';
 import { CallTree } from './call-tree.js';
-import { CpuProArea, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from './types.js';
+import { CpuProCategory, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from './types.js';
 import { makeFirstNextArrays } from './build-trees-wasm-wrapper.js';
 import { buildCallTreeAndCompareWithBaseline } from './build-trees-baseline.js';
 
@@ -247,17 +247,17 @@ export function buildTrees(
     functions: CpuProFunction[],
     modules: CpuProModule[],
     packages: CpuProPackage[],
-    areas: CpuProArea[]
+    categories: CpuProCategory[]
 ) {
     const functionsTree = buildCallTreeFor('functions', callFramesTree, functions, callFrame => callFrame.function.id - 1);
     const modulesTree = buildCallTreeFor('modules', functionsTree, modules, callFrame => callFrame.module.id - 1);
     const packagesTree = buildCallTreeFor('packages', modulesTree, packages, callFrame => callFrame.package.id - 1);
-    const areasTree = buildCallTreeFor('areas', packagesTree, areas, callFrame => callFrame.area.id - 1);
+    const categoriesTree = buildCallTreeFor('categories', packagesTree, categories, callFrame => callFrame.category.id - 1);
 
     return {
         functionsTree,
         modulesTree,
         packagesTree,
-        areasTree
+        categoriesTree
     };
 }

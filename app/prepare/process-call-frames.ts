@@ -1,7 +1,7 @@
 import { knownChromeExtensions, maxRegExpLength, typeOrder, wellKnownNodeName } from './const';
 import {
     CpuProCallFrame,
-    CpuProArea,
+    CpuProCategory,
     CpuProPackage,
     CpuProModule,
     CpuProFunction,
@@ -11,7 +11,7 @@ import {
     WellKnownType
 } from './types';
 
-type ReferenceArea = {
+type ReferenceCategory = {
     ref: string;
     name: string;
 };
@@ -29,7 +29,7 @@ type ReferenceModule = {
     wellKnown: WellKnownType | null;
 };
 
-function resolveArea(moduleType: string): ReferenceArea {
+function resolveCategory(moduleType: string): ReferenceCategory {
     const name = moduleType === 'bundle' || moduleType === 'webpack/runtime'
         ? 'script'
         : moduleType;
@@ -199,7 +199,7 @@ function resolveModule(
     functionName: string,
     anonymousModuleByScriptId: Map<number, string>
 ): ReferenceModule {
-    const entry: Exclude<ReferenceModule, 'package' | 'area'> = {
+    const entry: Exclude<ReferenceModule, 'package' | 'category'> = {
         ref: url || String(scriptId),
         type: 'unknown',
         name: null,
@@ -284,7 +284,7 @@ function resolveModule(
 }
 
 export function processCallFrames(callFrames: CpuProCallFrame[]) {
-    const areas = Object.assign(new Map<string, CpuProArea>(), { unknownTypeOrder: typeOrder.unknown });
+    const categories = Object.assign(new Map<string, CpuProCategory>(), { unknownTypeOrder: typeOrder.unknown });
     const packages = new Map<string, CpuProPackage>();
     const packageRefCache = new Map();
     const modules = new Map<string, CpuProModule>();
@@ -305,16 +305,16 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
 
         // module
         if (callFrameModule === undefined) {
-            const areaRef = resolveArea(moduleRef.type);
-            let moduleArea = areas.get(areaRef.ref);
+            const categoryRef = resolveCategory(moduleRef.type);
+            let moduleCategory = categories.get(categoryRef.ref);
             const packageRef = resolvePackage(packageRefCache, moduleRef);
             let modulePackage = packages.get(packageRef.ref);
 
-            // create area (cluster) if needed
-            if (moduleArea === undefined) {
-                areas.set(areaRef.ref, moduleArea = {
-                    id: typeOrder[areaRef.name] || areas.unknownTypeOrder++,
-                    name: areaRef.name
+            // create category (cluster) if needed
+            if (moduleCategory === undefined) {
+                categories.set(categoryRef.ref, moduleCategory = {
+                    id: typeOrder[categoryRef.name] || categories.unknownTypeOrder++,
+                    name: categoryRef.name
                 });
             }
 
@@ -325,7 +325,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                     type: packageRef.type,
                     name: packageRef.name,
                     path: packageRef.path,
-                    area: moduleArea,
+                    category: moduleCategory,
                     modules: []
                 });
             }
@@ -336,7 +336,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                 type: moduleRef.type,
                 name: moduleRef.name,
                 path: moduleRef.path,
-                area: moduleArea,
+                category: moduleCategory,
                 package: modulePackage,
                 packageRelPath: null,
                 functions: []
@@ -363,7 +363,7 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
             functions.set(functionRef, callFrameFunction = {
                 id: functions.size + 1, // id starts with 1
                 name,
-                area: callFrameModule.area,
+                category: callFrameModule.category,
                 package: callFrameModule.package,
                 module: callFrameModule,
                 regexp,
@@ -373,14 +373,14 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
             callFrameModule.functions.push(callFrameFunction);
         }
 
-        callFrame.area = callFrameModule.area;
+        callFrame.category = callFrameModule.category;
         callFrame.package = callFrameModule.package;
         callFrame.module = callFrameModule;
         callFrame.function = callFrameFunction;
     }
 
     return {
-        areas: [...areas.values()],
+        categories: [...categories.values()],
         packages: [...packages.values()],
         modules: [...modules.values()],
         functions: [...functions.values()],

@@ -50,7 +50,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         .on('destroy', tooltip.destroy);
 
     chart.colorMapper = discovery.queryFn(`
-        | package.type or module.package.type or type or area.name or name
+        | package.type or module.package.type or type or category.name or name
         | color(true)
     `);
 

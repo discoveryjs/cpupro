@@ -123,7 +123,7 @@ discovery.page.define('function', {
             view: 'page-header',
             prelude: [
                 'badge{ className: "type-badge", text: "Function" }',
-                'badge{ className: "area-badge", text: module.area.name, href: module.area.marker().href, color: module.area.name.color() }',
+                'badge{ className: "category-badge", text: module.category.name, href: module.category.marker().href, color: module.category.name.color() }',
                 'package-badge',
                 'badge{ text: module | packageRelPath or path or "module", href: module.marker().href }',
                 'loc-badge'

@@ -155,45 +155,45 @@
     margin-left: calc(-1 * var(--discovery-page-padding-left));
     margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
-.page-default .area-timelines {
+.page-default .category-timelines {
     position: relative;
     display: grid;
     grid-template-columns: auto auto 1fr;
     padding: 15px 0 0;
     user-select: none;
 }
-.page-default .area-timelines .view-time-ruler {
+.page-default .category-timelines .view-time-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
     margin: 0 1px;
     --overlay-offset-top: -1px;
     --overlay-offset-bottom: -3px;
 }
-.page-default .area-timelines .view-time-ruler .interval-marker:first-child {
+.page-default .category-timelines .view-time-ruler .interval-marker:first-child {
     margin-left: -1px;
 }
 
-.page-default .area-timelines-list,
-.page-default .area-timelines-list > .view-list-item {
+.page-default .category-timelines-list,
+.page-default .category-timelines-list > .view-list-item {
     display: contents;
 }
-.page-default .area-timelines-item {
+.page-default .category-timelines-item {
     color: inherit;
     display: contents;
 }
-.page-default .area-timelines-item .view-timeline-segments {
+.page-default .category-timelines-item .view-timeline-segments {
     margin: 0 1px;
 }
-.page-default .area-timelines-item:hover > * {
+.page-default .category-timelines-item:hover > * {
     background: rgba(165,165,165,.3);
 }
-.page-default .area-timelines-item > .label {
+.page-default .category-timelines-item > .label {
     font-size: 12px;
     text-align: right;
     padding: 0px 4px 0 12px;
     border-bottom: 1px solid #0004;
 }
-.page-default .area-timelines-item > .label::after {
+.page-default .category-timelines-item > .label::after {
     content: '';
     display: inline-block;
     vertical-align: middle;
@@ -205,20 +205,20 @@
     background: var(--color, #888);
     border-radius: 50%;
 }
-.page-default .area-timelines-item > .total-percent {
+.page-default .category-timelines-item > .total-percent {
     text-align: right;
     font-size: 11px;
     padding: 1px 8px 0 8px;
     border-bottom: 1px solid #0004;
     color: #888;
 }
-.page-default .area-timelines-item > .total-percent::after {
+.page-default .category-timelines-item > .total-percent::after {
     content: '%';
     font-size: 8px;
     opacity: .5;
     padding-left: 1px;
 }
-.page-default .view-list-item:first-child .area-timelines-item > * {
+.page-default .view-list-item:first-child .category-timelines-item > * {
     border-top: 1px solid #0004;
 }
 

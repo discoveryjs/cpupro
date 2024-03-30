@@ -6,7 +6,7 @@ discovery.page.define('module', {
             view: 'page-header',
             prelude: [
                 'badge{ className: "type-badge", text: "Module" }',
-                'badge{ className: "area-badge", text: area.name, href: area.marker().href, color: area.name.color() }',
+                'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }',
                 'package-badge'
             ],
             content: 'h1:packageRelPath or name or path'

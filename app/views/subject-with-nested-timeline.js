@@ -4,7 +4,7 @@ discovery.view.define('subject-with-nested-timeline', {
         $subject;
         $tree;
         $subtree: $tree.subtreeSamples($subject);
-        $getArea: $subject.marker('area') ? =>$ : =>area;
+        $getCategory: $subject.marker('category') ? =>$ : =>category;
         $totalTime: #.data.totalTime;
         $binCount: 500;
         $binTime: $totalTime / $binCount;
@@ -20,15 +20,15 @@ discovery.view.define('subject-with-nested-timeline', {
             $binSamples,
             totalTime: $totalTime,
             $totalTimeBins,
-            color: $subject.$getArea().name.color(),
+            color: $subject.$getCategory().name.color(),
             nested: (
                 $selector: $subtree.sampleSelector;
-                $subtree.entries.($getArea()).sort(id asc).({
-                    $area: $;
-                    $area,
+                $subtree.entries.($getCategory()).sort(id asc).({
+                    $category: $;
+                    $category,
                     color: name.color(),
                     $binTime,
-                    bins: #.data.areasTree.binCalls(=>($=$area and $selector($$)), $binCount),
+                    bins: #.data.categoriesTree.binCalls(=>($=$category and $selector($$)), $binCount),
                     $totalTimeBins
                 })
             )
@@ -74,13 +74,13 @@ discovery.view.define('subject-with-nested-timeline', {
                 },
                 {
                     view: 'list',
-                    className: 'area-timings-list',
+                    className: 'category-timings-list',
                     data: 'nested',
                     itemConfig: {
                         className: '=bins[#.segmentStart:#.segmentEnd + 1].sum() = 0 ? "no-time"',
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
-                            'block{ className: "area-name", content: "text:area.name" }',
+                            'block{ className: "category-name", content: "text:category.name" }',
                             'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalTimeBins[#.segmentStart:#.segmentEnd + 1].sum() } }'
                         ]
                     }

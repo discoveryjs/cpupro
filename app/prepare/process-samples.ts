@@ -5,7 +5,7 @@ import {
     CpuProCallFrame,
     CpuProFunction,
     CpuProModule,
-    CpuProArea,
+    CpuProCategory,
     CpuProPackage,
     V8CpuProfileNode
 } from './types.js';
@@ -61,7 +61,7 @@ export function processSamples(
     functionsTree: CallTree<CpuProFunction>,
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
-    areasTree: CallTree<CpuProArea>
+    categoriesTree: CallTree<CpuProCategory>
 ) {
     // merge samples
     const mergeSamplesStart = Date.now();
@@ -73,7 +73,7 @@ export function processSamples(
     let sampleIdToNode = remapSamples(samples, callFramesTree.sourceIdToNode);
     callFramesTree.sampleIdToNode = sampleIdToNode;
 
-    for (const tree of [functionsTree, modulesTree, packagesTree, areasTree] as const) {
+    for (const tree of [functionsTree, modulesTree, packagesTree, categoriesTree] as const) {
         tree.sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
         sampleIdToNode = tree.sampleIdToNode;
     }
@@ -82,7 +82,7 @@ export function processSamples(
 
     // create timings
     const computeTimingsStart = Date.now();
-    const names = ['functions', 'modules', 'packages', 'areas'];
+    const names = ['functions', 'modules', 'packages', 'categories'];
     const {
         samplesTimings,
         samplesTimingsFiltered,
@@ -94,7 +94,7 @@ export function processSamples(
         functionsTree,
         modulesTree,
         packagesTree,
-        areasTree
+        categoriesTree
     ]);
 
     const result = {

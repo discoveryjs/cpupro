@@ -34,7 +34,7 @@
     margin-left: 1px;
 }
 .view-subject-with-nested-timeline .nested-work::before {
-    content: "Nested time distributed by area";
+    content: "Nested time distributed by category";
     display: block;
     margin-left: 1px;
     font-size: 10px;

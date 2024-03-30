@@ -16,7 +16,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
     const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
-    const markAsArea = defineObjectMarker('area', { ref: 'name', title: 'name', page: 'area' });
+    const markAsCategory = defineObjectMarker('category', { ref: 'name', title: 'name', page: 'category' });
     const markTime = TIMINGS ? createMarkTime() : () => undefined;
 
     markTime('convertValidate()');
@@ -67,11 +67,11 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         callFramesTree
     } = processNodes(data.nodes, maxNodeId);
 
-    // callFrames -> functions, modules, packages, areas
+    // callFrames -> functions, modules, packages, categories
     markTime('processCallFrames()');
     const {
         wellKnownCallFrames,
-        areas,
+        categories,
         packages,
         modules,
         functions
@@ -90,7 +90,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     functions.forEach(remapId);
     modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1).forEach(remapId);
     packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
-    areas.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
+    categories.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
 
     // apply object marker
     markTime('apply discovery object markers');
@@ -98,7 +98,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     functions.forEach(markAsFunction);
     modules.forEach(markAsModule);
     packages.forEach(markAsPackage);
-    areas.forEach(markAsArea);
+    categories.forEach(markAsCategory);
 
     // build trees should be performed after dictionaries are sorted and remaped
     markTime('buildTrees()');
@@ -106,13 +106,13 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         functionsTree,
         modulesTree,
         packagesTree,
-        areasTree
+        categoriesTree
     } = buildTrees(
         callFramesTree,
         functions,
         modules,
         packages,
-        areas
+        categories
     );
 
     markTime('processSamples()');
@@ -139,10 +139,10 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         packagesTimingsFiltered,
         packagesTreeTimings,
         packagesTreeTimingsFiltered,
-        areasTimings,
-        areasTimingsFiltered,
-        areasTreeTimings,
-        areasTreeTimingsFiltered
+        categoriesTimings,
+        categoriesTimingsFiltered,
+        categoriesTreeTimings,
+        categoriesTreeTimingsFiltered
     } = processSamples(
         samples,
         timeDeltas,
@@ -150,7 +150,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         functionsTree,
         modulesTree,
         packagesTree,
-        areasTree
+        categoriesTree
     );
 
     // extend jora's queries with custom methods
@@ -161,7 +161,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
 
     markTime('producing result');
     const result = {
-        runtime: detectRuntime(areas, packages),
+        runtime: detectRuntime(categories, packages),
         sourceInfo: {
             nodes: nodesCount,
             samples: samplesCount,
@@ -196,12 +196,12 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         packagesTree,
         packagesTreeTimings,
         packagesTreeTimingsFiltered,
-        areas,
-        areasTimings,
-        areasTimingsFiltered,
-        areasTree,
-        areasTreeTimings,
-        areasTreeTimingsFiltered
+        categories,
+        categoriesTimings,
+        categoriesTimingsFiltered,
+        categoriesTree,
+        categoriesTreeTimings,
+        categoriesTreeTimingsFiltered
     };
 
     markTime('finish');

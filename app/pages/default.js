@@ -99,13 +99,13 @@ const pageIndicators = {
     ]
 };
 
-const areasTimeBars = {
+const categoriesTimeBars = {
     view: 'timing-bar',
-    data: `areasTimings.entries.[selfTime].({
+    data: `categoriesTimings.entries.[selfTime].({
         text: entry.name,
         duration: selfTime,
         color: entry.name.color(),
-        href: entry.marker("area").href
+        href: entry.marker("category").href
     }).sort(duration desc)`,
     segment: {
         tooltip: [
@@ -115,26 +115,26 @@ const areasTimeBars = {
     }
 };
 
-const areasTimeline = {
+const categoriesTimeline = {
     view: 'block',
-    className: 'area-timelines',
+    className: 'category-timelines',
     data: `
         $binCount: 500;
         $totalTime: #.data.totalTime;
         $binSamples: $binCount.countSamples();
 
-        areasTimings.entries.[selfTime].({
-            $area: entry;
+        categoriesTimings.entries.[selfTime].({
+            $category: entry;
 
-            $area,
+            $category,
             timings: $,
             $totalTime,
             $binCount,
             binTime: $totalTime / $binCount,
             $binSamples,
-            bins: #.data.areasTree.binCalls($area, $binCount),
-            color: $area.name.color(),
-            href: $area.marker("area").href
+            bins: #.data.categoriesTree.binCalls($category, $binCount),
+            color: $category.name.color(),
+            href: $category.marker("category").href
         })
     `,
     content: [
@@ -168,12 +168,12 @@ const areasTimeline = {
                 },
                 {
                     view: 'list',
-                    className: 'area-timings-list',
+                    className: 'category-timings-list',
                     itemConfig: {
                         className: '=bins[#.segmentStart:#.segmentEnd + 1].sum() = 0 ? "no-time"',
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
-                            'block{ className: "area-name", content: "text:area.name" }',
+                            'block{ className: "category-name", content: "text:category.name" }',
                             'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: #.timeEnd - #.timeStart } }'
                         ]
                     }
@@ -182,16 +182,16 @@ const areasTimeline = {
         },
         {
             view: 'list',
-            className: 'area-timelines-list',
+            className: 'category-timelines-list',
             item: {
                 view: 'link',
-                className: 'area-timelines-item',
+                className: 'category-timelines-item',
                 content: [
                     {
                         view: 'block',
                         className: 'label',
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                        content: 'text:area.name'
+                        content: 'text:category.name'
                     },
                     {
                         view: 'block',
@@ -293,7 +293,7 @@ const flamecharts = {
                 view: 'toggle-group',
                 name: 'dataset',
                 data: [
-                    { text: 'Areas', value: 'areasTree' },
+                    { text: 'Categories', value: 'categoriesTree' },
                     { text: 'Packages', value: 'packagesTree', active: true },
                     { text: 'Modules', value: 'modulesTree' },
                     { text: 'Functions', value: 'functionsTree' }
@@ -410,8 +410,8 @@ discovery.page.define('default', {
                 view: 'expand',
                 expanded: true,
                 className: 'timelines trigger-outside',
-                header: areasTimeBars,
-                content: areasTimeline
+                header: categoriesTimeBars,
+                content: categoriesTimeline
             },
 
             {

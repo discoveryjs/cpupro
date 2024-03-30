@@ -1,4 +1,4 @@
-import { CpuProArea, CpuProPackage } from './types.js';
+import { CpuProCategory, CpuProPackage } from './types.js';
 
 type RunTimeCode = keyof typeof runtimes;
 
@@ -9,12 +9,12 @@ const runtimes = {
     unknown: 'Unknown'
 } as const;
 
-export function detectRuntime(areas: CpuProArea[], packages: CpuProPackage[]) {
-    const areasSet = new Set(areas.map(area => area.name));
+export function detectRuntime(categories: CpuProCategory[], packages: CpuProPackage[]) {
+    const categoriesSet = new Set(categories.map(category => category.name));
     const code: RunTimeCode =
-        areasSet.has('electron') ? 'electron'
-            : areasSet.has('node') ? 'nodejs'
-                : areasSet.has('chrome-extension') ||  packages.find(pkg => /^https?:/.test(pkg.path))
+        categoriesSet.has('electron') ? 'electron'
+            : categoriesSet.has('node') ? 'nodejs'
+                : categoriesSet.has('chrome-extension') ||  packages.find(pkg => /^https?:/.test(pkg.path))
                     ? 'chromium'
                     : 'unknown';
 

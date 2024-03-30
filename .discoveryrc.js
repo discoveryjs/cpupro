@@ -13,7 +13,7 @@ module.exports = {
             './pages/common.css',
             './pages/default.js',
             './pages/default.css',
-            './pages/area.js',
+            './pages/category.js',
             './pages/function.css',
             './pages/function.js',
             './pages/module.js',

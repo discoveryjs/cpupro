@@ -29,7 +29,7 @@ export type WellKnownType =
     | 'idle'
     | 'gc';
 
-export type CpuProHierarchyNode = CpuProArea | CpuProPackage | CpuProModule | CpuProFunction;
+export type CpuProHierarchyNode = CpuProCategory | CpuProPackage | CpuProModule | CpuProFunction;
 export type CpuProNode = CpuProCallFrame | CpuProHierarchyNode;
 
 export type CpuProCallFrame = {
@@ -42,13 +42,13 @@ export type CpuProCallFrame = {
     function: CpuProFunction;
     module: CpuProModule;
     package: CpuProPackage;
-    area: CpuProArea;
+    category: CpuProCategory;
 };
 
 export type CpuProFunction = {
     id: number; // starts with 1
     name: string;
-    area: CpuProArea;
+    category: CpuProCategory;
     package: CpuProPackage;
     module: CpuProModule;
     regexp: string | null;
@@ -75,7 +75,7 @@ export type CpuProModule = {
     type: ModuleType;
     name: string | null;
     path: string | null;
-    area: CpuProArea;
+    category: CpuProCategory;
     package: CpuProPackage;
     packageRelPath: string | null;
     functions: CpuProFunction[];
@@ -98,11 +98,11 @@ export type CpuProPackage = {
     type: PackageType;
     name: string;
     path: string | null;
-    area: CpuProArea;
+    category: CpuProCategory;
     modules: CpuProModule[];
 };
 
-export type CpuProArea = {
+export type CpuProCategory = {
     id: number;
     name: string;
 };
