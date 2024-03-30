@@ -1,7 +1,7 @@
 /* eslint-env node */
 const path = require('path');
 
-const dataFile = './demo.cpuprofile';
+const dataFile = './demo/demo.cpuprofile';
 
 module.exports = function() {
     return require('fs')
