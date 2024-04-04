@@ -2,6 +2,7 @@
 
 - Report
     - Added support for [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces)
+    - Added support for [V8 log](https://v8.dev/docs/profile) preprocessed with [`--preprocess`](https://v8.dev/docs/profile#web-ui-for---prof)
     - Reworked the layout and UX of the main page
     - Added "Try demo CPU profile" button when no CPU profile is loaded
     - Adjusted call frame reference computation by omitting line and column when they are not specified or less than zero

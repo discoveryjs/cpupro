@@ -1,13 +1,15 @@
 import { isCPUProfile } from './cpuprofile.js';
 import { isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
+import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-proflog.js';
 import {
     isChromiumPerformanceProfile,
     extractFromChromiumPerformanceProfile
 } from './formats/chromium-performance-profile.js';
 
 export const supportedFormats = [
-    '* [V8 CPU profile](https://v8.dev/docs/profile) (.cpuprofile)',
-    '* [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) / [Trace Event](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview) format (.json)',
+    '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
+    '* [V8 log](https://v8.dev/docs/profile) preprocessed with [`--preprocess`](https://v8.dev/docs/profile#web-ui-for---prof) (.json)',
+    '* [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) format (.json)',
     '* [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces) (.devtools)'
 ];
 export const supportedFormatsText = supportedFormats
@@ -18,6 +20,8 @@ export const supportedFormatsText = supportedFormats
 // }
 
 export function convertValidate(data, rejectData) {
+    data = data || {};
+
     if (isDevToolsEnhancedTraces(data)) {
         data = data.payload;
     }
@@ -31,6 +35,10 @@ export function convertValidate(data, rejectData) {
         if (!data) {
             rejectData('CPU profile data not found');
         }
+    }
+
+    if (isV8Log(data)) {
+        data = convertV8LogIntoCpuprofile(data);
     }
 
     // if (isCPUProfileMerge(data)) {
