@@ -58,17 +58,15 @@ export type CpuProFunction = {
 export type ModuleType =
     | 'unknown'
     | WellKnownType
+    | 'script'
+    | 'wasm'
     | 'regexp'
     | 'internals'
-    | 'script'
-    | 'electron'
-    | 'webpack/runtime'
-    | 'script'
-    | 'script'
     | 'bundle'
     | 'node'
+    | 'electron'
+    | 'webpack/runtime'
     | 'chrome-extension'
-    | 'wasm'
     | `protocol-${string}`;
 export type CpuProModule = {
     id: number; // starts with 1
@@ -84,15 +82,15 @@ export type CpuProModule = {
 export type PackageType =
     | 'unknown'
     | WellKnownType
-    | 'npm'
     | 'script'
-    | 'regexp'
-    | 'node'
-    | 'webpack/runtime'
-    | 'electron'
     | 'wasm'
-    | 'chrome-extension'
-    | 'internals';
+    | 'regexp'
+    | 'internals'
+    | 'npm'
+    | 'node'
+    | 'electron'
+    | 'webpack/runtime'
+    | 'chrome-extension';
 export type CpuProPackage = {
     id: number; // starts with 1
     type: PackageType;
