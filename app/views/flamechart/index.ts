@@ -14,8 +14,8 @@ type SetDataOptions = {
 }
 type Events = {
     select(nodeIndex: number, prevNodeIndex: number): void;
-    zoom(nodeIndex: number): void;
-    'frame:click'(nodeIndex: number, element: FrameElement): void;
+    zoom(nodeIndex: number, start: number, end: number): void;
+    'frame:click'(nodeIndex: number, element: FrameElement, event: MouseEvent): void;
     'frame:enter'(nodeIndex: number, element: FrameElement): void;
     'frame:leave'(): void;
     destroy(): void;
@@ -37,10 +37,6 @@ const defaultGetValue: Exclude<SetDataOptions['value'], undefined> = (frameData:
 function ensureFunction<T, U>(value: T, fallback: U) {
     return typeof value === 'function' ? value : fallback;
 }
-
-// let labelHandler = function(frame: Frame) {
-//     return `${frame.name} (${(100 * frame.value / rootFrameNode.value).toFixed(2)}%, ${frame.value} ms)`;
-// };
 
 function defaultColorMapper(frame: FrameData, colorHue: string | null = null) {
     const { name } = frame;
@@ -97,9 +93,9 @@ export class FlameChart<T> extends EventEmitter<Events> {
     nodesNames: string[];
     nodesColors: string[];
 
+    zoomedNode = 0;
+    zoomedNodesStack: number[] = [];
     selectedNode = 0;
-    selectedNodesStack: number[] = [];
-    fadedFrames = new Set<number>();
     frameEls = new Map<number, HTMLElement>();
     frameByEl = new WeakMap<Node, Frame<T>>();
 
@@ -108,9 +104,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         // create chart element
         this.el = this.createElement(this);
-        this.on('frame:click', (nodeIndex) => {
-            this.selectFrame(nodeIndex);
-            this.zoomFrame(this.selectedNode);
+        this.on('frame:click', (nodeIndex, _, event) => {
+            if (event.metaKey) {
+                this.selectFrame(nodeIndex);
+            } else {
+                this.zoomFrame(nodeIndex, true);
+            }
         });
     }
 
@@ -122,7 +121,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const result = chart.findFrameByEl(event.target as Node);
 
             if (result !== null) {
-                chart.emit('frame:click', result.frame.nodeIndex, result.element as FrameElement);
+                chart.emit('frame:click', result.frame.nodeIndex, result.element as FrameElement, event);
             }
         }, true);
         chartEl.addEventListener('pointerenter', event => {
@@ -199,28 +198,13 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     selectFrame(nodeIndex: number) {
         const prevSelected = this.selectedNode;
-        const nodesDepth = this.nodesDepth;
+        const subjectId = this.tree.nodes[nodeIndex];
+        const selectedSubjectId = this.tree.nodes[this.selectedNode];
 
-        if (this.selectedNode !== nodeIndex && nodeIndex !== 0) {
-            if (this.selectedNode !== 0) {
-                this.selectedNodesStack = this.selectedNodesStack
-                    .filter(item => nodesDepth[item] < nodesDepth[nodeIndex]);
-
-                if (nodesDepth[this.selectedNode] < nodesDepth[nodeIndex]) {
-                    this.selectedNodesStack.push(this.selectedNode);
-                }
-            }
-
+        if (selectedSubjectId !== subjectId && nodeIndex !== 0) {
             this.selectedNode = nodeIndex;
-        } else if (this.selectedNode === nodeIndex) {
+        } else {
             this.selectedNode = 0;
-
-            if (this.selectedNodesStack.length > 0) {
-                this.selectedNode = this.selectedNodesStack.pop();
-            }
-        } else if (this.selectedNode !== 0) {
-            this.selectedNode = 0;
-            this.selectedNodesStack = [];
         }
 
         this.emit('select', this.selectedNode, prevSelected);
@@ -230,9 +214,9 @@ export class FlameChart<T> extends EventEmitter<Events> {
     }
 
     resetFrameRefs() {
-        this.selectedNode = null;
-        this.selectedNodesStack = [];
-        this.fadedFrames.clear();
+        this.zoomedNode = 0;
+        this.zoomedNodesStack = [];
+        this.selectedNode = 0;
         this.frameByEl = new WeakMap();
         this.frameEls.clear();
     }
@@ -311,7 +295,68 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     resetValues() {
         this.#epoch++;
+        this.zoomFrame(this.nodesValue[this.zoomedNode] > 0 ? this.zoomedNode : 0);
         this.scheduleRender();
+    }
+
+    #computeChildren(nodeIdx: number, nodeX: number) {
+        const { nodesX, nodesValue, nodesDepth, children, childrenOffset, childrenComputed } = this;
+        const { dictionary, nodes, subtreeSize } = this.tree;
+        const getValue = this.#getValue;
+
+        // if children is not computed before, then sort them and calculate x and width
+        if (childrenComputed[nodeIdx] === 0) {
+            childrenComputed[nodeIdx] = 1;
+
+            if (subtreeSize[nodeIdx] > 0) {
+                const offsetEnd = childrenOffset[nodeIdx];
+                const count = offsetEnd - (nodeIdx === 0 ? 0 : childrenOffset[nodeIdx - 1]);
+                const offset = offsetEnd - count;
+
+                if (count > 1) {
+                    const array = this.children.subarray(offset, offset + count);
+
+                    for (let j = 0; j < array.length; j++) {
+                        const childId = array[j];
+
+                        nodesValue[childId] = getValue(childId);
+                    }
+
+                    if (this.#childrenSort !== null) {
+                        array.sort(this.#childrenSort);
+                    }
+
+                    for (let j = 0, childX = nodeX; j < array.length; j++) {
+                        const childId = array[j];
+
+                        nodesX[childId] = childX;
+                        childX += nodesValue[childId];
+                    }
+                } else if (count === 1) {
+                    // no need for sort & loop through children
+                    const childId = children[offset];
+
+                    nodesValue[childId] = getValue(childId);
+                    nodesX[childId] = nodeX;
+                }
+            }
+        }
+    }
+
+    #syncChildrenComputations() {
+        if (this.#lastVisibleFramesEpoch !== this.#epoch) {
+            this.#lastVisibleFramesEpoch = this.#epoch;
+            this.childrenComputed.fill(0);
+            this.nodesValue[0] = this.#getValue(0);
+
+            if (this.zoomedNode) {
+                for (const ancestorIdx of [...this.tree.ancestors(this.zoomedNode)].reverse()) {
+                    this.#computeChildren(ancestorIdx, this.nodesX[ancestorIdx]);
+                }
+
+                this.zoomFrame(this.zoomedNode);
+            }
+        }
     }
 
     getVisibleFrames(
@@ -323,15 +368,10 @@ export class FlameChart<T> extends EventEmitter<Events> {
             return [];
         }
 
-        const { nodesX, nodesValue, nodesDepth, children, childrenOffset, childrenComputed } = this;
+        const { nodesX, nodesValue, nodesDepth } = this;
         const { dictionary, nodes, subtreeSize } = this.tree;
-        const getValue = this.#getValue;
 
-        if (this.#lastVisibleFramesEpoch !== this.#epoch) {
-            this.#lastVisibleFramesEpoch = this.#epoch;
-            childrenComputed.fill(0);
-            nodesValue[0] = getValue(0);
-        }
+        this.#syncChildrenComputations();
 
         const rootWidth = nodesValue[0];
         const minValue = (end - start) * rootWidth * minScale;
@@ -341,7 +381,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const nodeValue = nodesValue[i];
             const nodeX = nodesX[i];
             const x0 = nodeX / rootWidth;
-            const x1 = x0 + nodeValue / rootWidth;
+            const x1 = (nodeX + nodeValue) / rootWidth;
 
             if (x0 < end && x1 > start && nodeValue >= minValue) {
                 nodeList.push({
@@ -354,42 +394,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                     depth: nodesDepth[i]
                 });
 
-                if (childrenComputed[i] === 0) {
-                    childrenComputed[i] = 1;
-
-                    if (subtreeSize[i] > 0) {
-                        const offsetEnd = childrenOffset[i];
-                        const count = offsetEnd - (i === 0 ? 0 : childrenOffset[i - 1]);
-                        const offset = offsetEnd - count;
-
-                        if (count > 1) {
-                            const array = children.subarray(offset, offset + count);
-
-                            for (let j = 0; j < array.length; j++) {
-                                const childId = array[j];
-
-                                nodesValue[childId] = getValue(childId);
-                            }
-
-                            if (this.#childrenSort !== null) {
-                                array.sort(this.#childrenSort);
-                            }
-
-                            for (let j = 0, childX = nodeX; j < array.length; j++) {
-                                const childId = array[j];
-
-                                nodesX[childId] = childX;
-                                childX += nodesValue[childId];
-                            }
-                        } else if (count === 1) {
-                            // no need for sort & loop through children
-                            const childId = children[offset];
-
-                            nodesValue[childId] = getValue(childId);
-                            nodesX[childId] = nodeX;
-                        }
-                    }
-                }
+                this.#computeChildren(i, nodeX);
             } else {
                 i += subtreeSize[i];
             }
@@ -404,8 +409,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 if (this.#scheduleRenderTimer === requestId) {
                     const renderStart = Date.now();
 
-                    this.#scheduleRenderTimer = null;
                     this.render();
+                    this.#scheduleRenderTimer = null;
 
                     if (this.#width) {
                         console.log('Flamechart.render()', Date.now() - renderStart);
@@ -418,6 +423,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
     }
 
     render() {
+        this.#syncChildrenComputations();
         this.#scheduleRenderTimer = null;
 
         if (this.#width === 0 && this.#resizeObserver) {
@@ -429,6 +435,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const xOffset = this.zoomStart * xScale;
         const firstEnter = !this.frameEls.size;
         const removeFrames = new Set(this.frameEls.keys());
+
         const t = Date.now();
         const visibleFrames = this.getVisibleFrames(
             this.zoomStart,
@@ -436,9 +443,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
             this.#minFrameWidth * widthScale
         );
         console.log('getVisibleFrames', Date.now() - t);
+
         const enterFramesGroupEl =
             this.el.querySelector('.frames-group:empty') ||
             document.createElement('div');
+        const nodes = this.tree.nodes;
+        const selectedId = nodes[this.selectedNode];
         let maxDepth = 0;
 
         // add / update frame elements
@@ -446,7 +456,13 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const nodeIndex = frame.nodeIndex;
             const className = nodeIndex === 0
                 ? 'frame'
-                : `frame${this.fadedFrames.has(nodeIndex) ? ' fade' : ''}${this.selectedNode === nodeIndex ? ' selected' : ''}`;
+                : `frame${
+                    nodeIndex < this.zoomedNode ? ' fade' : ''
+                }${
+                    this.zoomedNode === nodeIndex ? ' zoomed' : ''
+                }${
+                    nodes[nodeIndex] === selectedId ? ' similar' : ''
+                }`;
             const x0 = Math.max(0, frame.x0 * xScale - xOffset);
             const x1 = Math.max(0, frame.x1 * xScale - xOffset);
             let frameEl = this.frameEls.get(frame.nodeIndex);
@@ -499,25 +515,50 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.el.style.setProperty('--width-scale', widthScale.toFixed(8));
     }
 
-    zoomFrame(nodeIndex = 0) {
+    zoomFrame(nodeIndex = 0, toggle = false) {
         const rootValue = this.nodesValue[0];
+        const nodesDepth = this.nodesDepth;
+        const prevZoomedNode = this.zoomedNode;
+        const prevZoomStart = this.zoomStart;
+        const prevZoomEnd = this.zoomEnd;
 
-        this.zoomStart = this.nodesX[nodeIndex] / rootValue;
-        this.zoomEnd = this.zoomStart + this.nodesValue[nodeIndex] / rootValue;
+        if (this.zoomedNode !== nodeIndex && nodeIndex !== 0) {
+            if (this.zoomedNode !== 0) {
+                this.zoomedNodesStack = this.zoomedNodesStack
+                    .filter(item => nodesDepth[item] < nodesDepth[nodeIndex]);
 
-        // unfade nodes
-        this.fadedFrames.clear();
+                if (nodesDepth[this.zoomedNode] < nodesDepth[nodeIndex]) {
+                    this.zoomedNodesStack.push(this.zoomedNode);
+                }
+            }
 
-        // fade ancestors
-        let cursor = nodeIndex;
+            this.zoomedNode = nodeIndex;
+        } else if (this.zoomedNode === nodeIndex) {
+            if (toggle) {
+                this.zoomedNode = 0;
 
-        while (cursor !== 0) {
-            this.fadedFrames.add(cursor);
-            cursor = this.tree.parent[cursor];
+                if (this.zoomedNodesStack.length > 0) {
+                    this.zoomedNode = this.zoomedNodesStack.pop();
+                }
+            } else {
+                while (this.zoomedNode !== 0 && this.nodesValue[this.zoomedNode] === 0 && this.zoomedNodesStack.length > 0) {
+                    this.zoomedNode = this.zoomedNodesStack.pop();
+                }
+            }
+        } else if (this.zoomedNode !== 0) {
+            this.zoomedNode = 0;
+            this.zoomedNodesStack = [];
         }
 
+        this.zoomStart = this.nodesX[this.zoomedNode] / rootValue;
+        this.zoomEnd = this.zoomStart + this.nodesValue[this.zoomedNode] / rootValue;
+
         // emit event
-        this.emit('zoom', nodeIndex);
+        if (prevZoomedNode !== this.zoomedNode ||
+            prevZoomStart !== this.zoomStart ||
+            prevZoomEnd !== this.zoomEnd) {
+            this.emit('zoom', this.zoomedNode, this.zoomStart, this.zoomEnd);
+        }
 
         // schedule render
         this.scheduleRender();

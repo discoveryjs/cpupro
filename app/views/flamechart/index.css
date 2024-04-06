@@ -52,11 +52,35 @@
 .flamechart .frame.fade {
     opacity: .65;
 }
-.flamechart .frame.selected {
-    box-shadow: 0 0 1px 1px #ffa500bd inset;
+.flamechart .frame.similar {
+    transition-property: left, right, opacity, color;
+    transition-duration: var(--transition-duration), var(--transition-duration), var(--transition-duration), .15s;
+    color: black;
+}
+.flamechart .frame::before {
+    content: '';
+    opacity: 0;
+}
+.flamechart .frame.similar::before {
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+    background-color: #d6bb2d;
+    inset: 0;
+    opacity: 1;
+    transition: .15s ease-in-out;
+    transition-property: opacity;
+}
+
+.flamechart .frame.zoomed {
+    box-shadow: 0 0 0 1.5px #d6bb2d inset;
+}
+.flamechart .frame.zoomed::before {
+    inset: 2px;
 }
 
 .flamechart .frame-label {
+    position: relative;
     pointer-events: none;
     font-size: 10px;
     line-height: 14px;
