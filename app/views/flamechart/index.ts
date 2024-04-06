@@ -10,7 +10,7 @@ type SetDataOptions = {
     value?(data: FrameData): number;
     offset?(data: FrameData, parentData: FrameData): number;
     children?(data: FrameData): FrameData[] | null | undefined;
-    childrenSort?: true | ((a: FrameData, b: FrameData) => number);
+    childrenSort?: true | 'name' | 'value' | ((a: number, b: number) => number);
 }
 type Events = {
     select(nodeIndex: number, prevNodeIndex: number): void;
@@ -75,6 +75,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
     #colorMapper: FrameColorGenerator<T> = defaultColorMapper;
     #colorHue: string | null = null;
     #scheduleRenderTimer: number | null = null;
+    #childrenSort: (a: number, b: number) => number = null;
     #lastVisibleFramesEpoch = 0;
     #epoch = 0;
 
@@ -243,12 +244,17 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         const getName = ensureFunction(options.name, defaultGetName);
         const getValue = ensureFunction(options.value, defaultGetValue);
-        const childrenSort = ensureFunction(options.childrenSort !== true ? options.childrenSort : (a: FrameData, b: FrameData) => {
-            const nameA = getName(a);
-            const nameB = getName(b);
+        this.#childrenSort =
+            options.childrenSort === true || options.childrenSort === 'value'
+                ? (a: number, b: number) => values[b] - values[a]
+                : options.childrenSort === 'name'
+                    ? (a: number, b: number) => {
+                        const nameA = names[a];
+                        const nameB = names[b];
 
-            return nameA > nameB ? 1 : nameA < nameB ? -1 : 0;
-        }, false);
+                        return nameA > nameB ? 1 : nameA < nameB ? -1 : 0;
+                    }
+                    : ensureFunction(options.childrenSort, null);
 
         const nodes = tree.nodes;
         const parent = tree.parent;
@@ -257,6 +263,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const children = new Uint32Array(nodes.length);
         const childrenOffset = new Uint32Array(nodes.length);
         const childrenComputed = new Uint32Array(nodes.length);
+        const names = tree.dictionary.map(getName);
         const values = new Uint32Array(nodes.length);
         const x = new Uint32Array(nodes.length);
         const nodesLength = nodes.length;
@@ -295,7 +302,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.children = children;
         this.childrenOffset = childrenOffset;
         this.childrenComputed = childrenComputed;
-        this.nodesNames = tree.dictionary.map(getName);
+        this.nodesNames = names;
         this.nodesColors = tree.dictionary.map(entry => this.#colorMapper(entry, this.#colorHue));
         this.tree = tree;
 
@@ -364,7 +371,9 @@ export class FlameChart<T> extends EventEmitter<Events> {
                                 nodesValue[childId] = getValue(childId);
                             }
 
-                            array.sort((a, b) => nodesValue[b] - nodesValue[a]);
+                            if (this.#childrenSort !== null) {
+                                array.sort(this.#childrenSort);
+                            }
 
                             for (let j = 0, childX = nodeX; j < array.length; j++) {
                                 const childId = array[j];

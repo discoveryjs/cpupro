@@ -60,7 +60,8 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
     chart.setData(tree, {
         name: value => value.name || value.packageRelPath,
-        value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex]
+        value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex],
+        childrenSort: true
     });
 
     console.log('Flamechart.setData()', Date.now() - setDataStart);
