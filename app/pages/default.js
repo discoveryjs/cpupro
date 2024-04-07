@@ -95,6 +95,34 @@ const pageIndicators = {
                     value: '=callFrames.size()'
                 }
             ]
+        },
+        {
+            view: 'page-indicator-group',
+            className: 'filters',
+            content: {
+                view: 'update-on-timings-change',
+                timings: '=samplesTimingsFiltered',
+                content: {
+                    view: 'context',
+                    when: 'samplesTimingsFiltered.rangeStart != null',
+                    content: [
+                        {
+                            view: 'block',
+                            className: 'page-indicator-group-tag'
+                        },
+                        {
+                            view: 'page-indicator',
+                            title: 'Samples',
+                            value: '=samplesTimingsFiltered.rangeSamples'
+                        },
+                        {
+                            view: 'page-indicator',
+                            title: 'Range',
+                            value: '=`${samplesTimingsFiltered.rangeStart.formatMicrosecondsTime()} – ${samplesTimingsFiltered.rangeEnd.formatMicrosecondsTime()}`'
+                        }
+                    ]
+                }
+            }
         }
     ]
 };
@@ -147,11 +175,12 @@ const categoriesTimeline = {
             onChange: (state, name, el, data, context) => {
                 // console.log('change', state);
                 const t = Date.now();
+                const timings = context.data.samplesTimingsFiltered;
 
                 if (state.timeStart !== null) {
-                    context.data.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
+                    timings.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    context.data.samplesTimingsFiltered.resetRange();
+                    timings.resetRange();
                 }
 
                 console.log('compute timings', Date.now() - t);

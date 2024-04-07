@@ -99,6 +99,7 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
     originalTimeDeltas: Uint32Array;
     rangeStart: number | null = null;
     rangeEnd: number | null = null;
+    rangeSamples: number | null = null;
 
     constructor(
         samples: Uint32Array,
@@ -121,6 +122,7 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
     resetRange() {
         this.rangeStart = null;
         this.rangeEnd = null;
+        this.rangeSamples = null;
 
         if (this.timeDeltas !== this.originalTimeDeltas) {
             this.timeDeltas.set(this.originalTimeDeltas);
@@ -131,9 +133,6 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
         const { timeDeltas, timestamps } = this;
         let { originalTimeDeltas } = this;
 
-        this.rangeStart = start;
-        this.rangeEnd = end;
-
         if (timeDeltas === originalTimeDeltas) {
             this.originalTimeDeltas = originalTimeDeltas = timeDeltas.slice();
         }
@@ -142,6 +141,10 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
 
         const startIndex = binarySearch(timestamps, start);
         const endIndex = binarySearch(timestamps, end);
+
+        this.rangeStart = start;
+        this.rangeEnd = end;
+        this.rangeSamples = endIndex - startIndex + 1;
 
         if (startIndex !== endIndex) {
             timeDeltas[startIndex] = originalTimeDeltas[startIndex] - (start - timestamps[startIndex]);

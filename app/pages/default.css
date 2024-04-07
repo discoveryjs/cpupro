@@ -105,6 +105,33 @@
 
 .page-default .view-page-indicators {
     margin-bottom: 3px;
+    margin-left: calc(-1 * var(--discovery-page-padding-left));
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
+    padding-left: var(--discovery-page-padding-left);
+    overflow: hidden;
+    overflow-x: auto;
+}
+.page-default .view-page-indicators .view-page-indicator-group.filters .view-page-indicator {
+    background-color: #2c3a4a;
+}
+.page-default .view-page-indicators .view-page-indicator-group.filters .page-indicator-group-tag {
+    width: 18px;
+    position: relative;
+    background-color: #374c64;
+}
+.page-default .view-page-indicators .view-page-indicator-group.filters .page-indicator-group-tag::before {
+    content: 'Filtered';
+    position: absolute;
+    width: 66px;
+    right: 0;
+    bottom: 100%;
+    transform: rotate(-90deg);
+    transform-origin: right bottom;
+    text-align: center;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding-bottom: 2px;
 }
 .page-default .view-page-indicators .runtime:is(.nodejs, .chromium, .electron, .unknown) .value::before {
     content: "";

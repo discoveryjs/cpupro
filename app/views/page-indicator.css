@@ -6,9 +6,11 @@
 .view-page-indicator-group {
     display: flex;
     gap: 1px;
+    flex-shrink: 0;
 }
 
 .view-page-indicator {
+    flex-shrink: 0;
     display: grid;
     grid-template:
         'title annotation'
@@ -34,6 +36,7 @@
     font-size: 180%;
     font-weight: 200;
     text-align: right;
+    white-space: nowrap;
 }
 .view-page-indicator > .value .unit {
     font-size: 65%;
