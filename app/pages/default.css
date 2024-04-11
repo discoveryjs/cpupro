@@ -7,7 +7,7 @@
     padding: 0;
     margin: 0;
 }
-.page-default .view-flamechart__content {
+.page-default .flamecharts .view-flamechart {
     --height: calc(100vh
         - 64px /* page header */
         - 9px
@@ -21,9 +21,6 @@
     margin-top: 8px;
 }
 .flamecharts-fullpage {
-    --discovery-page-padding-right: 0px;
-}
-.flamecharts-fullpage .page {
     visibility: hidden;
 }
 .flamecharts-fullpage .flamecharts {
@@ -40,13 +37,10 @@
     display: flex;
     flex-direction: column;
 }
-.flamecharts-fullpage .view-flamechart {
+.flamecharts-fullpage .flamecharts .view-flamechart {
     flex: 1;
     height: auto;
-}
-.flamecharts-fullpage .view-flamechart__content {
     max-height: none;
-    min-height: 100%;
 }
 
 .flamecharts .toolbar {

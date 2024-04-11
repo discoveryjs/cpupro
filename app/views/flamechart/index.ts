@@ -95,7 +95,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     zoomedNode = 0;
     zoomedNodesStack: number[] = [];
-    selectedNode = 0;
+    selectedNode = -1;
     frameEls = new Map<number, HTMLElement>();
     frameByEl = new WeakMap<Node, Frame<T>>();
 
@@ -204,7 +204,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         if (selectedSubjectId !== subjectId && nodeIndex !== 0) {
             this.selectedNode = nodeIndex;
         } else {
-            this.selectedNode = 0;
+            this.selectedNode = -1;
         }
 
         this.emit('select', this.selectedNode, prevSelected);
@@ -216,7 +216,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
     resetFrameRefs() {
         this.zoomedNode = 0;
         this.zoomedNodesStack = [];
-        this.selectedNode = 0;
+        this.selectedNode = -1;
         this.frameByEl = new WeakMap();
         this.frameEls.clear();
     }
@@ -448,7 +448,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
             this.el.querySelector('.frames-group:empty') ||
             document.createElement('div');
         const nodes = this.tree.nodes;
-        const selectedId = nodes[this.selectedNode];
+        const selectedId = this.selectedNode !== -1 ? nodes[this.selectedNode] : -1;
         let maxDepth = 0;
 
         // add / update frame elements

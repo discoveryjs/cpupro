@@ -81,6 +81,8 @@
 .discovery-nav > .full-page-mode {
     background-color: rgba(78, 187, 255, .3);
     border-radius: 0;
+    clip-path: rect(1px calc(100% - 1px) auto auto);
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
 .discovery-nav > .full-page-mode:hover {
     background-color: rgba(78, 187, 255, .2);
