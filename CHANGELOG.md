@@ -3,13 +3,14 @@
 - Report
     - Added support for [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces)
     - Added support for [V8 log](https://v8.dev/docs/profile) preprocessed with [`--preprocess`](https://v8.dev/docs/profile#web-ui-for---prof)
+    - Changed the terminology: replaced "area" with "category"
     - Reworked the layout and UX of the main page
     - Added "Try demo CPU profile" button when no CPU profile is loaded
     - Adjusted call frame reference computation by omitting line and column when they are not specified or less than zero
-    - Added Electron's area
-    - Fixed the placement of bundle modules to be placed in the "script" area instead of the "bundle" area
+    - Added Electron's category
+    - Fixed the placement of bundle modules to be placed in the "script" category instead of the "bundle" category
     - Implemented permanent colors and a fixed timeline order for areas and module types
-    - Changed flame diagram colors to match area colors and module types
+    - Changed flame diagram colors to match category colors and module types
     - Implemented GC nodes reparenting to the script node
     - Improved the display of regular expressions, particularly long ones
     - Fixed the extraction of a CPU profile from Chrome tracing when it contains several profiles
