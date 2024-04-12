@@ -49,7 +49,7 @@ const defaultDetailsContent = [
         view: 'block',
         content: {
             view: 'switch',
-            data: 'node.value',
+            data: 'value or node.value',
             content: [
                 { when: 'marker("package")', content: [
                     'package-badge'
@@ -112,20 +112,28 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     let selectedNodeIndex = -1;
     let zoomedNodeIndex = -1;
     const detailsEl = utils.createElement('div', 'view-flamechart__details', 'test');
-    const renderDetails = () => {
+    const renderDetails = (force) => {
         const nextDetailsNodeIndex = selectedNodeIndex !== -1
             ? selectedNodeIndex
             : zoomedNodeIndex > 0
                 ? zoomedNodeIndex
                 : -1;
 
-        if (nextDetailsNodeIndex !== detailsNodeIndex) {
+        if (nextDetailsNodeIndex !== detailsNodeIndex || force) {
             detailsNodeIndex = nextDetailsNodeIndex;
 
             if (detailsNodeIndex >= 0) {
                 detailsEl.classList.add('has-details');
                 detailsEl.innerHTML = '';
-                this.render(detailsEl, detailsContent, timings.getTimings(detailsNodeIndex), context);
+
+                this.render(
+                    detailsEl,
+                    detailsContent,
+                    selectedNodeIndex !== -1
+                        ? timings.getValueTimings(tree.nodes[detailsNodeIndex])
+                        : timings.getTimings(detailsNodeIndex),
+                    context
+                );
             } else {
                 detailsEl.classList.remove('has-details');
             }
@@ -154,6 +162,8 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     const { selfTimes, nestedTimes } = timings;
     const unsubscribeTimings = timings.on(utils.debounce(() => {
         chart.resetValues();
+        renderDetails(true);
+
         if (lockScrolling) {
             el.classList.add('disable-scrolling');
         }

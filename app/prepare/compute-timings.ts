@@ -186,6 +186,27 @@ export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
             totalTime: selfTime + nestedTime
         };
     }
+
+    getValueTimings(valueIndex: number) {
+        const { tree, selfTimes, nestedTimes } = this;
+        const { nested } = tree;
+        let selfTime = 0;
+        let nestedTime = 0;
+
+        for (const index of tree.selectNodes(valueIndex, true)) {
+            selfTime += selfTimes[index];
+            if (nested[index] === 0) {
+                nestedTime += nestedTimes[index];
+            }
+        }
+
+        return {
+            value: tree.dictionary[valueIndex],
+            selfTime,
+            nestedTime,
+            totalTime: selfTime + nestedTime
+        };
+    }
 }
 
 export type DictionaryTiminig<T> = {
