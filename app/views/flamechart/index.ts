@@ -295,13 +295,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     resetValues() {
         this.#epoch++;
-        this.zoomFrame(this.nodesValue[this.zoomedNode] > 0 ? this.zoomedNode : 0);
         this.scheduleRender();
     }
 
     #computeChildren(nodeIdx: number, nodeX: number) {
-        const { nodesX, nodesValue, nodesDepth, children, childrenOffset, childrenComputed } = this;
-        const { dictionary, nodes, subtreeSize } = this.tree;
+        const { nodesX, nodesValue, children, childrenOffset, childrenComputed } = this;
+        const { subtreeSize } = this.tree;
         const getValue = this.#getValue;
 
         // if children is not computed before, then sort them and calculate x and width
@@ -349,7 +348,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
             this.childrenComputed.fill(0);
             this.nodesValue[0] = this.#getValue(0);
 
-            if (this.zoomedNode) {
+            if (this.zoomedNode > 0) {
                 for (const ancestorIdx of [...this.tree.ancestors(this.zoomedNode)].reverse()) {
                     this.#computeChildren(ancestorIdx, this.nodesX[ancestorIdx]);
                 }
@@ -543,6 +542,10 @@ export class FlameChart<T> extends EventEmitter<Events> {
             } else {
                 while (this.zoomedNode !== 0 && this.nodesValue[this.zoomedNode] === 0 && this.zoomedNodesStack.length > 0) {
                     this.zoomedNode = this.zoomedNodesStack.pop();
+                }
+
+                if (this.nodesValue[this.zoomedNode] === 0) {
+                    this.zoomedNode = 0;
                 }
             }
         } else if (this.zoomedNode !== 0) {
