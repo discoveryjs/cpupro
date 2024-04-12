@@ -9,6 +9,7 @@
     max-height: 50vh;
     max-height: min(40vh, 300px);
     overflow: clip;
+    contain: strict;
 }
 
 .view-flamechart__content {
@@ -17,6 +18,8 @@
     padding-bottom: var(--details-height);
     overflow: hidden;
     overflow-y: auto;
+    contain: strict;
+    will-change: padding;
 }
 .view-flamechart.lock-scrolling.disable-scrolling .view-flamechart__content {
     overflow: hidden;
@@ -91,7 +94,7 @@
 }
 .view-flamechart.fully-visible .view-flamechart__enable-scrolling-button {
     position: absolute;
-    bottom: calc(var(--details-height) + 4px);
+    bottom: calc(var(--details-height, 0px) + 4px);
     z-index: 10;
     background: var(--discovery-background-color);
     left: 50%;
@@ -102,6 +105,7 @@
     opacity: .75;
     cursor: pointer;
     transition: opacity .2s ease-in-out;
+    contain: style layout paint;
 }
 .view-flamechart.fully-visible .view-flamechart__enable-scrolling-button:hover {
     opacity: .95;

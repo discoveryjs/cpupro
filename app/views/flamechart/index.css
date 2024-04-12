@@ -14,6 +14,8 @@
     transition: var(--transition);
     transition-delay: var(--transition-delay);
     transition-property: opacity;
+    will-change: opacity;
+    contain: layout size style;
 }
 .flamechart.first-enter .frames-group {
     --transition-duration: 125ms;
@@ -45,6 +47,7 @@
     );
     transition: var(--transition);
     transition-property: left, right, opacity;
+    will-change: left, right, opacity;
 }
 .flamechart .frame:hover {
     --fill-opacity: .5;
