@@ -433,7 +433,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const xScale = 1 / (this.zoomEnd - this.zoomStart);
         const xOffset = this.zoomStart * xScale;
         const firstEnter = !this.frameEls.size;
-        const removeFrames = new Set(this.frameEls.keys());
+        const removeFrameNodeIndecies = new Set(this.frameEls.keys());
 
         const t = Date.now();
         const visibleFrames = this.getVisibleFrames(
@@ -443,9 +443,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         );
         console.log('getVisibleFrames', Date.now() - t);
 
-        const enterFramesGroupEl =
-            this.el.querySelector('.frames-group:empty') ||
-            document.createElement('div');
+        const enterFramesBuffer = document.createDocumentFragment();
         const nodes = this.tree.nodes;
         const selectedId = this.selectedNode !== -1 ? nodes[this.selectedNode] : -1;
         let maxDepth = 0;
@@ -484,7 +482,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 labelEl.className = 'frame-label';
                 labelEl.textContent = frame.name;
 
-                enterFramesGroupEl.append(frameEl);
+                enterFramesBuffer.append(frameEl);
                 this.frameByEl.set(frameEl, frame);
                 this.frameEls.set(frame.nodeIndex, frameEl);
             } else {
@@ -494,24 +492,31 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 frameEl.style.setProperty('--x1', x1.toFixed(8));
             }
 
-            removeFrames.delete(frame.nodeIndex);
+            removeFrameNodeIndecies.delete(frame.nodeIndex);
         }
 
         // remove non-visible frames
-        for (const frame of removeFrames) {
-            this.frameEls.get(frame)?.remove();
-            this.frameEls.delete(frame);
+        for (const nodeIndex of removeFrameNodeIndecies) {
+            this.frameEls.get(nodeIndex)?.remove();
+            this.frameEls.delete(nodeIndex);
         }
-
-        // finalize enter frames group element
-        enterFramesGroupEl.className = 'frames-group frames-group_init-enter-state';
-        setTimeout(() => enterFramesGroupEl.classList.remove('frames-group_init-enter-state'), 1);
-        this.el.append(enterFramesGroupEl);
 
         // update chart level state
         this.el.classList.toggle('first-enter', firstEnter);
         this.el.style.setProperty('--max-depth', String(maxDepth));
         this.el.style.setProperty('--width-scale', widthScale.toFixed(8));
+
+        // finalize enter frames group element
+        if (enterFramesBuffer.firstChild !== null) {
+            const enterFramesGroupEl =
+                this.el.querySelector('.frames-group:empty') ||
+                document.createElement('div');
+
+            enterFramesGroupEl.append(enterFramesBuffer);
+            enterFramesGroupEl.className = 'frames-group frames-group_init-enter-state';
+            setTimeout(() => enterFramesGroupEl.classList.remove('frames-group_init-enter-state'), 1);
+            this.el.prepend(enterFramesGroupEl);
+        }
     }
 
     zoomFrame(nodeIndex = 0, toggle = false) {
