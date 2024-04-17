@@ -33,7 +33,7 @@ discovery.page.define('module', {
             view: 'expand',
             expanded: true,
             className: 'trigger-outside',
-            header: 'text:"Nested timings"',
+            header: 'text:"Nested time distribution"',
             content: 'nested-timings-tree:{ subject: @, tree: #.data.modulesTree, timings: #.data.modulesTimingsFiltered }'
         },
 

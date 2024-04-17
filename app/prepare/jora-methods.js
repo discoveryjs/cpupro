@@ -231,40 +231,41 @@ const methods = {
 
         return Array.from(bins);
     },
-    nestedTimings(tree, subject, treeTimings2) {
-        const tree2 = treeTimings2.tree;
-        const sampleIdToNode = tree.sampleIdToNode;
-        const sampleIds = new Set(sampleIdToNode);
-        const selected = new Set();
-        const visited = new Set();
-        const tree2dict = new Uint32Array(tree2.dictionary.length);
+    nestedTimings(treeTimings, subject, structureTree) {
+        const timingsTree = treeTimings.tree;
+        const tree = structureTree || timingsTree;
         const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
+        const dictTimings = new Uint32Array(timingsTree.dictionary.length);
+        const nodes = tree.nodes;
+        const sampleIdToNode = tree.sampleIdToNode;
+        const nodesMask = new Uint32Array(tree.nodes.length);
+        const visited = new Set();
         const result = [];
 
-        for (const nodeIndex of tree.selectNodes(subject)) {
+        for (const nodeIndex of tree.selectNodes(selfId)) {
             for (const subtreeNodeIndex of tree.subtree(nodeIndex)) {
-                if (sampleIds.has(subtreeNodeIndex) && tree.nodes[subtreeNodeIndex] !== selfId) {
-                    selected.add(subtreeNodeIndex);
+                if (nodes[subtreeNodeIndex] !== selfId) {
+                    nodesMask[subtreeNodeIndex] = 1;
                 }
             }
         }
 
         for (let i = 0; i < sampleIdToNode.length; i++) {
-            if (selected.has(sampleIdToNode[i])) {
-                const nodeIndex = tree2.sampleIdToNode[i];
+            if (nodesMask[sampleIdToNode[i]]) {
+                const nodeIndex = timingsTree.sampleIdToNode[i];
 
                 if (!visited.has(nodeIndex)) {
-                    tree2dict[tree2.nodes[nodeIndex]] += treeTimings2.selfTimes[nodeIndex];
+                    dictTimings[timingsTree.nodes[nodeIndex]] += treeTimings.selfTimes[nodeIndex];
                     visited.add(nodeIndex);
                 }
             }
         }
 
-        for (let i = 0; i < tree2.dictionary.length; i++) {
-            if (tree2dict[i] > 0) {
+        for (let i = 0; i < dictTimings.length; i++) {
+            if (dictTimings[i] > 0) {
                 result.push({
-                    entry: tree2.dictionary[i],
-                    selfTime: tree2dict[i]
+                    entry: timingsTree.dictionary[i],
+                    selfTime: dictTimings[i]
                 });
             }
         }

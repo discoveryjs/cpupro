@@ -28,6 +28,14 @@ discovery.page.define('category', {
         },
 
         {
+            view: 'expand',
+            expanded: false,
+            className: 'trigger-outside',
+            header: 'text:"Nested time distribution"',
+            content: 'nested-timings-tree:{ subject: @, tree: #.data.categoriesTree, timings: #.data.functionsTimingsFiltered }'
+        },
+
+        {
             view: 'context',
             when: 'name = "script"',
             content: {

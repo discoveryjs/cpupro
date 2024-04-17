@@ -155,7 +155,7 @@ discovery.page.define('function', {
             view: 'expand',
             expanded: true,
             className: 'trigger-outside',
-            header: 'text:"Nested timings"',
+            header: 'text:"Nested time distribution"',
             content: 'nested-timings-tree:{ subject: @, tree: #.data.functionsTree, timings: #.data.functionsTimingsFiltered }'
         },
 
