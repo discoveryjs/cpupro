@@ -172,6 +172,7 @@ export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
 
     const buildTreeStart = Date.now();
     const callFramesTree = new CallTree(callFrames, nodeById, new Uint32Array(nodesCount));
+
     buildCallFrameTree(
         nodes[0].id,
         nodes,
@@ -180,6 +181,8 @@ export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
         callFramesTree.parent,
         callFramesTree.subtreeSize
     );
+    callFramesTree.computeValueNodes();
+
     if (TIMINGS) {
         console.log('>> buildCallFrameTree()', Date.now() - buildTreeStart);
     }

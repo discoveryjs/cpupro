@@ -37,6 +37,10 @@ export class CallTree<T> {
     subtreeSize: NumericArray;    // nodeIndex -> number of nodes in subtree, 0 when no children
     nested: NumericArray;         // nodeIndex -> index of nodes
 
+    valueNodes: NumericArray;
+    valueNodesOffset: NumericArray;
+    valueNodesLength: NumericArray;
+
     root: Entry<T>;
     entryRefMap: Map<number, WeakRef<Entry<T>>>;
     childrenRefMap: Map<number, WeakRef<Entry<T>[]>>;
@@ -58,6 +62,10 @@ export class CallTree<T> {
         this.subtreeSize = subtreeSize || new Uint32Array(nodes.length);
         this.nested = nested || new Uint32Array(nodes.length);
 
+        this.valueNodes = new Uint32Array(nodes.length);
+        this.valueNodesOffset = new Uint32Array(dictionary.length);
+        this.valueNodesLength = new Uint32Array(dictionary.length);
+
         this.entryRefMap = new Map();
         this.childrenRefMap = new Map();
 
@@ -66,6 +74,33 @@ export class CallTree<T> {
             enumerable: true,
             get: () => this.getEntry(0)
         });
+    }
+
+    computeValueNodes() {
+        const { nodes, valueNodes, valueNodesLength, valueNodesOffset } = this;
+
+        // compute length
+        for (let i = 0; i < nodes.length; i++) {
+            valueNodesLength[nodes[i]]++;
+        }
+
+        // compute offsets
+        for (let i = 0, offset = 0; i < valueNodesLength.length; i++) {
+            valueNodesOffset[i] = offset;
+            offset += valueNodesLength[i];
+        }
+
+        // fill valueNodes
+        for (let i = 0; i < valueNodes.length; i++) {
+            valueNodes[valueNodesOffset[nodes[i]]++] = i;
+        }
+
+        // restore offsets
+        for (let i = 0; i < valueNodesLength.length; i++) {
+            valueNodesOffset[i] -= valueNodesLength[i];
+        }
+
+        return this;
     }
 
     createEntry(nodeIndex: number): Entry<T> {
@@ -149,20 +184,20 @@ export class CallTree<T> {
     }
 
     *selectNodes(value: number | T, includeNested = false) {
-        const { dictionary, nodes, subtreeSize } = this;
+        const { dictionary, nested, valueNodes, valueNodesOffset, valueNodesLength } = this;
 
         if (typeof value !== 'number') {
             value = dictionary.indexOf(value);
         }
 
-        for (let i = 0; i < nodes.length; i++) {
-            if (nodes[i] === value) {
-                yield i;
+        const start = valueNodesOffset[value];
+        const end = start + valueNodesLength[value];
 
-                // skip subtree since nested nodes are not accepted
-                if (!includeNested) {
-                    i += subtreeSize[i];
-                }
+        for (let i = start; i < end; i++) {
+            const nodeIndex = valueNodes[i];
+
+            if (includeNested || nested[nodeIndex] === 0) {
+                yield nodeIndex;
             }
         }
     }

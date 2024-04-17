@@ -212,18 +212,24 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
         nextSibling
     );
 
+    const createTreeStart = Date.now();
+    const tree = new CallTree(dictionary, sourceToNode, nodes, parent, subtreeSize, nested)
+        .computeValueNodes();
+
     if (TIMINGS) {
         console.info(
             '---> buildTree()',
             rollupTreeStart - initTimeStart, '+',
             finalizeStart - rollupTreeStart, '+',
-            Date.now() - finalizeStart,
+            createTreeStart - finalizeStart, '+',
+            Date.now() - createTreeStart,
             '=',
             Date.now() - initTimeStart, 'ms'
         );
     }
 
-    return new CallTree(dictionary, sourceToNode, nodes, parent, subtreeSize, nested);
+
+    return tree;
 }
 
 function buildCallTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
