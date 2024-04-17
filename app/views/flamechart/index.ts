@@ -13,6 +13,7 @@ type SetDataOptions = {
     childrenSort?: true | 'name' | 'value' | ((a: number, b: number) => number);
 }
 type Events = {
+    render<T>(rootEl: Element | null, rootFrame: Frame<T> | null, rootValue: number): void;
     select(nodeIndex: number, prevNodeIndex: number): void;
     zoom(nodeIndex: number, start: number, end: number): void;
     'frame:click'(nodeIndex: number, element: FrameElement, event: MouseEvent): void;
@@ -524,6 +525,13 @@ export class FlameChart<T> extends EventEmitter<Events> {
             setTimeout(() => enterFramesGroupEl.classList.remove('frames-group_init-enter-state'), 1);
             this.el.prepend(enterFramesGroupEl);
         }
+
+        // emit render event
+        this.emit('render',
+            this.frameEls.get(0)?.firstElementChild || null,
+            this.frameByEl.get(this.frameEls.get(0)) || null,
+            this.nodesValue[0]
+        );
     }
 
     zoomFrame(nodeIndex = 0, toggle = false) {

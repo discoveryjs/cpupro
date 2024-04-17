@@ -12,6 +12,21 @@ function findFirstPageContentChild(el) {
     return cursor;
 }
 
+const defaultRootContent = {
+    view: 'block',
+    className: 'root-content',
+    content: [
+        'text:root.name',
+        'duration:{ time: rootValue, total: #.data.totalTime }',
+        {
+            view: 'block',
+            className: 'zoom-timings',
+            when: 'zoomedNode.node != rootNode.node',
+            content: 'duration:{ time: zoomedNode.totalTime, total: #.data.totalTime }'
+        }
+    ]
+};
+
 const defaultTooltipContent = [
     {
         view: 'switch',
@@ -90,11 +105,13 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         timings,
         timingsMap,
         lockScrolling,
+        rootContent = defaultRootContent,
         tooltipContent = defaultTooltipContent,
         detailsContent = defaultDetailsContent
     } = config;
     const contentEl = utils.createElement('div', 'view-flamechart__content');
     const destroyEl = utils.createElement('destroy-flamechart');
+    const getNodeTimings = (nodeIndex) => timings.getTimings(timingsMap ? timingsMap[nodeIndex] : nodeIndex);
     const enableScrolling = (e) => {
         if (e.which !== 3 && el.classList.contains('fully-visible')) {
             setTimeout(() => el.classList.remove('disable-scrolling'), 0);
@@ -106,7 +123,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     }, 'Start interacting with the chart or click the button to enable scrolling');
 
     const tooltip = new Tooltip(discovery, (el, nodeIndex) =>
-        this.render(el, tooltipContent, timings.getTimings(timingsMap ? timingsMap[nodeIndex] : nodeIndex), context)
+        this.render(el, tooltipContent, getNodeTimings(nodeIndex), context)
     );
 
     let detailsNodeIndex = -1;
@@ -132,7 +149,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
                     detailsContent,
                     selectedNodeIndex !== -1
                         ? timings.getValueTimings(tree.nodes[detailsNodeIndex])
-                        : timings.getTimings(timingsMap ? timingsMap[detailsNodeIndex] : detailsNodeIndex),
+                        : getNodeTimings(detailsNodeIndex),
                     context
                 );
             } else {
@@ -142,6 +159,17 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     };
 
     const chart = new FlameChart(contentEl)
+        .on('render', (rootEl, rootFrame, rootValue) => {
+            if (rootEl !== null && rootContent) {
+                rootEl.innerHTML = '';
+                this.render(rootEl, rootContent, {
+                    root: rootFrame,
+                    rootValue,
+                    rootNode: getNodeTimings(0),
+                    zoomedNode: getNodeTimings(zoomedNodeIndex !== -1 ? zoomedNodeIndex : 0)
+                }, context);
+            }
+        })
         .on('select', (nodeIndex) => {
             selectedNodeIndex = nodeIndex;
             renderDetails();

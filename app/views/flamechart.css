@@ -25,6 +25,34 @@
     overflow: hidden;
 }
 
+.view-flamechart .flamechart .root-content {
+    display: flex;
+    gap: 8px;
+}
+.view-flamechart .flamechart .root-content > .view-duration::before {
+    content: '›';
+    padding-right: 2px;
+    color: #888;
+}
+.view-flamechart .flamechart .root-content .fraction {
+    font-size: inherit;
+    width: auto;
+}
+.view-flamechart .flamechart .root-content .zoom-timings {
+    display: inline-flex;
+}
+.view-flamechart .flamechart .root-content .zoom-timings::before {
+    content: '›';
+    color: #888;
+}
+.view-flamechart .flamechart .root-content .zoom-timings .view-duration {
+    margin-left: 1ex;
+}
+.view-flamechart .flamechart .root-content .zoom-timings .view-duration::before {
+    content: 'zoom:';
+    color: #888;
+}
+
 .view-flamechart__details {
     position: sticky;
     bottom: 0;
