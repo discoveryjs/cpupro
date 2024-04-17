@@ -96,6 +96,13 @@ discovery.page.define('category', {
                     }
                 }
             }
+        },
+
+        {
+            view: 'flamechart-expand',
+            tree: '=#.data.categoriesTree',
+            timings: '=#.data.categoriesTreeTimingsFiltered',
+            value: '='
         }
     ]
 });

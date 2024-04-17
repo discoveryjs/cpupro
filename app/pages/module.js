@@ -68,6 +68,13 @@ discovery.page.define('module', {
                     }
                 }
             }
+        },
+
+        {
+            view: 'flamechart-expand',
+            tree: '=#.data.modulesTree',
+            timings: '=#.data.modulesTreeTimingsFiltered',
+            value: '='
         }
     ]
 });

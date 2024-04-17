@@ -183,6 +183,13 @@ discovery.page.define('function', {
                     ]
                 }
             }
+        },
+
+        {
+            view: 'flamechart-expand',
+            tree: '=#.data.functionsTree',
+            timings: '=#.data.functionsTreeTimingsFiltered',
+            value: '='
         }
     ]
 });

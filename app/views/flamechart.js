@@ -88,6 +88,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     const {
         tree,
         timings,
+        timingsMap,
         lockScrolling,
         tooltipContent = defaultTooltipContent,
         detailsContent = defaultDetailsContent
@@ -105,7 +106,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     }, 'Start interacting with the chart or click the button to enable scrolling');
 
     const tooltip = new Tooltip(discovery, (el, nodeIndex) =>
-        this.render(el, tooltipContent, timings.getTimings(nodeIndex), context)
+        this.render(el, tooltipContent, timings.getTimings(timingsMap ? timingsMap[nodeIndex] : nodeIndex), context)
     );
 
     let detailsNodeIndex = -1;
@@ -131,7 +132,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
                     detailsContent,
                     selectedNodeIndex !== -1
                         ? timings.getValueTimings(tree.nodes[detailsNodeIndex])
-                        : timings.getTimings(detailsNodeIndex),
+                        : timings.getTimings(timingsMap ? timingsMap[detailsNodeIndex] : detailsNodeIndex),
                     context
                 );
             } else {
@@ -171,7 +172,9 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
     chart.setData(tree, {
         name: value => value.name || value.packageRelPath,
-        value: nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex],
+        value: timingsMap
+            ? nodeIndex => selfTimes[timingsMap[nodeIndex]] + nestedTimes[timingsMap[nodeIndex]]
+            : nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex],
         childrenSort: true
     });
 

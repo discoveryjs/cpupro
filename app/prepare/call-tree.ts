@@ -6,18 +6,6 @@ type Entry<T> = {
     children?: Entry<T>[];
 };
 
-type TreeMemory = {
-    buffer: ArrayBuffer;
-    sourceDictMap: Uint32Array;
-    sourceNodesMap: Uint32Array;
-    nodes: Uint32Array;
-    parent: Uint32Array;
-    subtreeSize: Uint32Array;
-    nested: Uint32Array;
-    compute1: Uint32Array;
-    compute2: Uint32Array;
-}
-
 type NumericArray =
     // | number[]
     // | Uint8Array
@@ -53,7 +41,6 @@ export class CallTree<T> {
     entryRefMap: Map<number, WeakRef<Entry<T>>>;
     childrenRefMap: Map<number, WeakRef<Entry<T>[]>>;
 
-
     constructor(
         dictionary: T[],
         sourceIdToNode: NumericArray,
@@ -66,7 +53,7 @@ export class CallTree<T> {
         this.sourceIdToNode = sourceIdToNode;
         this.sampleIdToNode = NULL_ARRAY; // setting up later
 
-        this.nodes = nodes || new Uint32Array(dictionary.length);
+        this.nodes = nodes || new Uint32Array(dictionary.length); // TODO: fixme, creating nodes array looks odd
         this.parent = parent || new Uint32Array(nodes.length);
         this.subtreeSize = subtreeSize || new Uint32Array(nodes.length);
         this.nested = nested || new Uint32Array(nodes.length);
@@ -130,6 +117,29 @@ export class CallTree<T> {
         }
 
         return children;
+    }
+    getValueSubtreesSize(value: number | T, includeSelf = true) {
+        const { dictionary, nodes, subtreeSize } = this;
+        let result = 0;
+        let count = 0;
+
+        if (typeof value !== 'number') {
+            value = dictionary.indexOf(value);
+        }
+
+        for (let i = 0; i < nodes.length; i++) {
+            if (nodes[i] === value) {
+                const size = subtreeSize[i];
+
+                result += size;
+                count++;
+
+                // skip subtree scanning
+                i += size;
+            }
+        }
+
+        return includeSelf ? result + count : result;
     }
 
     *map(nodeIndexes: Iterable<number>) {
@@ -196,6 +206,46 @@ export class CallTree<T> {
 
         while (nodeIndex < end) {
             yield ++nodeIndex;
+        }
+    }
+}
+
+export class FocusCallTree<T> extends CallTree<T> {
+    timingsMap: Uint32Array;
+
+    constructor(tree: CallTree<T>, value: number | T) {
+        const outputTreeSize = tree.getValueSubtreesSize(value) + 1; // +1 for new root node
+
+        super(tree.dictionary, tree.sourceIdToNode.slice(), new Uint32Array(outputTreeSize));
+
+        this.timingsMap = new Uint32Array(outputTreeSize);
+        this.nodes[0] = tree.nodes[0];
+        this.subtreeSize[0] = outputTreeSize - 1;
+
+        let offset = 1;
+        for (const nodeIndex of tree.selectNodes(value)) {
+            const size = tree.subtreeSize[nodeIndex];
+            const newNodeIndex = offset++;
+            const moveDelta = newNodeIndex - nodeIndex;
+
+            this.timingsMap[newNodeIndex] = nodeIndex;
+
+            if (size > 0) {
+                const subtreeStart = nodeIndex;
+                const subtreeEnd = subtreeStart + size + 1;
+
+                for (let i = 1; i <= size; i++) {
+                    this.timingsMap[offset] = nodeIndex + i;
+                    this.parent[offset] = tree.parent[nodeIndex + i] + moveDelta;
+                    offset++;
+                }
+
+                this.subtreeSize.set(tree.subtreeSize.subarray(subtreeStart, subtreeEnd), newNodeIndex);
+                this.nested.set(tree.nested.subarray(subtreeStart, subtreeEnd), newNodeIndex);
+                this.nodes.set(tree.nodes.subarray(subtreeStart, subtreeEnd), newNodeIndex);
+            } else {
+                this.nodes[newNodeIndex] = tree.nodes[nodeIndex];
+            }
         }
     }
 }

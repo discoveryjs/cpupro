@@ -1,0 +1,13 @@
+.flamechart-expand > .content {
+    margin-left: calc(1px - var(--discovery-page-padding-left));
+    margin-right: calc(1px - var(--discovery-page-padding-right));
+    margin-bottom: calc(1px - var(--discovery-page-padding-bottom));
+}
+.flamechart-expand > .content > .view-flamechart {
+    margin: 1px 0 0;
+    padding: 0;
+    --height: calc(100vh - 114px);
+    min-height: var(--height);
+    max-height: var(--height);
+    height: var(--height);
+}

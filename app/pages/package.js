@@ -75,6 +75,13 @@ discovery.page.define('package', {
                     }
                 }
             }
+        },
+
+        {
+            view: 'flamechart-expand',
+            tree: '=#.data.packagesTree',
+            timings: '=#.data.packagesTreeTimingsFiltered',
+            value: '='
         }
     ]
 });

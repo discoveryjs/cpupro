@@ -346,7 +346,14 @@ export class FlameChart<T> extends EventEmitter<Events> {
         if (this.#lastVisibleFramesEpoch !== this.#epoch) {
             this.#lastVisibleFramesEpoch = this.#epoch;
             this.childrenComputed.fill(0);
-            this.nodesValue[0] = this.#getValue(0);
+
+            // this.nodesValue[0] = this.#getValue(0);
+            this.#computeChildren(0, 0);
+            let rootValue = 0;
+            for (const childIndex of this.tree.children(0)) {
+                rootValue += this.nodesValue[childIndex];
+            }
+            this.nodesValue[0] = rootValue;
 
             if (this.zoomedNode > 0) {
                 for (const ancestorIdx of [...this.tree.ancestors(this.zoomedNode)].reverse()) {
