@@ -1,11 +1,16 @@
+const v8logSupport = false;
+
 module.exports = {
     name: 'CPU (pro)file',
     basedir: __dirname + '/app',
     darkmode: 'only',
     embed: true,
     upload: {
-        accept: ['.cpuprofile', '.devtools', '.json', '.jsonxl']
+        accept: v8logSupport
+            ? ['.cpuprofile', '.devtools', '.log', '.json', '.jsonxl']
+            : ['.cpuprofile', '.devtools', '.json', '.jsonxl']
     },
+    ...v8logSupport ? { encodings: './encodings' } : null,
     prepare: './prepare',
     data: './data',
     view: {
