@@ -66,13 +66,14 @@ type Node = {
 }
 
 export const vmState = [
-    'unknown',
+    'js',
     'garbage collector',
     'parser',
     'compiler bytecode',
     'compiler',
-    'unknown',
-    'external'
+    'other',
+    'external',
+    'idle'
 ];
 
 function findBalancePair(str: string, offset: number, pattern: string) {
