@@ -54,8 +54,14 @@ const descendantTree = {
                         }
                     },
                     // { view: 'total-time', when: 'children', data: 'totalTime' },
-                    'module-badge:node.value',
-                    'loc-badge:node.value'
+                    {
+                        view: 'context',
+                        when: 'node.value.id != +#.id',
+                        content: [
+                            'module-badge:node.value',
+                            'loc-badge:node.value'
+                        ]
+                    }
                 ]
             }
         }
@@ -107,8 +113,14 @@ const ancestorsTree = {
                             content: 'text:"Total time – the entire duration spent on the execution of a function. This includes both the \'self time\', which is the time taken by the function itself to execute its own code, and the \'nested time\', which is the time spent on executing all the other functions that are called from within this function"'
                         }
                     },
-                    'module-badge:node.value',
-                    'loc-badge:node.value'
+                    {
+                        view: 'context',
+                        when: 'node.value.id != +#.id',
+                        content: [
+                            'module-badge:node.value',
+                            'loc-badge:node.value'
+                        ]
+                    }
                 ]
             }
         }
