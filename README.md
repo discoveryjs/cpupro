@@ -19,7 +19,7 @@ Supported formats:
 
 Head to the [viewer on GitHub pages](https://lahmatiy.github.io/cpupro/), open a file in one of supported formats or drop it on the page.
 
-<img width="1267" alt="Demo" src="https://github.com/lahmatiy/cpupro/assets/270491/0aef6ef4-90af-460e-aba5-9fe09008852b">
+<img width="1267" alt="Demo" src="https://github.com/lahmatiy/cpupro/assets/270491/ea4d54b7-8d37-456a-8db3-628a1da7df3e">
 
 ### Scenario #2 – CLI
 
