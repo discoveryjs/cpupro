@@ -13,9 +13,9 @@
     flex-shrink: 0;
     display: grid;
     grid-template:
-        'title annotation'
-        'value value';
-    grid-template-columns: auto 1fr;
+        'title annotation hint'
+        'value value value';
+    grid-template-columns: auto 1fr auto;
     gap: 0 5px;
     padding: 4px 12px;
     min-width: 100px;
@@ -42,6 +42,24 @@
     font-size: 65%;
     color: #888;
     padding-left: .25ex;
+}
+.view-page-indicator > .hint {
+    grid-area: hint;
+    display: inline-block;
+    width: 24px;
+    height: 29px;
+    mask: url('../img/info.svg');
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: 14px;
+    background-color: #666;
+    margin-left: -6px;
+    margin-right: -12px;
+    margin-top: -4px;
+    margin-bottom: -16px;
+}
+.view-page-indicator > .hint:hover {
+    background-color: #aaa;
 }
 .view-page-indicator > .annotation {
     grid-area: annotation;

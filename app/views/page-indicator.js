@@ -1,3 +1,5 @@
+const { utils: { createElement } } = require('@discoveryjs/discovery');
+
 function ensureArray(value) {
     return Array.isArray(value) ? value : value ? [value] : [];
 }
@@ -38,15 +40,10 @@ discovery.view.define('page-indicator-group', function(el, config, data, context
 });
 
 discovery.view.define('page-indicator', function(el, config, data, context) {
-    const { title, value, unit, annotation, content } = config;
+    const { title, value, unit, annotation, content, hint } = config;
 
-    const titleEl = document.createElement('span');
-    const valueEl = document.createElement('span');
-
-    titleEl.className = 'title';
-    valueEl.className = 'value';
-
-    titleEl.textContent = title;
+    const titleEl = createElement('span', 'title', title);
+    const valueEl = createElement('span', 'value');
 
     if (content) {
         discovery.view.render(valueEl, content, data, context);
@@ -56,10 +53,21 @@ discovery.view.define('page-indicator', function(el, config, data, context) {
 
     el.append(titleEl, valueEl);
 
-    if (annotation) {
-        const annotationEl = document.createElement('span');
+    if (hint) {
+        const hintEl = createElement('span', 'hint');
 
-        annotationEl.className = 'annotation';
+        this.tooltip(hintEl, {
+            showDelay: true,
+            className: 'hint-tooltip',
+            ...typeof hint === 'object' && !Array.isArray(hint) && !hint.view
+                ? hint
+                : { content: hint }
+        }, data, context);
+        el.append(hintEl);
+    }
+
+    if (annotation) {
+        const annotationEl = createElement('span', 'annotation');
 
         this.render(annotationEl, annotation, data, context);
         el.append(annotationEl);

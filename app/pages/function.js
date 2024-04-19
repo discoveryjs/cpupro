@@ -36,22 +36,12 @@ const descendantTree = {
                         content: 'text:"×" + $'
                     },
                     {
-                        view: 'self-time',
-                        tooltip: {
-                            showDelay: true,
-                            className: 'hint-tooltip',
-                            content: 'text:"Self time – the time spent on executing the code of a function, not counting the time taken by other functions that it might call"'
-                        }
+                        view: 'self-time'
                     },
                     {
                         view: 'nested-time',
                         data: 'nestedTime',
-                        whenData: true,
-                        tooltip: {
-                            showDelay: true,
-                            className: 'hint-tooltip',
-                            content: 'text:"Nested time – the time accounted for the execution of other functions that are called from within a given function, but not including the time it takes to run the original function\'s own code"'
-                        }
+                        whenData: true
                     },
                     // { view: 'total-time', when: 'children', data: 'totalTime' },
                     {
@@ -106,12 +96,7 @@ const ancestorsTree = {
                         content: 'text:"×" + $'
                     },
                     {
-                        view: 'total-time',
-                        tooltip: {
-                            showDelay: true,
-                            className: 'hint-tooltip',
-                            content: 'text:"Total time – the entire duration spent on the execution of a function. This includes both the \'self time\', which is the time taken by the function itself to execute its own code, and the \'nested time\', which is the time spent on executing all the other functions that are called from within this function"'
-                        }
+                        view: 'total-time'
                     },
                     {
                         view: 'context',

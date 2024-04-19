@@ -1,4 +1,9 @@
 const delim = '<span class="num-delim"></span>';
+const definitions = {
+    selfTime: '#### Self time\n\nThe time spent executing a function\'s own code, excluding any time used by other functions it calls.',
+    nestedTime: '#### Nested time\n\nThe time accounted for the execution of functions that are called by a given function, excluding the time taken to execute the original function\'s own code itself.',
+    totalTime: '#### Total time\n\nThe complete time taken to execute a function. It includes both \'self time\', which is the time the function spends executing its own code, and \'nested time\', which is the time spent executing all other functions that are called from within this function.'
+};
 
 function formatDuration(time) {
     time /= 1000;
@@ -12,7 +17,7 @@ function formatDuration(time) {
     return `${number}${delim}ms`;
 }
 
-function createRender(getter) {
+function createRender(slug, getter) {
     return function render(el, config, data, context) {
         const time = typeof data === 'number' ? data : getter(data);
         const valueEl = document.createElement('span');
@@ -26,6 +31,15 @@ function createRender(getter) {
         valueEl.innerHTML = unit ? value.slice(0, -unit.length) : value;
         el.append(valueEl);
 
+        this.tooltip(el, {
+            showDelay: true,
+            className: 'hint-tooltip',
+            content: {
+                view: 'md',
+                source: definitions[slug]
+            }
+        });
+
         if (time) {
             const fractionEl = document.createElement('span');
             fractionEl.className = 'fraction';
@@ -35,6 +49,6 @@ function createRender(getter) {
     };
 }
 
-discovery.view.define('self-time', createRender(data => data?.selfTime), { tag: 'span' });
-discovery.view.define('nested-time', createRender(data => data?.totalTime - data?.selfTime), { tag: 'span' });
-discovery.view.define('total-time', createRender(data => data?.totalTime), { tag: 'span' });
+discovery.view.define('self-time', createRender('selfTime', data => data?.selfTime), { tag: 'span' });
+discovery.view.define('nested-time', createRender('nestedTime', data => data?.totalTime - data?.selfTime), { tag: 'span' });
+discovery.view.define('total-time', createRender('totalTime', data => data?.totalTime), { tag: 'span' });

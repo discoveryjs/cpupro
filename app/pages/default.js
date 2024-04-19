@@ -56,6 +56,7 @@ const pageIndicators = {
         {
             className: '=`runtime ${runtime.code}`',
             title: 'Runtime',
+            hint: 'md:"#### Runtime\\n\\nThe runtime is heuristically determined based on modules identified within the profile."',
             value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
         },
         {
@@ -63,10 +64,12 @@ const pageIndicators = {
             content: [
                 {
                     title: 'Samples',
+                    hint: 'md{ source: "#### Samples\\n\\nThe total number of samples captured during the profiling session.\\n\\nEach sample represents the CPU\'s state, including the call stack, at\xa0a\xa0specific time interval, revealing which functions are executing at each point.\\n\\nFor efficiency, CPUPRO merges sequentially identical samples, reducing the workload of processing samples.\\n\\n- Captured samples: `{{#.data.sourceInfo.samples}}`\\n- Deduplicated samples: `{{#.data.samples.size()}}`" }',
                     value: '=sourceInfo.samples'
                 },
                 {
                     title: 'Sampling interval',
+                    hint: 'md:"#### Sampling interval\\n\\nThe median duration between consecutive samples recorded during profiling. This metric offers an estimate of the average frequency at which the CPU\'s state is captured, reflecting the profiler\'s temporal resolution.\\n\\nIn V8, you can set the sampling interval at the start of a CPU profiling session. Adjusting this interval helps balance the level of detail captured against the performance impact on the system."',
                     value: '=sourceInfo.samplesInterval',
                     unit: 'μs'
                 },
@@ -82,10 +85,12 @@ const pageIndicators = {
             content: [
                 {
                     title: 'Call tree nodes',
+                    hint: 'md:"#### Call tree nodes\\n\\nA **call tree** is a data structure that represents the hierarchy of function calls during the execution of a program. It demostrates the actual sequences of function calls that occurred during the profiling session.\\n\\nThe metric indicates **the size of the tree** (the number of leafs). Typically, the number of distinct functions is less than the call tree\'s size, reflecting multiple calls to the same functions from various parts of the program."',
                     value: '=sourceInfo.nodes'
                 },
                 {
                     title: 'Call frames',
+                    hint: 'md:"#### Call frames\\n\\nThe count of unique functions encountered during profiling. This metric helps identify the diversity of function executions regardless of their position in the call stacks.\\n\\nUniqueness is determined by attributes such as `scriptId`, `function name`, `url`, `line number`, and `column number`."',
                     value: '=callFrames.size()'
                 }
             ]

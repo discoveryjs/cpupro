@@ -40,6 +40,16 @@
 .hint-tooltip {
     max-width: 400px !important;
 }
+.hint-tooltip .view-markdown {
+    padding: 10px 8px;
+}
+.hint-tooltip .view-markdown .view-header:first-child {
+    margin: 0;
+    margin-top: -.2em;
+}
+.hint-tooltip .view-markdown :is(p, blockquote, ul) {
+    margin-top: .5em;
+}
 
 .view-badge {
     --discovery-view-badge-color: #bababa33;
