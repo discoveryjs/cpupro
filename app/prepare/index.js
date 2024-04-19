@@ -1,4 +1,4 @@
-import { isCPUProfile } from './cpuprofile.js';
+import { isCPUProfile } from './formats/cpuprofile.js';
 import { isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-proflog.js';
 import {
