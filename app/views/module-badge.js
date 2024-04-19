@@ -3,7 +3,7 @@ discovery.view.define('module-badge', {
     data: '(module or $).marker("module")',
     whenData: true,
     content: [
-        { when: 'object.package.type in ["script", "npm", "chrome-extension", "wasm", "node", "electron"]', content: {
+        { when: 'object.package.type in ["script", "npm", "chrome-extension", "wasm", "node", "deno", "electron"]', content: {
             view: 'badge',
             className: ({ object: { package: { type } } }) => `module module-type_${type}`,
             content: 'text-match:{ text, match: #.filter }',

@@ -30,6 +30,7 @@ export const typeColor: Record<PackageType, string> = {
     'wasm': '#9481ffa0',
     'regexp': '#8db2f8a0',
     'electron': '#9feaf9a0',
+    'deno': '#ffffffa0', // before node, because uses node modules as well
     'node': '#78b362a0',
     'internals': '#fcb69aa0',
     'program': '#edfdd1a0',

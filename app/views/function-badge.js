@@ -3,7 +3,7 @@ discovery.view.define('function-badge', {
     data: '(function or $).marker("function")',
     whenData: true,
     content: [
-        { when: 'object.module.package.type in ["script", "npm", "chrome-extension", "wasm", "node", "internals", "regexp"]', content: {
+        { when: 'object.module.package.type in ["script", "npm", "chrome-extension", "wasm", "node", "deno", "internals", "regexp"]', content: {
             view: 'badge',
             className: ({ object: { module: { package: { type } } } }) => `function function-type_${type}`,
             content: 'text-match:{ text, match: #.filter }',

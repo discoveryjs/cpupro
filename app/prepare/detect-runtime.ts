@@ -4,6 +4,7 @@ type RunTimeCode = keyof typeof runtimes;
 
 const runtimes = {
     nodejs: 'Node.js',
+    deno: 'Deno',
     chromium: 'Chromium',
     electron: 'Electron',
     unknown: 'Unknown'
@@ -13,10 +14,11 @@ export function detectRuntime(categories: CpuProCategory[], packages: CpuProPack
     const categoriesSet = new Set(categories.map(category => category.name));
     const code: RunTimeCode =
         categoriesSet.has('electron') ? 'electron'
-            : categoriesSet.has('node') ? 'nodejs'
-                : categoriesSet.has('chrome-extension') ||  packages.find(pkg => /^https?:/.test(pkg.path))
-                    ? 'chromium'
-                    : 'unknown';
+            : categoriesSet.has('deno') ? 'deno'
+                : categoriesSet.has('node') ? 'nodejs'
+                    : categoriesSet.has('chrome-extension') || packages.find(pkg => /^https?:/.test(pkg.path))
+                        ? 'chromium'
+                        : 'unknown';
 
     return {
         engine: 'V8',

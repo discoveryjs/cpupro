@@ -64,6 +64,7 @@ export type ModuleType =
     | 'internals'
     | 'bundle'
     | 'node'
+    | 'deno'
     | 'electron'
     | 'webpack/runtime'
     | 'chrome-extension'
@@ -88,6 +89,7 @@ export type PackageType =
     | 'internals'
     | 'npm'
     | 'node'
+    | 'deno'
     | 'electron'
     | 'webpack/runtime'
     | 'chrome-extension';

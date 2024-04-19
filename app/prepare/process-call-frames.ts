@@ -127,6 +127,15 @@ function resolvePackage(
             break;
         }
 
+        case 'deno': {
+            ref = '(deno)';
+            type = 'deno';
+            name = '(deno modules)';
+            path = 'ext:';
+
+            break;
+        }
+
         // case 'blink':
         // case 'v8':
         case 'webpack/runtime':
@@ -273,6 +282,13 @@ function resolveModule(
                 entry.type = protocol;
                 entry.path = url;
                 break;
+
+            case 'ext':
+                if (/^ext:(core|cli|runtime|deno)/.test(url)) {
+                    entry.type = 'deno';
+                    entry.path = url;
+                    break;
+                }
 
             default:
                 entry.type = `protocol-${protocol}`;

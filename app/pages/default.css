@@ -127,7 +127,7 @@
     letter-spacing: 1px;
     padding-bottom: 2px;
 }
-.page-default .view-page-indicators .runtime:is(.nodejs, .chromium, .electron, .unknown) .value::before {
+.page-default .view-page-indicators .runtime:is(.nodejs, .deno, .chromium, .electron, .unknown) .value::before {
     content: "";
     display: inline-block;
     vertical-align: baseline;
@@ -143,6 +143,12 @@
 }
 .page-default .view-page-indicators .runtime:is(.nodejs) .value::before {
     background-image: url("../img/runtime-nodejs.png");
+}
+.page-default .view-page-indicators .runtime:is(.deno) .value::before {
+    background-image: url("../img/runtime-deno.svg");
+    height: 1.3em;
+    margin-bottom: -.25em;
+    margin-right: 0.6ex;
 }
 .page-default .view-page-indicators .runtime:is(.chromium) .value::before {
     background-image: url("../img/runtime-chromium.svg");

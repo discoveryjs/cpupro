@@ -16,6 +16,7 @@
 
 .view-badge.package-type_script,
 .view-badge.package-type_node,
+.view-badge.package-type_deno,
 .view-badge.package-type_npm,
 .view-badge.package-type_chrome-extension,
 .view-badge.package-type_wasm {
@@ -23,6 +24,7 @@
 }
 .view-badge.package-type_script::before,
 .view-badge.package-type_node::before,
+.view-badge.package-type_deno::before,
 .view-badge.package-type_npm::before,
 .view-badge.package-type_chrome-extension::before,
 .view-badge.package-type_wasm::before {
@@ -42,6 +44,11 @@
 }
 .view-badge.package-type_node::before {
     background-image: url('../img/nodejs.png');
+}
+.view-badge.package-type_deno::before {
+    opacity: 1;
+    filter: brightness(.85);
+    background-image: url('../img/deno.svg');
 }
 .view-badge.package-type_npm::before {
     background-image: url('../img/npm.png');
