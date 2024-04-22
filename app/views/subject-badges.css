@@ -51,10 +51,8 @@
     background-repeat: no-repeat;
     background-position: left center;
     background-size: contain;
-    opacity: .9;
 }
 .subject-badge_type__script::before {
-    opacity: 1;
     filter: brightness(.85);
     background-image: url('../img/js.svg');
 }
@@ -62,7 +60,6 @@
     background-image: url('../img/nodejs.png');
 }
 .subject-badge_type__deno::before {
-    opacity: 1;
     filter: brightness(.85);
     background-image: url('../img/deno.svg');
 }
@@ -77,11 +74,10 @@
     background-image: url('../img/npm.png');
 }
 .discovery-root-darkmode .subject-badge_type__npm::before {
-    filter: contrast(.85) opacity(0.85);
+    filter: brightness(.9) contrast(.9);
     box-shadow: 0 0 0 1px rgba(0,0,0,0.65);
 }
 .subject-badge_type__jsr::before {
-    opacity: 1;
     filter: brightness(.9);
     background-image: url('../img/jsr.svg');
 }
@@ -93,5 +89,19 @@
 }
 .subject-badge_type__wasm::before {
     background-image: url('../img/wasm.png');
-    opacity: .8;
+}
+
+.subject-badge.package[data-version]::after,
+.subject-badge .prefix[data-version]::after {
+    content: attr(data-version);
+    display: inline-block;
+    padding-left: 1ex;
+    padding-bottom: calc(var(--badge-icon-top-bottom) - 2px);
+    max-width: 10ex;
+    vertical-align: middle;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    line-height: 12px;
+    font-size: 10px;
+    color: #999;
 }

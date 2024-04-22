@@ -7,7 +7,14 @@ discovery.view.define('package-badge', {
     }`,
     whenData: true,
     className: '=`package subject-badge subject-badge_type__${object | registry or type}`',
-    content: 'text-match'
+    content: 'text-match',
+    postRender(el, _, data) {
+        const version = data?.object?.version;
+
+        if (version) {
+            el.dataset.version = version;
+        }
+    }
 }, { tag: false });
 
 discovery.view.define('module-badge', {
