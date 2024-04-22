@@ -25,6 +25,8 @@
 .view-badge.function-type_node,
 .view-badge.function-type_deno,
 .view-badge.function-type_npm,
+.view-badge.function-type_jsr,
+.view-badge.function-type_denoland,
 .view-badge.function-type_chrome-extension,
 .view-badge.function-type_wasm {
     padding-left: var(--badge-padding-left);
@@ -34,6 +36,8 @@
 .view-badge.function-type_node::before,
 .view-badge.function-type_deno::before,
 .view-badge.function-type_npm::before,
+.view-badge.function-type_jsr::before,
+.view-badge.function-type_denoland::before,
 .view-badge.function-type_chrome-extension::before,
 .view-badge.function-type_wasm::before {
     content: '';
@@ -48,7 +52,9 @@
     opacity: .9;
 }
 .view-badge.function-type_script::before {
-    background-image: url('../img/js.png');
+    opacity: 1;
+    filter: brightness(.85);
+    background-image: url('../img/js.svg');
 }
 .view-badge.function-type_node::before {
     background-image: url('../img/nodejs.png');
@@ -63,6 +69,14 @@
 }
 .discovery-root-darkmode .view-badge.function-type_npm::before {
     filter: contrast(.75);
+}
+.view-badge.function-type_jsr::before {
+    opacity: 1;
+    filter: brightness(.9);
+    background-image: url('../img/jsr.svg');
+}
+.view-badge.function-type_denoland::before {
+    background-image: url('../img/deno.svg');
 }
 .view-badge.function-type_chrome-extension::before {
     background-image: url('../img/chrome-extension.png');

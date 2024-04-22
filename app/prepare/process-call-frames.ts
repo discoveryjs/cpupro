@@ -1,4 +1,10 @@
-import { knownChromeExtensions, maxRegExpLength, typeOrder, wellKnownNodeName } from './const';
+import {
+    knownChromeExtensions,
+    knownRegistry,
+    maxRegExpLength,
+    typeOrder,
+    wellKnownNodeName
+} from './const';
 import {
     CpuProCallFrame,
     CpuProCategory,
@@ -8,18 +14,30 @@ import {
     ModuleType,
     PackageType,
     WellKnownName,
-    WellKnownType
+    WellKnownType,
+    PackageRegistry
 } from './types';
+
+const knownRegistryRegExp = new RegExp('^(' + Object.keys(knownRegistry).join('|').replace(/[.]/g, '\\$&') + ')');
 
 type ReferenceCategory = {
     ref: string;
     name: string;
 };
+type RegistryPackage = {
+    type: PackageType;
+    name: string;
+    path: string | null;
+    version: string | null;
+    registry: PackageRegistry | null;
+}
 type ReferencePackage = {
     ref: string;
     type: PackageType;
     name: string;
     path: string | null;
+    version: string | null;
+    registry: PackageRegistry | null;
 };
 type ReferenceModule = {
     ref: string;
@@ -40,6 +58,50 @@ function resolveCategory(moduleType: string): ReferenceCategory {
     };
 }
 
+function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
+    const registryMatch = modulePath.match(knownRegistryRegExp);
+
+    if (registryMatch !== null) {
+        const registryUrl = registryMatch[1];
+        const packageMatch = modulePath.slice(registryUrl.length).match(/^((?:@[^/]+\/)?[^\/@]+)(?:[\/@](\d[^/]*))?/);
+
+        if (packageMatch !== null) {
+            const packageName = packageMatch[1];
+            const version = packageMatch[2] || null;
+
+            return {
+                type: 'script',
+                name: packageName,
+                path: registryUrl + packageMatch[0],
+                version,
+                registry: knownRegistry[registryUrl]
+            };
+        }
+    }
+
+    if (/\/node_modules\//.test(modulePath)) {
+        // use a Node.js path convention
+        const pathParts = modulePath.split(/\/node_modules\//);
+        const pathLastPart = pathParts.pop() || '';
+        const npmPackageNameMatch = pathLastPart.match(/(?:@[^/]+\/)?[^/]+/);
+
+        if (npmPackageNameMatch !== null) {
+            const npmPackageName = npmPackageNameMatch[0];
+            const npmPackagePath = [...pathParts, npmPackageName].join('/node_modules/');
+
+            return {
+                type: 'script',
+                name: npmPackageName,
+                path: npmPackagePath,
+                version: null,
+                registry: 'npm'
+            };
+        }
+    }
+
+    return null;
+}
+
 function resolvePackage(
     cache: Map<ReferenceModule, ReferencePackage>,
     moduleRef: ReferenceModule
@@ -55,27 +117,22 @@ function resolvePackage(
     let type: PackageType = 'unknown';
     let name = '(unknown)';
     let path: string | null = null;
+    let version: string | null = null;
+    let registry: PackageRegistry | null = null;
 
     switch (moduleType) {
         case 'script':
         case 'bundle': {
             const modulePath = moduleRef.path || '';
+            const packageInfo = resolveRegistryPackage(modulePath);
 
-            if (/\/node_modules\//.test(modulePath)) {
-                // use a Node.js path convention
-                const pathParts = modulePath.split(/\/node_modules\//);
-                const pathLastPart = pathParts.pop() || '';
-                const npmPackageNameMatch = pathLastPart.match(/(?:@[^/]+\/)?[^/]+/);
-
-                if (npmPackageNameMatch !== null) {
-                    const npmPackageName = npmPackageNameMatch[0];
-                    const npmPackagePath = [...pathParts, npmPackageName].join('/node_modules/');
-
-                    ref = npmPackagePath;
-                    type = 'npm';
-                    name = npmPackageName;
-                    path = npmPackagePath;
-                }
+            if (packageInfo !== null) {
+                ref = packageInfo.path;
+                type = packageInfo.type;
+                name = packageInfo.name;
+                path = packageInfo.path;
+                version = packageInfo.version;
+                registry = packageInfo.registry;
             }
 
             if (ref === 'unknown') {
@@ -196,7 +253,9 @@ function resolvePackage(
         ref,
         type,
         name,
-        path
+        path,
+        version,
+        registry
     });
 
     return entry;
@@ -340,6 +399,8 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
                     id: packages.size + 1, // starts with 1
                     type: packageRef.type,
                     name: packageRef.name,
+                    version: packageRef.version,
+                    registry: packageRef.registry,
                     path: packageRef.path,
                     category: moduleCategory,
                     modules: []

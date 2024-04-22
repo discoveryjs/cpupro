@@ -18,6 +18,8 @@
 .view-badge.package-type_node,
 .view-badge.package-type_deno,
 .view-badge.package-type_npm,
+.view-badge.package-type_jsr,
+.view-badge.package-type_denoland,
 .view-badge.package-type_chrome-extension,
 .view-badge.package-type_wasm {
     padding-left: var(--badge-padding-left);
@@ -26,6 +28,8 @@
 .view-badge.package-type_node::before,
 .view-badge.package-type_deno::before,
 .view-badge.package-type_npm::before,
+.view-badge.package-type_jsr::before,
+.view-badge.package-type_denoland::before,
 .view-badge.package-type_chrome-extension::before,
 .view-badge.package-type_wasm::before {
     content: '';
@@ -40,7 +44,9 @@
     opacity: .9;
 }
 .view-badge.package-type_script::before {
-    background-image: url('../img/js.png');
+    opacity: 1;
+    filter: brightness(.85);
+    background-image: url('../img/js.svg');
 }
 .view-badge.package-type_node::before {
     background-image: url('../img/nodejs.png');
@@ -56,6 +62,14 @@
 .discovery-root-darkmode .view-badge.package-type_npm::before {
     filter: contrast(.85) opacity(0.85);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+}
+.view-badge.package-type_jsr::before {
+    opacity: 1;
+    filter: brightness(.9);
+    background-image: url('../img/jsr.svg');
+}
+.view-badge.package-type_denoland::before {
+    background-image: url('../img/deno.svg');
 }
 .view-badge.package-type_chrome-extension::before {
     background-image: url('../img/chrome-extension.png');

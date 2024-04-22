@@ -1,4 +1,4 @@
-import { PackageType, WellKnownName, WellKnownType } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType } from './types';
 
 // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
 export const OLD_COMPUTATIONS = false;
@@ -13,6 +13,7 @@ export const wellKnownNodeName = new Map<WellKnownName, WellKnownType>([
     ['(garbage collector)', 'gc'],
     ['(idle)', 'idle']
 ]);
+
 export const knownChromeExtensions = {
     'fmkadmapgofadopljbjfkapdkoienihi': 'React Developer Tools',
     'lmhkpmbekcpmknklioeibfkpmmfibljd': 'Redux DevTools',
@@ -24,9 +25,16 @@ export const knownChromeExtensions = {
     'jlmafbaeoofdegohdhinkhilhclaklkp': 'OctoLinker',
     'dhdgffkkebhmkfjojejmpbldmpobfkfo': 'Tampermonkey'
 };
-export const typeColor: Record<PackageType, string> = {
+export const knownRegistry: Record<string, PackageRegistry> = {
+    'https://jsr.io/': 'jsr',
+    'https://deno.land/x/': 'denoland'
+};
+
+export const typeColor: Record<PackageType | PackageRegistry, string> = {
     'script': '#fee29ca0',
     'npm': '#f98e94a0',
+    'jsr': '#ffee61a0',
+    'denoland': '#ffffffa0',
     'wasm': '#9481ffa0',
     'regexp': '#8db2f8a0',
     'electron': '#9feaf9a0',

@@ -1,4 +1,4 @@
-.view-badge.module {
+.subject-badge {
     --badge-font-size: inherit;
     --badge-padding-left: 21px;
     --badge-icon-top-bottom: 3px;
@@ -6,40 +6,42 @@
 
     font-size: var(--badge-font-size);
 }
-.view-page-header__prelude .view-badge.module {
+.view-page-header__prelude .subject-badge {
     --badge-font-size: 85%;
-    --badge-padding-left: 25px;
+    --badge-padding-left: 27px;
     --badge-icon-top-bottom: 4px;
     --badge-icon-left: 5px;
 }
 
-.view-badge.module .prefix {
+.subject-badge:not(.subject-badge_type__internals, .subject-badge_type__regexp) .prefix {
     padding-left: var(--badge-padding-left);
     margin-left: calc(-1 * var(--badge-padding-left));
+}
+.subject-badge .prefix {
     background-color: #8080801f;
 }
 
-.view-badge.module-type_script,
-.view-badge.module-type_node,
-.view-badge.module-type_deno,
-.view-badge.module-type_electron,
-.view-badge.module-type_npm,
-.view-badge.module-type_jsr,
-.view-badge.module-type_denoland,
-.view-badge.module-type_chrome-extension,
-.view-badge.module-type_wasm {
-    padding-left: var(--badge-padding-left);
+.subject-badge_type__script,
+.subject-badge_type__node,
+.subject-badge_type__deno,
+.subject-badge_type__electron,
+.subject-badge_type__npm,
+.subject-badge_type__jsr,
+.subject-badge_type__denoland,
+.subject-badge_type__chrome-extension,
+.subject-badge_type__wasm {
+    padding-left: var(--badge-padding-left) !important;
     position: relative;
 }
-.view-badge.module-type_script::before,
-.view-badge.module-type_node::before,
-.view-badge.module-type_deno::before,
-.view-badge.module-type_electron::before,
-.view-badge.module-type_npm::before,
-.view-badge.module-type_jsr::before,
-.view-badge.module-type_denoland::before,
-.view-badge.module-type_chrome-extension::before,
-.view-badge.module-type_wasm::before {
+.subject-badge_type__script::before,
+.subject-badge_type__node::before,
+.subject-badge_type__deno::before,
+.subject-badge_type__electron::before,
+.subject-badge_type__npm::before,
+.subject-badge_type__jsr::before,
+.subject-badge_type__denoland::before,
+.subject-badge_type__chrome-extension::before,
+.subject-badge_type__wasm::before {
     content: '';
     position: absolute;
     top: var(--badge-icon-top-bottom);
@@ -51,45 +53,45 @@
     background-size: contain;
     opacity: .9;
 }
-.view-badge.module-type_script::before {
+.subject-badge_type__script::before {
     opacity: 1;
     filter: brightness(.85);
     background-image: url('../img/js.svg');
 }
-.view-badge.module-type_node::before {
+.subject-badge_type__node::before {
     background-image: url('../img/nodejs.png');
 }
-.view-badge.module-type_deno::before {
+.subject-badge_type__deno::before {
     opacity: 1;
     filter: brightness(.85);
     background-image: url('../img/deno.svg');
 }
-.view-badge.module-type_electron::before {
+.subject-badge_type__electron::before {
     background-image: url('../img/electron.ico');
     filter: brightness(1.1);
 }
-.discovery-root-darkmode .view-badge.module-type_electron::before {
+.discovery-root-darkmode .subject-badge_type__electron::before {
     filter: brightness(1.7);
 }
-.view-badge.module-type_npm::before {
+.subject-badge_type__npm::before {
     background-image: url('../img/npm.png');
 }
-.discovery-root-darkmode .view-badge.module-type_npm::before {
+.discovery-root-darkmode .subject-badge_type__npm::before {
     filter: contrast(.85) opacity(0.85);
     box-shadow: 0 0 0 1px rgba(0,0,0,0.65);
 }
-.view-badge.module-type_jsr::before {
+.subject-badge_type__jsr::before {
     opacity: 1;
     filter: brightness(.9);
     background-image: url('../img/jsr.svg');
 }
-.view-badge.module-type_denoland::before {
+.subject-badge_type__denoland::before {
     background-image: url('../img/deno.svg');
 }
-.view-badge.module-type_chrome-extension::before {
+.subject-badge_type__chrome-extension::before {
     background-image: url('../img/chrome-extension.png');
 }
-.view-badge.module-type_wasm::before {
+.subject-badge_type__wasm::before {
     background-image: url('../img/wasm.png');
     opacity: .8;
 }

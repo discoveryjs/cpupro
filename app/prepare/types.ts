@@ -87,16 +87,21 @@ export type PackageType =
     | 'wasm'
     | 'regexp'
     | 'internals'
-    | 'npm'
     | 'node'
     | 'deno'
     | 'electron'
     | 'webpack/runtime'
     | 'chrome-extension';
+export type PackageRegistry =
+    | 'npm'
+    | 'jsr'
+    | 'denoland';
 export type CpuProPackage = {
     id: number; // starts with 1
     type: PackageType;
     name: string;
+    version: string | null;
+    registry: PackageRegistry | null;
     path: string | null;
     category: CpuProCategory;
     modules: CpuProModule[];
