@@ -27,7 +27,7 @@ type ReferenceCategory = {
 type RegistryPackage = {
     type: PackageType;
     name: string;
-    path: string | null;
+    path: string;
     version: string | null;
     registry: PackageRegistry | null;
 }
@@ -209,7 +209,7 @@ function resolvePackage(
             ref = '(wasm)';
             type = 'wasm';
             name = '(wasm)';
-            path = moduleRef.path.startsWith('wasm://wasm/')
+            path = moduleRef.path?.startsWith('wasm://wasm/')
                 ? 'wasm://wasm/'
                 : null;
 

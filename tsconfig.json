@@ -1,6 +1,8 @@
 {
     "compilerOptions": {
         "lib": ["ES2022", "dom"],
-        "target": "ES2022"
+        "target": "ES2022",
+        "allowJs": true,
+        "strictNullChecks": true
     }
 }

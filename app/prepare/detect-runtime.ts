@@ -16,7 +16,7 @@ export function detectRuntime(categories: CpuProCategory[], packages: CpuProPack
         categoriesSet.has('electron') ? 'electron'
             : categoriesSet.has('deno') ? 'deno'
                 : categoriesSet.has('node') ? 'nodejs'
-                    : categoriesSet.has('chrome-extension') || packages.find(pkg => /^https?:/.test(pkg.path))
+                    : categoriesSet.has('chrome-extension') || packages.find(pkg => pkg.path && /^https?:/.test(pkg.path))
                         ? 'chromium'
                         : 'unknown';
 

@@ -48,7 +48,7 @@ export class CallTree<T> {
     constructor(
         dictionary: T[],
         sourceIdToNode: NumericArray,
-        nodes?: NumericArray,
+        nodes: NumericArray,
         parent?: NumericArray,
         subtreeSize?: NumericArray,
         nested?: NumericArray
@@ -57,7 +57,7 @@ export class CallTree<T> {
         this.sourceIdToNode = sourceIdToNode;
         this.sampleIdToNode = NULL_ARRAY; // setting up later
 
-        this.nodes = nodes || new Uint32Array(dictionary.length); // TODO: fixme, creating nodes array looks odd
+        this.nodes = nodes;
         this.parent = parent || new Uint32Array(nodes.length);
         this.subtreeSize = subtreeSize || new Uint32Array(nodes.length);
         this.nested = nested || new Uint32Array(nodes.length);
@@ -129,7 +129,7 @@ export class CallTree<T> {
     }
     getEntry(nodeIndex: number): Entry<T> {
         const entryRef = this.entryRefMap.get(nodeIndex);
-        let entry: Entry<T>;
+        let entry: Entry<T> | undefined;
 
         if (entryRef === undefined || (entry = entryRef.deref()) === undefined) {
             this.entryRefMap.set(
@@ -142,7 +142,7 @@ export class CallTree<T> {
     }
     getChildren(nodeIndex: number): Entry<T>[] {
         const childrenRef = this.childrenRefMap.get(nodeIndex);
-        let children: Entry<T>[];
+        let children: Entry<T>[] | undefined;
 
         if (childrenRef === undefined || (children = childrenRef.deref()) === undefined) {
             this.childrenRefMap.set(

@@ -85,7 +85,7 @@ function rollupTreeByCommonValues(
     let nodesCount = 1;
 
     while (stack.length > 0) {
-        const nodeIndex = stack.pop();
+        const nodeIndex = stack.pop() as number;
         const nodeValue = sourceToDictionary[sourceNodes[nodeIndex]];
         let prevCursor = nodeIndex;
         let cursor = firstChild[nodeIndex];

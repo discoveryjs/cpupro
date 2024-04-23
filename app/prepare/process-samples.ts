@@ -33,7 +33,7 @@ function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array) {
 
 function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
     const tmpMap = new Uint32Array(nodeById.length);
-    const samplesMap = []; // -> callFramesTree.nodes
+    const samplesMap: number[] = []; // -> callFramesTree.nodes
     let sampledNodesCount = 0;
 
     // remap samples -> samplesMap, populate samplesMap

@@ -55,7 +55,7 @@ export type Listener = { fn: () => void };
 export class TimingsObserver {
     listeners: Listener[] = [];
     on(fn: () => void) {
-        let listener = { fn };
+        let listener: Listener | null = { fn };
         this.listeners.push(listener);
 
         return () => {
@@ -374,6 +374,7 @@ export function createTreeComputeBuffer<T>(
     return bufferMap;
 
     function alloc(array: number | Uint32Array) {
+        const arrayOffset = offset;
         const record = { offset, array: null };
 
         if (typeof array === 'number') {
@@ -383,16 +384,17 @@ export function createTreeComputeBuffer<T>(
             offset += array.length << 2;
         }
 
-        record.array = buffer.subarray(record.offset >> 2, offset >> 2);
-
-        return record;
+        return {
+            offset: arrayOffset,
+            array: buffer.subarray(record.offset >> 2, offset >> 2)
+        };
     }
 }
 
-export function createTreeCompute<T extends CpuProNode>(
+export function createTreeCompute(
     samples: Uint32Array,
     timeDeltas: Uint32Array,
-    trees: CallTree<T>[]
+    trees: CallTree<CpuProNode>[]
 ) {
     const useWasm = USE_WASM;
     const bufferMap = createTreeComputeBuffer(samples, timeDeltas, trees, useWasm);

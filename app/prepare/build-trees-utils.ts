@@ -28,14 +28,14 @@ export function traverseFirstNextTree(firstChild: number[] | Uint32Array, nextSi
         }
 
         result.push(cursor);
-        cursor = first || next || stack.pop();
+        cursor = first || next || (stack.pop() as number);
     }
 
     return result;
 }
 
 export function dumpFirstNextTree(firstChild: Uint32Array, nextSibling: Uint32Array, value) {
-    const result = [];
+    const result: string[] = [];
     const stack = [0];
     const depths = new Map([[0, 0]]);
     let cursor = 0;
@@ -43,7 +43,7 @@ export function dumpFirstNextTree(firstChild: Uint32Array, nextSibling: Uint32Ar
     while (stack.length > 0) {
         const first = firstChild[cursor];
         const next = nextSibling[cursor];
-        const depth = depths.get(cursor);
+        const depth = depths.get(cursor) || 0;
 
         if (first && next) {
             stack.push(next);
@@ -57,7 +57,7 @@ export function dumpFirstNextTree(firstChild: Uint32Array, nextSibling: Uint32Ar
         }
 
         result.push('  '.repeat(depth) + ` #${cursor} -> ${value(cursor)}`);
-        cursor = first || next || stack.pop();
+        cursor = first || next || (stack.pop() as number);
     }
 
     console.log(result.join('\n'));
@@ -67,7 +67,7 @@ export function checkFirstNextTree(count: number, firstChild: Uint32Array, nextS
     const traversed = traverseFirstNextTree(firstChild, nextSibling);
     const test = traversed.concat(dropped).sort((a, b) => a - b);
     const unique = new Set(test);
-    const result = [];
+    const result: string[] = [];
 
     if (test.length !== count) {
         result.push(`wrong length, should be ${count} got ${test.length}`);
