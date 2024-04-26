@@ -4,6 +4,23 @@ import { trackExecutionTime } from './jora-methods-bench.js';
 import { CallTree } from './call-tree.js';
 import { TreeTiminigs } from './compute-timings.js';
 
+function shortNum(current, units) {
+    let unitIdx = 0;
+
+    while (current > 1000 && unitIdx < units.length - 1) {
+        current /= 1000;
+        unitIdx++;
+    }
+
+    const value = unitIdx === 0
+        ? current
+        : current < 100
+            ? current.toFixed(1).replace(/\.0/, '')
+            : Math.round(current);
+
+    return value + units[unitIdx];
+}
+
 function makeDictMask(tree, test) {
     const { dictionary } = tree;
     const accept = typeof test === 'function' ? test : (entry) => entry === test;
@@ -132,6 +149,12 @@ const methods = {
     },
     ms(value) {
         return (value / 1000).toFixed(1) + 'ms';
+    },
+    bytes(current, bytes = true) {
+        return shortNum(current, [bytes ? 'bytes' : '', 'Kb', 'Mb', 'Gb']);
+    },
+    shortNum(current) {
+        return shortNum(current, ['', 'K', 'M', 'G']);
     },
     formatMicrosecondsTime,
     select(tree, type, ...args) {
