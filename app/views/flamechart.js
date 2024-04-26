@@ -183,7 +183,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         .on('destroy', tooltip.destroy);
 
     chart.colorMapper = discovery.queryFn(`
-        | package.type or type or category.name or name
+        | (package or $ | registry or type) or category.name or name
         | color(true)
     `);
 
