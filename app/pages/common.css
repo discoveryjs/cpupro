@@ -58,7 +58,9 @@
 .discovery-root-darkmode .view-badge {
     box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12);
 }
-.view-table-cell > .view-badge {
+.view-table-cell > .view-badge,
+.view-table-cell > .view-badge .prefix,
+.view-table-cell > .view-badge .postfix {
     padding-top: 2px;
 }
 .view-badge > .prefix {

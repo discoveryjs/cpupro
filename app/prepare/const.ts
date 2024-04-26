@@ -45,6 +45,7 @@ export const typeColor: Record<PackageType | PackageRegistry, string> = {
     'chrome-extension': '#7dfacda0',
     'webpack/runtime': '#888888a0',
     'gc': '#f1b6fda0',
+    'engine': '#fc9a9aa0',
     'root': '#444444a0',
     'idle': '#888888a0',
     'unknown': '#888888a0'

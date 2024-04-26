@@ -13,7 +13,17 @@
     --badge-icon-left: 5px;
 }
 
-.subject-badge:not(.subject-badge_type__internals, .subject-badge_type__regexp) .prefix {
+.subject-badge:is(
+    .subject-badge_type__script,
+    .subject-badge_type__node,
+    .subject-badge_type__deno,
+    .subject-badge_type__electron,
+    .subject-badge_type__npm,
+    .subject-badge_type__jsr,
+    .subject-badge_type__denoland,
+    .subject-badge_type__chrome-extension,
+    .subject-badge_type__wasm
+) .prefix {
     padding-left: var(--badge-padding-left);
     margin-left: calc(-1 * var(--badge-padding-left));
 }

@@ -57,6 +57,7 @@ export type CpuProFunction = {
 
 export type ModuleType =
     | 'unknown'
+    | 'engine'
     | WellKnownType
     | 'script'
     | 'wasm'
@@ -82,6 +83,7 @@ export type CpuProModule = {
 
 export type PackageType =
     | 'unknown'
+    | 'engine'
     | WellKnownType
     | 'script'
     | 'wasm'

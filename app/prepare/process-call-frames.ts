@@ -234,6 +234,7 @@ function resolvePackage(
         case 'gc':
         case 'idle':
         case 'internals':
+        case 'engine':
             ref = moduleType;
             type = moduleType;
             name = moduleType !== 'gc' ? `(${moduleType})` : '(garbage collector)';
@@ -285,6 +286,15 @@ function resolveModule(
                 entry.ref = '(regexp)';
                 entry.type = 'regexp';
                 entry.name = '(regexp)';
+            } else if (
+                functionName === '(parser)' ||
+                functionName === '(compiler)' ||
+                functionName === '(compiler bytecode)' ||
+                functionName === '(atomics wait)'
+            ) {
+                entry.ref = functionName;
+                entry.type = 'engine';
+                entry.name = functionName;
             } else {
                 entry.type = 'internals';
                 entry.name = '(internals)';

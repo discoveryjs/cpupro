@@ -65,6 +65,11 @@ type Node = {
     children: number[];
 }
 
+export const VM_STATE_JS = 0;
+export const VM_STATE_GC = 1;
+export const VM_STATE_OTHER = 5;
+export const VM_STATE_EXTERNAL = 6;
+export const VM_STATE_IDLE = 7;
 export const vmState = [
     'js',
     'garbage collector',
@@ -73,11 +78,13 @@ export const vmState = [
     'compiler',
     'other',
     'external',
-    'idle'
-];
+    'idle',
+    'atomics wait',
+    'logging'
+] as const;
 
 function findBalancePair(str: string, offset: number, pattern: string) {
-    const stack = [];
+    const stack: string[] = [];
     for (let i = offset; i < str.length; i++) {
         if (stack.length === 0) {
             if (str[i] === pattern) {
@@ -256,9 +263,13 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile) {
     const getScriptIdByUrl = (url: string) => scriptIdByUrl.has(url)
         ? scriptIdByUrl.get(url)
         : scriptIdByUrl.set(url, scriptIdByUrl.size).size - 1;
+    const vmStateCallFrames = vmState.map(name =>
+        name !== 'js' && name !== 'other' && name !== 'external'
+            ? createCallFrame(`(${name})`)
+            : null
+    );
     const rootCallFrame = createCallFrame('(root)');
     const idleCallFrame = createCallFrame('(idle)');
-    const gcCallFrame = createCallFrame('(garbage collector)');
     const callFrameById = new Map<number, CallFrame>();
     const rootNode = createNode(1, rootCallFrame);
     const rootNodeMap = new Map();
@@ -266,6 +277,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile) {
     const nodesTransition = new Map<number, Map<CallFrame, Node>>([[1, rootNodeMap]]);
     let nodeIdSeed = 1;
     const profile = {
+    let lastTm = 0;
         startTime: 0,
         endTime: 0,
         nodes,
@@ -275,24 +287,13 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile) {
 
     v8log.ticks.sort((a, b) => a.tm - b.tm);
 
-    for (let tickIndex = 0, lastTm = 0; tickIndex < v8log.ticks.length; tickIndex++) {
+    for (let tickIndex = 0; tickIndex < v8log.ticks.length; tickIndex++) {
         const tick = v8log.ticks[tickIndex];
+        let vmStateCallFrame = vmStateCallFrames[tick.vm];
         let currentNode = rootNode;
         let currentNodeMap = rootNodeMap;
 
-        if (tick.vm === 1) {
-            let gcNode = currentNodeMap.get(gcCallFrame);
-
-            if (gcNode === undefined) {
-                gcNode = createNode(++nodeIdSeed, gcCallFrame);
-                nodes.push(gcNode);
-                currentNodeMap.set(gcCallFrame, gcNode);
-                currentNode.children.push(gcNode.id);
-                nodesTransition.set(nodeIdSeed, new Map());
-            }
-
-            currentNode = gcNode;
-        } else {
+        if (vmStateCallFrame === null || tick.vm !== VM_STATE_GC) {
             for (let i = tick.s.length - 2; i >= 0; i -= 2) {
                 const id = tick.s[i];
 
@@ -333,7 +334,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile) {
                     currentNode.children.push(nextNode.id);
                     nodesTransition.set(nodeIdSeed, currentNodeMap = new Map());
                 } else {
-                    currentNodeMap = nodesTransition.get(nextNode.id);
+                    currentNodeMap = nodesTransition.get(nextNode.id) as Map<CallFrame, Node>;
                 }
 
                 currentNode = nextNode;
@@ -341,18 +342,22 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile) {
         }
 
         // console.log(vmState[tick.vm] || 'unknown', currentNode === rootNode, v8log.code[tick.s[0]], tick);
-        if (currentNode === rootNode) {
-            let idleNode = currentNodeMap.get(idleCallFrame);
+        if (vmStateCallFrame === null && currentNode === rootNode) {
+            vmStateCallFrame = idleCallFrame;
+        }
 
-            if (idleNode === undefined) {
-                idleNode = createNode(++nodeIdSeed, idleCallFrame);
-                nodes.push(idleNode);
-                currentNodeMap.set(idleCallFrame, idleNode);
-                currentNode.children.push(idleNode.id);
+        if (vmStateCallFrame !== null) {
+            let node = currentNodeMap.get(vmStateCallFrame);
+
+            if (node === undefined) {
+                node = createNode(++nodeIdSeed, vmStateCallFrame);
+                nodes.push(node);
+                currentNodeMap.set(vmStateCallFrame, node);
+                currentNode.children.push(node.id);
                 nodesTransition.set(nodeIdSeed, new Map());
             }
 
-            currentNode = idleNode;
+            currentNode = node;
         }
 
         profile.samples[tickIndex] = currentNode.id;
@@ -362,7 +367,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile) {
     }
 
     profile.endTime =
-        v8log.ticks[v8log.ticks.length - 1].tm +
+        lastTm +
         profile.timeDeltas.slice().sort()[profile.timeDeltas.length >> 1];
 
     return profile;
