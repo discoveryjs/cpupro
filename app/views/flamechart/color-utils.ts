@@ -4,18 +4,18 @@
 // 6 characters are considered.
 const MAX_CHAR = 6;
 
-function generateHash(name) {
+function generateHash(str: string) {
     let hash = 0;
     let maxHash = 0;
     let weight = 1;
     const mod = 10;
 
-    if (name) {
-        for (let i = 0; i < name.length; i++) {
+    if (str) {
+        for (let i = 0; i < str.length; i++) {
             if (i > MAX_CHAR) {
                 break;
             }
-            hash += weight * (name.charCodeAt(i) % mod);
+            hash += weight * (str.charCodeAt(i) % mod);
             maxHash += weight * (mod - 1);
             weight *= 0.7;
         }
@@ -28,14 +28,8 @@ function generateHash(name) {
     return hash;
 }
 
-export function generateColorVector(name) {
-    let vector = 0;
-
-    if (name) {
-        vector = generateHash(name);
-    }
-
-    return vector;
+export function generateColorVector(str: string) {
+    return str ? generateHash(str) : 0;
 }
 
 export function calculateColor(hue: string, vector: number) {
@@ -104,11 +98,15 @@ export function calculateColor(hue: string, vector: number) {
 
         default: {
             // original warm palette
-            r = 200 + Math.round(55 * vector);
-            g = 0 + Math.round(230 * (1 - vector));
-            b = 0 + Math.round(55 * (1 - vector));
+            // r = 200 + Math.round(55 * vector);
+            // g = 0 + Math.round(230 * (1 - vector));
+            // b = 0 + Math.round(55 * (1 - vector));
+
+            r = 50 + 70 + Math.round(120 * vector);
+            g = 50 + 93 + Math.round(90 * (1 - vector));
+            b = 61 + Math.round(150 * (1000 * vector % 2 ? vector : (1 - vector)));
         }
     }
 
-    return `${r}, ${g}, ${b}`;
+    return [r, g, b].join(',');
 }
