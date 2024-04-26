@@ -5,11 +5,13 @@ function moduleDisplayName(module: CpuProModule) {
         return;
     }
 
-    switch (module.package.type) {
+    switch (module.package.registry) {
         case 'npm':
             module.name = `${module.package.name}/${module.packageRelPath}`;
-            break;
+            return;
+    }
 
+    switch (module.package.type) {
         case 'script':
         case 'wasm':
             module.name = module.packageRelPath;
