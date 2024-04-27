@@ -1,6 +1,6 @@
 import { argParsers, offsetOrEnd, readAllArgs, readAllArgsRaw } from './v8log/read-args-utils.js';
 import { kindFromState, parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
-import { Meta } from './v8log/types.js';
+import { CodeState, Meta } from './v8log/types.js';
 
 const decoder = new TextDecoder();
 
@@ -23,13 +23,13 @@ const parsers = {
 
 export async function decode(iterator) {
     const meta: Meta = {};
-    const codes = [];
-    const sources = [];
-    const ticks = [];
-    const memory = [];
-    const profiler = [];
+    const codes: any[] = [];
+    const sources: any[] = [];
+    const ticks: any[] = [];
+    const memory: any[] = [];
+    const profiler: any[] = [];
     const ignoredOps = new Set();
-    const ignoredEntries = [];
+    const ignoredEntries: any[] = [];
     const processLine = (buffer: string, sol: number, eol: number) => {
         if (sol >= eol) {
             return;
@@ -198,8 +198,8 @@ export async function decode(iterator) {
                     maybeFunc
                 ] = readAllArgs(parsers['code-creation'], line, argsStart);
                 let stateName = '';
-                let funcAddr = null;
-                let funcState = null;
+                let funcAddr: number | null = null;
+                let funcState: CodeState | null = null;
 
                 if (maybeFunc?.length) {
                     stateName = maybeFunc[1] ?? '';
