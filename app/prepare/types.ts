@@ -4,6 +4,10 @@ export type V8CpuProfile = {
     nodes: V8CpuProfileNode[];
     timeDeltas: number[];
     samples: number[];
+
+    // FIXME: cpupro extensions (temporary)
+    scripts?: V8CpuProfileScript[];
+    functions?: V8CpuProfileFunction[];
 };
 export type V8CpuProfileNode = {
     id: number;
@@ -17,6 +21,27 @@ export type V8CpuProfileCallFrame = {
     lineNumber: number;
     columnNumber: number;
 };
+export type V8CpuProfileScript = {
+    id: number;
+    url: string;
+    source: string;
+}
+export type V8CpuProfileFunction = {
+    id: number;
+    name: string;
+    script: number | null;
+    line: number;
+    column: number;
+    start: number;
+    end: number;
+    states: {
+        tm: number;
+        tier: string;
+        positions: string;
+        inlined: string;
+        fns: number[];
+    }[];
+}
 
 export type WellKnownName =
     | '(root)'
@@ -43,6 +68,17 @@ export type CpuProCallFrame = {
     module: CpuProModule;
     package: CpuProPackage;
     category: CpuProCategory;
+};
+
+export type CpuProScript = {
+    id: number;
+    url: string;
+    source: string;
+    functions: CpuProScriptFunction[];
+}
+export type CpuProScriptFunction = Omit<V8CpuProfileFunction, 'script'> & {
+    script: CpuProScript | null;
+    loc: string | null;
 };
 
 export type CpuProFunction = {

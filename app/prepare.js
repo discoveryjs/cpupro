@@ -10,6 +10,7 @@ import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/build-trees.js';
 import joraQueryHelpers from './prepare/jora-methods.js';
+import { processScripts } from './prepare/process-scripts.js';
 
 export default function(input, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
     const markAsCallFrame = defineObjectMarker('callFrame', { ref: 'id', title: 'name' });
@@ -115,6 +116,18 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         categories
     );
 
+    // relink scripts and script functions
+    markTime('processScripts()');
+    const {
+        scripts,
+        scriptFunctions
+    } = processScripts(
+        data.scripts,
+        data.functions,
+        modules,
+        functions
+    );
+
     markTime('processSamples()');
     // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
     if (OLD_COMPUTATIONS) {
@@ -167,6 +180,8 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
             samples: samplesCount,
             samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1] // TODO: speedup
         },
+        scripts,
+        scriptFunctions,
         startTime,
         startOverheadTime,
         endTime,
