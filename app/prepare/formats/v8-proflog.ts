@@ -156,7 +156,7 @@ function parseName(name: string) {
         name += ' wasm://wasm/' + name;
     }
 
-    const nameMatch = name.match(/^(?:get )?([#.<>\[\]_$a-zA-Z\xA0-\uFFFF][#.<>\[\]\-_$a-zA-Z0-9\xA0-\uFFFF]*) /);
+    const nameMatch = name.match(/^(?:get |set )?([#.<>\[\]_$a-zA-Z\xA0-\uFFFF][#.<>\[\]\-_$a-zA-Z0-9\xA0-\uFFFF]*) /);
     const functionName = nameMatch !== null ? nameMatch[1] : '';
     const url = nameMatch !== null
         ? name.slice(nameMatch[0].length)
