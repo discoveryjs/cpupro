@@ -72,7 +72,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
     #colorMapper: FrameColorGenerator<T> = defaultColorMapper;
     #colorHue: string | null = null;
     #scheduleRenderTimer: number | null = null;
-    #childrenSort: (a: number, b: number) => number = null;
+    #childrenSort: ((a: number, b: number) => number) | null = null;
     #lastVisibleFramesEpoch = 0;
     #epoch = 0;
 
@@ -81,7 +81,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
     zoomStart = 0;
     zoomEnd = 1;
 
-    #getValue: SetDataOptions['value'] = defaultGetValue;
+    #getValue = defaultGetValue;
 
     tree: CallTree<T>;
     nodesMaxDepth: number;
@@ -186,7 +186,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 if (this.frameByEl.has(cursor)) {
                     return {
                         element: cursor,
-                        frame: this.frameByEl.get(cursor)
+                        frame: this.frameByEl.get(cursor) as Frame<T>
                     };
                 }
 
@@ -526,7 +526,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         // emit render event
         this.emit('render',
             this.frameEls.get(0)?.firstElementChild || null,
-            this.frameByEl.get(this.frameEls.get(0)) || null,
+            this.frameByEl.get(this.frameEls.get(0) as Node) || null,
             this.nodesValue[0]
         );
     }
@@ -554,11 +554,11 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 this.zoomedNode = 0;
 
                 if (this.zoomedNodesStack.length > 0) {
-                    this.zoomedNode = this.zoomedNodesStack.pop();
+                    this.zoomedNode = this.zoomedNodesStack.pop() as number;
                 }
             } else {
                 while (this.zoomedNode !== 0 && this.nodesValue[this.zoomedNode] === 0 && this.zoomedNodesStack.length > 0) {
-                    this.zoomedNode = this.zoomedNodesStack.pop();
+                    this.zoomedNode = this.zoomedNodesStack.pop() as number;
                 }
 
                 if (this.nodesValue[this.zoomedNode] === 0) {
