@@ -151,13 +151,18 @@ function cleanupInternalName(name: string) {
     return name;
 }
 
-function functionNameFromCode(code: Code) {
-    const { name } = code;
-    const spaceIndex = name.lastIndexOf(' ');
-    const prelude = name.slice(0, spaceIndex);
-    const functionName = prelude.startsWith('get ') ? prelude.slice(4) : prelude;
+function parseName(name: string) {
+    if (name.startsWith('wasm-function')) {
+        name += ' wasm://wasm/' + name;
+    }
 
-    return functionName;
+    const nameMatch = name.match(/^(?:get )?([#.<>\[\]_$a-zA-Z\xA0-\uFFFF][#.<>\[\]\-_$a-zA-Z0-9\xA0-\uFFFF]*) /);
+    const functionName = nameMatch !== null ? nameMatch[1] : '';
+    const url = nameMatch !== null
+        ? name.slice(nameMatch[0].length)
+        : name[0] === ' ' ? name.slice(1) : name;
+
+    return { functionName, url };
 }
 
 function functionTier(kind: string) {
@@ -210,11 +215,8 @@ function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
         }
 
         case 'JS': {
-            const spaceIndex = name.lastIndexOf(' ');
-            const prelude = name.slice(0, spaceIndex);
-            const functionName = prelude.startsWith('get ') ? prelude.slice(4) : prelude;
-            const url = name.slice(spaceIndex + 1);
-            const locMatch = url.match(/:(\d+):(\d+)/);
+            const { functionName, url } = parseName(name);
+            const locMatch = url.match(/:(\d+):(\d+)$/);
             let file = url;
             let line = -1;
             let col = -1;
@@ -223,10 +225,6 @@ function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
                 file = url.slice(0, -locMatch[0].length);
                 line = parseInt(locMatch[1], 10);
                 col = parseInt(locMatch[2], 10);
-            }
-
-            if (functionName.startsWith('wasm-function')) {
-                file = 'wasm://wasm/' + file;
             }
 
             return {
@@ -461,7 +459,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
 
         functions.push({
             id: i,
-            name: functionNameFromCode(code),
+            name: parseName(code.name).functionName,
             script: scriptIdToIndex.get(source.script) ?? null,
             start: source.start,
             end: source.end,
