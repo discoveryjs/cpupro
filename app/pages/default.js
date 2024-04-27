@@ -173,7 +173,7 @@ const categoriesTimeline = {
             selectionEnd: '=#.data.samplesTimingsFiltered.rangeEnd',
             onChange: (state, name, el, data, context) => {
                 // console.log('change', state);
-                const t = Date.now();
+                // const t = Date.now();
                 const timings = context.data.samplesTimingsFiltered;
 
                 if (state.timeStart !== null) {
@@ -182,7 +182,7 @@ const categoriesTimeline = {
                     timings.resetRange();
                 }
 
-                console.log('compute timings', Date.now() - t);
+                // console.log('compute timings', Date.now() - t);
             },
             details: [
                 {

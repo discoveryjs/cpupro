@@ -238,13 +238,13 @@ function buildCallTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
     dictionary: D[],
     sourceNodeToDictionaryFn: (node: S) => number
 ) {
-    console.group(`Build tree for ${name}`);
+    TIMINGS && console.group(`Build tree for ${name}`);
     try {
         return compareWithBaseline
             ? buildCallTreeAndCompareWithBaseline(sourceTree, dictionary, sourceNodeToDictionaryFn).tree
             : buildCallTree(sourceTree, dictionary, sourceNodeToDictionaryFn);
     } finally {
-        console.groupEnd();
+        TIMINGS && console.groupEnd();
     }
 }
 

@@ -1,6 +1,5 @@
 import { typeColor, typeColorComponents, typeOrder } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
-import { trackExecutionTime } from './jora-methods-bench.js';
 import { CallTree } from './call-tree.js';
 import { TreeTiminigs } from './compute-timings.js';
 
@@ -329,5 +328,7 @@ const methods = {
     }
 };
 
-trackExecutionTime(methods, ['select', 'selectBy', 'subtreeSamples', 'nestedTimings', 'binCalls']);
 export default methods;
+
+// import { trackExecutionTime } from './jora-methods-bench.js';
+// TIMINGS && trackExecutionTime(methods, ['select', 'selectBy', 'subtreeSamples', 'nestedTimings', 'binCalls']);

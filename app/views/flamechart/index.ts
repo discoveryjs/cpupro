@@ -414,14 +414,14 @@ export class FlameChart<T> extends EventEmitter<Events> {
         if (this.#scheduleRenderTimer === null) {
             const requestId = requestAnimationFrame(() => {
                 if (this.#scheduleRenderTimer === requestId) {
-                    const renderStart = Date.now();
+                    // const renderStart = Date.now();
 
                     this.render();
                     this.#scheduleRenderTimer = null;
 
-                    if (this.#width) {
-                        console.log('Flamechart.render()', Date.now() - renderStart);
-                    }
+                    // if (this.#width) {
+                    //     console.log('Flamechart.render()', Date.now() - renderStart);
+                    // }
                 }
             });
 
@@ -442,14 +442,11 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const xOffset = this.zoomStart * xScale;
         const firstEnter = !this.frameEls.size;
         const removeFrameNodeIndecies = new Set(this.frameEls.keys());
-
-        const t = Date.now();
         const visibleFrames = this.getVisibleFrames(
             this.zoomStart,
             this.zoomEnd,
             this.#minFrameWidth * widthScale
         );
-        console.log('getVisibleFrames', Date.now() - t);
 
         const enterFramesBuffer = document.createDocumentFragment();
         const nodes = this.tree.nodes;

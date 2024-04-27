@@ -187,7 +187,6 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         | color(true)
     `);
 
-    const setDataStart = Date.now();
     const { selfTimes, nestedTimes } = timings;
     const unsubscribeTimings = timings.on(utils.debounce(() => {
         chart.resetValues();
@@ -205,8 +204,6 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             : nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex],
         childrenSort: true
     });
-
-    console.log('Flamechart.setData()', Date.now() - setDataStart);
 
     renderDetails();
     contentEl.append(chart.el);

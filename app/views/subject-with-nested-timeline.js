@@ -44,7 +44,7 @@ discovery.view.define('subject-with-nested-timeline', {
             selectionEnd: '=#.data.samplesTimingsFiltered.rangeEnd',
             onChange: (state, name, el, data, context) => {
                 // console.log('change', state);
-                const t = Date.now();
+                // const t = Date.now();
 
                 if (state.timeStart !== null) {
                     context.data.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
@@ -52,7 +52,7 @@ discovery.view.define('subject-with-nested-timeline', {
                     context.data.samplesTimingsFiltered.resetRange();
                 }
 
-                console.log('compute timings', Date.now() - t);
+                // console.log('compute timings', Date.now() - t);
             },
             details: [
                 {
