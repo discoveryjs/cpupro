@@ -81,11 +81,11 @@
     filter: brightness(1.7);
 }
 .subject-badge_type__npm::before {
-    background-image: url('../img/npm.png');
+    background-image: url('../img/npm.svg');
 }
 .discovery-root-darkmode .subject-badge_type__npm::before {
-    filter: brightness(.9) contrast(.9);
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.65);
+    filter: brightness(.9);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 .subject-badge_type__jsr::before {
     filter: brightness(.9);
@@ -98,7 +98,7 @@
     background-image: url('../img/chrome-extension.png');
 }
 .subject-badge_type__wasm::before {
-    background-image: url('../img/wasm.png');
+    background-image: url('../img/wasm.svg');
 }
 
 .subject-badge.package[data-version]::after,
