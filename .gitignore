@@ -5,3 +5,4 @@
 /node_modules/
 /tmp/
 *.wasm
+.DS_Store
