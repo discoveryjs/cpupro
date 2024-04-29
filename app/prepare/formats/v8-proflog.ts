@@ -68,6 +68,7 @@ interface CodeCallFrameInfo {
     file?: string; // file path
     line?: number;
     col?: number;
+    lowlevel?: boolean;
 }
 
 type CallFrame = {
@@ -199,6 +200,8 @@ function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
     }
 
     let name = code.name;
+    let lowlevel = false;
+
     switch (code.type) {
         case 'CPP': {
             if (name[1] === ' ') {
@@ -211,6 +214,7 @@ function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
             // FIXME: there is no way in cpuprofile to express shared libs at the moment,
             // so represent them as (program) for now
             name = '(LIB) ' + name; // '(program)';
+            lowlevel = true;
             break;
         }
 
@@ -244,18 +248,22 @@ function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
                 case 'LoadGlobalIC':
                 case 'Handler':
                     name = '(IC) ' + name;
+                    lowlevel = true;
                     break;
 
                 case 'BytecodeHandler':
                     name = '(bytecode) ~' + name;
+                    lowlevel = true;
                     break;
 
                 case 'Stub':
                     name = '(stub) ' + name;
+                    lowlevel = true;
                     break;
 
                 case 'Builtin':
                     name = '(builtin) ' + name;
+                    lowlevel = true;
                     break;
 
                 case 'RegExp':
@@ -271,7 +279,7 @@ function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
         }
     }
 
-    return { name };
+    return { name, lowlevel };
 }
 
 function createCallFrame(
@@ -324,7 +332,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
     );
     const rootCallFrame = createCallFrame('(root)');
     const idleCallFrame = createCallFrame('(idle)');
-    const callFrameById = new Map<number, CallFrame>();
+    const callFrameById = new Map<number, CallFrame | null>();
     const rootNode = createNode(1, rootCallFrame);
     const rootNodeMap = new Map();
     const nodes = [rootNode];
@@ -376,8 +384,8 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
                             }
                         }
 
-                        const { name, file, line, col } = codeToCallFrameInfo(code);
-                        callFrame = createCallFrame(
+                        const { name, file, line, col, lowlevel } = codeToCallFrameInfo(code);
+                        callFrame = lowlevel ? null : createCallFrame(
                             name,
                             file,
                             line,
@@ -388,6 +396,11 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
                     }
 
                     callFrameById.set(id, callFrame);
+                }
+
+                // skip ignored call frames
+                if (callFrame === null) {
+                    continue;
                 }
 
                 let nextNode = currentNodeMap.get(callFrame);
