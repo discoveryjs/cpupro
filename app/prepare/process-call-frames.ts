@@ -384,6 +384,7 @@ export function processCallFrames(
 
     // cpuprofile related
     const anonymousModuleByScriptId = new Map<number, string>(); // ?? is shared
+    const moduleByScriptId = new Map<number, CpuProModule>();
     const wellKnownCallFrames: Record<WellKnownType, CpuProCallFrame | null> = {
         root: null,
         program: null,
@@ -481,11 +482,13 @@ export function processCallFrames(
                 package: callFrameModule.package,
                 module: callFrameModule,
                 regexp,
-                loc: callFrameModule.path ? `${callFrameModule.path}:${lineNumber}:${columnNumber}` : null
+                loc: callFrameModule.path ? `:${lineNumber}:${columnNumber}` : null
             });
 
             callFrameModule.functions.push(callFrameFunction);
         }
+
+        moduleByScriptId.set(callFrame.scriptId, callFrameModule);
 
         callFrame.category = callFrameModule.category;
         callFrame.package = callFrameModule.package;
@@ -498,6 +501,7 @@ export function processCallFrames(
         packages: [...packages.values()],
         modules: [...modules.values()],
         functions: [...functions.values()],
+        moduleByScriptId,
         wellKnownCallFrames
     };
 }

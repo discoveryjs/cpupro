@@ -34,13 +34,14 @@ export type V8CpuProfileScriptFunction = {
     column: number;
     start: number;
     end: number;
-    states: {
-        tm: number;
-        tier: string;
-        positions: string;
-        inlined: string;
-        fns: number[];
-    }[];
+    states: V8CpuProfileScriptFunctionState[];
+}
+export type V8CpuProfileScriptFunctionState = {
+    tm: number;
+    tier: string;
+    positions: string;
+    inlined: string;
+    fns: number[];
 }
 
 export type WellKnownName =

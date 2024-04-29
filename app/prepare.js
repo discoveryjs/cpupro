@@ -72,6 +72,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     markTime('processCallFrames()');
     const {
         wellKnownCallFrames,
+        moduleByScriptId,
         categories,
         packages,
         modules,
@@ -121,12 +122,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     const {
         scripts,
         scriptFunctions
-    } = processScripts(
-        data.scripts,
-        data.functions,
-        modules,
-        functions
-    );
+    } = processScripts(data.scripts, data.scriptFunctions, moduleByScriptId);
 
     markTime('processSamples()');
     // TODO: delete after completing the comparison with the previous version for temporary analysis purposes

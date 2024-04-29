@@ -50,12 +50,6 @@ export function processPaths(
                     pkg.path = path;
                 }
             }
-
-            for (const fn of functions.values()) {
-                if (fn.loc && fn.loc.startsWith(path + '/')) {
-                    fn.loc = './' + fn.loc.slice(path.length + 1);
-                }
-            }
         }
     }
 

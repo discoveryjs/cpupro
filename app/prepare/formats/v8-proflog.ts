@@ -440,16 +440,17 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         scriptIdToIndex.set(id, scripts.length);
         scripts.push({
             id,
-            url,
+            url: url !== '<unknown>' ? url : '',
             source
         });
     }
 
     for (let i = 0; i < v8log.functions.length; i++) {
         const fn = v8log.functions[i];
-        const code = v8log.code[fn.codes[0]];
-        const source = code.source as CodeSource;
-        const loc = code.name.match(/\:(\d+)\:(\d+)/);
+        const anyFnCode = v8log.code[fn.codes[0]];
+        const source = anyFnCode.source as CodeSource;
+        const { functionName, url } = parseName(anyFnCode.name);
+        const loc = url.match(/\:(\d+)\:(\d+)/);
 
         if (!source) {
             // wasm functions has no source
@@ -459,7 +460,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
 
         scriptFunctions.push({
             id: i,
-            name: parseName(code.name).functionName,
+            name: functionName,
             script: scriptIdToIndex.get(source.script) ?? null,
             start: source.start,
             end: source.end,
@@ -467,13 +468,14 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
             column: loc ? Number(loc[2]) : -1,
             states: fn.codes.map(codeIndex => {
                 const code = v8log.code[codeIndex];
+                const codeSource = code.source || null;
 
                 return {
                     tm: code.tm || 0,
                     tier: functionTier(code.kind || 'Unknown'),
-                    positions: source?.positions || '',
-                    inlined: source?.inlined || '',
-                    fns: source?.fns || []
+                    positions: codeSource?.positions || '',
+                    inlined: codeSource?.inlined || '',
+                    fns: codeSource?.fns || []
                 };
             })
         });
