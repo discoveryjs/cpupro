@@ -31,6 +31,43 @@ discovery.page.define('module', {
 
         {
             view: 'expand',
+            className: 'trigger-outside script-source',
+            data: '#.data.scripts[=> module = @]',
+            expanded: '=source is not undefined',
+            header: [
+                'text:"Source"',
+                { view: 'switch', content: [
+                    { when: 'source is not undefined', content: 'html:` \xa0<span style="color: #888">${source.size().bytes(true)}</html>`' },
+                    { content: 'html:` <span style="color: #888">(unavailable)</span>`' }
+                ] }
+            ],
+            content: `source:{
+                syntax: "js",
+                content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
+                refs: functions.({
+                    className: 'function',
+                    range: [start, end],
+                    marker: states | size() = 1
+                        ? tier[].abbr()
+                        : size() <= 3
+                            ? tier.(abbr()).join(' ')
+                            : tier[].abbr() + ' … ' + tier[-1].abbr(),
+                    tooltipData: { states, function },
+                    tooltip: [
+                        'text:tooltipData.function.name',
+                        'html:"<br>"',
+                        {
+                            view: 'inline-list',
+                            data: 'tooltipData.states',
+                            item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
+                        }
+                    ]
+                })
+            }`
+        },
+
+        {
+            view: 'expand',
             expanded: true,
             className: 'trigger-outside',
             header: 'text:"Nested time distribution"',

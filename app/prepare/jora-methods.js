@@ -3,6 +3,14 @@ import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './call-tree.js';
 import { TreeTiminigs } from './compute-timings.js';
 
+const abbr = {
+    Ignition: 'Ig',
+    Sparkplug: 'Sp',
+    Maglev: 'Mg',
+    Turboprop: 'Tp',
+    Turbofan: 'Tb'
+};
+
 function shortNum(current, units) {
     let unitIdx = 0;
 
@@ -135,6 +143,9 @@ const methods = {
         const dict = comp ? typeColorComponents : typeColor;
         return dict[value] || dict.unknown;
     },
+    abbr(value) {
+        return abbr[value] || value;
+    },
     totalPercent(value, prec = 2) {
         const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
         const percent = 100 * value / totalTime;
@@ -252,6 +263,13 @@ const methods = {
         const bins = makeSampleBins(n, mask, samples, timeDeltas, totalTime);
 
         return Array.from(bins);
+    },
+    getTimings(treeTimings, subject) {
+        if (typeof subject !== 'number') {
+            subject = treeTimings.tree.dictionary.indexOf(subject);
+        }
+
+        return treeTimings.getTimings(subject);
     },
     nestedTimings(treeTimings, subject, structureTree) {
         const timingsTree = treeTimings.tree;

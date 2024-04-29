@@ -150,6 +150,99 @@ discovery.page.define('function', {
 
         {
             view: 'expand',
+            className: 'trigger-outside script-source',
+            data: `
+                #.data.scriptFunctions[=> function = @]
+                |? {
+                    $start: script.source.lastIndexOf('\\n', start) + 1;
+                    $end: script.source.indexOf('\\n', end) | $ != -1 ?: script.source.size();
+
+                    scriptFunction: $,
+                    source: script.source[$start:$end],
+                    $start,
+                    $end
+                }
+            `,
+            expanded: '=source is not undefined',
+            header: [
+                'text:"Source"',
+                { view: 'switch', content: [
+                    { when: 'source is not undefined', content: 'html:` \xa0<span style="color: #888">${source.size().bytes(true)}</html>`' },
+                    { content: 'html:` <span style="color: #888">(unavailable)</span>`' }
+                ] }
+            ],
+            content: [
+                {
+                    view: 'source',
+                    data: `{
+                        $line: scriptFunction.line;
+                        $start: scriptFunction.start;
+                        $end: scriptFunction.end;
+
+                        ...,
+                        syntax: "js",
+                        content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
+                        lineNum: => $ + $line,
+                        refs: scriptFunction.script.functions.[start >= $start and end <= $end].({
+                            className: 'function',
+                            range: [start - @.start, end - @.start],
+                            href: '#',
+                            marker: states | size() = 1
+                                ? tier[].abbr()
+                                : size() <= 3
+                                    ? tier.(abbr()).join(' ')
+                                    : tier[].abbr() + ' … ' + tier[-1].abbr(),
+                            tooltipData: { states, function },
+                            tooltip: { className: 'hint-tooltip', content: [
+                                'text:tooltipData.function.name',
+                                'html:"<br>"',
+                                // {
+                                //     view: 'context',
+                                //     data: '#.data.functionsTreeTimingsFiltered.getTimings(tooltipData.function)',
+                                //     content: [
+                                //         'self-time',
+                                //         'nested-time',
+                                //         'total-time',
+                                //         'struct:node.value'
+                                //     ]
+                                // },
+                                // 'html:"<br>"',
+                                {
+                                    view: 'inline-list',
+                                    data: 'tooltipData.states',
+                                    item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
+                                }
+                            ] }
+                        })
+                    }`,
+                    prelude: {
+                        view: 'block',
+                        data: `
+                            scriptFunction | $start; $end; script.functions
+                                .[start <= $start and end >= $end]
+                                .sort(start asc)
+                                .({
+                                    target: @.scriptFunction,
+                                    scriptFunction: $
+                                })
+                        `,
+                        content: {
+                            view: 'inline-list',
+                            className: 'function-path',
+                            whenData: true,
+                            item: { view: 'switch', content: [
+                                { when: 'scriptFunction = target', content: 'block{ className: "target", content: `text:scriptFunction | function or $ | name or "(anonymous function)"` }' },
+                                { when: 'scriptFunction.function', content: 'auto-link:scriptFunction.function' },
+                                { content: 'text:scriptFunction | name or "(anonymous function)"' }
+                            ] }
+                        }
+                    }
+                }
+            ]
+        },
+
+        {
+            view: 'expand',
             expanded: true,
             className: 'trigger-outside',
             header: 'text:"Nested time distribution"',

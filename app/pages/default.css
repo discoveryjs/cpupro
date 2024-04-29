@@ -275,8 +275,8 @@
     flex-direction: row;
     gap: 6px;
     margin-bottom: 5px;
-    margin-left: calc(5px - var(--discovery-page-padding-left));
-    margin-right: calc(5px - var(--discovery-page-padding-right));
+    margin-left: calc(4px - var(--discovery-page-padding-left));
+    margin-right: calc(4px - var(--discovery-page-padding-right));
 }
 .page-default .hierarchical-components > .content .view-section {
     flex: 1;
@@ -292,7 +292,7 @@
     display: contents;
 }
 .page-default .hierarchical-components > .content .view-section > .view-content-filter > .view-input {
-    margin: 4px 0 2px;
+    margin: 3px 0 2px;
 }
 .page-default .hierarchical-components > .content .view-section > .view-content-filter > .view-input input {
     padding: 4px 6px;

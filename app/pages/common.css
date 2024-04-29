@@ -235,3 +235,68 @@ h2 .logo {
     padding-right: 4px;
     color: #888;
 }
+
+.script-source > .content > .view-source {
+    margin-top: 1px;
+    max-height: calc(100vh - 118px);
+}
+.script-source .view-source__prelude:empty {
+    display: none;
+}
+.script-source .view-source__prelude {
+    padding: 2px 7px 4px;
+    border-bottom: 1px solid var(--discovery-background-color);
+    color: #aaa;
+}
+.script-source .view-source__prelude .function-path::before {
+    content: 'Top level';
+}
+.script-source .view-source__prelude .function-path .view-list-item::before {
+    content: '›';
+    color: #888;
+    padding: 0 .6ex;
+}
+.script-source .view-source__prelude .function-path .view-list-item .target {
+    display: inline;
+    padding: 1px 5px 3px;
+    border-radius: 3px;
+    background-color: #68624685;
+    color: #b6aa6a;
+}
+.script-source .view-source .spotlight {
+    background-color: #46453c;
+}
+.script-source .view-source .spotlight .spotlight {
+    background-color: #3d473b;
+}
+.script-source .view-source .spotlight .spotlight .spotlight {
+    background-color: #414455;
+}
+.script-source .view-source .spotlight .spotlight .spotlight .spotlight {
+    background-color: #463c4b;
+}
+.script-source .view-source .spotlight.function:not(:has(.spotlight.function:hover)):hover {
+    background-color: #686246aa;
+}
+.script-source .view-source .spotlight.function {
+    padding-left: 0;
+    padding-right: 4px;
+    margin-left: 2px;
+    border-radius: 9px;
+}
+.script-source .view-source .spotlight.function::before {
+    content: attr(data-marker);
+    display: inline;
+    border: 1px solid currentColor;
+    padding: 2px 2.5px 3px 2.5px;
+    margin-right: 1px;
+    font-size: 9px;
+    border-radius: 9px;
+    vertical-align: top;
+    background: var(--discovery-background-color);
+    color: #f0f173;
+    opacity: .8;
+}
+.script-source .view-source .spotlight.function:not(:has(.spotlight.function:hover)):hover::before {
+    opacity: 1;
+}
