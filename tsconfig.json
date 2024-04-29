@@ -3,6 +3,7 @@
         "lib": ["ES2022", "dom"],
         "target": "ES2022",
         "allowJs": true,
+        "outDir": "./build", // there are errors without the option (a value doesn't make sense) because of allowJs: true
         "strictNullChecks": true
     }
 }
