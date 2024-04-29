@@ -76,7 +76,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         packages,
         modules,
         functions
-    } = processCallFrames(callFrames);
+    } = processCallFrames(callFrames, data.scripts, data.scriptFunctions);
 
     // process dictionaries
     markTime('processPaths()');

@@ -7,7 +7,7 @@ export type V8CpuProfile = {
 
     // FIXME: cpupro extensions (temporary)
     scripts?: V8CpuProfileScript[];
-    functions?: V8CpuProfileFunction[];
+    scriptFunctions?: V8CpuProfileScriptFunction[];
 };
 export type V8CpuProfileNode = {
     id: number;
@@ -26,7 +26,7 @@ export type V8CpuProfileScript = {
     url: string;
     source: string;
 }
-export type V8CpuProfileFunction = {
+export type V8CpuProfileScriptFunction = {
     id: number;
     name: string;
     script: number | null;
@@ -73,12 +73,16 @@ export type CpuProCallFrame = {
 export type CpuProScript = {
     id: number;
     url: string;
+    module: CpuProModule | null;
     source: string;
+    compilation: V8CpuProfileScriptFunctionState[] | null;
     functions: CpuProScriptFunction[];
 }
-export type CpuProScriptFunction = Omit<V8CpuProfileFunction, 'script'> & {
+export type CpuProScriptFunction = Omit<V8CpuProfileScriptFunction, 'script'> & {
     script: CpuProScript | null;
     loc: string | null;
+    function: CpuProFunction | null;
+    inlinedInto: CpuProScriptFunction[] | null;
 };
 
 export type CpuProFunction = {

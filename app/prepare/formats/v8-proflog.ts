@@ -5,7 +5,7 @@
 //    node --prof /path/to/my/script.js
 //    node --prof-process -preprocess isolate*.log > profile.v8log.json
 
-import { V8CpuProfile, V8CpuProfileFunction, V8CpuProfileScript } from '../types.js';
+import { V8CpuProfile, V8CpuProfileScriptFunction, V8CpuProfileScript } from '../types.js';
 
 interface Code {
     name: string;
@@ -332,7 +332,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
     let nodeIdSeed = 1;
     let lastTm = 0;
     const scripts: V8CpuProfileScript[] = [];
-    const functions: V8CpuProfileFunction[] = [];
+    const scriptFunctions: V8CpuProfileScriptFunction[] = [];
     const profile: V8CpuProfile = {
         startTime: 0,
         endTime: 0,
@@ -340,7 +340,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         timeDeltas: new Array(v8log.ticks.length),
         samples: new Array(v8log.ticks.length),
         scripts,
-        functions
+        scriptFunctions
     };
 
     v8log.ticks.sort((a, b) => a.tm - b.tm);
@@ -457,7 +457,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
             continue;
         }
 
-        functions.push({
+        scriptFunctions.push({
             id: i,
             name: parseName(code.name).functionName,
             script: scriptIdToIndex.get(source.script) ?? null,

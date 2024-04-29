@@ -15,7 +15,9 @@ import {
     PackageType,
     WellKnownName,
     WellKnownType,
-    PackageRegistry
+    PackageRegistry,
+    V8CpuProfileScriptFunction,
+    V8CpuProfileScript
 } from './types';
 
 const knownRegistryRegExp = new RegExp('^(' + Object.keys(knownRegistry).join('|').replace(/[.]/g, '\\$&') + ')');
@@ -368,13 +370,20 @@ function resolveModule(
     return entry;
 }
 
-export function processCallFrames(callFrames: CpuProCallFrame[]) {
+export function processCallFrames(
+    callFrames: CpuProCallFrame[],
+    scripts: V8CpuProfileScript[] = [],
+    scriptFunctions: V8CpuProfileScriptFunction[] = []
+) {
+    // shared dictionaries
     const categories = Object.assign(new Map<string, CpuProCategory>(), { unknownTypeOrder: typeOrder.unknown });
     const packages = new Map<string, CpuProPackage>();
     const packageRefCache = new Map();
     const modules = new Map<string, CpuProModule>();
     const functions = Object.assign(new Map<string, CpuProFunction>(), { anonymous: 0 });
-    const anonymousModuleByScriptId = new Map<number, string>();
+
+    // cpuprofile related
+    const anonymousModuleByScriptId = new Map<number, string>(); // ?? is shared
     const wellKnownCallFrames: Record<WellKnownType, CpuProCallFrame | null> = {
         root: null,
         program: null,
@@ -382,7 +391,25 @@ export function processCallFrames(callFrames: CpuProCallFrame[]) {
         gc: null
     };
 
-    for (const callFrame of callFrames) {
+    // input
+    const inputCallFrames = [...callFrames];
+
+    for (const fn of scriptFunctions) {
+        const scriptIndex = fn.script;
+        const script = scriptIndex !== null ? scripts[scriptIndex] || null : null;
+
+        if (script !== null) {
+            inputCallFrames.push({
+                scriptId: script.id,
+                url: script.url,
+                functionName: fn.name,
+                lineNumber: fn.line,
+                columnNumber: fn.column
+            } as CpuProCallFrame);
+        }
+    }
+
+    for (const callFrame of inputCallFrames) {
         const { scriptId, functionName, url, lineNumber, columnNumber } = callFrame;
         const moduleRef = resolveModule(scriptId, url, functionName, anonymousModuleByScriptId);
 
