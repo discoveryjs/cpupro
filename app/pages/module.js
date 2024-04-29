@@ -31,6 +31,7 @@ discovery.page.define('module', {
 
         {
             view: 'expand',
+            when: false,
             className: 'trigger-outside script-source',
             data: '#.data.scripts[=> module = @]',
             expanded: '=source is not undefined',

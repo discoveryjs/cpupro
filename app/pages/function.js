@@ -150,6 +150,7 @@ discovery.page.define('function', {
 
         {
             view: 'expand',
+            when: false,
             className: 'trigger-outside script-source',
             data: `
                 #.data.scriptFunctions[=> function = @]
