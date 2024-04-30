@@ -453,7 +453,14 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         scriptIdToIndex.set(id, scripts.length);
         scripts.push({
             id,
-            url: url !== '<unknown>' ? url : '',
+            // treat <unknown> urls as empty strings which is better for futher processing
+            url: url === '<unknown>'
+                ? ''
+                // FIXME: deno wraps rust paths in brackets, e.g. [ext:cli/worker.rs:191:37]
+                // unwrap bracket's content for now, but looks like there should be a better solution
+                : url[0] === '[' && url[url.length - 1] === ']'
+                    ? url.slice(1, -1)
+                    : url,
             source
         });
     }

@@ -15,7 +15,7 @@ function normalizeUrl(url: string) {
         url = url.slice(2);
     }
 
-    if (protocol === '') {
+    if (protocol === '' && url) {
         return 'file://' + url.replace(/\\/g, '/');
     }
 
