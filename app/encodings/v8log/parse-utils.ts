@@ -1,8 +1,7 @@
 import { CodeState } from './types.js';
 
-const useBigInt = false as const;
-export const parseAddress = // useBigInt ? BigInt :
-    parseInt;
+// const useBigInt = false as const;
+export const parseAddress = parseInt; // useBigInt ? BigInt : parseInt;
 
 export function parseState(state: string) {
     switch (state) {

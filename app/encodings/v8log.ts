@@ -23,13 +23,13 @@ const parsers = {
 
 export async function decode(iterator) {
     const meta: Meta = {};
-    const codes: any[] = [];
-    const sources: any[] = [];
-    const ticks: any[] = [];
-    const memory: any[] = [];
-    const profiler: any[] = [];
+    const codes: unknown[] = [];
+    const sources: unknown[] = [];
+    const ticks: unknown[] = [];
+    const memory: unknown[] = [];
+    const profiler: unknown[] = [];
     const ignoredOps = new Set();
-    const ignoredEntries: any[] = [];
+    const ignoredEntries: unknown[] = [];
     const processLine = (buffer: string, sol: number, eol: number) => {
         if (sol >= eol) {
             return;

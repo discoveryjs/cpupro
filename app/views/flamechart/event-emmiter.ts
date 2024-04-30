@@ -1,8 +1,8 @@
 type EventMap = {
-    [key: string]: (...args: any[]) => void
+    [key: string]: (...args: unknown[]) => void
 };
 type Listener<Callback> = {
-    callback: Callback,
+    callback: Callback | null,
     next: Listener<Callback>
 };
 
@@ -33,7 +33,7 @@ export class EventEmitter<Events extends EventMap> {
 
     off<E extends keyof Events>(event: E, callback: Events[E]) {
         let cursor = this.listeners[event] || null;
-        let prev = null;
+        let prev: Listener<Events[E]> | null = null;
 
         // search for a callback and remove it
         while (cursor !== null) {

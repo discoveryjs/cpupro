@@ -17,6 +17,10 @@
         "plugin:@typescript-eslint/eslint-recommended",
         "plugin:@typescript-eslint/recommended"
     ],
+    "ignorePatterns": [
+        "app/views/misc/mode-regexp.js",
+        "lib/tmp/jsonxl-snapshot9.js"
+    ],
     "rules": {
         "@typescript-eslint/no-var-requires": 0,
         "no-duplicate-case": 2,

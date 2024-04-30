@@ -3,6 +3,7 @@ import { generateColorVector, calculateColor } from './color-utils';
 import { EventEmitter } from './event-emmiter';
 
 type FrameElement = HTMLElement;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FrameData = any;
 type FrameColorGenerator<T> = (frame: T, colorHue: string | null) => string;
 type SetDataOptions = {

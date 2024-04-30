@@ -3,7 +3,7 @@
 type ChromiumTimeline = {
     traceEvents: ChromiumTimelineEvent[]
 } & {
-    [key: string]: any;
+    [key: string]: unknown;
 };
 
 interface ChromiumTimelineEvent {
@@ -16,6 +16,7 @@ interface ChromiumTimelineEvent {
     dur: number;
     tdur: number;
     tts: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     args: { [key: string]: any };
     id?: string;
 }

@@ -1,4 +1,4 @@
-import { CpuProFunction, CpuProModule, CpuProPackage } from './types';
+import { CpuProModule, CpuProPackage } from './types';
 
 function getLongestCommonPath(longestCommonModulePath: string[] | null, modulePath: string) {
     let parts = modulePath.split(/\//);
@@ -22,8 +22,7 @@ function getLongestCommonPath(longestCommonModulePath: string[] | null, modulePa
 
 export function processPaths(
     packages: CpuProPackage[],
-    modules: CpuProModule[],
-    functions: CpuProFunction[]
+    modules: CpuProModule[]
 ) {
     // shorthand paths
     const longestCommonModulePath: Record<string, string[] | null> = Object.create(null);
