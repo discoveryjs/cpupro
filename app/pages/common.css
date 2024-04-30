@@ -115,6 +115,14 @@
 .discovery-root-darkmode .logo {
     filter: brightness(0.9);
 }
+.view-page-header__content > .logo {
+    float: left;
+    margin-right: 1.5ex;
+    margin-top: 5px;
+    font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
+    font-weight: 200;
+    font-size: 13px;
+}
 h2 .logo {
     font-size: 47%;
     margin-right: 8px;

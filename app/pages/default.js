@@ -393,7 +393,10 @@ discovery.page.define('default', {
             content: [
                 {
                     view: 'page-header',
-                    content: 'h1:"CPU (pro)file"'
+                    content: [
+                        { view: 'block', className: 'logo' },
+                        'h1:"cpupro"'
+                    ]
                 },
                 {
                     view: 'markdown',
