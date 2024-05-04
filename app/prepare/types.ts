@@ -47,13 +47,15 @@ export type V8CpuProfileScriptFunctionState = {
 export type WellKnownName =
     | '(root)'
     | '(program)'
+    | '(garbage collector)'
     | '(idle)'
-    | '(garbage collector)';
+    ;
 export type WellKnownType =
     | 'root'
     | 'program'
+    | 'gc'
     | 'idle'
-    | 'gc';
+    ;
 
 export type CpuProHierarchyNode = CpuProCategory | CpuProPackage | CpuProModule | CpuProFunction;
 export type CpuProNode = CpuProCallFrame | CpuProHierarchyNode;
@@ -96,21 +98,22 @@ export type CpuProFunction = {
     loc: string | null;
 };
 
-export type ModuleType =
-    | 'unknown'
-    | 'engine'
+export type ModuleType = // alphabetical order
     | WellKnownType
-    | 'script'
-    | 'wasm'
-    | 'regexp'
-    | 'internals'
     | 'bundle'
-    | 'node'
+    | 'chrome-extension'
     | 'deno'
     | 'electron'
+    | 'engine'
+    | 'internals'
+    | 'node'
+    | `protocol-${string}`
+    | 'regexp'
+    | 'script'
+    | 'wasm'
     | 'webpack/runtime'
-    | 'chrome-extension'
-    | `protocol-${string}`;
+    | 'unknown'
+    ;
 export type CpuProModule = {
     id: number; // starts with 1
     type: ModuleType;
@@ -122,29 +125,52 @@ export type CpuProModule = {
     functions: CpuProFunction[];
 };
 
-export type PackageType =
-    | 'unknown'
-    | 'engine'
+export type PackageType = // alphabetical order
     | WellKnownType
-    | 'script'
-    | 'wasm'
-    | 'regexp'
-    | 'internals'
-    | 'node'
+    | 'chrome-extension'
     | 'deno'
     | 'electron'
+    | 'engine'
+    | 'internals'
+    | 'node'
+    | 'regexp'
+    | 'script'
+    | 'wasm'
     | 'webpack/runtime'
-    | 'chrome-extension';
-export type PackageRegistry =
-    | 'npm'
+    | 'unknown'
+    ;
+export type PackageRegistry = // alphabetical order
+    | 'denoland'
+    | 'github'
     | 'jsr'
-    | 'denoland';
+    | 'npm'
+    ;
+export type CDN = // alphabetical order
+    | 'denoland'
+    | 'esmsh'
+    | 'github'
+    | 'jsdelivr'
+    | 'jspm'
+    | 'jsr'
+    | 'unpkg'
+    | 'npm'
+    | 'skypack'
+    ;
+export type PackageProviderEndpoint = {
+    registry: PackageRegistry;
+    pattern: RegExp;
+};
+export type PackageProvider = {
+    cdn: CDN;
+    endpoints: PackageProviderEndpoint[];
+}
 export type CpuProPackage = {
     id: number; // starts with 1
     type: PackageType;
     name: string;
     version: string | null;
     registry: PackageRegistry | null;
+    cdn: CDN | null;
     path: string | null;
     category: CpuProCategory;
     modules: CpuProModule[];

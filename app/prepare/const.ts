@@ -1,4 +1,5 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider } from './types';
+import { packageRegistryEndpoints } from './utils';
 
 // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
 export const OLD_COMPUTATIONS = false;
@@ -25,14 +26,39 @@ export const knownChromeExtensions = {
     'jlmafbaeoofdegohdhinkhilhclaklkp': 'OctoLinker',
     'dhdgffkkebhmkfjojejmpbldmpobfkfo': 'Tampermonkey'
 };
-export const knownRegistry: Record<string, PackageRegistry> = {
-    'https://jsr.io/': 'jsr',
-    'https://deno.land/x/': 'denoland'
+
+export const knownRegistry: Record<string, PackageProvider> = {
+    'https://jsr.io': { cdn: 'jsr', endpoints: packageRegistryEndpoints(
+        { registry: 'jsr', pattern: '[atpkg][/version][path]' }
+    ) },
+    'https://npm.jsr.io': { cdn: 'jsr', endpoints: packageRegistryEndpoints('npm') },
+    'https://deno.land': { cdn: 'denoland', endpoints: packageRegistryEndpoints(
+        { registry: 'denoland', pattern: '(?<pkg>std)[version][path]' },
+        { registry: 'denoland', pattern: 'x/[specifier]' }
+    ) },
+    'https://esm.sh': { cdn: 'esmsh', endpoints: packageRegistryEndpoints(
+        { registry: 'github', pattern: 'v\\d+/gh/[pkg][version][path]' },
+        { registry: 'npm', pattern: 'v\\d+/[specifier]' }
+    ) },
+    'https://cdn.jsdelivr.net': { cdn: 'jsdelivr', endpoints: packageRegistryEndpoints(
+        { registry: 'npm', pattern: 'npm/[specifier]' },
+        { registry: 'github', pattern: 'gh/[pkg][version][path]' }
+    ) },
+    'https://unpkg.com': { cdn: 'unpkg', endpoints: packageRegistryEndpoints('npm') },
+    'https://esm.run': { cdn: 'jsdelivr', endpoints: packageRegistryEndpoints('npm') },
+    'https://ga.jspm.io': { cdn: 'jspm', endpoints: packageRegistryEndpoints(
+        { registry: 'npm', pattern: 'npm:[specifier]' }
+    ) },
+    'https://cdn.skypack.dev': { cdn: 'skypack', endpoints: packageRegistryEndpoints(
+        { registry: 'npm', pattern: '-/[pkg][version]-[^\\/\\-]+?/[^\\/]+?,mode=(?<path>.+)' },
+        'npm'
+    ) }
 };
 
 export const typeColor: Record<PackageType | PackageRegistry, string> = {
     'script': '#fee29ca0',
     'npm': '#f98e94a0',
+    'github': '#666666a0',
     'jsr': '#ffee61a0',
     'denoland': '#ffffffa0',
     'wasm': '#9481ffa0',

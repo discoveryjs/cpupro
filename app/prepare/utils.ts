@@ -1,4 +1,4 @@
-import { CpuProNode, V8CpuProfileNode } from './types.js';
+import { CpuProNode, PackageProviderEndpoint, PackageRegistry, V8CpuProfileNode } from './types.js';
 
 // As of March 6th, 2024, V8 and JavaScriptCore do not seem to optimize for `new Uint32Array(array)` construction,
 // showing no notable performance difference in SpiderMonkey.
@@ -83,7 +83,7 @@ export function remapId(node: CpuProNode, index: number) {
 
 export function createMarkTime() {
     let markTimeTimestamp = Date.now();
-    let markTimeStep = null;
+    let markTimeStep: string | null = null;
 
     return (name: string) => {
         const newTimestamp = Date.now();
@@ -95,4 +95,42 @@ export function createMarkTime() {
         markTimeStep = name;
         markTimeTimestamp = newTimestamp;
     };
+}
+
+export const createRegistryRx = (function() {
+    const pkg = '(?<pkg>(?:[^/]+/)?[^/]+?)';
+    const atpkg = '(?<pkg>(?:@[^/]+/)?[^/]+?)';
+    const version = '(?:@(?<version>[^/]+))?';
+    const path = '(?:\/(?<path>.+))?';
+    const replacements = {
+        specifier: atpkg + version + path,
+        pkg,
+        atpkg,
+        version,
+        '/version': '(?:/(?<version>[^/]+))?',
+        path
+    };
+    const replacementsRx = new RegExp(`\\[(${Object.keys(replacements).join('|')})\\]`, 'g');
+
+    return function createRegistryRx(pattern: string) {
+        return new RegExp(`^/${pattern.replace(
+            replacementsRx,
+            (_, name) => replacements[name]
+        )}$`, 'd');
+    };
+}());
+
+export function packageRegistryEndpoints(
+    ...endpoints: Array<PackageRegistry | { registry: PackageRegistry, pattern?: string }>
+): PackageProviderEndpoint[] {
+    return endpoints.map(enpoint => (
+        typeof enpoint === 'string'
+            ? {
+                registry: enpoint,
+                pattern: createRegistryRx('[specifier]')
+            } : {
+                registry: enpoint.registry,
+                pattern: createRegistryRx(enpoint.pattern || '[specifier]')
+            })
+    );
 }

@@ -17,10 +17,9 @@ import {
     WellKnownType,
     PackageRegistry,
     V8CpuProfileScriptFunction,
-    V8CpuProfileScript
+    V8CpuProfileScript,
+    CDN
 } from './types';
-
-const knownRegistryRegExp = new RegExp('^(' + Object.keys(knownRegistry).join('|').replace(/[.]/g, '\\$&') + ')');
 
 type ReferenceCategory = {
     ref: string;
@@ -32,6 +31,7 @@ type RegistryPackage = {
     path: string;
     version: string | null;
     registry: PackageRegistry | null;
+    cdn: CDN | null;
 }
 type ReferencePackage = {
     ref: string;
@@ -40,6 +40,7 @@ type ReferencePackage = {
     path: string | null;
     version: string | null;
     registry: PackageRegistry | null;
+    cdn: CDN | null;
 };
 type ReferenceModule = {
     ref: string;
@@ -61,23 +62,33 @@ function resolveCategory(moduleType: string): ReferenceCategory {
 }
 
 function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
-    const registryMatch = modulePath.match(knownRegistryRegExp);
+    const moduleUrl = /^https?:\/\//.test(modulePath) ? new URL(modulePath) : null;
 
-    if (registryMatch !== null) {
-        const registryUrl = registryMatch[1];
-        const packageMatch = modulePath.slice(registryUrl.length).match(/^((?:@[^/]+\/)?[^\/@]+)(?:[\/@](\d[^/]*))?/);
+    if (moduleUrl !== null && Object.hasOwn(knownRegistry, moduleUrl.origin)) {
+        const registry = knownRegistry[moduleUrl.origin];
+        const registryPath = moduleUrl.pathname;
 
-        if (packageMatch !== null) {
-            const packageName = packageMatch[1];
-            const version = packageMatch[2] || null;
+        if (moduleUrl.origin === 'https://cdn.skypack.dev') {
+            debugger;
+        }
 
-            return {
-                type: 'script',
-                name: packageName,
-                path: registryUrl + packageMatch[0],
-                version,
-                registry: knownRegistry[registryUrl]
-            };
+        for (const endpoint of registry.endpoints) {
+            const packageMatch = registryPath.match(endpoint.pattern);
+
+            if (packageMatch !== null) {
+                const packageName = packageMatch.groups?.pkg || '?';
+                const version = packageMatch.groups?.version || null;
+                const pathOffset = packageMatch.indices?.groups?.path?.[0] ?? registryPath.length;
+
+                return {
+                    type: 'script',
+                    name: packageName,
+                    path: moduleUrl.origin + (pathOffset !== undefined ? registryPath.slice(0, pathOffset) : registryPath),
+                    version,
+                    registry: endpoint.registry,
+                    cdn: registry.cdn
+                };
+            }
         }
     }
 
@@ -96,7 +107,8 @@ function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
                 name: npmPackageName,
                 path: npmPackagePath,
                 version: null,
-                registry: 'npm'
+                registry: 'npm',
+                cdn: null
             };
         }
     }
@@ -121,6 +133,7 @@ function resolvePackage(
     let path: string | null = null;
     let version: string | null = null;
     let registry: PackageRegistry | null = null;
+    let cdn: CDN | null = null;
 
     switch (moduleType) {
         case 'script':
@@ -135,6 +148,7 @@ function resolvePackage(
                 path = packageInfo.path;
                 version = packageInfo.version;
                 registry = packageInfo.registry;
+                cdn = packageInfo.cdn;
             }
 
             if (ref === 'unknown') {
@@ -258,7 +272,8 @@ function resolvePackage(
         name,
         path,
         version,
-        registry
+        registry,
+        cdn
     });
 
     return entry;
@@ -439,6 +454,7 @@ export function processCallFrames(
                     name: packageRef.name,
                     version: packageRef.version,
                     registry: packageRef.registry,
+                    cdn: packageRef.cdn,
                     path: packageRef.path,
                     category: moduleCategory,
                     modules: []
@@ -482,7 +498,9 @@ export function processCallFrames(
                 package: callFrameModule.package,
                 module: callFrameModule,
                 regexp,
-                loc: callFrameModule.path ? `:${lineNumber}:${columnNumber}` : null
+                loc: lineNumber !== -1 && columnNumber !== -1
+                    ? `:${lineNumber}:${columnNumber}`
+                    : null
             });
 
             callFrameModule.functions.push(callFrameFunction);

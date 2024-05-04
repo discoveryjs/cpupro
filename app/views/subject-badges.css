@@ -1,16 +1,22 @@
 .subject-badge {
     --badge-font-size: inherit;
-    --badge-padding-left: 21px;
+    --badge-padding-left: 22px;
     --badge-icon-top-bottom: 3px;
     --badge-icon-left: 4px;
 
     font-size: var(--badge-font-size);
+}
+.subject-badge[data-cdn] {
+    --badge-padding-left: 38px;
 }
 .view-page-header__prelude .subject-badge {
     --badge-font-size: 85%;
     --badge-padding-left: 27px;
     --badge-icon-top-bottom: 4px;
     --badge-icon-left: 5px;
+}
+.view-page-header__prelude .subject-badge[data-cdn] {
+    --badge-padding-left: 47px;
 }
 
 .subject-badge:is(
@@ -19,6 +25,7 @@
     .subject-badge_type__deno,
     .subject-badge_type__electron,
     .subject-badge_type__npm,
+    .subject-badge_type__github,
     .subject-badge_type__jsr,
     .subject-badge_type__denoland,
     .subject-badge_type__chrome-extension,
@@ -36,6 +43,7 @@
 .subject-badge_type__deno,
 .subject-badge_type__electron,
 .subject-badge_type__npm,
+.subject-badge_type__github,
 .subject-badge_type__jsr,
 .subject-badge_type__denoland,
 .subject-badge_type__chrome-extension,
@@ -48,6 +56,7 @@
 .subject-badge_type__deno::before,
 .subject-badge_type__electron::before,
 .subject-badge_type__npm::before,
+.subject-badge_type__github::before,
 .subject-badge_type__jsr::before,
 .subject-badge_type__denoland::before,
 .subject-badge_type__chrome-extension::before,
@@ -59,46 +68,68 @@
     left: var(--badge-icon-left);
     aspect-ratio: 1 / 1;
     background-repeat: no-repeat;
-    background-position: left center;
+    background-position: left center, right center;
     background-size: contain;
+    background-image: var(--icon), var(--cdn, none);
+}
+.subject-badge[data-cdn]::before {
+    padding-right: 4px;
+    aspect-ratio: 2 / 1;
+}
+.subject-badge[data-cdn="esmsh"]::before {
+    --cdn: url('../img/esmsh.svg');
+}
+.subject-badge[data-cdn="jsdelivr"]::before {
+    --cdn: url('../img/jsdelivr.svg');
+}
+.subject-badge[data-cdn="jspm"]::before {
+    --cdn: url('../img/jspm.svg');
+}
+.subject-badge[data-cdn="unpkg"]::before {
+    --cdn: url('../img/unpkg.svg');
+}
+.subject-badge[data-cdn="skypack"]::before {
+    --cdn: url('../img/skypack.svg');
 }
 .subject-badge_type__script::before {
     filter: brightness(.85);
-    background-image: url('../img/js.svg');
+    --icon: url('../img/js.svg');
 }
 .subject-badge_type__node::before {
-    background-image: url('../img/nodejs.png');
+    --icon: url('../img/nodejs.png');
 }
 .subject-badge_type__deno::before {
     filter: brightness(.85);
-    background-image: url('../img/deno.svg');
+    --icon: url('../img/deno.svg');
 }
 .subject-badge_type__electron::before {
-    background-image: url('../img/electron.ico');
+    --icon: url('../img/electron.ico');
     filter: brightness(1.1);
 }
 .discovery-root-darkmode .subject-badge_type__electron::before {
     filter: brightness(1.7);
 }
 .subject-badge_type__npm::before {
-    background-image: url('../img/npm.svg');
+    --icon: url('../img/npm.svg');
 }
 .discovery-root-darkmode .subject-badge_type__npm::before {
     filter: brightness(.9);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.subject-badge_type__github::before {
+    --icon: url('../img/github-white.svg');
 }
 .subject-badge_type__jsr::before {
+    --icon: url('../img/jsr.svg');
     filter: brightness(.9);
-    background-image: url('../img/jsr.svg');
 }
 .subject-badge_type__denoland::before {
-    background-image: url('../img/deno.svg');
+    --icon: url('../img/deno.svg');
 }
 .subject-badge_type__chrome-extension::before {
-    background-image: url('../img/chrome-extension.png');
+    --icon: url('../img/chrome-extension.png');
 }
 .subject-badge_type__wasm::before {
-    background-image: url('../img/wasm.svg');
+    --icon: url('../img/wasm.svg');
 }
 
 .subject-badge.package[data-version]::after,

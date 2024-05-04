@@ -9,7 +9,11 @@ discovery.view.define('package-badge', {
     className: '=`package subject-badge subject-badge_type__${object | registry or type}`',
     content: 'text-match',
     postRender(el, _, data) {
-        const version = data?.object?.version;
+        const { registry, cdn, version } = data.object;
+
+        if (cdn && cdn !== registry) {
+            el.dataset.cdn = cdn;
+        }
 
         if (version) {
             el.dataset.version = version;
@@ -27,7 +31,14 @@ discovery.view.define('module-badge', {
     }`,
     whenData: true,
     className: '=`module subject-badge subject-badge_type__${object.package | registry or type}`',
-    content: 'text-match'
+    content: 'text-match',
+    postRender(el, _, data) {
+        const { registry, cdn } = data.object.package;
+
+        if (cdn && cdn !== registry) {
+            el.dataset.cdn = cdn;
+        }
+    }
 }, { tag: false });
 
 discovery.view.define('function-badge', {
@@ -44,5 +55,12 @@ discovery.view.define('function-badge', {
     }`,
     whenData: true,
     className: '=`function subject-badge subject-badge_type__${object.module.package | registry or type}`',
-    content: 'text-match'
+    content: 'text-match',
+    postRender(el, _, data) {
+        const { registry, cdn } = data.object.package;
+
+        if (cdn && cdn !== registry) {
+            el.dataset.cdn = cdn;
+        }
+    }
 }, { tag: false });
