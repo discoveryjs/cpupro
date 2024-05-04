@@ -68,10 +68,6 @@ function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
         const registry = knownRegistry[moduleUrl.origin];
         const registryPath = moduleUrl.pathname;
 
-        if (moduleUrl.origin === 'https://cdn.skypack.dev') {
-            debugger;
-        }
-
         for (const endpoint of registry.endpoints) {
             const packageMatch = registryPath.match(endpoint.pattern);
 
