@@ -176,7 +176,7 @@ discovery.page.define('function', {
                 {
                     view: 'source',
                     data: `{
-                        $line: scriptFunction.line;
+                        $line: scriptFunction.line or 1;
                         $start: scriptFunction.start;
                         $end: scriptFunction.end;
 
@@ -218,6 +218,7 @@ discovery.page.define('function', {
                     }`,
                     prelude: {
                         view: 'block',
+                        when: 'scriptFunction.script',
                         data: `
                             scriptFunction | $start; $end; script.functions
                                 .[start <= $start and end >= $end]
