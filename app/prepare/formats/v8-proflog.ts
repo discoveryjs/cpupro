@@ -325,13 +325,19 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
     const getScriptIdByUrl = (url: string) => scriptIdByUrl.has(url)
         ? scriptIdByUrl.get(url)
         : scriptIdByUrl.set(url, scriptIdByUrl.size).size - 1;
+    const vmStateIgnoreStack = new Uint32Array(vmState.length);
     const vmStateCallFrames = vmState.map(name =>
-        name !== 'js' && name !== 'other' && name !== 'external'
-            ? createCallFrame(`(${name})`)
+        name !== 'js'
+            ? createCallFrame(`(${
+                // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L34
+                name == 'other' || name === 'external' || name === 'logging'
+                    ? 'program'
+                    : name
+            })`)
             : null
     );
     const rootCallFrame = createCallFrame('(root)');
-    const idleCallFrame = createCallFrame('(idle)');
+    const programCallFrame = createCallFrame('(program)');
     const callFrameById = new Map<number, CallFrame | null>();
     const rootNode = createNode(1, rootCallFrame);
     const rootNodeMap = new Map();
@@ -351,6 +357,9 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         scriptFunctions
     };
 
+    vmStateIgnoreStack[VM_STATE_GC] = 1; // FIXME: probably stack is available on GC, but in cpuprofile GC is always on root
+    vmStateIgnoreStack[VM_STATE_IDLE] = 1;
+
     v8log.ticks.sort((a, b) => a.tm - b.tm);
 
     for (let tickIndex = 0; tickIndex < v8log.ticks.length; tickIndex++) {
@@ -359,7 +368,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         let currentNode = rootNode;
         let currentNodeMap = rootNodeMap;
 
-        if (vmStateCallFrame === null || tick.vm !== VM_STATE_GC) {
+        if (vmStateIgnoreStack[tick.vm] !== 1) {
             for (let i = tick.s.length - 2; i >= 0; i -= 2) {
                 const id = tick.s[i];
 
@@ -419,9 +428,10 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
             }
         }
 
-        // console.log(vmState[tick.vm] || 'unknown', currentNode === rootNode, v8log.code[tick.s[0]], tick);
         if (vmStateCallFrame === null && currentNode === rootNode) {
-            vmStateCallFrame = idleCallFrame;
+            // v8 profiler uses (program) in case no stack captured
+            // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L174
+            vmStateCallFrame = programCallFrame;
         }
 
         if (vmStateCallFrame !== null) {
