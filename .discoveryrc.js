@@ -13,6 +13,7 @@ module.exports = {
     ...v8logSupport ? { encodings: './encodings' } : null,
     prepare: './prepare',
     data: './data',
+    favicon: __dirname + '/app/img/favicon.png',
     view: {
         assets: [
             './pages/common.css',
