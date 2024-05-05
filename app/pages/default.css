@@ -316,3 +316,9 @@
 .page-default .hierarchical-components > .content .view-section .view-table .view-duration .time {
     min-width: calc(var(--total-time-digits) * 1ex + 3.5ex);
 }
+
+.page-default .upload-notes {
+    font-size: 82%;
+    color: #aaa;
+    padding: 6px;
+}

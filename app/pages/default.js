@@ -402,7 +402,7 @@ discovery.page.define('default', {
                 {
                     view: 'markdown',
                     source: [
-                        'A viewer for CPU profiles collected in Node.js or Chromium browsers.',
+                        'A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers.',
                         '',
                         'Supported formats:',
                         ...supportedFormats
@@ -410,7 +410,13 @@ discovery.page.define('default', {
                 },
                 'html:"<br>"',
                 'preset/upload',
-                'html:"<br><br>"',
+                'html:"<br>"',
+                {
+                    view: 'block',
+                    className: 'upload-notes',
+                    content: 'html:"CPUPRO is a server-less application that processes profiles locally without transmitting data elsewhere,<br>it securely opens and analyzes your profiles directly on your device."'
+                },
+                'html:"<br>"',
                 {
                     view: 'button',
                     onClick: '=#.actions.uploadDemoData',
