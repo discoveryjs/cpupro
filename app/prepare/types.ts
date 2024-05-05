@@ -20,7 +20,11 @@ export type V8CpuProfileCallFrame = {
     functionName: string | null;
     lineNumber: number;
     columnNumber: number;
-};
+}
+export type V8CpuProfileExecutionContext = {
+    origin: string;
+    name: string;
+}
 export type V8CpuProfileScript = {
     id: number;
     url: string;

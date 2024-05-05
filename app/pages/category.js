@@ -37,7 +37,7 @@ discovery.page.define('category', {
 
         {
             view: 'context',
-            when: 'name = "script"',
+            when: 'name in ["script", "chrome-extension"]',
             content: {
                 view: 'expand',
                 expanded: true,

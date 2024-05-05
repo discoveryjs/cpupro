@@ -1,10 +1,7 @@
 import { isCPUProfile } from './formats/cpuprofile.js';
-import { isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
+import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
+import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-proflog.js';
-import {
-    isChromiumPerformanceProfile,
-    extractFromChromiumPerformanceProfile
-} from './formats/chromium-performance-profile.js';
 
 export const supportedFormats = [
     '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
@@ -20,10 +17,17 @@ export const supportedFormatsText = supportedFormats
 // }
 
 export function convertValidate(data, rejectData) {
+    let dataScripts;
+    let dataExecutionContexts;
+
     data = data || {};
 
     if (isDevToolsEnhancedTraces(data)) {
-        data = data.payload;
+        const { traceEvents, scripts, executionContexts } = extractFromDevToolsEnhancedTraces(data);
+
+        data = traceEvents;
+        dataScripts = scripts;
+        dataExecutionContexts = executionContexts;
     }
 
     // see https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#heading=h.lc5airzennvk
@@ -34,6 +38,14 @@ export function convertValidate(data, rejectData) {
 
         if (!data) {
             rejectData('CPU profile data not found');
+        }
+
+        if (dataScripts) {
+            data.scripts = dataScripts;
+        }
+
+        if (dataExecutionContexts) {
+            data.executionContexts = dataExecutionContexts;
         }
     }
 

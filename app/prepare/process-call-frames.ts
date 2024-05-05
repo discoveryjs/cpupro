@@ -18,7 +18,8 @@ import {
     PackageRegistry,
     V8CpuProfileScriptFunction,
     V8CpuProfileScript,
-    CDN
+    CDN,
+    V8CpuProfileExecutionContext
 } from './types';
 
 type ReferenceCategory = {
@@ -114,7 +115,8 @@ function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
 
 function resolvePackage(
     cache: Map<ReferenceModule, ReferencePackage>,
-    moduleRef: ReferenceModule
+    moduleRef: ReferenceModule,
+    nameByOrigin: Map<string, string>
 ): ReferencePackage {
     let entry = cache.get(moduleRef);
 
@@ -233,9 +235,7 @@ function resolvePackage(
 
             ref = url.origin;
             type = 'chrome-extension';
-            name = knownChromeExtensions.hasOwnProperty(url.host)
-                ? knownChromeExtensions[url.host]
-                : url.host;
+            name = nameByOrigin.get(url.host) || url.host;
             path = url.origin;
 
             break;
@@ -288,6 +288,12 @@ function resolveModule(
         path: null,
         wellKnown: (scriptId === 0 && wellKnownNodeName.get(functionName as WellKnownName)) || null
     };
+
+    // Edge produces call frames with extensions::SafeBuiltins as url for some reasons,
+    // ignore such urls - treat as internals
+    if (url === 'extensions::SafeBuiltins') {
+        url = '';
+    }
 
     if (entry.wellKnown !== null) {
         entry.ref = functionName;
@@ -384,7 +390,8 @@ function resolveModule(
 export function processCallFrames(
     callFrames: CpuProCallFrame[],
     scripts: V8CpuProfileScript[] = [],
-    scriptFunctions: V8CpuProfileScriptFunction[] = []
+    scriptFunctions: V8CpuProfileScriptFunction[] = [],
+    executionContexts: V8CpuProfileExecutionContext[] = []
 ) {
     // shared dictionaries
     const categories = Object.assign(new Map<string, CpuProCategory>(), { unknownTypeOrder: typeOrder.unknown });
@@ -394,6 +401,10 @@ export function processCallFrames(
     const functions = Object.assign(new Map<string, CpuProFunction>(), { anonymous: 0 });
 
     // cpuprofile related
+    const nameByOrigin = new Map<string, string>([
+        ...executionContexts.map(ctx => [new URL(ctx.origin).host, ctx.name]) as [string, string][],
+        ...Object.entries(knownChromeExtensions)
+    ]);
     const anonymousModuleByScriptId = new Map<number, string>(); // ?? is shared
     const moduleByScriptId = new Map<number, CpuProModule>();
     const wellKnownCallFrames: Record<WellKnownType, CpuProCallFrame | null> = {
@@ -431,7 +442,7 @@ export function processCallFrames(
         if (callFrameModule === undefined) {
             const categoryRef = resolveCategory(moduleRef.type);
             let moduleCategory = categories.get(categoryRef.ref);
-            const packageRef = resolvePackage(packageRefCache, moduleRef);
+            const packageRef = resolvePackage(packageRefCache, moduleRef, nameByOrigin);
             let modulePackage = packages.get(packageRef.ref);
 
             // create category (cluster) if needed
