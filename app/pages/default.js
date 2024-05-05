@@ -386,43 +386,55 @@ const flamecharts = {
     }
 };
 
+const noDataPageContent = {
+    view: 'block',
+    className: 'welcome-page',
+    content: [
+        {
+            view: 'page-header',
+            content: [
+                { view: 'block', className: 'logo' },
+                'h1:"cpupro"'
+            ]
+        },
+
+        {
+            view: 'markdown',
+            source: [
+                'A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers.',
+                '',
+                'Supported formats:',
+                ...supportedFormats
+            ]
+        },
+
+        {
+            view: 'block',
+            className: 'upload-data',
+            content: [
+                'preset/upload',
+                {
+                    view: 'block',
+                    className: 'upload-notes',
+                    content: 'html:"CPUPRO is a server-less application that processes profiles locally without transmitting data elsewhere,<br>it securely opens and analyzes your profiles directly on your device."'
+                }
+            ]
+        },
+
+        {
+            view: 'button',
+            onClick: '=#.actions.uploadDemoData',
+            content: 'text:"Try demo CPU profile"'
+        }
+    ]
+};
+
 discovery.page.define('default', {
     view: 'switch',
     content: [
         {
             when: 'no #.datasets',
-            content: [
-                {
-                    view: 'page-header',
-                    content: [
-                        { view: 'block', className: 'logo' },
-                        'h1:"cpupro"'
-                    ]
-                },
-                {
-                    view: 'markdown',
-                    source: [
-                        'A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers.',
-                        '',
-                        'Supported formats:',
-                        ...supportedFormats
-                    ]
-                },
-                'html:"<br>"',
-                'preset/upload',
-                'html:"<br>"',
-                {
-                    view: 'block',
-                    className: 'upload-notes',
-                    content: 'html:"CPUPRO is a server-less application that processes profiles locally without transmitting data elsewhere,<br>it securely opens and analyzes your profiles directly on your device."'
-                },
-                'html:"<br>"',
-                {
-                    view: 'button',
-                    onClick: '=#.actions.uploadDemoData',
-                    content: 'text:"Try demo CPU profile"'
-                }
-            ]
+            content: noDataPageContent
         },
         { content: [
             {
@@ -500,9 +512,6 @@ discovery.page.define('default', {
                 header: 'text:"Flame charts"',
                 content: flamecharts
             }
-
-            // 'text:"(debug) "',
-            // 'link:{ text: "Check timings data", href: "#report&title=Check%20timings&q=JHN1bVNlbGY6ID0%2BIHJlZHVjZSg9PiQkICsgc2VsZlRpbWUsIDApOwokc3VtVG90YWw6ID0%2BIHJlZHVjZSg9PiQkICsgdG90YWxUaW1lLCAwKTsKJGNoZWNrOiA9PiB7CiAgJGV4cGVjdGVkOiAkJDsKICBzZWxmOiAkc3VtU2VsZigpID0gJGV4cGVjdGVkIGFuZCBubyAuW3NlbGZUaW1lID4gdG90YWxUaW1lXSwKICB0b3RhbDogbm90IC5bdG90YWxUaW1lID4gJGV4cGVjdGVkXQp9OwpbCiAgeyB0aXRsZTogJ25vZGVzJywgLi4ubm9kZXMuJGNoZWNrKHRvdGFsVGltZSkgfSwKICB7IHRpdGxlOiAnZnVuY3Rpb25zJywgLi4uZnVuY3Rpb25zLiRjaGVjayh0b3RhbFRpbWUpIH0sCiAgeyB0aXRsZTogJ2Z1bmN0aW9ucy5jaGlsZHJlbicsIC4uLmZ1bmN0aW9ucy5jaGlsZHJlbi4kY2hlY2sodG90YWxUaW1lKSwgbmVzdGVkVG90YWw6IG5vIGZ1bmN0aW9ucy5bY2hpbGRyZW4uJHN1bVRvdGFsKCkgIT0gdG90YWxUaW1lIC0gc2VsZlRpbWVdIH0sCiAgeyB0aXRsZTogJ21vZHVsZXMnLCAuLi5tb2R1bGVzLiRjaGVjayh0b3RhbFRpbWUpIH0sCiAgeyB0aXRsZTogJ21vZHVsZXMuY2hpbGRyZW4nLCAuLi5tb2R1bGVzLmNoaWxkcmVuLiRjaGVjayh0b3RhbFRpbWUpLCBuZXN0ZWRUb3RhbDogbm8gbW9kdWxlcy5bY2hpbGRyZW4uJHN1bVRvdGFsKCkgIT0gdG90YWxUaW1lIC0gc2VsZlRpbWVdIH0sCiAgeyB0aXRsZTogJ3BhY2thZ2VzJywgLi4ucGFja2FnZXMuJGNoZWNrKHRvdGFsVGltZSkgfSwKICB7IHRpdGxlOiAncGFja2FnZXMuY2hpbGRyZW4nLCAuLi5wYWNrYWdlcy5jaGlsZHJlbi4kY2hlY2sodG90YWxUaW1lKSwgbmVzdGVkVG90YWw6IG5vIHBhY2thZ2VzLltjaGlsZHJlbi4kc3VtVG90YWwoKSAhPSB0b3RhbFRpbWUgLSBzZWxmVGltZV0gfSwKICB7IHRpdGxlOiAnYXJlYXMnLCAuLi5hcmVhcy4kY2hlY2sodG90YWxUaW1lKSB9LAogIHsgdGl0bGU6ICdhcmVhcy5jaGlsZHJlbicsIC4uLmFyZWFzLmNoaWxkcmVuLiRjaGVjayh0b3RhbFRpbWUpLCBuZXN0ZWRUb3RhbDogbm8gYXJlYXMuW2NoaWxkcmVuLiRzdW1Ub3RhbCgpICE9IHRvdGFsVGltZSAtIHNlbGZUaW1lXSB9Cl0K&v=ewogICAgdmlldzogJ3RhYmxlJywKICAgIGNvbHM6IHsKICAgICAgc2VsZjogeyBjb250ZW50OiBbJ2NoZWNrYm94eyBjaGVja2VkOiBzZWxmIH0nXSB9LAogICAgICB0b3RhbDogeyBjb250ZW50OiBbJ2NoZWNrYm94eyBjaGVja2VkOiB0b3RhbCB9J10gfSwKICAgICAgbmVzdGVkVG90YWw6IHsgY29udGVudDogWydjaGVja2JveHsgd2hlbjogbmVzdGVkVG90YWwsIGNoZWNrZWQ6IG5lc3RlZFRvdGFsIH0nXSB9CiAgICB9Cn0%3D" }'
         ] }
     ]
 }, {

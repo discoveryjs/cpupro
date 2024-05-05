@@ -317,8 +317,22 @@
     min-width: calc(var(--total-time-digits) * 1ex + 3.5ex);
 }
 
-.page-default .upload-notes {
+.page-default .welcome-page .logo {
+    float: left;
+    margin-right: 1.8ex;
+    margin-top: 5px;
+    font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
+    font-weight: 200;
+    font-size: 13px;
+}
+.page-default .welcome-page .view-markdown .view-ul {
+    margin-top: 2px;
+}
+.page-default .welcome-page .upload-data {
+    margin: 2em 0;
+}
+.page-default .welcome-page .upload-notes {
     font-size: 82%;
     color: #aaa;
-    padding: 6px;
+    padding: 6px 0 0 6px;
 }
