@@ -63,6 +63,12 @@ const pageIndicators = {
             view: 'page-indicator-group',
             content: [
                 {
+                    title: 'Profiling time',
+                    hint: 'md{ source: "#### Profiling time\\n\\nThe time of the profiling session, excluding the starting overhead, which is the time from session start until the first sample is taken. The profiling duration is calculated as the sum of all sample durations and is used as the basis for computing time percentages.\\n\\nStarting overhead time is typically minimal when profiling begins with program startup, but can be significant if profiling starts during program execution.\\n\\n- Profiling session time: `{{endTime - startTime | ms()}}`\\n- Starting overhead: `{{startOverheadTime | ms()}}`\\n- Profiling time: `{{endTime - startTime | ms()}}` – `{{startOverheadTime | ms()}}` = `{{totalTime | ms()}}`" }',
+                    value: '=totalTime.ms()',
+                    unit: true
+                },
+                {
                     title: 'Samples',
                     hint: 'md{ source: "#### Samples\\n\\nThe total number of samples captured during the profiling session.\\n\\nEach sample represents the CPU\'s state, including the call stack, at\xa0a\xa0specific time interval, revealing which functions are executing at each point.\\n\\nFor efficiency, CPUPRO merges sequentially identical samples, reducing the workload of processing samples.\\n\\n- Captured samples: `{{#.data.sourceInfo.samples}}`\\n- Deduplicated samples: `{{#.data.samples.size()}}`" }',
                     value: '=sourceInfo.samples'
@@ -72,11 +78,6 @@ const pageIndicators = {
                     hint: 'md:"#### Sampling interval\\n\\nThe median duration between consecutive samples recorded during profiling. This metric offers an estimate of the average frequency at which the CPU\'s state is captured, reflecting the profiler\'s temporal resolution.\\n\\nIn V8, you can set the sampling interval at the start of a CPU profiling session. Adjusting this interval helps balance the level of detail captured against the performance impact on the system."',
                     value: '=sourceInfo.samplesInterval',
                     unit: 'μs'
-                },
-                {
-                    title: 'Total time',
-                    value: '=totalTime.ms()',
-                    unit: true
                 }
             ]
         },
