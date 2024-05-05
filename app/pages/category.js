@@ -1,6 +1,4 @@
-discovery.page.define('category', {
-    view: 'context',
-    data: 'categories[=>name = #.id]',
+const pageContent = {
     content: [
         {
             view: 'page-header',
@@ -112,5 +110,17 @@ discovery.page.define('category', {
             timings: '=#.data.categoriesTreeTimingsFiltered',
             value: '='
         }
+    ]
+};
+
+discovery.page.define('category', {
+    view: 'switch',
+    data: 'categories[=>name = #.id]',
+    content: [
+        { when: 'no $', content: {
+            view: 'alert-warning',
+            content: 'md:"No category with id \\"{{#.id}}\\" is found\\n\\n[Back to index page](#)"'
+        } },
+        pageContent
     ]
 });

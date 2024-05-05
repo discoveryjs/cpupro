@@ -1,6 +1,4 @@
-discovery.page.define('module', {
-    view: 'context',
-    data: 'modules[=>id = +#.id]',
+const pageContent = {
     content: [
         {
             view: 'page-header',
@@ -114,5 +112,17 @@ discovery.page.define('module', {
             timings: '=#.data.modulesTreeTimingsFiltered',
             value: '='
         }
+    ]
+};
+
+discovery.page.define('module', {
+    view: 'switch',
+    data: 'modules[=>id = +#.id]',
+    content: [
+        { when: 'no $', content: {
+            view: 'alert-warning',
+            content: 'md:"No module with id \\"{{#.id}}\\" is found\\n\\n[Back to index page](#)"'
+        } },
+        pageContent
     ]
 });

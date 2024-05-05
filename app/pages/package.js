@@ -1,6 +1,4 @@
-discovery.page.define('package', {
-    view: 'context',
-    data: 'packages[=>id = +#.id]',
+const pageContent = {
     content: [
         {
             view: 'page-header',
@@ -83,5 +81,17 @@ discovery.page.define('package', {
             timings: '=#.data.packagesTreeTimingsFiltered',
             value: '='
         }
+    ]
+};
+
+discovery.page.define('package', {
+    view: 'switch',
+    data: 'packages[=>id = +#.id]',
+    content: [
+        { when: 'no $', content: {
+            view: 'alert-warning',
+            content: 'md:"No package with id \\"{{#.id}}\\" is found\\n\\n[Back to index page](#)"'
+        } },
+        pageContent
     ]
 });

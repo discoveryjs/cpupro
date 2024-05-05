@@ -112,9 +112,7 @@ const ancestorsTree = {
     ]
 };
 
-discovery.page.define('function', {
-    view: 'context',
-    data: 'functions[=>id = +#.id]',
+const pageContent = {
     content: [
         {
             view: 'page-header',
@@ -283,5 +281,17 @@ discovery.page.define('function', {
             timings: '=#.data.functionsTreeTimingsFiltered',
             value: '='
         }
+    ]
+};
+
+discovery.page.define('function', {
+    view: 'switch',
+    data: 'functions[=>id = +#.id]',
+    content: [
+        { when: 'no $', content: {
+            view: 'alert-warning',
+            content: 'md:"No function with id \\"{{#.id}}\\" is found\\n\\n[Back to index page](#)"'
+        } },
+        pageContent
     ]
 });
