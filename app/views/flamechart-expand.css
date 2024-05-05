@@ -3,10 +3,24 @@
     margin-right: calc(1px - var(--discovery-page-padding-right));
     margin-bottom: calc(1px - var(--discovery-page-padding-bottom));
 }
+
+.flamechart-expand > .content > .toolbar {
+    display: flex;
+    gap: 0px 8px;
+    margin: 1px 0 1px -1px;
+}
+.flamechart-expand > .content > .toolbar .view-toggle {
+    font-size: 11px;
+    border-radius: 0;
+}
+.flamechart-expand > .content > .toolbar .view-toggle:not(.checked) { /* FIXME: temporary */
+    display: none;
+}
+
 .flamechart-expand > .content > .view-flamechart {
     margin: 1px 0 0;
     padding: 0;
-    --height: calc(100vh - 114px);
+    --height: calc(100vh - 114px - 26px);
     min-height: var(--height);
     max-height: var(--height);
     height: var(--height);
