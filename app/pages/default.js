@@ -2,6 +2,13 @@
 const demoDataBase64 = require('../demo/demo-data-base64.js').default;
 const { supportedFormats } = require('../prepare/index.js');
 
+function consumeDemos() {
+    const demos = discovery.context?.model?.meta?.demos;
+    if (demos) {
+        discovery.action.define('demos', () => demos);
+    }
+}
+
 discovery.action.define('uploadDemoData', () => discovery.loadDataFromUrl(demoDataBase64));
 setTimeout(() => {
     discovery.nav.primary.append({
@@ -16,7 +23,7 @@ setTimeout(() => {
         onClick: () => toggleFullPageFlamechart(false)
     });
     discovery.nav.menu.append({
-        when: true,
+        when: '#.actions.unloadData',
         content: 'text:"Unload cpuprofile"',
         onClick(_, ctx) {
             ctx.hide();
@@ -24,7 +31,12 @@ setTimeout(() => {
             ctx.widget.setPageHash('');
         }
     });
+
     discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
+
+    // FIXME: temporary solution, since context is cleaning up on data load/unload
+    discovery.on('data', consumeDemos);
+    consumeDemos();
 }, 1);
 
 function toggleFullPageFlamechart(fullpageMode) {
@@ -394,22 +406,14 @@ const noDataPageContent = {
             view: 'page-header',
             content: [
                 { view: 'block', className: 'logo' },
-                'h1:"cpupro"'
-            ]
-        },
-
-        {
-            view: 'markdown',
-            source: [
-                'A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers.',
-                '',
-                'Supported formats:',
-                ...supportedFormats
+                'h1:"cpupro"',
+                { view: 'block', className: 'description', content: 'text:"A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers"' }
             ]
         },
 
         {
             view: 'block',
+            when: '#.actions.uploadFile',
             className: 'upload-data',
             content: [
                 'preset/upload',
@@ -422,9 +426,40 @@ const noDataPageContent = {
         },
 
         {
-            view: 'button',
-            onClick: '=#.actions.uploadDemoData',
-            content: 'text:"Try demo CPU profile"'
+            view: 'markdown',
+            source: [
+                'Supported formats:',
+                ...supportedFormats
+            ]
+        },
+
+        {
+            view: 'block',
+            className: 'examples',
+            content: [
+                'text:"Try out example:"',
+                'html:"<br>"',
+                {
+                    view: 'button',
+                    className: 'nodejs',
+                    onClick: '=#.actions.uploadDemoData',
+                    content: 'text:"V8 CPU profile"'
+                },
+                {
+                    view: 'inline-list',
+                    when: '#.actions.demos',
+                    data: '"demos".callAction()',
+                    whenData: true,
+                    item: {
+                        view: 'button',
+                        className: '=runtime',
+                        onClick(_, data) {
+                            discovery.loadDataFromUrl(data.url);
+                        },
+                        content: 'text:title'
+                    }
+                }
+            ]
         }
     ]
 };
@@ -444,7 +479,8 @@ discovery.page.define('default', {
                         view: 'h2',
                         content: [
                             { view: 'block', className: 'logo' },
-                            'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
+                            // 'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
+                            'md:"data loaded in **{{#.datasets[].timing.responseTime}}** ms"'
                         ]
                     }
                 ]

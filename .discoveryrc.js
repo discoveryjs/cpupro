@@ -14,6 +14,10 @@ module.exports = {
     prepare: './prepare',
     data: './data',
     favicon: __dirname + '/app/img/favicon.png',
+    routers: ['./demo/router.js'],
+    meta: {
+        demos: require('./app/demo/index.json')
+    },
     view: {
         assets: [
             './pages/common.css',

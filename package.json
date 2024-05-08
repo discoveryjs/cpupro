@@ -37,7 +37,7 @@
     "build-wasm": "node scripts/wat-compile.js",
     "build-app": "discovery-build --clean --config .discoveryrc.app.js --single-file --no-data --entry-names \"app\"",
     "build-report-template": "discovery-build --single-file --no-data --no-model-data-upload --entry-names \"report\"",
-    "build-gh-pages": "npm run build-wasm && discovery-build --config .discoveryrc.app.js --single-file --no-data -o .gh-pages",
+    "build-gh-pages": "npm run build-wasm && discovery-build --config .discoveryrc.ghpages.js --single-file --no-data -o .gh-pages && node scripts/gh-pages-files",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

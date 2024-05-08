@@ -1,3 +1,15 @@
+.discovery-root {
+    --runtime-nodejs: url("../img/runtime-nodejs.png");
+    --runtime-deno: url("../img/runtime-deno.svg");
+    --runtime-chromium: url("../img/runtime-chromium.svg");
+    --runtime-edge: url("../img/runtime-edge.svg");
+    --runtime-electron: url("../img/runtime-electron.svg");
+    --runtime-unknown: url("../img/runtime-v8.svg");
+}
+.discovery-root-darkmode {
+    --runtime-unknown: url("../img/runtime-v8-outline.svg");
+}
+
 .view-alert-warning .view-link {
     color: inherit;
     text-decoration-color: inherit;
