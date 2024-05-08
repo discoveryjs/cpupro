@@ -23,10 +23,11 @@ export function convertValidate(data, rejectData: (reason: string, view?: unknow
     data = data || {};
 
     if (isDevToolsEnhancedTraces(data)) {
-        const { traceEvents, scripts, executionContexts } = extractFromDevToolsEnhancedTraces(data);
+        const { traceEvents, runtime, scripts, executionContexts } = extractFromDevToolsEnhancedTraces(data);
 
         data = traceEvents;
         extensions = {
+            runtime,
             scripts,
             executionContexts
         };

@@ -1,5 +1,6 @@
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
+    runtime?: string;
     scripts?: V8CpuProfileScript[];
     scriptFunctions?: V8CpuProfileScriptFunction[];
     executionContexts?: V8CpuProfileExecutionContext[];

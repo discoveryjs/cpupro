@@ -55,6 +55,7 @@ export function extractFromDevToolsEnhancedTraces(data: DevToolsEnchandedTraces)
 
     const result = {
         ...data.payload,
+        runtime: 'edge', // FIXME: temporary solution, there is no way for now to detect Edge, however this format is supported by Edge only for now
         executionContexts,
         scripts
     };

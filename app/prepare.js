@@ -175,7 +175,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
 
     markTime('producing result');
     const result = {
-        runtime: detectRuntime(categories, packages),
+        runtime: detectRuntime(categories, packages, data.runtime),
         sourceInfo: {
             nodes: nodesCount,
             samples: samplesCount,
