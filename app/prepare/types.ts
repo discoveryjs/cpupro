@@ -1,14 +1,16 @@
+// FIXME: cpupro extensions (temporary)
+export type V8CpuProfileCpuproExtensions = {
+    scripts?: V8CpuProfileScript[];
+    scriptFunctions?: V8CpuProfileScriptFunction[];
+    executionContexts?: V8CpuProfileExecutionContext[];
+}
 export type V8CpuProfile = {
     startTime: number;
     endTime: number;
     nodes: V8CpuProfileNode[];
     timeDeltas: number[];
     samples: number[];
-
-    // FIXME: cpupro extensions (temporary)
-    scripts?: V8CpuProfileScript[];
-    scriptFunctions?: V8CpuProfileScriptFunction[];
-};
+} & V8CpuProfileCpuproExtensions;
 export type V8CpuProfileNode = {
     id: number;
     callFrame: V8CpuProfileCallFrame;

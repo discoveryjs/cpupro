@@ -1,3 +1,5 @@
+import { V8CpuProfileExecutionContext, V8CpuProfileScript } from '../types.js';
+
 type Context = {
     origin: string;
     name: string;
@@ -29,20 +31,33 @@ export function isDevToolsEnhancedTraces(data) {
 }
 
 export function extractFromDevToolsEnhancedTraces(data: DevToolsEnchandedTraces) {
+    const scripts: V8CpuProfileScript[] = [];
+    const executionContexts: V8CpuProfileExecutionContext[] = [];
+
+    for (const script of data.scripts || []) {
+        if (script.sourceText) {
+            scripts.push({
+                id: Number(script.scriptId),
+                url: script.url,
+                source: script.sourceText
+            });
+        }
+    }
+
+    for (const ctx of data.executionContexts || []) {
+        if (ctx.name) {
+            executionContexts.push({
+                origin: ctx.origin,
+                name: ctx.name
+            });
+        }
+    }
+
     const result = {
         ...data.payload,
-        executionContexts: data.executionContexts?.map(ctx => ({
-            origin: ctx.origin,
-            name: ctx.name
-        }))?.filter(ctx => ctx.name),
-        scripts: data.scripts?.map(script => ({
-            id: Number(script.scriptId),
-            url: script.url,
-            source: script.sourceText
-        }))?.filter(script => script.source)
+        executionContexts,
+        scripts
     };
-
-    console.log(result);
 
     return result;
 }

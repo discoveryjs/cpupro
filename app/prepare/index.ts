@@ -2,6 +2,7 @@ import { isCPUProfile } from './formats/cpuprofile.js';
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-proflog.js';
+import { V8CpuProfileCpuproExtensions } from './types.js';
 
 export const supportedFormats = [
     '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
@@ -16,9 +17,8 @@ export const supportedFormatsText = supportedFormats
 //     return data && Array.isArray(data.nodes) && Array.isArray(data.profiles);
 // }
 
-export function convertValidate(data, rejectData) {
-    let dataScripts;
-    let dataExecutionContexts;
+export function convertValidate(data, rejectData: (reason: string, view?: unknown) => void) {
+    let extensions: V8CpuProfileCpuproExtensions = {};
 
     data = data || {};
 
@@ -26,8 +26,10 @@ export function convertValidate(data, rejectData) {
         const { traceEvents, scripts, executionContexts } = extractFromDevToolsEnhancedTraces(data);
 
         data = traceEvents;
-        dataScripts = scripts;
-        dataExecutionContexts = executionContexts;
+        extensions = {
+            scripts,
+            executionContexts
+        };
     }
 
     // see https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#heading=h.lc5airzennvk
@@ -39,19 +41,13 @@ export function convertValidate(data, rejectData) {
         if (!data) {
             rejectData('CPU profile data not found');
         }
-
-        if (dataScripts) {
-            data.scripts = dataScripts;
-        }
-
-        if (dataExecutionContexts) {
-            data.executionContexts = dataExecutionContexts;
-        }
     }
 
     if (isV8Log(data)) {
         data = convertV8LogIntoCpuprofile(data);
     }
+
+    Object.assign(data, extensions);
 
     // if (isCPUProfileMerge(data)) {
     //     return {
