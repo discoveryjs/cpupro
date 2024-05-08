@@ -479,8 +479,7 @@ discovery.page.define('default', {
                         view: 'h2',
                         content: [
                             { view: 'block', className: 'logo' },
-                            // 'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
-                            'md:"data loaded in **{{#.datasets[].timing.responseTime}}** ms"'
+                            'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
                         ]
                     }
                 ]
