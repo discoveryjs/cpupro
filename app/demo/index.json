@@ -1,5 +1,10 @@
 [
     {
+        "runtime": "nodejs",
+        "title": "V8 CPU profile",
+        "url": "demo/nodejs.jsonxl"
+    },
+    {
         "runtime": "deno",
         "title": "V8 log (preprocessed)",
         "url": "demo/deno.jsonxl"

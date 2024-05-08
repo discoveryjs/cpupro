@@ -1,5 +1,4 @@
 /* eslint-env node */
-const demoDataBase64 = require('../demo/demo-data-base64.js').default;
 const { supportedFormats } = require('../prepare/index.js');
 
 function consumeDemos() {
@@ -9,7 +8,6 @@ function consumeDemos() {
     }
 }
 
-discovery.action.define('uploadDemoData', () => discovery.loadDataFromUrl(demoDataBase64));
 setTimeout(() => {
     discovery.nav.primary.append({
         className: 'github',
@@ -436,18 +434,12 @@ const noDataPageContent = {
         {
             view: 'block',
             className: 'examples',
+            when: '#.actions.demos',
             content: [
                 'text:"Try out example:"',
                 'html:"<br>"',
                 {
-                    view: 'button',
-                    className: 'nodejs',
-                    onClick: '=#.actions.uploadDemoData',
-                    content: 'text:"V8 CPU profile"'
-                },
-                {
                     view: 'inline-list',
-                    when: '#.actions.demos',
                     data: '"demos".callAction()',
                     whenData: true,
                     item: {
