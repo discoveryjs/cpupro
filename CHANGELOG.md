@@ -1,25 +1,42 @@
 ## next
 
-- Report
-    - Added support for [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces)
-    - Added support for [V8 log](https://v8.dev/docs/profile) preprocessed with [`--preprocess`](https://v8.dev/docs/profile#web-ui-for---prof)
+- Viewer
     - Changed the terminology: replaced "area" with "category"
+    - Formats
+        - Added support for [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces)
+        - Added support for [V8 log](https://v8.dev/docs/profile) preprocessed with [`--preprocess`](https://v8.dev/docs/profile#web-ui-for---prof)
+        - Fixed the extraction of a CPU profile from Chrome tracing when it contains several profiles
+    - Runtimes & registries
+        - Added Deno detection
+        - Added Electron detection
+        - Added detection for CDNs and registries: JSR, deno.land, jsdelivr, unpkg, esm.sh, esm.run, jspm, and skypack
+    - Computations
+        - Implemented GC nodes reparenting to the script node
+        - Fixed the placement of bundle modules to be placed in the "script" category instead of the "bundle" category
+        - Changed the handling of negative time deltas, they are now corrected by rearranging instead of being ignored
+        - Resolved the issue with shortening paths to scripts when `webpack/runtime` is present in the CPU profile
+        - Adjusted call frame reference computation by omitting line and column when they are not specified or less than zero
+    - Redisaigned welcome page, added "Try an example" buttons when no CPU profile is loaded
     - Reworked the layout and UX of the main page
-    - Added "Try demo CPU profile" button when no CPU profile is loaded
-    - Adjusted call frame reference computation by omitting line and column when they are not specified or less than zero
-    - Added Electron's category
-    - Fixed the placement of bundle modules to be placed in the "script" category instead of the "bundle" category
-    - Implemented permanent colors and a fixed timeline order for areas and module types
-    - Changed flame diagram colors to match category colors and module types
-    - Implemented GC nodes reparenting to the script node
+        - Implemented permanent colors and a fixed timeline order for areas and module types
     - Improved the display of regular expressions, particularly long ones
-    - Fixed the extraction of a CPU profile from Chrome tracing when it contains several profiles
-    - Resolved the issue with shortening paths to scripts when `webpack/runtime` is present in the CPU profile
-    - Changed the handling of negative time deltas, they are now corrected by rearranging instead of being ignored
+    - Reworked subject pages, each page now includes:
+        - A timeline that not only displays self time but also nested time, with the distribution of nested time by categories
+        - A section "Nested time distribution"
+        - A basic flamechart displaying all frames related to the current subject as root frames
+    - Timeline
+        - Added the capability to select a range
+        - Added a tooltip that provides expanded details on a range
+    - Flamechart
+        - Added vertical scrolling loking when not activated
+        - Added a detailed information block for the selected or zoomed frame
+        - Added the capability to select frames
+        - Improved performance and reliability
+        - Changed colors to match category colors and module types
 
 ## 0.4.0 (2024-01-21)
 
-- Report
+- Viewer
     - Extracted regular expression into a separate area `regexp`
     - Fixed edge cases when `scriptId` is not a number
     - Added ancestor call sites on a function page
@@ -52,7 +69,7 @@
 - Used jsonxl binary and gzip encodings for data on report generating, which allow to produce a report much faster and much smaller (up to 50 times) in size
 - Added `writeJsonxlToFileSync()` method to profile
 - Added `build/*.html` and `package.json` to exports
-- Report
+- Viewer
     - Bumped `discoveryjs` to `1.0.0-beta.73`
     - Enabled [embed API](https://github.com/discoveryjs/discovery/blob/master/docs/embed.md) for integrations
     - Rework `flamechart` for performance and reliability, it's a little more compact
