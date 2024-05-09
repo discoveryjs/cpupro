@@ -149,9 +149,6 @@
 }
 .page-default .view-page-indicators .runtime:is(.deno) .value::before {
     background-image: var(--runtime-deno);
-    height: 1.3em;
-    margin-bottom: -.25em;
-    margin-right: 0.6ex;
 }
 .page-default .view-page-indicators .runtime:is(.edge) .value::before {
     background-image: var(--runtime-edge);
