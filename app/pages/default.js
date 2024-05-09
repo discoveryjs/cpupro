@@ -80,7 +80,7 @@ const pageIndicators = {
                 },
                 {
                     title: 'Samples',
-                    hint: 'md{ source: "#### Samples\\n\\nThe total number of samples captured during the profiling session.\\n\\nEach sample represents the CPU\'s state, including the call stack, at\xa0a\xa0specific time interval, revealing which functions are executing at each point.\\n\\nFor efficiency, CPUPRO merges sequentially identical samples, reducing the workload of processing samples.\\n\\n- Captured samples: `{{#.data.sourceInfo.samples}}`\\n- Deduplicated samples: `{{#.data.samples.size()}}`" }',
+                    hint: 'md{ source: "#### Samples\\n\\nThe total number of samples captured during the profiling session.\\n\\nEach sample represents the CPU\'s state, including the call stack, at\xa0a\xa0specific time interval, revealing which functions are executing at each point.\\n\\nFor efficiency, CPUpro merges sequentially identical samples, reducing the workload of processing samples.\\n\\n- Captured samples: `{{#.data.sourceInfo.samples}}`\\n- Deduplicated samples: `{{#.data.samples.size()}}`" }',
                     value: '=sourceInfo.samples'
                 },
                 {
@@ -418,7 +418,7 @@ const noDataPageContent = {
                 {
                     view: 'block',
                     className: 'upload-notes',
-                    content: 'html:"CPUPRO is a server-less application that processes profiles locally without transmitting data elsewhere,<br>it securely opens and analyzes your profiles directly on your device."'
+                    content: 'html:"CPUpro is a server-less application that processes profiles locally without transmitting data elsewhere,<br>it securely opens and analyzes your profiles directly on your device."'
                 }
             ]
         },

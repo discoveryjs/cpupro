@@ -1,6 +1,6 @@
 [![NPM version](https://img.shields.io/npm/v/cpupro.svg)](https://www.npmjs.com/package/cpupro)
 
-# CPUPRO
+# CPUpro
 
 Rethinking of CPU profile analysis and processing. Focused on profiles and logs of any size collected in V8 runtimes: Node.js, Deno and Chromium browsers.
 
