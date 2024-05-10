@@ -1,4 +1,4 @@
-import { isCPUProfile } from './formats/cpuprofile.js';
+import { convertParentIntoChildrenIfNeeded, isCPUProfile } from './formats/cpuprofile.js';
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-proflog.js';
@@ -42,13 +42,9 @@ export function convertValidate(data, rejectData: (reason: string, view?: unknow
         if (!data) {
             rejectData('CPU profile data not found');
         }
-    }
-
-    if (isV8Log(data)) {
+    } else if (isV8Log(data)) {
         data = convertV8LogIntoCpuprofile(data);
     }
-
-    Object.assign(data, extensions);
 
     // if (isCPUProfileMerge(data)) {
     //     return {
@@ -73,6 +69,9 @@ export function convertValidate(data, rejectData: (reason: string, view?: unknow
             ]
         });
     }
+
+    convertParentIntoChildrenIfNeeded(data);
+    Object.assign(data, extensions);
 
     return data;
 }

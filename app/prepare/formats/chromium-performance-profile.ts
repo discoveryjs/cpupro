@@ -104,9 +104,6 @@ export function extractFromChromiumPerformanceProfile(
         )
         .sort((a, b) => a.ts - b.ts);
 
-    // properties of nodes
-    let hasParent = false;
-
     for (const event of events) {
         if (event.name === 'CpuProfile') {
             // Create an arbitrary profile id.
@@ -152,10 +149,6 @@ export function extractFromChromiumPerformanceProfile(
 
                 if (Array.isArray(nodes) && nodes.length > 0) {
                     cpuProfile.nodes.push(...nodes);
-
-                    if (!hasParent) {
-                        hasParent = nodes.find(node => typeof node.parent === 'number');
-                    }
                 }
 
                 if (samples) {
@@ -185,41 +178,12 @@ export function extractFromChromiumPerformanceProfile(
     let indexToView = -1;
 
     for (const [profileId, profile] of cpuProfileById) {
-        const nodeWithNoChildrenById = new Map<number, CPUProfileNode>();
         const processName: string | null = processNameId.get(parseInt(profileId)) || 'Unknown';
 
         profile.name = processName;
 
         if (processName === 'CrRendererMain') {
             indexToView = profiles.length;
-        }
-
-        // nodes may missing children field but have parent field, rebuild children arrays then;
-        // avoid updating children when nodes have parent and children fields
-        if (hasParent) {
-            // build map for nodes with no children only
-            for (const node of profile.nodes) {
-                if (!Array.isArray(node.children) || node.children.length === 0) {
-                    nodeWithNoChildrenById.set(node.id, node);
-                }
-            }
-
-            // rebuild children for nodes which missed it
-            if (nodeWithNoChildrenById.size > 0) {
-                for (const node of profile.nodes) {
-                    if (typeof node.parent === 'number') {
-                        const parent = nodeWithNoChildrenById.get(node.parent);
-
-                        if (parent !== undefined) {
-                            if (Array.isArray(parent.children)) {
-                                parent.children.push(node.id);
-                            } else {
-                                parent.children = [node.id];
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         if (!profile.endTime && profile.timeDeltas) {
