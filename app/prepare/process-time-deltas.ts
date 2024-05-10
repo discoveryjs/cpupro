@@ -1,5 +1,3 @@
-import { OLD_COMPUTATIONS } from './const';
-
 // Fixes negative deltas in a `timeDeltas` array and ensures the integrity and chronological order of the associated samples.
 // It adjusts the deltas to ensure all values are non-negative by redistributing negative deltas across adjacent elements.
 // Additionally, it corrects the order of associated samples to match the adjusted timing.
@@ -39,18 +37,15 @@ export function processTimeDeltas(timeDeltas: number[], samples: number[], start
     const startOverheadTime = timeDeltas[0];
     const totalTime = (endTime - startTime) - startOverheadTime; // compute total time excluding start overhead duration
 
-    // TODO: delete the condition after completing the comparison with the previous version for temporary analysis purposes
-    if (!OLD_COMPUTATIONS) {
-        let deltasSum = 0;
+    let deltasSum = 0;
 
-        // shift deltas 1 index left and compute sum of deltas to compute last delta
-        for (let i = 1; i < timeDeltas.length; i++) {
-            deltasSum += timeDeltas[i - 1] = timeDeltas[i];
-        }
-
-        // set last delta
-        timeDeltas[timeDeltas.length - 1] = totalTime - deltasSum;
+    // shift deltas 1 index left and compute sum of deltas to compute last delta
+    for (let i = 1; i < timeDeltas.length; i++) {
+        deltasSum += timeDeltas[i - 1] = timeDeltas[i];
     }
+
+    // set last delta
+    timeDeltas[timeDeltas.length - 1] = totalTime - deltasSum;
 
     return {
         startTime,

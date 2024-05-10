@@ -1,4 +1,4 @@
-import { OLD_COMPUTATIONS, TIMINGS } from './prepare/const.js';
+import { TIMINGS } from './prepare/const.js';
 import { convertToUint32Array, createMarkTime, findMaxId, remapId } from './prepare/utils.js';
 import { convertValidate } from './prepare/index.js';
 import { processCallFrames } from './prepare/process-call-frames.js';
@@ -130,14 +130,6 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     } = processScripts(data.scripts, data.scriptFunctions, moduleByScriptId);
 
     markTime('processSamples()');
-    // TODO: delete after completing the comparison with the previous version for temporary analysis purposes
-    if (OLD_COMPUTATIONS) {
-        if (wellKnownCallFrames.idle) {
-            samples[0] = wellKnownCallFrames.idle.id - 1;
-        } else {
-            timeDeltas[0] = 0;
-        }
-    }
     const {
         samplesTimings,
         samplesTimingsFiltered,
