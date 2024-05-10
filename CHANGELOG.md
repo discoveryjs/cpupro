@@ -1,4 +1,4 @@
-## next
+## 0.5.0 (2024-05-09)
 
 - Viewer
     - Changed the terminology: replaced "area" with "category"
