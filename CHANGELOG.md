@@ -1,6 +1,7 @@
 ## next
 
 - Added transformation from `parent` to `children` for call tree nodes for `.cpuprofile` files if needed (fixes #5)
+- Fixed double rendering of the page after the profile data is loaded
 
 ## 0.5.0 (2024-05-09)
 

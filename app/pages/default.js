@@ -3,8 +3,13 @@ const { supportedFormats } = require('../prepare/index.js');
 
 function consumeDemos() {
     const demos = discovery.context?.model?.meta?.demos;
+
     if (demos) {
         discovery.action.define('demos', () => demos);
+
+        if (discovery.data) {
+            discovery.cancelScheduledRender();
+        }
     }
 }
 
