@@ -1,4 +1,4 @@
-## next
+## 0.5.1 (2024-05-10)
 
 - Added transformation from `parent` to `children` for call tree nodes for `.cpuprofile` files if needed (fixes #5)
 - Implemented exclusion of ending no-sample time. For certain profiles, the time from the last sample until `endTime` can be significant, indicating the conclusion of the profiling session or adjustments from excluding idle samples at the end. This time is now excluded from the `Profiling time` which used for computing time percentages
