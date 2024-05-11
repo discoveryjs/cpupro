@@ -31,11 +31,17 @@ function fixDeltasOrder(timeDeltas: number[], samples: number[]) {
     }
 }
 
-export function processTimeDeltas(timeDeltas: number[], samples: number[], startTime: number, endTime: number) {
+export function processTimeDeltas(
+    timeDeltas: number[],
+    samples: number[],
+    startTime: number,
+    endTime: number,
+    samplesInterval?: number
+) {
     fixDeltasOrder(timeDeltas, samples);
 
-    const startOverheadTime = timeDeltas[0];
-    const totalTime = (endTime - startTime) - startOverheadTime; // compute total time excluding start overhead duration
+    const startNoSamplesTime = timeDeltas[0]; // time before first sample
+    const maybeTotalTime = (endTime - startTime) - startNoSamplesTime; // compute potential total time excluding start no samples period
 
     let deltasSum = 0;
 
@@ -44,13 +50,30 @@ export function processTimeDeltas(timeDeltas: number[], samples: number[], start
         deltasSum += timeDeltas[i - 1] = timeDeltas[i];
     }
 
-    // set last delta
-    timeDeltas[timeDeltas.length - 1] = totalTime - deltasSum;
+    // compute samples interval as a median of deltas if needed (it might be computed on steps before time deltas processing)
+    if (typeof samplesInterval !== 'number') {
+        samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1]; // TODO: speedup?
+    }
+
+    // compute last delta
+    const maybeLastDelta = maybeTotalTime - deltasSum;
+    const lastDelta = maybeLastDelta > 2.5 * samplesInterval
+        ? samplesInterval
+        : maybeLastDelta;
+
+    timeDeltas[timeDeltas.length - 1] = lastDelta;
+    deltasSum += lastDelta;
+
+    // compute totalTime and end no samples time
+    const totalTime = deltasSum;
+    const endNoSamplesTime = maybeTotalTime - totalTime;
 
     return {
         startTime,
-        startOverheadTime,
+        startNoSamplesTime,
         endTime,
-        totalTime
+        endNoSamplesTime,
+        totalTime,
+        samplesInterval
     };
 }

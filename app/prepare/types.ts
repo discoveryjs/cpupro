@@ -1,5 +1,7 @@
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
+    _samplesInterval?: number;
+    // TODO: rename adding underscore are a prefix
     runtime?: string;
     scripts?: V8CpuProfileScript[];
     scriptFunctions?: V8CpuProfileScriptFunction[];

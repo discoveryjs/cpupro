@@ -47,10 +47,18 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     markTime('processTimeDeltas()');
     const {
         startTime,
-        startOverheadTime,
+        startNoSamplesTime,
         endTime,
-        totalTime
-    } = processTimeDeltas(data.timeDeltas, data.samples, data.startTime, data.endTime);
+        endNoSamplesTime,
+        totalTime,
+        samplesInterval
+    } = processTimeDeltas(
+        data.timeDeltas,
+        data.samples,
+        data.startTime,
+        data.endTime,
+        data._samplesInterval // could be computed on V8 log convertation into cpuprofile
+    );
 
     // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
     // are correcting within processTimeDeltas()
@@ -171,13 +179,14 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         sourceInfo: {
             nodes: nodesCount,
             samples: samplesCount,
-            samplesInterval: timeDeltas.slice().sort()[timeDeltas.length >> 1] // TODO: speedup
+            samplesInterval
         },
         scripts,
         scriptFunctions,
         startTime,
-        startOverheadTime,
+        startNoSamplesTime,
         endTime,
+        endNoSamplesTime,
         totalTime,
         samples: samplesTimings.samples,
         samplesTimings,
