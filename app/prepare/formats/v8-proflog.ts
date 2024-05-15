@@ -454,9 +454,9 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         lastTm = tick.tm;
     }
 
-    profile.endTime =
-        lastTm +
-        profile.timeDeltas.slice().sort()[profile.timeDeltas.length >> 1];
+    const samplesInterval = profile.timeDeltas.slice().sort()[profile.timeDeltas.length >> 1];
+    profile._samplesInterval = samplesInterval;
+    profile.endTime = lastTm + samplesInterval;
 
     const scriptIdToIndex = new Map<number, number>();
     for (const { id, url, source } of v8log.scripts.filter(Boolean)) {
