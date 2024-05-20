@@ -79,10 +79,18 @@ type CallFrame = {
     lineNumber: number;
     columnNumber: number;
 }
+
 type Node = {
     id: number;
     callFrame: CallFrame;
     children: number[];
+}
+
+type ParseJsNameResult = {
+    functionName: string;
+    scriptUrl: string;
+    line: number;
+    column: number;
 }
 
 export const VM_STATE_JS = 0;
@@ -152,7 +160,21 @@ function cleanupInternalName(name: string) {
     return name;
 }
 
-function parseJsName(name: string, script?: Script) {
+function parseLoc(url: string) {
+    const locMatch = url.match(/\:(\d+)\:(\d+)$/);
+    const loc = locMatch ? locMatch[0] : null;
+    const line = locMatch !== null ? Number(locMatch[1]) : -1;
+    const column = locMatch !== null ? Number(locMatch[2]) : -1;
+
+    return { loc, line, column };
+}
+
+// A function name could contain surrounding whitespaces or a get/set prefix for getters/setters
+function cleanupFunctionName(name: string) {
+    return name.trim().replace(/^(?:get |set )(\S)/, '$1');
+}
+
+function parseJsName(name: string, script?: Script): ParseJsNameResult {
     if (name.startsWith('wasm-function')) {
         script = { url: 'wasm://wasm/' + name } as Script;
         name += ' ' + script.url;
@@ -160,17 +182,27 @@ function parseJsName(name: string, script?: Script) {
 
     const scriptUrl = script?.url || null;
 
-    // robust way since name and url could contain spaces
-    if (scriptUrl !== null) {
-        const [prefix, loc = ''] = name.split(scriptUrl);
-        const functionName = prefix.trim().replace(/^(?:get |set )/, '');
-        const [, line, column] = loc.split(':');
+    if (scriptUrl === '' || scriptUrl === '<unknown>') {
+        const { loc, line, column } = parseLoc(name);
 
         return {
-            functionName,
+            functionName: cleanupFunctionName(loc !== null ? name.slice(0, -loc.length) : name),
+            scriptUrl: '',
+            line,
+            column
+        };
+    }
+
+    // robust way since name and url could contain white spaces
+    if (scriptUrl !== null) {
+        const [prefix, loc = ''] = name.split(scriptUrl);
+        const { line, column } = parseLoc(loc);
+
+        return {
+            functionName: cleanupFunctionName(prefix),
             scriptUrl,
-            line: line !== '' ? Number(line) : -1,
-            column: column !== '' ? Number(column) : -1
+            line,
+            column
         };
     }
 
@@ -180,10 +212,7 @@ function parseJsName(name: string, script?: Script) {
     const url = nameMatch !== null
         ? name.slice(nameMatch[0].length)
         : name[0] === ' ' ? name.slice(1) : name;
-    const locMatch = url.match(/\:(\d+)\:(\d+)$/);
-    const loc = locMatch ? locMatch[0] : null;
-    const line = locMatch !== null ? Number(locMatch[1]) : -1;
-    const column = locMatch !== null ? Number(locMatch[2]) : -1;
+    const { loc, line, column } = parseLoc(url);
 
     return {
         functionName,
