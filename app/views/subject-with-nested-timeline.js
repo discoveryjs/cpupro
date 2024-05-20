@@ -88,6 +88,29 @@ discovery.view.define('subject-with-nested-timeline', {
             ]
         },
         {
+            view: 'block',
+            className: 'function-states',
+            data: `
+                $type: subject.marker().type;
+                $type = "module" ? (#.data.scripts[=> module = @.subject] | is object ? compilation.states) :
+                $type = "function" ? #.data.scriptFunctions[=> function = @.subject].states :
+                undefined
+            `,
+            whenData: true,
+            content: {
+                view: 'list',
+                itemConfig: {
+                    view: 'block',
+                    className: 'tick',
+                    postRender(el, _, data, ctx) {
+                        el.style.setProperty('--pos', data.tm / ctx.data.totalTime);
+                        el.style.setProperty('--duration', (data.duration || (ctx.data.totalTime - data.tm)) / ctx.data.totalTime);
+                        el.dataset.tier = data.tier;
+                    }
+                }
+            }
+        },
+        {
             view: 'timeline-segments-bin',
             className: 'self-time',
             bins: '=bins',

@@ -79,3 +79,44 @@
     content: "NEST";
     transform: rotate(-90deg) scaleX(-1) translate(-100%);
 }
+
+/**
+* Function states
+**/
+.view-subject-with-nested-timeline .function-states {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    contain: paint;
+    z-index: -2;
+}
+.view-subject-with-nested-timeline .function-states .tick {
+    --tier-color: #ff6d6d91;
+    position: absolute;
+    box-sizing: border-box;
+    left: calc(100% * var(--pos));
+    top: 12px;
+    height: 7.5px;
+    border-left: .5px solid var(--tier-color);
+    width: calc(100% * var(--duration) - .5px);
+}
+.view-subject-with-nested-timeline .function-states .tick::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-top: 3px solid transparent;
+    border-color: color-mix(in srgb, var(--tier-color) 20%, var(--discovery-background-color));
+    height: 1.5px;
+    bottom: auto;
+    background-color: var(--tier-color);
+}
+.view-subject-with-nested-timeline .function-states .tick[data-tier="Sparkplug"] {
+    --tier-color: #c28c28c7;
+}
+.view-subject-with-nested-timeline .function-states .tick[data-tier="Maglev"],
+.view-subject-with-nested-timeline .function-states .tick[data-tier="Turboprop"] {
+    --tier-color: #bfb736ad;
+}
+.view-subject-with-nested-timeline .function-states .tick[data-tier="Turbofan"] {
+    --tier-color: #44ab2ccf;
+}
