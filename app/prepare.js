@@ -18,6 +18,8 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
     const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
     const markAsCategory = defineObjectMarker('category', { ref: 'name', title: 'name', page: 'category' });
+    const markAsScript = defineObjectMarker('script', { ref: 'id', title: 'url' });
+    const markAsScriptFunction = defineObjectMarker('script-function', { ref: 'name', title: fn => fn.name || fn.function?.name || '(anonymous fn#' + fn.id + ')' });
     const markTime = TIMINGS ? createMarkTime() : () => undefined;
 
     markTime('convertValidate()');
@@ -107,14 +109,6 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
     categories.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
 
-    // apply object marker
-    markTime('apply discovery object markers');
-    callFrames.forEach(markAsCallFrame);
-    functions.forEach(markAsFunction);
-    modules.forEach(markAsModule);
-    packages.forEach(markAsPackage);
-    categories.forEach(markAsCategory);
-
     // build trees should be performed after dictionaries are sorted and remaped
     markTime('buildTrees()');
     const {
@@ -137,6 +131,17 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         scriptFunctions
     } = processScripts(data.scripts, data.scriptFunctions, moduleByScriptId);
 
+    // apply object marker
+    markTime('apply discovery object markers');
+    callFrames.forEach(markAsCallFrame);
+    functions.forEach(markAsFunction);
+    modules.forEach(markAsModule);
+    packages.forEach(markAsPackage);
+    categories.forEach(markAsCategory);
+    scripts.forEach(markAsScript);
+    scriptFunctions.forEach(markAsScriptFunction);
+
+    // build samples lists & trees
     markTime('processSamples()');
     const {
         samplesTimings,
