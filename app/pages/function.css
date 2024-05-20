@@ -10,5 +10,10 @@
     padding-bottom: 12px;
 }
 .page-function .view-page-header__content .view-source__source {
-    font-size: 16px;
+    font-size: 16px;    
+}
+.page-function .view-page-header__content .view-source.too-long .view-source__source {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 }

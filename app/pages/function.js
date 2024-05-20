@@ -125,7 +125,12 @@ const pageContent = {
             ],
             content: [
                 { view: 'h1', when: 'not regexp', data: 'name' },
-                { view: 'source', when: 'regexp', data: '{ content: regexp, syntax: "regexp", lineNum: false }' }
+                {
+                    view: 'source',
+                    when: 'regexp',
+                    data: '{ content: regexp | size() <= 256 ?: `${$[:256]}…`, syntax: "regexp", lineNum: false }',
+                    className: data => data.content.length > 256 ? 'too-long' : ''
+                }
             ]
         },
 

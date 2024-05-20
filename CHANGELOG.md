@@ -1,8 +1,14 @@
+## next
+
+- Viewer
+    - Limited the display of very long regular expressions in the function page header to only the first 256 characters only
+
 ## 0.5.1 (2024-05-10)
 
-- Added transformation from `parent` to `children` for call tree nodes for `.cpuprofile` files if needed (fixes #5)
-- Implemented exclusion of ending no-sample time. For certain profiles, the time from the last sample until `endTime` can be significant, indicating the conclusion of the profiling session or adjustments from excluding idle samples at the end. This time is now excluded from the `Profiling time` which used for computing time percentages
-- Fixed double rendering of the page after the profile data is loaded
+- Viewer
+    - Added transformation from `parent` to `children` for call tree nodes for `.cpuprofile` files if needed (fixes #5)
+    - Implemented exclusion of ending no-sample time. For certain profiles, the time from the last sample until `endTime` can be significant, indicating the conclusion of the profiling session or adjustments from excluding idle samples at the end. This time is now excluded from the `Profiling time` which used for computing time percentages
+    - Fixed double rendering of the page after the profile data is loaded
 
 ## 0.5.0 (2024-05-09)
 
