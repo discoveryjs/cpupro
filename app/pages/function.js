@@ -158,19 +158,23 @@ const pageContent = {
             data: `
                 #.data.scriptFunctions[=> function = @]
                 |? {
-                    $start: script.source.lastIndexOf('\\n', start) + 1;
-                    $end: script.source.indexOf('\\n', end) | $ != -1 ?: script.source.size();
+                    $source: script.source;
+                    $start: $source.lastIndexOf('\\n', start) + 1;
+                    $end: $source.indexOf('\\n', end) | $ != -1 ?: $source.size();
 
                     scriptFunction: $,
-                    source: script.source[$start:$end],
+                    source: $source[$start:$end],
                     $start,
                     $end
+                } : {
+                    function: @
                 }
             `,
             expanded: '=source is not undefined',
             header: [
                 'text:"Source"',
                 { view: 'switch', content: [
+                    { when: 'function.regexp', content: 'html:` \xa0<span style="color: #888">${function.regexp.size().bytes(true)}</html>`' },
                     { when: 'source is not undefined', content: 'html:` \xa0<span style="color: #888">${source.size().bytes(true)}</html>`' },
                     { content: 'html:` <span style="color: #888">(unavailable)</span>`' }
                 ] }
@@ -178,6 +182,13 @@ const pageContent = {
             content: [
                 {
                     view: 'source',
+                    className: 'regexp',
+                    when: 'function.regexp',
+                    data: '{ content: function.regexp, syntax: "regexp", lineNum: false }'
+                },
+                {
+                    view: 'source',
+                    when: 'not function.regexp',
                     data: `{
                         $line: scriptFunction.line or 1;
                         $start: scriptFunction.start;
