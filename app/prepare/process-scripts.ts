@@ -22,6 +22,18 @@ function normalizeUrl(url: string) {
     return url;
 }
 
+function mapScriptFunctionToFunction(fn: CpuProScriptFunction, locToFn: Map<string, CpuProFunction>) {
+    const moduleFn = locToFn.get(`:${fn.line}:${fn.column}`);
+
+    if (moduleFn !== undefined) {
+        fn.function = moduleFn;
+
+        if (!fn.name && moduleFn.name) {
+            fn.name = moduleFn.name;
+        }
+    }
+}
+
 export function processScripts(
     inputScripts: V8CpuProfileScript[] = [],
     inputFunctions: V8CpuProfileScriptFunction[] = [],
@@ -53,15 +65,22 @@ export function processScripts(
             script,
             loc,
             function: null,
-            inlinedInto: null
+            inlinedInto: null,
+            states: fn.states.map((state, idx, array) => ({
+                ...state,
+                duration: idx !== array.length - 1
+                    ? array[idx + 1].tm - state.tm
+                    : 0
+            }))
         };
 
         scriptFunctions.push(newFn);
         functionById.set(newFn.id, newFn);
 
+        // attach function to a script
         if (script !== null) {
             if (newFn.start === 0 && newFn.end === script.source.length) {
-                script.compilation = newFn.states;
+                script.compilation = newFn;
             } else {
                 script.functions.push(newFn);
             }
@@ -85,11 +104,11 @@ export function processScripts(
         }
 
         for (const fn of script.functions) {
-            const moduleFn = locToFn.get(`:${fn.line}:${fn.column}`);
+            mapScriptFunctionToFunction(fn, locToFn);
+        }
 
-            if (moduleFn !== undefined) {
-                fn.function = moduleFn;
-            }
+        if (script.compilation !== null) {
+            mapScriptFunctionToFunction(script.compilation, locToFn);
         }
     }
 

@@ -87,15 +87,24 @@ export type CpuProScript = {
     url: string;
     module: CpuProModule | null;
     source: string;
-    compilation: V8CpuProfileScriptFunctionState[] | null;
+    compilation: CpuProScriptFunction | null;
     functions: CpuProScriptFunction[];
 }
-export type CpuProScriptFunction = Omit<V8CpuProfileScriptFunction, 'script'> & {
+export type CpuProScriptFunction = Omit<V8CpuProfileScriptFunction, 'script' | 'states'> & {
     script: CpuProScript | null;
     loc: string | null;
     function: CpuProFunction | null;
     inlinedInto: CpuProScriptFunction[] | null;
-};
+    states: CpuProScriptFunctionState[];
+}
+export type CpuProScriptFunctionState = {
+    tm: number;
+    duration: number;
+    tier: string;
+    positions: string;
+    inlined: string;
+    fns: number[];
+}
 
 export type CpuProFunction = {
     id: number; // starts with 1
