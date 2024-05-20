@@ -8,14 +8,14 @@ import {
 } from './types.js';
 
 function normalizeUrl(url: string) {
-    let protocol = (url.match(/^([a-z\-]+):/i) || [])[1] || '';
+    let protocol = url.match(/^([a-z\-]+):/i)?.[1] || '';
 
     if (protocol.length === 1 && /[A-Z]/.test(protocol)) {
         protocol = '';
         url = url.slice(2);
     }
 
-    if (protocol === '' && url) {
+    if (protocol === '' && /^[\\/]/.test(url)) {
         return 'file://' + url.replace(/\\/g, '/');
     }
 

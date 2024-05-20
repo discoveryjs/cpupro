@@ -67,7 +67,7 @@ interface CodeCallFrameInfo {
     name: string;
     file?: string; // file path
     line?: number;
-    col?: number;
+    column?: number;
     lowlevel?: boolean;
 }
 
@@ -152,18 +152,45 @@ function cleanupInternalName(name: string) {
     return name;
 }
 
-function parseName(name: string) {
+function parseJsName(name: string, script?: Script) {
     if (name.startsWith('wasm-function')) {
-        name += ' wasm://wasm/' + name;
+        script = { url: 'wasm://wasm/' + name } as Script;
+        name += ' ' + script.url;
     }
 
+    const scriptUrl = script?.url || null;
+
+    // robust way since name and url could contain spaces
+    if (scriptUrl !== null) {
+        const [prefix, loc = ''] = name.split(scriptUrl);
+        const functionName = prefix.trim().replace(/^(?:get |set )/, '');
+        const [, line, column] = loc.split(':');
+
+        return {
+            functionName,
+            scriptUrl,
+            line: line !== '' ? Number(line) : -1,
+            column: column !== '' ? Number(column) : -1
+        };
+    }
+
+    // fallback when no script
     const nameMatch = name.match(/^(?:get |set )?([#.<>\[\]_$a-zA-Z\xA0-\uFFFF][#.<>\[\]\-_$a-zA-Z0-9\xA0-\uFFFF]*) /);
     const functionName = nameMatch !== null ? nameMatch[1] : '';
     const url = nameMatch !== null
         ? name.slice(nameMatch[0].length)
         : name[0] === ' ' ? name.slice(1) : name;
+    const locMatch = url.match(/\:(\d+)\:(\d+)$/);
+    const loc = locMatch ? locMatch[0] : null;
+    const line = locMatch !== null ? Number(locMatch[1]) : -1;
+    const column = locMatch !== null ? Number(locMatch[2]) : -1;
 
-    return { functionName, url };
+    return {
+        functionName,
+        scriptUrl: loc !== null ? url.slice(0, -loc.length) : url,
+        line,
+        column
+    };
 }
 
 function functionTier(kind: string) {
@@ -192,7 +219,7 @@ function functionTier(kind: string) {
     }
 }
 
-function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
+function codeToCallFrameInfo(code: Code, scripts: Script[]): CodeCallFrameInfo {
     if (!code || !code.type) {
         return {
             name: '(unknown)'
@@ -219,23 +246,15 @@ function codeToCallFrameInfo(code: Code): CodeCallFrameInfo {
         }
 
         case 'JS': {
-            const { functionName, url } = parseName(name);
-            const locMatch = url.match(/:(\d+):(\d+)$/);
-            let file = url;
-            let line = -1;
-            let col = -1;
-
-            if (locMatch) {
-                file = url.slice(0, -locMatch[0].length);
-                line = parseInt(locMatch[1], 10);
-                col = parseInt(locMatch[2], 10);
-            }
+            const scriptId = code.source?.script;
+            const script = typeof scriptId === 'number' ? scripts?.[scriptId] : undefined;
+            const { functionName, scriptUrl, line, column } = parseJsName(name, script);
 
             return {
                 name: functionName,
-                file,
+                file: scriptUrl,
                 line,
-                col
+                column
             };
         }
 
@@ -386,19 +405,19 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
                         const code = v8log.code[id];
 
                         // FIXME: ignore Abort.Wide/ExtraWide for now since it too noisy;
-                        // not sure was it stands for, but looks like an execution pause
+                        // not sure what it stands for, but looks like an execution pause
                         if (code.kind === 'BytecodeHandler') {
                             if (code.name === 'Abort.Wide' || code.name === 'Abort.ExtraWide') {
                                 continue;
                             }
                         }
 
-                        const { name, file, line, col, lowlevel } = codeToCallFrameInfo(code);
+                        const { name, file, line, column, lowlevel } = codeToCallFrameInfo(code, v8log.scripts);
                         callFrame = lowlevel ? null : createCallFrame(
                             name,
                             file,
                             line,
-                            col,
+                            column,
                             code.source ? code.source.script : getScriptIdByUrl(file || ''),
                             typeof code.func === 'number' ? code.func : null
                         );
@@ -479,8 +498,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         const fn = v8log.functions[i];
         const anyFnCode = v8log.code[fn.codes[0]];
         const source = anyFnCode.source as CodeSource;
-        const { functionName, url } = parseName(anyFnCode.name);
-        const loc = url.match(/\:(\d+)\:(\d+)/);
+        const { functionName, line, column } = parseJsName(anyFnCode.name, v8log.scripts[source.script]);
 
         if (!source) {
             // wasm functions has no source
@@ -494,8 +512,8 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
             script: scriptIdToIndex.get(source.script) ?? null,
             start: source.start,
             end: source.end,
-            line: loc ? Number(loc[1]) : -1,
-            column: loc ? Number(loc[2]) : -1,
+            line,
+            column,
             states: fn.codes.map(codeIndex => {
                 const code = v8log.code[codeIndex];
                 const codeSource = code.source || null;
