@@ -35,7 +35,7 @@ To use CLI install `cpupro` globally using `npm install -g cpupro`, or use `npx 
   ```
 - open viewer with `test.cpuprofile` data embedded:
   ```
-  cpurpro test.cpuprofile
+  cpupro test.cpuprofile
   ```
 - open viewer with data embedded from `stdin`:
   ```
