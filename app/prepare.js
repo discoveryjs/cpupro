@@ -19,7 +19,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
     const markAsCategory = defineObjectMarker('category', { ref: 'name', title: 'name', page: 'category' });
     const markAsScript = defineObjectMarker('script', { ref: 'id', title: 'url' });
-    const markAsScriptFunction = defineObjectMarker('script-function', { ref: 'name', title: fn => fn.name || fn.function?.name || '(anonymous fn#' + fn.id + ')' });
+    const markAsScriptFunction = defineObjectMarker('script-function', { ref: 'id', title: fn => fn.name || fn.function?.name || '(anonymous fn#' + fn.id + ')' });
     const markTime = TIMINGS ? createMarkTime() : () => undefined;
 
     markTime('convertValidate()');
