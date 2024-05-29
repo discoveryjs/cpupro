@@ -23,6 +23,12 @@ interface Code {
         | 'StoreIC'
         | 'Stub'
         | 'Unopt'
+        | 'Ignition'
+        | 'Baseline'
+        | 'Sparkplug'
+        | 'Maglev'
+        | 'Turboprop'
+        | 'Turbofan'
         | 'Builtin'
         | 'RegExp';
     func?: number;
@@ -222,7 +228,7 @@ function parseJsName(name: string, script?: Script): ParseJsNameResult {
     };
 }
 
-function functionTier(kind: string) {
+function functionTier(kind: Code['kind']) {
     switch (kind) {
         case 'Builtin':
         case 'Ignition':
@@ -354,6 +360,21 @@ function createNode(id: number, callFrame: CallFrame): Node {
         callFrame,
         children: []
     };
+}
+
+function processFunctionCodes(v8log: V8LogProfile, codes: number[]) {
+    return codes.map(codeIndex => {
+        const code = v8log.code[codeIndex];
+        const codeSource = code.source || null;
+
+        return {
+            tm: code.tm || 0,
+            tier: functionTier(code.kind),
+            positions: codeSource?.positions || '',
+            inlined: codeSource?.inlined || '',
+            fns: codeSource?.fns || []
+        };
+    });
 }
 
 export function isV8Log(data: Record<string, unknown>) {
@@ -523,39 +544,37 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         });
     }
 
-    for (let i = 0; i < v8log.functions.length; i++) {
+    for (let i = 0, k = 0, prev: ProfileFunction | null = null; i < v8log.functions.length; i++) {
         const fn = v8log.functions[i];
-        const anyFnCode = v8log.code[fn.codes[0]];
-        const source = anyFnCode.source as CodeSource;
-        const { functionName, line, column } = parseJsName(anyFnCode.name, v8log.scripts[source.script]);
+        const source = v8log.code[fn.codes[0]].source; // all the function codes have the same reference to script source
 
         if (!source) {
-            // wasm functions has no source
+            // wasm functions and some other has no source
             // console.log(fn, fn.codes.map(x => v8log.code[x]));
             continue;
         }
 
-        scriptFunctions.push({
-            id: i,
+        const { functionName, line, column } = parseJsName(fn.name, v8log.scripts[source.script]);
+
+        // V8 usually adds a first-pass parsing state of a module as a separate function, followed by a fully parsed state function;
+        // in that case, merge script function entries into a single function with concatenated states
+        if (prev !== null && prev.name === fn.name && line === 1 && column === 1) {
+            scriptFunctions[k - 1].states.push(...processFunctionCodes(v8log, fn.codes));
+            continue;
+        }
+
+        scriptFunctions[k++] = {
+            id: k,
             name: functionName,
             script: scriptIdToIndex.get(source.script) ?? null,
             start: source.start,
             end: source.end,
             line,
             column,
-            states: fn.codes.map(codeIndex => {
-                const code = v8log.code[codeIndex];
-                const codeSource = code.source || null;
+            states: processFunctionCodes(v8log, fn.codes)
+        };
 
-                return {
-                    tm: code.tm || 0,
-                    tier: functionTier(code.kind || 'Unknown'),
-                    positions: codeSource?.positions || '',
-                    inlined: codeSource?.inlined || '',
-                    fns: codeSource?.fns || []
-                };
-            })
-        });
+        prev = fn;
     }
 
     return profile;
