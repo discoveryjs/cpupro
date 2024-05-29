@@ -175,9 +175,9 @@ function parseLoc(url: string) {
     return { loc, line, column };
 }
 
-// A function name could contain surrounding whitespaces or a get/set prefix for getters/setters
+// A function name could contain surrounding whitespaces
 function cleanupFunctionName(name: string) {
-    return name.trim().replace(/^(?:get |set )(\S)/, '$1');
+    return name.trim();
 }
 
 function parseJsName(name: string, script?: Script): ParseJsNameResult {
