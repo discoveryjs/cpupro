@@ -11,8 +11,10 @@ export type ParseJsNameResult = {
 function parseLoc(url: string) {
     const locMatch = url.match(/\:(\d+)\:(\d+)$/);
     const loc = locMatch ? locMatch[0] : null;
-    const line = locMatch !== null ? Number(locMatch[1]) : -1;
-    const column = locMatch !== null ? Number(locMatch[2]) : -1;
+    // V8 log locations are 1-based, but CPU profiles are zero-based;
+    // therefore, convert line and column to zero-based for consistency
+    const line = locMatch !== null ? Number(locMatch[1]) - 1 : -1;
+    const column = locMatch !== null ? Number(locMatch[2]) - 1 : -1;
 
     return { loc, line, column };
 }
@@ -128,7 +130,7 @@ export function processScriptFunctions(v8log: V8LogProfile) {
 
         // V8 usually adds a first-pass parsing state of a module as a separate function, followed by a fully parsed state function;
         // in that case, merge script function entries into a single function with concatenated states
-        if (prev !== null && prev.name === fn.name && line === 1 && column === 1) {
+        if (prev !== null && prev.name === fn.name && line === 0 && column === 0) {
             scriptFunctions[k - 1].states.push(...processFunctionCodes(v8log, fn.codes));
             continue;
         }
