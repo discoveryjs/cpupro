@@ -1,7 +1,7 @@
 import { convertParentIntoChildrenIfNeeded, isCPUProfile } from './formats/cpuprofile.js';
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
-import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-proflog.js';
+import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-log-processed.js';
 import { V8CpuProfileCpuproExtensions } from './types.js';
 
 export const supportedFormats = [

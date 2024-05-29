@@ -42,31 +42,35 @@ export function processScripts(
     const scripts: CpuProScript[] = [];
     const scriptFunctions: CpuProScriptFunction[] = [];
     const functionById = new Map<number, CpuProScriptFunction>();
+    const scriptById = new Map<number, CpuProScript>();
 
     // process scripts
-    for (const script of inputScripts || []) {
-        scripts.push({
-            ...script,
-            url: normalizeUrl(script.url || ''),
-            module: moduleByScriptId.get(script.id) || null,
+    for (const inputScript of inputScripts || []) {
+        const script: CpuProScript = {
+            ...inputScript,
+            url: normalizeUrl(inputScript.url || ''),
+            module: moduleByScriptId.get(inputScript.id) || null,
             compilation: null,
             functions: []
-        });
+        };
+
+        scripts.push(script);
+        scriptById.set(script.id, script);
     }
 
     // process script's functions
-    for (const fn of inputFunctions || []) {
-        const script = fn.script !== null ? scripts[fn.script] || null : null;
-        const loc = script && fn.line !== -1 && fn.column !== -1
-            ? `:${fn.line}:${fn.column}`
+    for (const inputFn of inputFunctions || []) {
+        const script = inputFn.script !== null ? scriptById.get(inputFn.script) || null : null;
+        const loc = script !== null && inputFn.line !== -1 && inputFn.column !== -1
+            ? `:${inputFn.line}:${inputFn.column}`
             : null;
-        const newFn: CpuProScriptFunction = {
-            ...fn,
+        const fn: CpuProScriptFunction = {
+            ...inputFn,
             script,
             loc,
             function: null,
             inlinedInto: null,
-            states: fn.states.map((state, idx, array) => ({
+            states: inputFn.states.map((state, idx, array) => ({
                 ...state,
                 duration: idx !== array.length - 1
                     ? array[idx + 1].tm - state.tm
@@ -74,15 +78,15 @@ export function processScripts(
             }))
         };
 
-        scriptFunctions.push(newFn);
-        functionById.set(newFn.id, newFn);
+        scriptFunctions.push(fn);
+        functionById.set(fn.id, fn);
 
         // attach function to a script
         if (script !== null) {
-            if (newFn.start === 0 && newFn.end === script.source.length) {
-                script.compilation = newFn;
+            if (fn.start === 0 && fn.end === script.source.length) {
+                script.compilation = fn;
             } else {
-                script.functions.push(newFn);
+                script.functions.push(fn);
             }
         }
     }
