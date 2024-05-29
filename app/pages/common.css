@@ -40,13 +40,17 @@
     min-width: 8ex;
     text-align: center;
 }
-.page .view-page-header__prelude .category-badge {
+.page .view-page-header__prelude .view-badge:not(.type-badge) {
+    --border-color: color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 95%, white);
+
     background-clip: padding-box;
-    background-color: color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 35%, transparent);
-    border: solid color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 60%, transparent);
-    border-width: 1px;
+    border: 1px solid var(--border-color);
     padding-top: 2px;
     padding-bottom: 2px;
+}
+.page .view-page-header__prelude .view-badge.category-badge {
+    --border-color: color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 60%, var(--discovery-background-color));
+    background-color: color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 35%, var(--discovery-background-color));
 }
 
 .hint-tooltip {
@@ -217,6 +221,15 @@ h2 .logo {
     height: 18px;
     margin-right: 0px;
     margin-left: 3px;
+}
+.page .call-tree .view-tree-leaf-content .view-badge[data-cdn],
+.page .call-tree .view-tree-leaf-content .view-pill-badge[data-cdn] {
+    --badge-padding-left: 40px;
+    --badge-icon-left: 5px;
+}
+.page .call-tree .view-tree-leaf-content .view-badge > .prefix,
+.page .call-tree .view-tree-leaf-content .view-pill-badge > .prefix {
+    padding-top: 3px;
 }
 .page .call-tree .view-tree-leaf-content .view-badge.module {
     margin-right: 0 !important;
