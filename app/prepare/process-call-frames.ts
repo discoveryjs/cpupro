@@ -507,7 +507,10 @@ export function processCallFrames(
             const regexp = isRegExp ? functionName.slice('RegExp: '.length) : null;
             const name = regexp
                 ? (regexp.length <= maxRegExpLength ? regexp : `${regexp.slice(0, maxRegExpLength - 1)}…`)
-                : functionName || `(anonymous function #${functions.anonymous++})`;
+                : functionName || (lineNumber === 0 && columnNumber === 0
+                    ? '(top level)'
+                    : `(anonymous function #${functions.anonymous++})`
+                );
 
             functions.set(functionRef, callFrameFunction = {
                 id: functions.size + 1, // id starts with 1
@@ -515,6 +518,7 @@ export function processCallFrames(
                 category: callFrameModule.category,
                 package: callFrameModule.package,
                 module: callFrameModule,
+                kind: regexp !== null ? 'regexp' : name === '(top level)' ? 'top-level' : 'function',
                 regexp,
                 loc: lineNumber !== -1 && columnNumber !== -1
                     ? `:${lineNumber}:${columnNumber}`

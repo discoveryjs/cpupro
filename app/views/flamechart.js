@@ -198,7 +198,9 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     }, 16, { maxWait: 48 }));
 
     chart.setData(tree, {
-        name: value => value.name || value.packageRelPath,
+        name: value => value.kind === 'top-level'
+            ? `${value.name} ${value.module.packageRelPath || value.module.path}`
+            : value.name || value.packageRelPath,
         value: timingsMap
             ? nodeIndex => selfTimes[timingsMap[nodeIndex]] + nestedTimes[timingsMap[nodeIndex]]
             : nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex],

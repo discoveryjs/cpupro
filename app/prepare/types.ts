@@ -109,6 +109,7 @@ export type CpuProScriptFunctionState = {
 export type CpuProFunction = {
     id: number; // starts with 1
     name: string;
+    kind: 'top-level' | 'function' | 'regexp';
     category: CpuProCategory;
     package: CpuProPackage;
     module: CpuProModule;
