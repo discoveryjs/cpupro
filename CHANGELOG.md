@@ -4,6 +4,7 @@
     - Limited the display of very long regular expressions in the function page header to only the first 256 characters only
     - Improved the parsing of function names and URLs during the conversion of preprocessed V8 logs into cpuprofile; V8 logs represent the function identifier as a string that includes both a function name and a script URL, separated by whitespace. Given that both the function name and script URL may contain multiple whitespaces, extracting these components posed a challenge. Fortunately, a robust solution was found, and now the parts are extracted correctly.
     - Added displaying function states on the timeline (available for preprocessed V8 log profiles)
+    - Fixed processing of `v8/gc` call frames that appear when node `--expose-gc` is used and `global.gc()` is invoked
 
 ## 0.5.1 (2024-05-10)
 

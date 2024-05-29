@@ -51,7 +51,7 @@ type ReferenceModule = {
     wellKnown: WellKnownType | null;
 };
 
-function resolveCategory(moduleType: string): ReferenceCategory {
+function resolveCategory(moduleType: ModuleType): ReferenceCategory {
     const name = moduleType === 'bundle' || moduleType === 'webpack/runtime'
         ? 'script'
         : moduleType;
@@ -208,7 +208,15 @@ function resolvePackage(
         }
 
         // case 'blink':
-        // case 'v8':
+        case 'v8': {
+            ref = `(${moduleType})`;
+            type = 'engine';
+            name = `(${moduleType} modules)`;
+            path = `${moduleType}/`;
+
+            break;
+        }
+
         case 'webpack/runtime':
         case 'electron': {
             ref = `(${moduleType})`;
@@ -331,6 +339,9 @@ function resolveModule(
             entry.type = 'script';
             entry.name = anonymousName;
         }
+    } else if (url.startsWith('v8/')) {
+        entry.type = 'v8';
+        entry.path = url;
     } else if (url.startsWith('node:electron/') || url.startsWith('electron/')) {
         entry.type = 'electron';
         entry.path = url;

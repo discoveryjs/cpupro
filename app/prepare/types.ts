@@ -128,6 +128,7 @@ export type ModuleType = // alphabetical order
     | `protocol-${string}`
     | 'regexp'
     | 'script'
+    | 'v8'
     | 'wasm'
     | 'webpack/runtime'
     | 'unknown'
