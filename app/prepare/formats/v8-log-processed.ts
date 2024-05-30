@@ -29,11 +29,12 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
     return {
         startTime: 0,
         endTime: lastTm + samplesInterval,
-        _samplesInterval: samplesInterval,
         nodes,
         samples,
         timeDeltas,
-        scripts,
-        scriptFunctions
+        // cpupro extensions
+        _samplesInterval: samplesInterval,
+        _scripts: scripts,
+        _scriptFunctions: scriptFunctions
     };
 }

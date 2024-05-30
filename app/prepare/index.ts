@@ -27,9 +27,9 @@ export function convertValidate(data: unknown, rejectData: (reason: string, view
 
         data = traceEvents;
         extensions = {
-            runtime,
-            scripts,
-            executionContexts
+            _runtime: runtime,
+            _scripts: scripts,
+            _executionContexts: executionContexts
         };
     }
 

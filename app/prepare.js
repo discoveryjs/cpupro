@@ -89,9 +89,9 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         functions
     } = processCallFrames(
         callFrames,
-        data.scripts,
-        data.scriptFunctions,
-        data.executionContexts
+        data._scripts,
+        data._scriptFunctions,
+        data._executionContexts
     );
 
     // process dictionaries
@@ -129,7 +129,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     const {
         scripts,
         scriptFunctions
-    } = processScripts(data.scripts, data.scriptFunctions, moduleByScriptId);
+    } = processScripts(data._scripts, data._scriptFunctions, moduleByScriptId);
 
     // apply object marker
     markTime('apply discovery object markers');
@@ -180,7 +180,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
 
     markTime('producing result');
     const result = {
-        runtime: detectRuntime(categories, packages, data.runtime),
+        runtime: detectRuntime(categories, packages, data._runtime),
         sourceInfo: {
             nodes: nodesCount,
             samples: samplesCount,

@@ -1,12 +1,3 @@
-// FIXME: cpupro extensions (temporary)
-export type V8CpuProfileCpuproExtensions = {
-    _samplesInterval?: number;
-    // TODO: rename adding underscore are a prefix
-    runtime?: string;
-    scripts?: V8CpuProfileScript[];
-    scriptFunctions?: V8CpuProfileScriptFunction[];
-    executionContexts?: V8CpuProfileExecutionContext[];
-}
 export type V8CpuProfile = {
     startTime: number;
     endTime: number;
@@ -14,6 +5,14 @@ export type V8CpuProfile = {
     timeDeltas: number[];
     samples: number[];
 } & V8CpuProfileCpuproExtensions;
+// FIXME: cpupro extensions (temporary)
+export type V8CpuProfileCpuproExtensions = {
+    _samplesInterval?: number;
+    _runtime?: string;
+    _scripts?: V8CpuProfileScript[];
+    _scriptFunctions?: V8CpuProfileScriptFunction[];
+    _executionContexts?: V8CpuProfileExecutionContext[];
+}
 export type V8CpuProfileNode = {
     id: number;
     callFrame: V8CpuProfileCallFrame;
