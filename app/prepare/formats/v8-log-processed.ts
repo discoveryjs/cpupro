@@ -9,16 +9,14 @@ import { processTicks } from './v8-log-processed/ticks.js';
 import { processScripts } from './v8-log-processed/scripts.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
 
-export function isV8Log(data: Record<string, unknown>) {
-    if (
-        data && typeof data === 'object' &&
-        Array.isArray(data.code) &&
-        Array.isArray(data.functions) &&
-        Array.isArray(data.ticks)) {
-        return true;
-    }
+export function isV8Log(data: unknown): data is V8LogProfile {
+    const maybe = data as Partial<V8LogProfile>;
 
-    return false;
+    return (
+        Array.isArray(maybe.code) &&
+        Array.isArray(maybe.functions) &&
+        Array.isArray(maybe.ticks)
+    );
 }
 
 export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {

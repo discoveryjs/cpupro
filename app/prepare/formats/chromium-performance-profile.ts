@@ -57,7 +57,7 @@ export interface CPUProfile {
     timeDeltas: number[];
 }
 
-export function isChromiumPerformanceProfile(data: unknown): boolean {
+export function isChromiumPerformanceProfile(data: unknown): data is ChromiumTimeline {
     if (!Array.isArray(data)) {
         // JSON Object Format
         return typeof data === 'object' && data !== null && 'traceEvents' in data

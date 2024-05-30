@@ -13,6 +13,12 @@ type TraceEvent = {
     [k: string]: unknown;
 };
 type DevToolsEnchandedTraces = {
+    meta: {
+        version: number;
+        fileDocumentType: string;
+        userAgentVersion: string;
+        type: string;
+    }
     executionContexts: Context[];
     scripts?: Script[];
     payload: {
@@ -20,8 +26,8 @@ type DevToolsEnchandedTraces = {
     }
 };
 
-export function isDevToolsEnhancedTraces(data) {
-    const { meta } = data || {};
+export function isDevToolsEnhancedTraces(data: unknown): data is DevToolsEnchandedTraces {
+    const { meta } = data as Partial<DevToolsEnchandedTraces>;
 
     if (meta && meta.fileDocumentType === 'x-msedge-session-log' && meta.type === 'performance') {
         return true;

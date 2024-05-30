@@ -1,24 +1,28 @@
-function isObject(value) {
+import type { V8CpuProfile, V8CpuProfileNode } from '../types.js';
+
+function isObject(value: unknown): value is object {
     return typeof value === 'object' && value !== null;
 }
 
-function isNode(value) {
-    if (!isObject(value)) {
+function isNode(value: unknown): value is V8CpuProfileNode {
+    const maybeNode = value as Partial<V8CpuProfileNode>;
+
+    if (!isObject(maybeNode)) {
         return false;
     }
 
-    if (typeof value.id !== 'number') {
+    if (typeof maybeNode.id !== 'number') {
         return false;
     }
 
-    if (!isObject(value.callFrame) || Number.isInteger(value.callFrame.id)) {
+    if (!isObject(maybeNode.callFrame) || !Number.isInteger(Number(maybeNode.callFrame.scriptId))) {
         return false;
     }
 
     return true;
 }
 
-function isArrayLike(value, check) {
+function isArrayLike(value: unknown, check: (value: unknown) => boolean): boolean {
     if (!Array.isArray(value)) {
         return false;
     }
@@ -28,20 +32,22 @@ function isArrayLike(value, check) {
         : true;
 }
 
-export function isCPUProfile(data) {
-    if (!isObject(data)) {
+export function isCPUProfile(data: unknown): data is V8CpuProfile {
+    const maybe = data as Partial<V8CpuProfile>;
+
+    if (!isObject(maybe)) {
         return false;
     }
 
-    if (!isArrayLike(data.nodes, isNode)) {
+    if (!isArrayLike(maybe.nodes, isNode)) {
         return false;
     }
 
-    if (!isArrayLike(data.samples, Number.isInteger)) {
+    if (!isArrayLike(maybe.samples, Number.isInteger)) {
         return false;
     }
 
-    if (!isArrayLike(data.timeDeltas, Number.isInteger)) {
+    if (!isArrayLike(maybe.timeDeltas, Number.isInteger)) {
         return false;
     }
 
@@ -50,8 +56,8 @@ export function isCPUProfile(data) {
 
 // nodes may missing children field but have parent field, rebuild children arrays then;
 // avoid updating children when nodes have parent and children fields
-export function convertParentIntoChildrenIfNeeded(data) {
-    const nodes = data.nodes;
+export function convertParentIntoChildrenIfNeeded(data: V8CpuProfile) {
+    const nodes: (V8CpuProfileNode & { parent?: number })[] = data.nodes;
 
     // no action when just one node or both first nodes has no parent (since only root node can has no parent)
     if (nodes.length < 2 || (typeof nodes[0].parent !== 'number' && typeof nodes[1].parent !== 'number')) {
@@ -69,7 +75,7 @@ export function convertParentIntoChildrenIfNeeded(data) {
 
     // rebuild children for nodes which missed it
     if (nodeWithNoChildrenById.size > 0) {
-        for (const node of data.nodes) {
+        for (const node of nodes) {
             if (typeof node.parent === 'number') {
                 const parent = nodeWithNoChildrenById.get(node.parent);
 

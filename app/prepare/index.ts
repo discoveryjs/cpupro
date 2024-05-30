@@ -17,7 +17,7 @@ export const supportedFormatsText = supportedFormats
 //     return data && Array.isArray(data.nodes) && Array.isArray(data.profiles);
 // }
 
-export function convertValidate(data, rejectData: (reason: string, view?: unknown) => void) {
+export function convertValidate(data: unknown, rejectData: (reason: string, view?: unknown) => void) {
     let extensions: V8CpuProfileCpuproExtensions = {};
 
     data = data || {};
@@ -68,6 +68,8 @@ export function convertValidate(data, rejectData: (reason: string, view?: unknow
                 ] }
             ]
         });
+
+        throw new Error('Bad format');
     }
 
     convertParentIntoChildrenIfNeeded(data);
