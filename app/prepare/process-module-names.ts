@@ -14,10 +14,10 @@ function moduleDisplayName(module: CpuProModule) {
     switch (module.package.type) {
         case 'script':
         case 'wasm':
+        case 'node':
             module.name = module.packageRelPath;
             break;
 
-        case 'node':
         case 'webpack/runtime':
             module.name = module.path;
             break;
