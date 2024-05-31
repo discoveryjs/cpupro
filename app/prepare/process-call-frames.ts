@@ -427,10 +427,14 @@ export function processCallFrames(
 
     // input
     const inputCallFrames = [...callFrames];
+    const scriptById = new Map<number, V8CpuProfileScript>();
+
+    for (const script of scripts) {
+        scriptById.set(script.id, script);
+    }
 
     for (const fn of scriptFunctions) {
-        const scriptIndex = fn.script;
-        const script = scriptIndex !== null ? scripts[scriptIndex] || null : null;
+        const script = fn.script !== null ? scriptById.get(fn.script) || null : null;
 
         if (script !== null) {
             inputCallFrames.push({
