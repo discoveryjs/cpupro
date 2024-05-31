@@ -10,7 +10,26 @@ export const wellKnownNodeName = new Map<WellKnownName, WellKnownType>([
     ['(root)', 'root'],
     ['(program)', 'program'],
     ['(garbage collector)', 'gc'],
-    ['(idle)', 'idle']
+    ['(idle)', 'idle'],
+    ['(parser)', 'parser'],
+    ['(compiler bytecode)', 'compiler-bytecode'],
+    ['(compiler)', 'compiler'],
+    ['(atomics wait)', 'atomics-wait']
+]);
+export const engineNodeNames = new Set<WellKnownName>([
+    '(parser)',
+    '(compiler bytecode)',
+    '(compiler)',
+    '(atomics wait)'
+]);
+export const vmStateNodeTypes = new Set<WellKnownType>([
+    'program',
+    'gc',
+    'idle',
+    'parser',
+    'compiler-bytecode',
+    'compiler',
+    'atomics-wait'
 ]);
 
 export const knownChromeExtensions = {
@@ -53,6 +72,7 @@ export const knownRegistry: Record<string, PackageProvider> = {
     ) }
 };
 
+// colors in order of apperiance in a list
 export const typeColor: Record<PackageType | PackageRegistry, string> = {
     'script': '#fee29ca0',
     'npm': '#f98e94a0',

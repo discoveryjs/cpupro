@@ -57,12 +57,20 @@ export type WellKnownName =
     | '(program)'
     | '(garbage collector)'
     | '(idle)'
+    | '(parser)'
+    | '(compiler bytecode)'
+    | '(compiler)'
+    | '(atomics wait)'
     ;
 export type WellKnownType =
     | 'root'
     | 'program'
     | 'gc'
     | 'idle'
+    | 'parser'
+    | 'compiler-bytecode'
+    | 'compiler'
+    | 'atomics-wait'
     ;
 
 export type CpuProHierarchyNode = CpuProCategory | CpuProPackage | CpuProModule | CpuProFunction;
@@ -105,10 +113,11 @@ export type CpuProScriptFunctionState = {
     fns: number[];
 }
 
+export type CpuProFunctionKind = 'top-level' | 'function' | 'regexp' | 'vm-state' | 'root';
 export type CpuProFunction = {
     id: number; // starts with 1
     name: string;
-    kind: 'top-level' | 'function' | 'regexp';
+    kind: CpuProFunctionKind;
     category: CpuProCategory;
     package: CpuProPackage;
     module: CpuProModule;
@@ -128,10 +137,10 @@ export type ModuleType = // alphabetical order
     | `protocol-${string}`
     | 'regexp'
     | 'script'
+    | 'unknown'
     | 'v8'
     | 'wasm'
     | 'webpack/runtime'
-    | 'unknown'
     ;
 export type CpuProModule = {
     id: number; // starts with 1
@@ -145,18 +154,21 @@ export type CpuProModule = {
 };
 
 export type PackageType = // alphabetical order
-    | WellKnownType
     | 'chrome-extension'
     | 'deno'
     | 'electron'
     | 'engine'
+    | 'gc'
+    | 'idle'
     | 'internals'
     | 'node'
+    | 'program'
     | 'regexp'
+    | 'root'
     | 'script'
+    | 'unknown'
     | 'wasm'
     | 'webpack/runtime'
-    | 'unknown'
     ;
 export type PackageRegistry = // alphabetical order
     | 'denoland'

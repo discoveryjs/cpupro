@@ -1,8 +1,10 @@
 import {
+    engineNodeNames,
     knownChromeExtensions,
     knownRegistry,
     maxRegExpLength,
     typeOrder,
+    vmStateNodeTypes,
     wellKnownNodeName
 } from './const';
 import {
@@ -19,7 +21,8 @@ import {
     V8CpuProfileScriptFunction,
     V8CpuProfileScript,
     CDN,
-    V8CpuProfileExecutionContext
+    V8CpuProfileExecutionContext,
+    CpuProFunctionKind
 } from './types';
 
 type ReferenceCategory = {
@@ -305,7 +308,9 @@ function resolveModule(
 
     if (entry.wellKnown !== null) {
         entry.ref = functionName;
-        entry.type = entry.wellKnown;
+        entry.type = engineNodeNames.has(functionName as WellKnownName)
+            ? 'engine'
+            : entry.wellKnown;
         entry.name = functionName;
     } else if (!url || url.startsWith('evalmachine.')) {
         if (scriptId === 0) {
@@ -313,12 +318,7 @@ function resolveModule(
                 entry.ref = '(regexp)';
                 entry.type = 'regexp';
                 entry.name = '(regexp)';
-            } else if (
-                functionName === '(parser)' ||
-                functionName === '(compiler)' ||
-                functionName === '(compiler bytecode)' ||
-                functionName === '(atomics wait)'
-            ) {
+            } else if (engineNodeNames.has(functionName as WellKnownName)) {
                 entry.ref = functionName;
                 entry.type = 'engine';
                 entry.name = functionName;
@@ -398,6 +398,49 @@ function resolveModule(
     return entry;
 }
 
+function resolveFunctionKind(name: string, regexp: string | null, moduleRef: ReferenceModule): CpuProFunctionKind {
+    if (moduleRef.wellKnown === 'root') {
+        return 'root';
+    }
+
+    if (moduleRef.wellKnown !== null && vmStateNodeTypes.has(moduleRef.wellKnown)) {
+        return 'vm-state';
+    }
+
+    if (regexp !== null) {
+        return 'regexp';
+    }
+
+    if (name === '(top level)') {
+        return 'top-level';
+    }
+
+    return 'function';
+}
+
+export function createCpuProFrame(
+    id: number,
+    scriptId: number,
+    url: string | null,
+    functionName: string,
+    lineNumber: number,
+    columnNumber: number
+): CpuProCallFrame {
+    return {
+        id,
+        scriptId,
+        url,
+        functionName,
+        lineNumber,
+        columnNumber,
+        // these field will be populated on call frames processing step
+        category: null as unknown as CpuProCategory,
+        package: null as unknown as CpuProPackage,
+        module: null as unknown as CpuProModule,
+        function: null as unknown as CpuProFunction
+    };
+}
+
 export function processCallFrames(
     callFrames: CpuProCallFrame[],
     scripts: V8CpuProfileScript[] = [],
@@ -418,32 +461,33 @@ export function processCallFrames(
     ]);
     const anonymousModuleByScriptId = new Map<number, string>(); // ?? is shared
     const moduleByScriptId = new Map<number, CpuProModule>();
-    const wellKnownCallFrames: Record<WellKnownType, CpuProCallFrame | null> = {
+    const wellKnownCallFrames: Record<Extract<'root' | 'program' | 'idle', WellKnownType>, CpuProCallFrame | null> = {
         root: null,
         program: null,
-        idle: null,
-        gc: null
+        idle: null
     };
 
     // input
-    const inputCallFrames = [...callFrames];
+    const inputCallFrames = [...callFrames]; // make a copy to not pollute original callFrames array
     const scriptById = new Map<number, V8CpuProfileScript>();
 
     for (const script of scripts) {
         scriptById.set(script.id, script);
     }
 
+    // create callFrames from script functions to produce function/module/package/category instantes for compiled code
     for (const fn of scriptFunctions) {
         const script = fn.script !== null ? scriptById.get(fn.script) || null : null;
 
         if (script !== null) {
-            inputCallFrames.push({
-                scriptId: script.id,
-                url: script.url,
-                functionName: fn.name,
-                lineNumber: fn.line,
-                columnNumber: fn.column
-            } as CpuProCallFrame);
+            inputCallFrames.push(createCpuProFrame(
+                inputCallFrames.length + 1,
+                script.id,
+                script.url,
+                fn.name,
+                fn.line,
+                fn.column
+            ));
         }
     }
 
@@ -497,7 +541,7 @@ export function processCallFrames(
 
             modulePackage.modules.push(callFrameModule);
 
-            if (moduleRef.wellKnown !== null) {
+            if (moduleRef.wellKnown !== null && Object.hasOwn(wellKnownCallFrames, moduleRef.wellKnown)) {
                 wellKnownCallFrames[moduleRef.wellKnown] = callFrame;
             }
         }
@@ -522,7 +566,7 @@ export function processCallFrames(
                 category: callFrameModule.category,
                 package: callFrameModule.package,
                 module: callFrameModule,
-                kind: regexp !== null ? 'regexp' : name === '(top level)' ? 'top-level' : 'function',
+                kind: resolveFunctionKind(name, regexp, moduleRef),
                 regexp,
                 loc: lineNumber !== -1 && columnNumber !== -1
                     ? `:${lineNumber}:${columnNumber}`

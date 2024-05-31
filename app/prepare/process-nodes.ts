@@ -1,14 +1,7 @@
 import { CallTree } from './call-tree';
 import { TIMINGS } from './const';
-import {
-    V8CpuProfileNode,
-    V8CpuProfileCallFrame,
-    CpuProCallFrame,
-    CpuProCategory,
-    CpuProPackage,
-    CpuProModule,
-    CpuProFunction
-} from './types';
+import { createCpuProFrame } from './process-call-frames';
+import { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame } from './types';
 
 type CallFrameMap = Map<
     number, // scriptId
@@ -97,19 +90,14 @@ function getCallFrame(
 
     let result = resultMap.get(columnNumber);
     if (result === undefined) {
-        result = {
-            id: callFrames.length + 1,
+        result = createCpuProFrame(
+            callFrames.length + 1,
             scriptId,
             url,
             functionName,
             lineNumber,
-            columnNumber,
-            // these field will be populated on call frames processing step
-            category: null as unknown as CpuProCategory,
-            package: null as unknown as CpuProPackage,
-            module: null as unknown as CpuProModule,
-            function: null as unknown as CpuProFunction
-        };
+            columnNumber
+        );
 
         callFrames.push(result);
         resultMap.set(columnNumber, result);
