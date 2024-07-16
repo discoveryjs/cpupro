@@ -8,7 +8,7 @@ export type V8CpuProfile = {
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
     _samplesInterval?: number;
-    _runtime?: string;
+    _runtime?: RuntimeCode;
     _scripts?: V8CpuProfileScript[];
     _scriptFunctions?: V8CpuProfileScriptFunction[];
     _executionContexts?: V8CpuProfileExecutionContext[];
@@ -51,6 +51,14 @@ export type V8CpuProfileScriptFunctionState = {
     inlined: string;
     fns: number[];
 }
+export type RuntimeCode =
+    | 'chromium'
+    | 'deno'
+    | 'edge'
+    | 'electron'
+    | 'nodejs'
+    | 'unknown';
+
 
 export type WellKnownName =
     | '(root)'

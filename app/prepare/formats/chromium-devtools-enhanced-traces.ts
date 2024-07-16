@@ -1,4 +1,4 @@
-import { V8CpuProfileExecutionContext, V8CpuProfileScript } from '../types.js';
+import { RuntimeCode, V8CpuProfileExecutionContext, V8CpuProfileScript } from '../types.js';
 
 type Context = {
     origin: string;
@@ -61,7 +61,7 @@ export function extractFromDevToolsEnhancedTraces(data: DevToolsEnchandedTraces)
 
     const result = {
         ...data.payload,
-        runtime: 'edge', // FIXME: temporary solution, there is no way for now to detect Edge, however this format is supported by Edge only for now
+        runtime: 'edge' satisfies RuntimeCode as RuntimeCode, // FIXME: temporary solution, there is no way for now to detect Edge, however this format is supported by Edge only for now
         executionContexts,
         scripts
     };
