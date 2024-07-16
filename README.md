@@ -46,6 +46,9 @@ To use CLI install `cpupro` globally using `npm install -g cpupro`, or use `npx 
   ```
 - get usage information:
   ```
+  cpupro -h
+  ```
+  ```
   Usage:
   
       cpupro [filepath] [options]
