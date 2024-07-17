@@ -42,8 +42,8 @@ export class CallTree<T> {
     valueNodesLength: NumericArray;
 
     root: Entry<T>;
-    entryRefMap: Map<number, WeakRef<Entry<T>>>;
-    childrenRefMap: Map<number, WeakRef<Entry<T>[]>>;
+    #entryRefMap: Map<number, WeakRef<Entry<T>>>;
+    #childrenRefMap: Map<number, WeakRef<Entry<T>[]>>;
 
     constructor(
         dictionary: T[],
@@ -66,8 +66,8 @@ export class CallTree<T> {
         this.valueNodesOffset = new Uint32Array(dictionary.length);
         this.valueNodesLength = new Uint32Array(dictionary.length);
 
-        this.entryRefMap = new Map();
-        this.childrenRefMap = new Map();
+        this.#entryRefMap = new Map();
+        this.#childrenRefMap = new Map();
 
         // use Object.defineProperty() since jora iterates through own properties only
         Object.defineProperty(this, 'root', {
@@ -128,11 +128,11 @@ export class CallTree<T> {
         return entry;
     }
     getEntry(nodeIndex: number): Entry<T> {
-        const entryRef = this.entryRefMap.get(nodeIndex);
+        const entryRef = this.#entryRefMap.get(nodeIndex);
         let entry: Entry<T> | undefined;
 
         if (entryRef === undefined || (entry = entryRef.deref()) === undefined) {
-            this.entryRefMap.set(
+            this.#entryRefMap.set(
                 nodeIndex,
                 new WeakRef(entry = this.createEntry(nodeIndex))
             );
@@ -141,11 +141,11 @@ export class CallTree<T> {
         return entry;
     }
     getChildren(nodeIndex: number): Entry<T>[] {
-        const childrenRef = this.childrenRefMap.get(nodeIndex);
+        const childrenRef = this.#childrenRefMap.get(nodeIndex);
         let children: Entry<T>[] | undefined;
 
         if (childrenRef === undefined || (children = childrenRef.deref()) === undefined) {
-            this.childrenRefMap.set(
+            this.#childrenRefMap.set(
                 nodeIndex,
                 new WeakRef(children = [...this.map(this.children(nodeIndex))])
             );
