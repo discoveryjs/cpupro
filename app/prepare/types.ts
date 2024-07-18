@@ -121,7 +121,7 @@ export type CpuProScriptFunctionState = {
     fns: number[];
 }
 
-export type CpuProFunctionKind = 'top-level' | 'function' | 'regexp' | 'vm-state' | 'root';
+export type CpuProFunctionKind = 'script' | 'function' | 'regexp' | 'vm-state' | 'root';
 export type CpuProFunction = {
     id: number; // starts with 1
     name: string;

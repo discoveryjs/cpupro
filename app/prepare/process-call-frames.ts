@@ -411,8 +411,8 @@ function resolveFunctionKind(name: string, regexp: string | null, moduleRef: Ref
         return 'regexp';
     }
 
-    if (name === '(top level)') {
-        return 'top-level';
+    if (name === '(script)') {
+        return 'script';
     }
 
     return 'function';
@@ -556,7 +556,7 @@ export function processCallFrames(
             const name = regexp
                 ? (regexp.length <= maxRegExpLength ? regexp : `${regexp.slice(0, maxRegExpLength - 1)}…`)
                 : functionName || (lineNumber === 0 && columnNumber === 0
-                    ? '(top level)'
+                    ? '(script)'
                     : `(anonymous function #${functions.anonymous++})`
                 );
 
