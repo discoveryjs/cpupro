@@ -17,7 +17,7 @@ setTimeout(() => {
     discovery.nav.primary.append({
         className: 'github',
         content: 'text:"GitHub"',
-        data: { href: 'https://github.com/lahmatiy/cpupro' }
+        data: { href: 'https://github.com/discoveryjs/cpupro' }
     });
     discovery.nav.primary.append({
         className: 'full-page-mode',
