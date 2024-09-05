@@ -511,7 +511,9 @@ discovery.page.define('default', {
                             view: 'update-on-timings-change',
                             data: 'packagesTimingsFiltered',
                             content: 'text-numeric:entries.[totalTime].size()'
-                        }
+                        },
+                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${packages.size()}`' },
+                        { view: 'badge', href: '#packages', text: 'all packages →' }
                     ] },
                     { view: 'block', content: [
                         'text:"Modules "',
@@ -519,7 +521,9 @@ discovery.page.define('default', {
                             view: 'update-on-timings-change',
                             data: 'modulesTimingsFiltered',
                             content: 'text-numeric:entries.[totalTime].size()'
-                        }
+                        },
+                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${modules.size()}`' },
+                        { view: 'badge', href: '#modules', text: 'all modules →' }
                     ] },
                     { view: 'block', content: [
                         'text:"Functions "',
@@ -527,7 +531,9 @@ discovery.page.define('default', {
                             view: 'update-on-timings-change',
                             data: 'functionsTimingsFiltered',
                             content: 'text-numeric:entries.[totalTime].size()'
-                        }
+                        },
+                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${functions.size()}`' },
+                        { view: 'badge', href: '#functions', text: 'all functions →' }
                     ] }
                 ],
                 content: [

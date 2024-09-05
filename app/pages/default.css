@@ -256,12 +256,13 @@
     padding: 0 2px 0 0;
 }
 .page-default .hierarchical-components > .header > .header-content > .view-block:first-child {
-    max-width: calc((100% + var(--discovery-page-padding-left)) / 3 - var(--discovery-page-padding-left) + 2px);
+    max-width: calc((100% - 2px) / 3 - 24px);
     box-sizing: border-box;
     border: none;
 }
 .page-default .hierarchical-components > .header > .header-content > .view-block {
     flex: 1;
+    position: relative;
     padding: 2px 8px;
     border-left: 1px solid var(--discovery-background-color);
 }
@@ -270,11 +271,45 @@
     padding-left: .65ex;
     color: #9ea867;
 }
+.page-default .hierarchical-components > .header > .header-content .total-number {
+    color: #888;
+}
+.page-default .hierarchical-components > .header:has(.view-badge[href]:hover) {
+    background: rgba(192, 192, 192, 0.175);
+}
+.page-default .hierarchical-components > .header > .header-content .view-badge[href] {
+    pointer-events: all;
+    position: absolute;
+    margin: 0;
+    inset: 2px 2.5px 2px auto;
+    box-shadow: 0 0 0 .65px rgba(0, 0, 0, .4) inset;
+    line-height: 16px;
+    font-size: 100%;
+}
+.page-default .hierarchical-components > .header > .header-content .view-badge[href]:hover {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .3);
+}
+.page-default .hierarchical-components > .header > .header-content .view-badge[href]::before {
+    content: '';
+    display: inline-block;
+    vertical-align: middle;
+    width: 14px;
+    aspect-ratio: 1/1;
+    background-color: currentColor;
+    mask-image: url('../img/table.svg');
+    mask-repeat: no-repeat;
+    mask-size: 10px;
+    mask-position: center;
+    margin-right: 3px;
+    margin-left: -3px;
+    margin-top: -1px;
+    opacity: .65;
+}
 
 .page-default .hierarchical-components > .content {
     display: flex;
     flex-direction: row;
-    gap: 6px;
+    gap: 5px;
     margin-bottom: 5px;
     margin-left: calc(4px - var(--discovery-page-padding-left));
     margin-right: calc(4px - var(--discovery-page-padding-right));

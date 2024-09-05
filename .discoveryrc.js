@@ -20,6 +20,9 @@ module.exports = {
     },
     view: {
         assets: [
+            './pages/all-packages.js',
+            './pages/all-modules.js',
+            './pages/all-functions.js',
             './pages/common.css',
             './pages/default.js',
             './pages/default.css',
@@ -36,9 +39,13 @@ module.exports = {
             './views/flamechart.js',
             './views/flamechart-expand.css',
             './views/flamechart-expand.js',
+            './views/function-kind-badge.css',
+            './views/function-kind-badge.js',
             './views/loc-badge.css',
             './views/loc-badge.js',
             './views/nested-timings-tree.js',
+            './views/no-samples.css',
+            './views/no-samples.js',
             './views/page-indicator.css',
             './views/page-indicator.js',
             './views/page-indicator-timings.css',
