@@ -94,6 +94,9 @@
     padding-bottom: 1px;
     line-height: 19px;
 }
+.view-flamechart__details .view-badge.function-loc {
+    padding-block: .5px;
+}
 .view-flamechart__details .view-duration {
     align-items: baseline;
 }
@@ -162,6 +165,9 @@
     padding-top: 0;
     padding-bottom: 1px;
     line-height: 19px;
+}
+.flamechart-tooltip .view-badge.function-loc {
+    padding-block: .5px;
 }
 .flamechart-tooltip .view-duration {
     align-items: baseline;
