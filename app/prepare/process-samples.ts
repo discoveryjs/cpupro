@@ -1,14 +1,50 @@
 import { TIMINGS } from './const.js';
 import { CallTree } from './call-tree.js';
-import { createTreeCompute } from './compute-timings.js';
+import {
+    createTreeCompute,
+    DictionaryTiminigs,
+    SamplesTiminigs,
+    SamplesTiminigsFiltered,
+    TreeTimestamps,
+    TreeTiminigs
+} from './compute-timings.js';
 import {
     CpuProCallFrame,
     CpuProFunction,
     CpuProModule,
     CpuProCategory,
     CpuProPackage,
+    CpuProNode,
     V8CpuProfileNode
 } from './types.js';
+
+const kinds = ['functions', 'modules', 'packages', 'categories'] as const;
+
+type SamplesResult = {
+    samplesTimings: SamplesTiminigs;
+    samplesTimingsFiltered: SamplesTiminigsFiltered;
+    treeTimestamps: TreeTimestamps<CpuProNode>[];
+
+    functionsTimings: DictionaryTiminigs<CpuProFunction>;
+    modulesTimings: DictionaryTiminigs<CpuProModule>;
+    packagesTimings: DictionaryTiminigs<CpuProPackage>;
+    categoriesTimings: DictionaryTiminigs<CpuProCategory>;
+
+    functionsTreeTimings: TreeTiminigs<CpuProFunction>;
+    modulesTreeTimings: TreeTiminigs<CpuProModule>;
+    packagesTreeTimings: TreeTiminigs<CpuProPackage>;
+    categoriesTreeTimings: TreeTiminigs<CpuProCategory>;
+
+    functionsTimingsFiltered: DictionaryTiminigs<CpuProFunction>;
+    modulesTimingsFiltered: DictionaryTiminigs<CpuProModule>;
+    packagesTimingsFiltered: DictionaryTiminigs<CpuProPackage>;
+    categoriesTimingsFiltered: DictionaryTiminigs<CpuProCategory>;
+
+    functionsTreeTimingsFiltered: TreeTiminigs<CpuProFunction>;
+    modulesTreeTimingsFiltered: TreeTiminigs<CpuProModule>;
+    packagesTreeTimingsFiltered: TreeTiminigs<CpuProPackage>;
+    categoriesTreeTimingsFiltered: TreeTiminigs<CpuProCategory>;
+};
 
 // Merging sequentially identical samples and coresponsing timeDeltas.
 // Usually it allows to reduce number of samples for further processing at least by x2
@@ -62,7 +98,7 @@ export function processSamples(
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
     categoriesTree: CallTree<CpuProCategory>
-) {
+): SamplesResult {
     // merge samples
     const mergeSamplesStart = Date.now();
     const { samples, timeDeltas } = mergeSamples(rawSamples, rawTimeDeltas);
@@ -82,11 +118,11 @@ export function processSamples(
 
     // create timings
     const computeTimingsStart = Date.now();
-    const names = ['functions', 'modules', 'packages', 'categories'];
     const {
         samplesTimings,
         samplesTimingsFiltered,
         treeTimings,
+        treeTimestamps,
         treeTimingsFiltered,
         dictionaryTimings,
         dictionaryTimingsFiltered
@@ -99,21 +135,22 @@ export function processSamples(
 
     const result = {
         samplesTimings,
-        samplesTimingsFiltered
+        samplesTimingsFiltered,
+        treeTimestamps
     };
 
-    dictionaryTimings.forEach((timings, i) => result[`${names[i]}Timings`] = timings);
-    treeTimings.forEach((timings, i) => result[`${names[i]}TreeTimings`] = timings);
-    dictionaryTimingsFiltered.forEach((timings, i) => result[`${names[i]}TimingsFiltered`] = timings);
-    treeTimingsFiltered.forEach((timings, i) => result[`${names[i]}TreeTimingsFiltered`] = timings);
+    dictionaryTimings.forEach((timings, i) => result[`${kinds[i]}Timings`] = timings);
+    treeTimings.forEach((timings, i) => result[`${kinds[i]}TreeTimings`] = timings);
+    dictionaryTimingsFiltered.forEach((timings, i) => result[`${kinds[i]}TimingsFiltered`] = timings);
+    treeTimingsFiltered.forEach((timings, i) => result[`${kinds[i]}TreeTimingsFiltered`] = timings);
 
     TIMINGS && console.log('Compute timings:', Date.now() - computeTimingsStart);
 
-    return result;
+    return result as SamplesResult;
 }
 
 
-export function gcReparenting(samples: number[], nodes: V8CpuProfileNode[], maxNodeId: number) {
+export function gcReparenting(samples: Uint32Array | number[], nodes: V8CpuProfileNode[], maxNodeId: number) {
     const gcNode = nodes.find(node =>
         node.callFrame.functionName === '(garbage collector)'
     );
