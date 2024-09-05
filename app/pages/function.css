@@ -16,4 +16,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.page-function .script-source .view-source.regexp .view-source__source {
+    word-break: break-word;
+    white-space: normal;
+}
+.page-function .view-source .view-source__source .inline {
+    font-size: 75%;
+    font-family: tahoma;
+    vertical-align: top;
+    border: 1px solid #adbead;
+    border-radius: 5px;
+    color: #a2c7a2;
+    background-color: black;
+    margin: 0 1px;
+    padding: 1px 2px;
+}
+.page-function .view-source .view-source__source .inline::before {
+    content: 'inl';
 }

@@ -193,12 +193,15 @@ const pageContent = {
                         $line: scriptFunction.line or 1;
                         $start: scriptFunction.start;
                         $end: scriptFunction.end;
+                        $inlinedRefs: scriptFunction.states[-1].inlined.match(/O\\d+(?=F|$)/g).matched |
+                            ? .({ className: 'inline', range: [+$[1:] - @.start, +$[1:] - @.start] })
+                            : [];
 
                         ...,
                         syntax: "js",
                         content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
                         lineNum: => $ + $line,
-                        refs: scriptFunction.script.functions.[start >= $start and end <= $end].({
+                        refs: $inlinedRefs + scriptFunction.script.functions.[start >= $start and end <= $end].({
                             className: 'function',
                             range: [start - @.start, end - @.start],
                             href: '#',
