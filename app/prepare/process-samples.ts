@@ -14,7 +14,6 @@ import {
     CpuProModule,
     CpuProCategory,
     CpuProPackage,
-    CpuProNode,
     V8CpuProfileNode
 } from './types.js';
 
@@ -23,7 +22,6 @@ const kinds = ['functions', 'modules', 'packages', 'categories'] as const;
 type SamplesResult = {
     samplesTimings: SamplesTiminigs;
     samplesTimingsFiltered: SamplesTiminigsFiltered;
-    treeTimestamps: TreeTimestamps<CpuProNode>[];
 
     functionsTimings: DictionaryTiminigs<CpuProFunction>;
     modulesTimings: DictionaryTiminigs<CpuProModule>;
@@ -44,6 +42,11 @@ type SamplesResult = {
     modulesTreeTimingsFiltered: TreeTiminigs<CpuProModule>;
     packagesTreeTimingsFiltered: TreeTiminigs<CpuProPackage>;
     categoriesTreeTimingsFiltered: TreeTiminigs<CpuProCategory>;
+
+    functionsTreeTimestamps: TreeTimestamps<CpuProFunction>;
+    modulesTreeTimestamps: TreeTimestamps<CpuProModule>;
+    packagesTreeTimestamps: TreeTimestamps<CpuProPackage>;
+    categoriesTreeTimestamps: TreeTimestamps<CpuProCategory>;
 };
 
 // Merging sequentially identical samples and coresponsing timeDeltas.
@@ -135,14 +138,14 @@ export function processSamples(
 
     const result = {
         samplesTimings,
-        samplesTimingsFiltered,
-        treeTimestamps
+        samplesTimingsFiltered
     };
 
     dictionaryTimings.forEach((timings, i) => result[`${kinds[i]}Timings`] = timings);
     treeTimings.forEach((timings, i) => result[`${kinds[i]}TreeTimings`] = timings);
     dictionaryTimingsFiltered.forEach((timings, i) => result[`${kinds[i]}TimingsFiltered`] = timings);
     treeTimingsFiltered.forEach((timings, i) => result[`${kinds[i]}TreeTimingsFiltered`] = timings);
+    treeTimestamps.forEach((timings, i) => result[`${kinds[i]}TreeTimestamps`] = timings);
 
     TIMINGS && console.log('Compute timings:', Date.now() - computeTimingsStart);
 

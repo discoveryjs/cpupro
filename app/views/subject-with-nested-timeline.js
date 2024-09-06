@@ -88,25 +88,32 @@ discovery.view.define('subject-with-nested-timeline', {
             ]
         },
         {
-            view: 'block',
+            view: 'list',
             className: 'function-states',
             data: `
                 $type: subject.marker().type;
-                $type = "module" ? (#.data.scripts[=> module = @.subject] | is object ? compilation.states) :
-                $type = "function" ? #.data.scriptFunctions[=> function = @.subject].states :
+                $type = "module" ? (#.data.scripts[=> module = @.subject] | is object ?| $module; compilation.states.({ $module, state: $ })) :
+                $type = "function" ? (#.data.scriptFunctions[=> function = @.subject] | $function; states.({ $function, state: $ })) :
                 undefined
             `,
             whenData: true,
-            content: {
-                view: 'list',
-                itemConfig: {
-                    view: 'block',
-                    className: 'tick',
-                    postRender(el, _, data, ctx) {
-                        el.style.setProperty('--pos', data.tm / ctx.data.totalTime);
-                        el.style.setProperty('--duration', (data.duration || (ctx.data.totalTime - data.tm)) / ctx.data.totalTime);
-                        el.dataset.tier = data.tier;
-                    }
+            itemConfig: {
+                view: 'block',
+                className: 'tick',
+                postRender(el, _, data, ctx) {
+                    const state = data.state;
+                    const timestamps = data.function
+                        ? ctx.data.functionsTreeTimestamps.entriesMap.get(data.function)
+                        : ctx.data.modulesTreeTimestamps.entriesMap.get(data.module);
+                    const totalTime = ctx.data.totalTime;
+                    const step = totalTime / 500;
+                    const duration = state.duration ||
+                        (timestamps.lastSeen && Math.ceil(timestamps.lastSeen / step) * step - state.tm) ||
+                        (totalTime - state.tm);
+
+                    el.style.setProperty('--pos', state.tm / totalTime);
+                    el.style.setProperty('--duration', duration / totalTime);
+                    el.dataset.tier = state.tier;
                 }
             }
         },

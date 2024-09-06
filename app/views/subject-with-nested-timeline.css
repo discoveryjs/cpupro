@@ -86,6 +86,7 @@
 .view-subject-with-nested-timeline .function-states {
     position: absolute;
     inset: 0;
+    margin-left: 1px;
     pointer-events: none;
     contain: paint;
     z-index: -2;

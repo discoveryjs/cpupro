@@ -210,6 +210,7 @@ export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
 }
 
 export type DictionaryTiminig<T> = {
+    entryIndex: number;
     entry: T;
     selfTime: number;
     nestedTime: number;
@@ -256,6 +257,78 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
             entry.nestedTime = totalTime - selfTime;
             entry.totalTime = totalTime;
         }
+    }
+}
+
+export type DictionarySeen<T> = {
+    entryIndex: number;
+    entry: T;
+    firstSeen: number;
+    lastSeen: number;
+};
+
+export class TreeTimestamps<T extends CpuProNode> {
+    entries: DictionarySeen<T>[];
+    entriesMap: Map<T, DictionaryTiminig<T>>;
+    firstSeen: Uint32Array;
+    lastSeen: Uint32Array;
+
+    constructor(tree: CallTree<T>, timestamps: Uint32Array, samples: Uint32Array) {
+        const { dictionary, nodes, parent, sampleIdToNode } = tree;
+        const firstSeen = new Uint32Array(nodes.length).fill(0xffffffff);
+        const lastSeen = new Uint32Array(nodes.length);
+        const firstSeenDict = new Uint32Array(dictionary.length).fill(0xffffffff);
+        const lastSeenDict = new Uint32Array(dictionary.length);
+
+        for (let i = 0; i < samples.length; i++) {
+            const nodeId = sampleIdToNode[samples[i]];
+            const timestamp = timestamps[i];
+
+            if (firstSeen[nodeId] > timestamp) {
+                firstSeen[nodeId] = timestamp;
+            }
+
+            if (lastSeen[nodeId] < timestamp) {
+                lastSeen[nodeId] = timestamp;
+            }
+        }
+
+        for (let i = nodes.length - 1; i > 0; i--) {
+            const parentId = parent[i];
+            const dictId = nodes[i];
+            const fs = firstSeen[i];
+            const ls = lastSeen[i];
+
+            if (firstSeen[parentId] > fs) {
+                firstSeen[parentId] = fs;
+            }
+
+            if (firstSeenDict[dictId] > fs) {
+                firstSeenDict[dictId] = fs;
+            }
+
+            if (lastSeen[parentId] < ls) {
+                lastSeen[parentId] = ls;
+            }
+
+            if (lastSeenDict[dictId] < ls) {
+                lastSeenDict[dictId] = ls;
+            }
+        }
+
+        this.firstSeen = firstSeen;
+        this.lastSeen = lastSeen;
+
+        this.entries = dictionary.map((entry, entryIndex) => ({
+            entryIndex,
+            entry,
+            firstSeen: firstSeenDict[entryIndex],
+            lastSeen: lastSeenDict[entryIndex]
+        }));
+        this.entriesMap = this.entries.reduce(
+            (map, element) => map.set(element.entry, element),
+            new Map()
+        );
     }
 }
 
@@ -448,6 +521,16 @@ export function createTreeCompute(
             dictMap.totalTimes.array
         ));
 
+    // const t = Date.now();
+    const treeTimestamps = treeMaps.map((treeMap) =>
+        new TreeTimestamps(
+            treeMap.tree,
+            samplesMap.timestamps.array,
+            samplesMap.samples.array
+        )
+    );
+    // console.log(Date.now() - t, treeTimestamps);
+
     // temporary solution
     const { setRange, resetRange } = samplesTimingsFiltered;
     const notifySubjects = [samplesTimingsFiltered, ...treeTimingsFiltered, ...dictionaryTimingsFiltered];
@@ -468,6 +551,7 @@ export function createTreeCompute(
         samplesTimings,
         samplesTimingsFiltered,
         treeTimings,
+        treeTimestamps,
         treeTimingsFiltered,
         dictionaryTimings,
         dictionaryTimingsFiltered
