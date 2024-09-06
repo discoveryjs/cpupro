@@ -37,6 +37,11 @@ setTimeout(() => {
 
     discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
 
+    // FIXME: temporary solution
+    discovery.annotations.push({
+        query: '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
+    });
+
     // FIXME: temporary solution, since context is cleaning up on data load/unload
     discovery.on('data', consumeDemos);
     consumeDemos();

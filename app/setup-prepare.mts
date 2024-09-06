@@ -9,35 +9,14 @@ import { gcReparenting, processSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/build-trees.js';
-import joraQueryHelpers from './prepare/jora-methods.js';
 import { processScripts } from './prepare/process-scripts.js';
+import { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 
-export default function(input, { rejectData, defineObjectMarker, addValueAnnotation, addQueryHelpers }) {
-    const markAsCallFrame = defineObjectMarker('callFrame', { ref: 'id', title: 'name' });
-    const markAsFunction = defineObjectMarker('function', { ref: 'id', title: 'name', page: 'function' });
-    const markAsPackage = defineObjectMarker('package', { ref: 'id', title: 'name', page: 'package' });
-    const markAsModule = defineObjectMarker('module', { ref: 'id', title: module => module.name || module.path, page: 'module' });
-    const markAsCategory = defineObjectMarker('category', { ref: 'name', title: 'name', page: 'category' });
-    const markAsScript = defineObjectMarker('script', { ref: 'id', title: 'url' });
-    const markAsScriptFunction = defineObjectMarker('script-function', { ref: 'id', title: fn => fn.name || fn.function?.name || '(anonymous fn#' + fn.id + ')' });
+export default (function(input: unknown, { rejectData, markers }: PrepareContextApi) {
     const markTime = TIMINGS ? createMarkTime() : () => undefined;
 
     markTime('convertValidate()');
     const data = convertValidate(input, rejectData);
-    // let ids = new Set();
-    // console.log(data.nodes[0].callFrame);
-    // for (let i = 0; i < data.nodes.length; i++) {
-    //     const node = data.nodes[i];
-    //     if (node.children) {
-    //         for (const childId of node.children) {
-    //             if (ids.has(childId)) {
-    //                 console.log(`Problem ${node.id} -> ${childId}`);
-    //             }
-    //         }
-    //     }
-    //     ids.add(node.id);
-    // }
-    // return data;
 
     // store source's initial metrics
     const nodesCount = data.nodes.length;
@@ -96,7 +75,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
 
     // process dictionaries
     markTime('processPaths()');
-    processPaths(packages, modules, functions);
+    processPaths(packages, modules);
 
     // process display names
     markTime('processDisplayNames()');
@@ -105,7 +84,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     // sort dictionaries and remap ids in ascending order
     markTime('sort dictionaries & remap ids');
     functions.forEach(remapId);
-    modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.path < b.path ? -1 : 1).forEach(remapId);
+    modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : (a.path || '') < (b.path || '') ? -1 : 1).forEach(remapId);
     packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
     categories.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
 
@@ -133,19 +112,20 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
 
     // apply object marker
     markTime('apply discovery object markers');
-    callFrames.forEach(markAsCallFrame);
-    functions.forEach(markAsFunction);
-    modules.forEach(markAsModule);
-    packages.forEach(markAsPackage);
-    categories.forEach(markAsCategory);
-    scripts.forEach(markAsScript);
-    scriptFunctions.forEach(markAsScriptFunction);
+    callFrames.forEach(markers.callFrame);
+    functions.forEach(markers.function);
+    modules.forEach(markers.module);
+    packages.forEach(markers.package);
+    categories.forEach(markers.category);
+    scripts.forEach(markers.script);
+    scriptFunctions.forEach(markers['script-function']);
 
     // build samples lists & trees
     markTime('processSamples()');
     const {
         samplesTimings,
         samplesTimingsFiltered,
+        treeTimestamps,
         functionsTimings,
         functionsTimingsFiltered,
         functionsTreeTimings,
@@ -172,12 +152,6 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         categoriesTree
     );
 
-    // extend jora's queries with custom methods
-    addQueryHelpers(joraQueryHelpers);
-
-    // annotations for struct view
-    addValueAnnotation('#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }');
-
     markTime('producing result');
     const result = {
         runtime: detectRuntime(categories, packages, data._runtime),
@@ -197,6 +171,7 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
+        treeTimestamps,
         wellKnownCallFrames,
         callFrames,
         callFramesTree,
@@ -229,4 +204,4 @@ export default function(input, { rejectData, defineObjectMarker, addValueAnnotat
     markTime('finish');
 
     return result;
-}
+} satisfies PrepareFunction);

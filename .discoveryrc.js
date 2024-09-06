@@ -11,7 +11,7 @@ module.exports = {
             : ['.cpuprofile', '.devtools', '.json', '.jsonxl']
     },
     ...v8logSupport ? { encodings: './encodings' } : null,
-    prepare: './prepare',
+    setup: './setup.mts',
     data: './data',
     favicon: __dirname + '/app/img/favicon.png',
     routers: ['./demo/router.js'],

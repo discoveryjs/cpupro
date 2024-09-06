@@ -167,6 +167,19 @@ const methods = {
         return shortNum(current, ['', 'K', 'M', 'G']);
     },
     formatMicrosecondsTime,
+    zip(left, right, leftValue = value => value, rightValue = value => value) {
+        const map = new Map(left.map(element => [leftValue(element), { left: element, right: null }]));
+
+        for (const element of right) {
+            const entry = map.get(rightValue(element));
+
+            if (entry !== undefined) {
+                entry.right = element;
+            }
+        }
+
+        return [...map.values()];
+    },
     select(tree, type, ...args) {
         let treeTimings = null;
 
