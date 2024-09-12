@@ -1,17 +1,21 @@
 const descendantTree = {
     view: 'block',
     content: [
-        'h3:"Subtree"',
+        'h3:"Nested call sites"',
         {
             view: 'tree',
             className: 'call-tree',
             data: `
-                #.data.functionsTreeTimings.select('nodes', @, true)
-                | sort(totalTime desc, selfTime desc)
+                #.data.functionsTreeTimingsFiltered
+                    .select('nodes', @, true)
+                    .[totalTime]
+                    .sort(totalTime desc, selfTime desc)
             `,
             children: `
-                #.data.functionsTreeTimings.select('children', node.nodeIndex)
-                | sort(totalTime desc, selfTime desc, node.value.name ascN)
+                #.data.functionsTreeTimingsFiltered
+                    .select('children', node.nodeIndex)
+                    .[totalTime]
+                    .sort(totalTime desc, selfTime desc, node.value.name ascN)
             `,
             item: {
                 view: 'context',
@@ -67,12 +71,16 @@ const ancestorsTree = {
             className: 'call-tree',
             expanded: 3,
             data: `
-                #.data.functionsTreeTimings.select('nodes', $, true)
-                | sort(totalTime desc)
+                #.data.functionsTreeTimingsFiltered
+                    .select('nodes', $, true)
+                    .[totalTime]
+                    .sort(totalTime desc)
             `,
             children: `
-                node.parent ? #.data.functionsTreeTimings.select('parent', node.nodeIndex)
-                | sort(totalTime desc)
+                node.parent ? #.data.functionsTreeTimingsFiltered
+                    .select('parent', node.nodeIndex)
+                    .[totalTime]
+                    .sort(totalTime desc)
             `,
             item: {
                 view: 'context',
@@ -284,12 +292,17 @@ const pageContent = {
                 className: 'trigger-outside',
                 header: 'text:"Call trees"',
                 content: {
-                    view: 'hstack',
-                    className: 'trees',
-                    content: [
-                        descendantTree,
-                        ancestorsTree
-                    ]
+                    view: 'update-on-timings-change',
+                    timings: '=#.data.functionsTimingsFiltered',
+                    debounce: 150,
+                    content: {
+                        view: 'hstack',
+                        className: 'trees',
+                        content: [
+                            descendantTree,
+                            ancestorsTree
+                        ]
+                    }
                 }
             }
         },
