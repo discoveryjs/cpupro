@@ -46,7 +46,7 @@ export type V8CpuProfileScriptFunction = {
 }
 export type V8CpuProfileScriptFunctionState = {
     tm: number;
-    tier: string;
+    tier: V8FunctionStateTier;
     positions: string;
     inlined: string;
     fns: number[];
@@ -57,9 +57,16 @@ export type RuntimeCode =
     | 'edge'
     | 'electron'
     | 'nodejs'
-    | 'unknown';
-
-
+    | 'unknown'
+    ;
+export type V8FunctionStateTier =
+    | 'Ignition'
+    | 'Sparkplug'
+    | 'Maglev'
+    | 'Turboprop'
+    | 'Turbofan'
+    | 'Unknown'
+    ;
 export type WellKnownName =
     | '(root)'
     | '(program)'
@@ -109,13 +116,16 @@ export type CpuProScriptFunction = Omit<V8CpuProfileScriptFunction, 'script' | '
     script: CpuProScript | null;
     loc: string | null;
     function: CpuProFunction | null;
-    inlinedInto: CpuProScriptFunction[] | null;
+    hotness: 'cold' | 'warm' | 'hot';
+    deopt: boolean;
     states: CpuProScriptFunctionState[];
+    inlinedInto: CpuProScriptFunction[] | null;
 }
 export type CpuProScriptFunctionState = {
+    scriptFunction: CpuProScriptFunction;
     tm: number;
-    duration: number;
     tier: string;
+    duration: number;
     positions: string;
     inlined: string;
     fns: number[];

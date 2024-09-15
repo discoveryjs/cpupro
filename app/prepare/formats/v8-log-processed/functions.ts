@@ -1,5 +1,9 @@
 import type { Code, ProfileFunction, Script, V8LogProfile } from './types.js';
-import type { V8CpuProfileScriptFunction } from '../../types.js';
+import type {
+    V8CpuProfileScriptFunction,
+    V8CpuProfileScriptFunctionState,
+    V8FunctionStateTier
+} from '../../types.js';
 
 export type ParseJsNameResult = {
     functionName: string;
@@ -72,7 +76,7 @@ export function parseJsName(name: string, script?: Script): ParseJsNameResult {
     };
 }
 
-export function functionTier(kind: Code['kind']) {
+export function functionTier(kind: Code['kind']): V8FunctionStateTier {
     switch (kind) {
         case 'Builtin':
         case 'Ignition':
@@ -98,7 +102,7 @@ export function functionTier(kind: Code['kind']) {
     }
 }
 
-export function processFunctionCodes(v8log: V8LogProfile, codes: number[]) {
+export function processFunctionCodes(v8log: V8LogProfile, codes: number[]): V8CpuProfileScriptFunctionState[] {
     return codes.map(codeIndex => {
         const code = v8log.code[codeIndex];
         const codeSource = code.source || null;

@@ -90,10 +90,13 @@ discovery.view.define('subject-with-nested-timeline', {
         {
             view: 'list',
             className: 'function-states',
+            limit: false,
             data: `
                 $type: subject.marker().type;
-                $type = "module" ? (#.data.scripts[=> module = @.subject] | is object ?| $module; compilation.states.({ $module, state: $ })) :
-                $type = "function" ? (#.data.scriptFunctions[=> function = @.subject] | $function; states.({ $function, state: $ })) :
+                $type = "module" ? (#.data.scripts[=> module = @.subject] | is object ?|
+                    $module; compilation.states.({ $module, state: $, color: tier.color(true) })) :
+                $type = "function" ? (#.data.scriptFunctions[=> function = @.subject] |
+                    $function; states.({ $function, state: $, color: tier.color(true) })) :
                 undefined
             `,
             whenData: true,
@@ -108,12 +111,12 @@ discovery.view.define('subject-with-nested-timeline', {
                     const totalTime = ctx.data.totalTime;
                     const step = totalTime / 500;
                     const duration = state.duration ||
-                        (timestamps.lastSeen && Math.ceil(timestamps.lastSeen / step) * step - state.tm) ||
+                        (timestamps.lastSeen > state.tm && Math.ceil(timestamps.lastSeen / step) * step - state.tm) ||
                         (totalTime - state.tm);
 
                     el.style.setProperty('--pos', state.tm / totalTime);
                     el.style.setProperty('--duration', duration / totalTime);
-                    el.dataset.tier = state.tier;
+                    el.style.setProperty('--tier-color', 'rgb(' + data.color + ', .68)');
                 }
             }
         },

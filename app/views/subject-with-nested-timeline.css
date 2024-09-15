@@ -92,7 +92,7 @@
     z-index: -2;
 }
 .view-subject-with-nested-timeline .function-states .tick {
-    --tier-color: #ff6d6d91;
+    --tier-color: #aaaaaaa0;
     position: absolute;
     box-sizing: border-box;
     left: calc(100% * var(--pos));
@@ -110,14 +110,4 @@
     height: 1.5px;
     bottom: auto;
     background-color: var(--tier-color);
-}
-.view-subject-with-nested-timeline .function-states .tick[data-tier="Sparkplug"] {
-    --tier-color: #c28c28c7;
-}
-.view-subject-with-nested-timeline .function-states .tick[data-tier="Maglev"],
-.view-subject-with-nested-timeline .function-states .tick[data-tier="Turboprop"] {
-    --tier-color: #bfb736ad;
-}
-.view-subject-with-nested-timeline .function-states .tick[data-tier="Turbofan"] {
-    --tier-color: #44ab2ccf;
 }

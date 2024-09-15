@@ -1,4 +1,4 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionStateTier } from './types';
 import { packageRegistryEndpoints } from './utils';
 
 export const TIMINGS = false;
@@ -31,6 +31,14 @@ export const vmStateNodeTypes = new Set<WellKnownType>([
     'compiler',
     'atomics-wait'
 ]);
+export const vmFunctionStateTiers: V8FunctionStateTier[] = [
+    'Ignition',
+    'Sparkplug',
+    'Maglev',
+    'Turboprop',
+    'Turbofan',
+    'Unknown'
+] as const;
 
 export const knownChromeExtensions = {
     'fmkadmapgofadopljbjfkapdkoienihi': 'React Developer Tools',
@@ -73,7 +81,7 @@ export const knownRegistry: Record<string, PackageProvider> = {
 };
 
 // colors in order of apperiance in a list
-export const typeColor: Record<PackageType | PackageRegistry, string> = {
+export const typeColor: Record<PackageType | PackageRegistry | V8FunctionStateTier, string> = {
     'script': '#fee29ca0',
     'npm': '#f98e94a0',
     'github': '#666666a0',
@@ -92,7 +100,14 @@ export const typeColor: Record<PackageType | PackageRegistry, string> = {
     'engine': '#fc9a9aa0',
     'root': '#444444a0',
     'idle': '#888888a0',
-    'unknown': '#888888a0'
+    'unknown': '#888888a0',
+
+    'Ignition': '#b9b9b9a0',
+    'Sparkplug': '#e3c685a0',
+    'Maglev': '#dba543a0',
+    'Turboprop': '#dba543a0',
+    'Turbofan': '#f78080a0',
+    'Unknown': '#888888a0'
 };
 export const typeColorComponents = Object.fromEntries(Object.entries(typeColor)
     .map(([type, color]) =>[type, [

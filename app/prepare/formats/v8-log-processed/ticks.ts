@@ -7,16 +7,16 @@ export const VM_STATE_OTHER = 5;
 export const VM_STATE_EXTERNAL = 6;
 export const VM_STATE_IDLE = 7;
 export const vmState = [
-    'js',
-    'garbage collector',
-    'parser',
-    'compiler bytecode',
-    'compiler',
-    'other',
-    'external',
-    'idle',
-    'atomics wait',
-    'logging'
+    /* 0 */ 'js',
+    /* 1 */ 'garbage collector',
+    /* 2 */ 'parser',
+    /* 3 */ 'compiler bytecode',
+    /* 4 */ 'compiler',
+    /* 5 */ 'other',
+    /* 6 */ 'external',
+    /* 7 */ 'idle',
+    /* 8 */ 'atomics wait',
+    /* 9 */ 'logging'
 ] as const;
 const vmStateIgnoreStack = new Uint32Array(vmState.length);
 vmStateIgnoreStack[VM_STATE_GC] = 1; // FIXME: probably stack is available on GC, but in cpuprofile GC is always on root

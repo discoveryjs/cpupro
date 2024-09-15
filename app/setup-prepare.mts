@@ -108,7 +108,12 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
     const {
         scripts,
         scriptFunctions
-    } = processScripts(data._scripts, data._scriptFunctions, moduleByScriptId);
+    } = processScripts(
+        data._scripts,
+        data._scriptFunctions,
+        moduleByScriptId,
+        startNoSamplesTime
+    );
 
     // apply object marker
     markTime('apply discovery object markers');
