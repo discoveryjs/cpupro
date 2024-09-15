@@ -97,6 +97,17 @@ const profile = profiler.profile();
 profile.profileEnd().openReport();
 ```
 
+An alternative approach is to invoke actions such as writeToFile(), writeJsonxlToFile(), writeReport(), and openReport() at the start of profiling. These actions will be executed upon calling profileEnd() or upon process exit if profileEnd() is not explicitly invoked:
+
+```js
+const profiler = require('cpupro');
+
+profiler.profile()
+  .writeToFile('./path/to/demo.cpuprofile');
+
+// calling profileEnd() is not necessary if a CPU profile should be dumped to a file upon process exit
+```
+
 ### Scenario #4 – A preload module for Node.js scripts
 
 Record profile, generate report and open it in a browser:
