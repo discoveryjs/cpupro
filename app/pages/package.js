@@ -40,27 +40,94 @@ const pageContent = {
             className: 'trigger-outside',
             header: [
                 'text:"Modules "',
-                { view: 'pill-badge', content: {
-                    view: 'update-on-timings-change',
-                    timings: '=#.data.modulesTimingsFiltered',
-                    content: 'text-numeric:#.data.modulesTimingsFiltered.entries.[totalTime and entry.package = @].size()'
-                } }
+                {
+                    view: 'pill-badge',
+                    data: '#.data.modulesTimingsFiltered.entries.[entry.package = @]',
+                    content: [
+                        {
+                            view: 'update-on-timings-change',
+                            timings: '=#.data.modulesTimingsFiltered',
+                            content: 'text-numeric:count(=> totalTime?)'
+                        },
+                        {
+                            view: 'text-numeric',
+                            className: 'total-number',
+                            data: '` ⁄ ${size()}`'
+                        }
+                    ]
+                }
             ],
             content: {
                 view: 'content-filter',
+                data: `
+                    #.data.modulesTimingsFiltered.entries.[entry.package = @]
+                        .zip(=> entry, #.data.functionsTimingsFiltered.entries.group(=> entry.module), => key)
+                        .({ timings: left, functions: right.value })
+                        .zip(=> timings.entry, #.data.scripts, => module)
+                        .({
+                            $timings: left.timings;
+                            $entry: $timings.entry;
+
+                            ...,
+                            left: $timings,
+                            functions: left.functions,
+                            $entry,
+                            name: $entry | packageRelPath or name,
+                            packageName: $entry.package.name,
+                            categoryName: $entry.category.name
+                        })
+                `,
                 className: 'table-content-filter',
                 content: {
                     view: 'update-on-timings-change',
-                    timings: '=#.data.packagesTimingsFiltered',
+                    timings: '=#.data.modulesTimingsFiltered',
                     content: {
                         view: 'table',
-                        data: '#.data.modulesTimingsFiltered.entries.[totalTime and entry.package = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                        data: `
+                            .[name ~= #.filter]
+                            .({
+                                ...,
+                                selfTime: left.selfTime,
+                                nestedTime: left.nestedTime,
+                                totalTime: left.totalTime
+                            })
+                            .sort(selfTime desc, totalTime desc)
+                        `,
                         cols: [
-                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
-                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                            { header: 'Module', sorting: 'entry.name ascN', content: 'module-badge:entry' },
-                            { header: 'Functions', data: 'entry.functions' }
+                            { header: 'Self time',
+                                sorting: 'selfTime desc, totalTime desc',
+                                colSpan: '=totalTime ? 1 : 3',
+                                content: {
+                                    view: 'switch',
+                                    content: [
+                                        { when: 'totalTime', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                                        { content: 'no-samples' }
+                                    ]
+                                }
+                            },
+                            { header: 'Nested time',
+                                sorting: 'nestedTime desc, totalTime desc',
+                                when: 'totalTime',
+                                content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
+                            },
+                            { header: 'Total time',
+                                sorting: 'totalTime desc, selfTime desc',
+                                when: 'totalTime',
+                                content: 'duration:{ time: totalTime, total: #.data.totalTime }'
+                            },
+                            { header: 'Module',
+                                sorting: 'name ascN',
+                                content: 'module-badge:entry'
+                            },
+                            { header: 'Functions',
+                                className: 'number',
+                                data: 'functions',
+                                content: [
+                                    { view: 'text-numeric', className: 'sampled-count', data: 'count(=> totalTime?)' },
+                                    'text-numeric:` ⁄ ${size()}`'
+                                ],
+                                details: 'struct'
+                            }
                             // { header: 'Histogram', content: {
                             //     view: 'timeline-segments-bin',
                             //     bins: '=#.data.modulesTree.binCalls(entry, 100)',

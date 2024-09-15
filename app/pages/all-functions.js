@@ -11,25 +11,32 @@ discovery.page.define('functions', [
 
     {
         view: 'content-filter',
+        data: `
+            functionsTimings.entries.zip(=> entry, scriptFunctions, => function)
+                .({
+                    $entry: left.entry;
+
+                    ...,
+                    $entry,
+                    name: $entry.name,
+                    moduleName: $entry.module.name,
+                    loc: $entry.loc,
+                    selfTime: left.selfTime,
+                    nestedTime: left.nestedTime,
+                    totalTime: left.totalTime
+                })
+        `,
         content: [
             {
                 view: 'table',
                 data: `
-                    functionsTimings.entries.zip(scriptFunctions, => entry, => function)
-                        .[left.entry.name ~= #.filter]
-                        .sort(left.selfTime desc, left.totalTime desc)
-                        .({
-                            ...,
-                            name: left.entry.name,
-                            moduleName: left.entry.module.name,
-                            loc: left.entry.loc
-                        })
+                    .[left.entry.name ~= #.filter]
+                    .sort(left.selfTime desc, left.totalTime desc)
                 `,
                 cols: [
                     { header: 'Self time',
-                        data: 'left',
+                        sorting: 'selfTime desc, totalTime desc',
                         colSpan: '=totalTime ? 1 : 3',
-                        sorting: 'left.selfTime desc, left.totalTime desc',
                         content: {
                             view: 'switch',
                             content: [
@@ -39,20 +46,17 @@ discovery.page.define('functions', [
                         }
                     },
                     { header: 'Nested time',
-                        data: 'left',
-                        when: 'left.totalTime',
-                        sorting: 'left.nestedTime desc, left.totalTime desc',
+                        sorting: 'nestedTime desc, totalTime desc',
+                        when: 'totalTime',
                         content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
                     },
                     { header: 'Total time',
-                        data: 'left',
-                        when: 'left.totalTime',
-                        sorting: 'left.totalTime desc, left.selfTime desc',
+                        sorting: 'totalTime desc, selfTime desc',
+                        when: 'totalTime',
                         content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                     },
                     { header: 'Kind',
-                        data: 'left.entry',
-                        content: 'function-kind-badge:kind'
+                        content: 'function-kind-badge:entry.kind'
                     },
                     // { header: 'Function',
                     //     data: 'left.entry',
@@ -62,29 +66,37 @@ discovery.page.define('functions', [
                     //         content: 'text-match:{ text, match: #.filter }'
                     //     }
                     // },
-                    { header: 'Function', data: 'left.entry', sorting: 'name ascN', content: {
-                        view: 'badge',
-                        data: 'marker() | { text: title, href, match: #.filter }',
-                        content: 'text-match'
-                    } },
+                    { header: 'Function',
+                        sorting: 'name ascN',
+                        content: {
+                            view: 'badge',
+                            data: 'entry.marker() | { text: title, href, match: #.filter }',
+                            content: 'text-match'
+                        }
+                    },
                     { header: 'Module',
-                        data: 'left.entry',
                         sorting: 'moduleName ascN, loc ascN',
+                        data: 'entry',
                         content: [
                             'module-badge:module',
                             'loc-badge'
                         ]
                     },
                     { header: 'Source',
-                        data: 'right',
+                        className: 'number',
                         sorting: '(right.end - right.start) desc',
+                        data: 'right',
                         content: 'text:end - start | $ > 0?: ""',
                         details: '=end-start > 0 ? `source:{ syntax: "js", content: script.source[start:end] }`'
                     },
                     { header: 'States',
-                        data: 'right',
                         sorting: 'right.states.size() desc',
-                        content: { view: 'inline-list', whenData: true, data: 'states.([[tier.abbr() + "\xa0"]])' }
+                        data: 'right',
+                        content: {
+                            view: 'inline-list',
+                            data: 'states.([[tier.abbr() + "\xa0"]])',
+                            whenData: true
+                        }
                     }
                 ]
             }

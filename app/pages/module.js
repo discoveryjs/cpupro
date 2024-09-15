@@ -79,27 +79,85 @@ const pageContent = {
             className: 'trigger-outside',
             header: [
                 'text:"Functions "',
-                { view: 'pill-badge', content: {
-                    view: 'update-on-timings-change',
-                    timings: '=#.data.functionsTimingsFiltered',
-                    content: 'text-numeric:#.data.functionsTimingsFiltered.entries.[totalTime and entry.module = @].size()'
-                } }
+                {
+                    view: 'pill-badge',
+                    data: '#.data.functionsTimingsFiltered.entries.[entry.module = @]',
+                    content: [
+                        {
+                            view: 'update-on-timings-change',
+                            timings: '=#.data.functionsTimingsFiltered',
+                            content: 'text-numeric:count(=> totalTime?)'
+                        },
+                        {
+                            view: 'text-numeric',
+                            className: 'total-number',
+                            data: '` ⁄ ${size()}`'
+                        }
+                    ]
+                }
             ],
             content: {
                 view: 'content-filter',
                 className: 'table-content-filter',
+                data: `
+                    #.data.functionsTimingsFiltered.entries.[entry.module = @]
+                        .zip(=> entry, #.data.scriptFunctions, => function)
+                        .({
+                            $entry: left.entry;
+
+                            ...,
+                            $entry,
+                            name: $entry.name,
+                            moduleName: $entry.module.name,
+                            loc: $entry.loc
+                        })
+                `,
                 content: {
                     view: 'update-on-timings-change',
                     timings: '=#.data.functionsTimingsFiltered',
                     content: {
                         view: 'table',
-                        data: '#.data.functionsTimingsFiltered.entries.[totalTime and entry.module = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                        data: `
+                            .[name ~= #.filter]
+                            .({
+                                ...,
+                                selfTime: left.selfTime,
+                                nestedTime: left.nestedTime,
+                                totalTime: left.totalTime
+                            })
+                            .sort(selfTime desc, totalTime desc, loc ascN)
+                        `,
                         cols: [
-                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
-                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                            { header: 'Function', sorting: 'entry.name ascN', content: 'auto-link{ data: entry, content: "text-match:{ ..., match: #.filter }" }' },
-                            { header: 'Loc', data: 'entry', sorting: 'entry.loc ascN', content: ['module-badge', 'loc-badge'] }
+                            { header: 'Self time',
+                                sorting: 'selfTime desc, totalTime desc, loc ascN',
+                                colSpan: '=totalTime ? 1 : 3',
+                                content: {
+                                    view: 'switch',
+                                    content: [
+                                        { when: 'totalTime', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                                        { content: 'no-samples' }
+                                    ]
+                                }
+                            },
+                            { header: 'Nested time',
+                                sorting: 'nestedTime desc, totalTime desc, loc ascN',
+                                when: 'totalTime',
+                                content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
+                            },
+                            { header: 'Total time',
+                                sorting: 'totalTime desc, selfTime desc, loc ascN',
+                                when: 'totalTime',
+                                content: 'duration:{ time: totalTime, total: #.data.totalTime }'
+                            },
+                            { header: 'Function',
+                                sorting: 'name ascN',
+                                content: 'auto-link{ data: entry, content: "text-match:{ ..., match: #.filter }" }'
+                            },
+                            { header: 'Loc',
+                                sorting: 'loc ascN',
+                                data: 'entry',
+                                content: ['module-badge', 'loc-badge']
+                            }
                         ]
                     }
                 }

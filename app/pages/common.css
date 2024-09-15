@@ -79,6 +79,12 @@
 .discovery-root-darkmode .view-badge {
     box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12);
 }
+.view-table-cell.details > * {
+    pointer-events: none;
+}
+.view-table-cell.details > .sampled-count {
+    color: #9ea867;
+}
 .view-table-cell > .view-badge,
 .view-table-cell > .view-badge .prefix,
 .view-table-cell > .view-badge .postfix {

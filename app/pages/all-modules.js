@@ -12,12 +12,13 @@ discovery.page.define('modules', [
     {
         view: 'content-filter',
         data: `
-            modulesTimings.entries.zip(scripts, => entry, => module).({
-                ...,
-                name: left.entry | packageRelPath or name,
-                packageName: left.entry.package.name,
-                categoryName: left.entry.category.name
-            })
+            modulesTimings.entries.zip(=> entry, scripts, => module)
+                .({
+                    ...,
+                    name: left.entry | packageRelPath or name,
+                    packageName: left.entry.package.name,
+                    categoryName: left.entry.category.name
+                })
         `,
         content: [
             {
@@ -51,17 +52,24 @@ discovery.page.define('modules', [
                         sorting: 'left.totalTime desc, left.selfTime desc',
                         content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                     },
-                    { header: 'Category', className: 'number', data: 'left.entry.category', sorting: 'categoryName ascN', content:
-                        'badge{ className: "category-badge", text: name, href: marker().href, color: name.color() }'
+                    { header: 'Category',
+                        className: 'number',
+                        data: 'left.entry.category',
+                        sorting: 'categoryName ascN',
+                        content: 'badge{ className: "category-badge", text: name, href: marker().href, color: name.color() }'
                     },
-                    { header: 'Package', sorting: 'packageName ascN', content:
-                        'package-badge:left.entry.package'
+                    { header: 'Package',
+                        sorting: 'packageName ascN',
+                        content: 'package-badge:left.entry.package'
                     },
-                    { header: 'Module', sorting: 'name ascN', content: {
-                        view: 'badge',
-                        data: '{ text: name, href: left.entry.marker().href, match: #.filter }',
-                        content: 'text-match'
-                    } }
+                    { header: 'Module',
+                        sorting: 'name ascN',
+                        content: {
+                            view: 'badge',
+                            data: '{ text: name, href: left.entry.marker().href, match: #.filter }',
+                            content: 'text-match'
+                        }
+                    }
                 ]
             }
         ]

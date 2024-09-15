@@ -11,9 +11,7 @@ discovery.page.define('packages', [
 
     {
         view: 'content-filter',
-        data: `
-            packagesTimings.entries
-        `,
+        data: 'packagesTimings.entries',
         content: [
             {
                 view: 'table',
@@ -43,11 +41,16 @@ discovery.page.define('packages', [
                         sorting: 'totalTime desc, selfTime desc',
                         content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                     },
-                    { header: 'Category', className: 'number', data: 'entry.category', sorting: 'entry.category.name ascN', content:
-                        'badge{ className: "category-badge", text: name, href: marker().href, color: name.color() }'
+                    { header: 'Category',
+                        className: 'number',
+                        data: 'entry.category',
+                        sorting: 'entry.category.name ascN',
+                        content: 'badge{ className: "category-badge", text: name, href: marker().href, color: name.color() }'
                     },
-                    { header: 'Package', data: 'entry', sorting: 'entry.name ascN', content:
-                        'package-badge'
+                    { header: 'Package',
+                        data: 'entry',
+                        sorting: 'entry.name ascN',
+                        content: 'package-badge'
                     }
                 ]
             }
