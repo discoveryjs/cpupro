@@ -210,14 +210,16 @@ const pageContent = {
                         content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
                         lineNum: => $ + $line,
                         refs: $inlinedRefs + scriptFunction.script.functions.[start >= $start and end <= $end].({
-                            className: 'function',
-                            range: [start - @.start, end - @.start],
-                            href: '#',
-                            marker: states | size() = 1
+                            $href: @.scriptFunction.function != function ? function.marker().href;
+                            $marker: states | size() = 1
                                 ? tier[].abbr()
                                 : size() <= 3
-                                    ? tier.(abbr()).join(' ')
-                                    : tier[].abbr() + ' … ' + tier[-1].abbr(),
+                                    ? tier[].abbr() + ' ' + tier[-1].abbr()
+                                    : tier[].abbr() + ' … ' + tier[-1].abbr();
+
+                            className: 'function',
+                            range: [start - @.start, end - @.start],
+                            marker: $href ? $marker + '" data-href="' + $href : $marker,
                             tooltipData: { states, function },
                             tooltip: { className: 'hint-tooltip', content: [
                                 'text:tooltipData.function.name',
@@ -241,6 +243,17 @@ const pageContent = {
                             ] }
                         })
                     }`,
+                    postRender(el) {
+                        const contentEl = el.querySelector('.view-source__content');
+
+                        contentEl.addEventListener('click', (event) => {
+                            const pseudoLinkEl = event.target.closest('.view-source .spotlight[data-href]');
+
+                            if (pseudoLinkEl && contentEl.contains(pseudoLinkEl)) {
+                                discovery.setPageHash(pseudoLinkEl.dataset.href);
+                            }
+                        });
+                    },
                     prelude: {
                         view: 'block',
                         when: 'scriptFunction.script',

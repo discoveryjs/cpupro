@@ -373,6 +373,9 @@ h2 .logo {
     margin-left: 2px;
     border-radius: 9px;
 }
+.script-source .view-source .spotlight.function[data-href] {
+    cursor: pointer;
+}
 .script-source .view-source .spotlight.function::before {
     content: attr(data-marker);
     display: inline;

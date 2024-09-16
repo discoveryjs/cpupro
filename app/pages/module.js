@@ -40,19 +40,10 @@ const pageContent = {
                     { content: 'html:` <span style="color: #888">(unavailable)</span>`' }
                 ] }
             ],
-            content: `source:{
-                syntax: "js",
-                content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
-                refs: functions.({
-                    className: 'function',
-                    range: [start, end],
-                    marker: states | size() = 1
-                        ? tier[].abbr()
-                        : size() <= 3
-                            ? tier.(abbr()).join(' ')
-                            : tier[].abbr() + ' … ' + tier[-1].abbr(),
-                    tooltipData: { states, function },
-                    tooltip: [
+            content: {
+                view: 'source',
+                data: `{
+                    $tooltipView: [
                         'text:tooltipData.function.name',
                         'html:"<br>"',
                         {
@@ -60,9 +51,37 @@ const pageContent = {
                             data: 'tooltipData.states',
                             item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
                         }
-                    ]
-                })
-            }`
+                    ];
+
+                    syntax: "js",
+                    content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
+                    refs: functions.({
+                        $href: function.marker().href;
+                        $marker: states | size() = 1
+                            ? tier[].abbr()
+                            : size() <= 3
+                                ? tier[].abbr() + tier[-1].abbr()
+                                : tier[].abbr() + ' … ' + tier[-1].abbr();
+
+                        className: 'function',
+                        range: [start, end],
+                        marker: $href ? $marker + '" data-href="' + $href : $marker,
+                        tooltipData: { states, function },
+                        tooltip: $tooltipView
+                    })
+                }`,
+                postRender(el) {
+                    const contentEl = el.querySelector('.view-source__content');
+
+                    contentEl.addEventListener('click', (event) => {
+                        const pseudoLinkEl = event.target.closest('.view-source .spotlight[data-href]');
+
+                        if (pseudoLinkEl && contentEl.contains(pseudoLinkEl)) {
+                            discovery.setPageHash(pseudoLinkEl.dataset.href);
+                        }
+                    });
+                }
+            }
         },
 
         {
