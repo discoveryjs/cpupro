@@ -66,7 +66,9 @@ module.exports = {
             './views/timing-bar.css',
             './views/timing-bar.js',
             './views/update-on-timings-change.css',
-            './views/update-on-timings-change.js'
+            './views/update-on-timings-change.js',
+            './views/value-fraction.css',
+            './views/value-fraction.js'
         ]
     }
 };

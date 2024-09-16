@@ -147,6 +147,159 @@ const pageIndicators = {
     ]
 };
 
+const functionStatesView = [
+    {
+        view: 'link',
+        className: 'category-timelines-item',
+        content: [
+            {
+                view: 'block',
+                className: 'label',
+                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                content: 'text:"Transitions"'
+            },
+            {
+                view: 'block',
+                className: 'total-percent',
+                content: 'text:""'
+            },
+            {
+                view: 'timeline-segments-bin',
+                bins: '=transitions',
+                // max: '=byTierMax',
+                binsMax: true,
+                color: '="engine".color()'
+            }
+        ]
+    },
+    {
+        view: 'link',
+        className: 'category-timelines-item',
+        content: [
+            {
+                view: 'block',
+                className: 'label',
+                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                content: 'text:"Functions"'
+            },
+            {
+                view: 'block',
+                className: 'total-percent',
+                content: 'text:""'
+            },
+            {
+                view: 'timeline-segments-bin',
+                bins: '=totalBins',
+                binsMax: true,
+                color: '=totalColor'
+            }
+        ]
+    },
+    {
+        view: 'list',
+        className: 'category-timelines-list',
+        data: 'byTier',
+        item: {
+            view: 'link',
+            className: 'category-timelines-item',
+            content: [
+                {
+                    view: 'block',
+                    className: 'label',
+                    postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                    content: 'text:name'
+                },
+                {
+                    view: 'block',
+                    className: 'total-percent',
+                    content: 'text:100 * maxTier / maxTotal | toFixed(2)'
+                },
+                {
+                    view: 'timeline-segments-bin',
+                    bins: '=bins',
+                    max: '=maxTotal',
+                    binsMax: true,
+                    color: '=color'
+                }
+            ]
+        }
+    }
+];
+
+const heapTotalView = [
+    {
+        view: 'link',
+        className: 'category-timelines-item',
+        data: 'totalHeapSize',
+        content: [
+            {
+                view: 'block',
+                className: 'label',
+                content: 'text:"Total size"'
+            },
+            {
+                view: 'block',
+                className: 'total-percent'
+            },
+            {
+                view: 'timeline-segments-bin',
+                className: 'mem-bins',
+                height: 32,
+                bins: '=$',
+                // max: '=max() | $ < 20_000_000 ?: 20_000_000',
+                binsMax: true,
+                color: '#5b88c6'
+            }
+        ]
+    },
+    {
+        view: 'link',
+        className: 'category-timelines-item',
+        content: [
+            {
+                view: 'block',
+                className: 'label',
+                content: 'text:"Allocations"'
+            },
+            {
+                view: 'block',
+                className: 'total-percent'
+            },
+            {
+                view: 'timeline-segments-bin',
+                className: 'mem-bins',
+                bins: '=new',
+                max: '=max',
+                binsMax: true,
+                color: '#bf8354'
+            }
+        ]
+    },
+    {
+        view: 'link',
+        className: 'category-timelines-item',
+        content: [
+            {
+                view: 'block',
+                className: 'label',
+                content: 'text:"Deletions"'
+            },
+            {
+                view: 'block',
+                className: 'total-percent'
+            },
+            {
+                view: 'timeline-segments-bin',
+                className: 'mem-bins heap-delete-chunks',
+                bins: '=delete',
+                max: '=max',
+                binsMax: true,
+                color: '#80a556'
+            }
+        ]
+    }
+];
+
 const categoriesTimeBars = {
     view: 'timing-bar',
     data: `categoriesTimings.entries.[selfTime].({
@@ -171,25 +324,64 @@ const categoriesTimeline = {
         $totalTime: #.data.totalTime;
         $binSamples: $binCount.countSamples();
 
-        categoriesTimings.entries.[selfTime].({
-            $category: entry;
+        {
+            samples: categoriesTimings.entries.[selfTime].({
+                $category: entry;
 
-            $category,
-            timings: $,
-            $totalTime,
-            $binCount,
-            binTime: $totalTime / $binCount,
-            $binSamples,
-            bins: #.data.categoriesTree.binCalls($category, $binCount),
-            color: $category.name.color(),
-            href: $category.marker("category").href
-        })
+                $category,
+                timings: $,
+                $totalTime,
+                $binCount,
+                binTime: $totalTime / $binCount,
+                $binSamples,
+                bins: #.data.categoriesTree.binCalls($category, $binCount),
+                color: $category.name.color(),
+                href: $category.marker("category").href
+            }),
+            functionStates: scriptFunctions.states |? {
+                $countByTopTier: @.scriptFunctions.group(=> topTier).({ tier: key, count: value.size() });
+                $states: sort(tm asc);
+                $totalBins: $states.binFunctionStatesTotal();
+                $maxTotal: $totalBins.fnCount.max();
+                $byTierBins: $totalBins.byTier.({
+                    $tier: $[0];
+                    $bins: $[1];
+
+                    name: $tier,
+                    color: $tier.color(),
+                    bins: $bins,
+                    max: $bins.max(),
+                    $maxTotal,
+                    maxTier: $countByTopTier[=> tier = $tier].count or 0
+                }).[max];
+                
+                $countByTopTier,
+                transitions: $states.binFunctionStates(),
+                totalBins: $totalBins.fnCount,
+                totalColor: '#7fb2f7a0',
+                byTier: $byTierBins,
+                byTierMax: $maxTotal
+            },
+            heap: heap.events |? {
+                $totalHeapSize: binMemoryTotal($binCount);
+                $new: binMemory("new", $binCount);
+                $delete: binMemory("delete", $binCount);
+
+                $totalHeapSize,
+                $new,
+                newTotal: $new.sum(),
+                $delete,
+                deleteTotal: $delete.sum(),
+                max: [$new.max(), $delete.max()].max(),
+                maxTotal: $totalHeapSize.max()
+            }
+        }
     `,
     content: [
         {
             view: 'time-ruler',
-            duration: '=$[].totalTime',
-            segments: '=$[].binCount',
+            duration: '=samples[].totalTime',
+            segments: '=samples[].binCount',
             selectionStart: '=#.data.samplesTimingsFiltered.rangeStart',
             selectionEnd: '=#.data.samplesTimingsFiltered.rangeEnd',
             onChange: (state, name, el, data, context) => {
@@ -209,29 +401,136 @@ const categoriesTimeline = {
                 {
                     view: 'block',
                     className: 'timeline-segment-info',
+                    data: 'samples',
                     content: [
                         { view: 'block', content: 'text:`Range: ${#.timeStart.formatMicrosecondsTime(totalTime)} – ${#.timeEnd.formatMicrosecondsTime(totalTime)}`' },
-                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' },
-                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: #.timeEnd - #.timeStart, total: totalTime }'] }
+                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: #.timeEnd - #.timeStart, total: totalTime }'] },
+                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' }
                     ]
                 },
                 {
-                    view: 'list',
-                    className: 'category-timings-list',
-                    itemConfig: {
-                        className: '=bins[#.segmentStart:#.segmentEnd + 1].sum() = 0 ? "no-time"',
-                        postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                        content: [
-                            'block{ className: "category-name", content: "text:category.name" }',
-                            'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: #.timeEnd - #.timeStart } }'
-                        ]
-                    }
+                    view: 'block',
+                    className: 'details-sections',
+                    content: [
+                        {
+                            view: 'block',
+                            className: 'details-section',
+                            content: [
+                                {
+                                    view: 'block',
+                                    className: 'details-section-title',
+                                    content: 'text:"Self time by category"'
+                                },
+                                {
+                                    view: 'list',
+                                    className: 'category-timings-list',
+                                    data: 'samples',
+                                    itemConfig: {
+                                        className: '=bins[#.segmentStart:#.segmentEnd + 1].sum() = 0 ? "no-time"',
+                                        postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                                        content: [
+                                            'block{ className: "category-name", content: "text:category.name" }',
+                                            'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: #.timeEnd - #.timeStart } }'
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            view: 'block',
+                            className: 'details-section',
+                            when: 'functionStates or heap',
+                            content: [
+                                {
+                                    view: 'context',
+                                    data: 'functionStates',
+                                    whenData: true,
+                                    content: [
+                                        {
+                                            view: 'block',
+                                            className: 'details-section-title',
+                                            content: 'text:"Functions by tier"'
+                                        },
+                                        {
+                                            view: 'list',
+                                            className: 'category-timings-list with-from',
+                                            data: `
+                                                $maxTotal: totalBins[#.segmentStart:#.segmentEnd + 1].max();
+
+                                                byTier.({ $bins: bins[#.segmentStart:#.segmentEnd + 1]; ..., value: $bins.max(), from: $bins.min(), $maxTotal }) + {
+                                                    $bins: totalBins[#.segmentStart:#.segmentEnd + 1];
+
+                                                    name: "Total",
+                                                    value: $bins.max(),
+                                                    from: $bins.min(),
+                                                    $maxTotal,
+                                                    color: totalColor
+                                                }
+                                            `,
+                                            itemConfig: {
+                                                className: '=value = 0 ? "no-value"',
+                                                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                                                content: [
+                                                    'block{ className: "category-name", content: "text:name" }',
+                                                    {
+                                                        view: 'block',
+                                                        className: 'value-with-from',
+                                                        content: [
+                                                            { view: 'text-numeric', when: 'from != value and from is number', text: '=`${from} → `' },
+                                                            'value-fraction{ value, total: maxTotal }'
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    view: 'context',
+                                    data: 'heap',
+                                    whenData: true,
+                                    content: [
+                                        {
+                                            view: 'block',
+                                            className: 'details-section-title',
+                                            content: 'text:"Heap size"'
+                                        },
+                                        {
+                                            view: 'list',
+                                            className: 'category-timings-list with-from',
+                                            data: `[
+                                                { $selection: totalHeapSize[#.segmentStart:#.segmentEnd + 1]; name: 'Total size', value: $selection.max(), from: $selection.min(), total: maxTotal },
+                                                { name: 'Allocated', value: new[#.segmentStart:#.segmentEnd + 1].sum(), total: newTotal },
+                                                { name: 'Released', value: delete[#.segmentStart:#.segmentEnd + 1].sum(), total: deleteTotal }
+                                            ]`,
+                                            itemConfig: {
+                                                className: '=value = 0 ? "no-value"',
+                                                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                                                content: [
+                                                    'block{ content: "text:name" }',
+                                                    {
+                                                        view: 'block',
+                                                        className: 'value-with-from',
+                                                        content: [
+                                                            { view: 'text-numeric', when: 'from is number', text: '=`${from.bytes(false)} … `' },
+                                                            'value-fraction{ value: value.bytes(false), fraction: value / total  }'
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
                 }
             ]
         },
         {
             view: 'list',
             className: 'category-timelines-list',
+            data: 'samples',
             item: {
                 view: 'link',
                 className: 'category-timelines-item',
@@ -254,6 +553,50 @@ const categoriesTimeline = {
                         binsMax: true,
                         color: '=color'
                     }
+                ]
+            }
+        },
+        {
+            view: 'expand',
+            data: 'functionStates',
+            header: [
+                'text:"Function states"',
+                {
+                    view: 'switch',
+                    content: [
+                        { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
+                        { content: [] }
+                    ]
+                }
+            ],
+            expanded: '=$',
+            content: {
+                view: 'switch',
+                content: [
+                    { when: '$', content: functionStatesView },
+                    { content: 'text:"TODO: Add notes"' }
+                ]
+            }
+        },
+        {
+            view: 'expand',
+            data: 'heap',
+            header: [
+                'text:"Heap size"',
+                {
+                    view: 'switch',
+                    content: [
+                        { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
+                        { content: [] }
+                    ]
+                }
+            ],
+            expanded: '=$',
+            content: {
+                view: 'switch',
+                content: [
+                    { when: '$', content: heapTotalView },
+                    { content: 'text:"TODO: Add notes"' }
                 ]
             }
         }

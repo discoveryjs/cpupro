@@ -193,16 +193,40 @@ h2 .logo {
 
 .view-time-ruler-tooltip .timeline-segment-info {
     padding-bottom: 4px;
-    border-bottom: 1px solid #0004;
-    margin-bottom: 4px;
     opacity: .8;
 }
 .view-time-ruler-tooltip .timeline-segment-info .view-duration {
     display: inline-flex;
 }
+
+.view-time-ruler-tooltip > .details-sections {
+    display: flex;
+    margin: 0 -10px;
+}
+.view-time-ruler-tooltip > .details-sections > .details-section {
+    padding-top: 4px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-top: 1px solid #0004;
+    border-left: 1px solid #0004;
+}
+.view-time-ruler-tooltip > .details-sections > .details-section:first-child {
+    border-left: none;
+}
+.view-time-ruler-tooltip > .details-sections > .details-section > .details-section-title {
+    font-size: 11px;
+    color: #888;
+    padding-bottom: 4px;
+}
+.view-time-ruler-tooltip > .details-sections > .details-section > .details-section-title:not(:first-child) {
+    border-top: 1px solid #0004;
+    margin: 10px -10px 0;
+    padding: 4px 10px;
+}
+
 .view-time-ruler-tooltip .category-timings-list {
     display: grid;
-    grid-template-columns: 80px 100px;
+    grid-template-columns: 80px minmax(100px, auto);
     gap: 2px 1ex;
 }
 .view-time-ruler-tooltip .category-timings-list .view-list-item {
@@ -219,12 +243,22 @@ h2 .logo {
     border-radius: 50%;
     background-color: var(--color, #888);
 }
-.view-time-ruler-tooltip .category-timings-list .no-time {
+.view-time-ruler-tooltip .category-timings-list :is(.no-time, .no-value) {
     color: #666;
     --color: #8884 !important;
 }
-.view-time-ruler-tooltip .category-timings-list .no-time .view-duration {
+.view-time-ruler-tooltip .category-timings-list .no-time .view-duration,
+.view-time-ruler-tooltip .category-timings-list .no-value .view-value-fraction {
     opacity: 0;
+}
+.view-time-ruler-tooltip .category-timings-list .value-with-from {
+    display: flex;
+    justify-content: flex-end;
+    gap: 5px;
+    white-space: nowrap;
+}
+.view-time-ruler-tooltip .category-timings-list .value-with-from > .view-text-numeric {
+    color: #888;
 }
 
 /* Call tree */

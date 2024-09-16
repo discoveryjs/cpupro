@@ -1,4 +1,4 @@
-import { typeColor, typeColorComponents, typeOrder } from './const.js';
+import { typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './call-tree.js';
 import { TreeTiminigs } from './compute-timings.js';
@@ -8,14 +8,15 @@ const abbr = {
     Sparkplug: 'Sp',
     Maglev: 'Mg',
     Turboprop: 'Tp',
-    Turbofan: 'Tb'
+    Turbofan: 'Tb',
+    Unknown: '??'
 };
 
-function shortNum(current, units) {
+function shortNum(current, units, base = 1000) {
     let unitIdx = 0;
 
-    while (current > 1000 && unitIdx < units.length - 1) {
-        current /= 1000;
+    while (current > base && unitIdx < units.length - 1) {
+        current /= base;
         unitIdx++;
     }
 
@@ -146,6 +147,9 @@ const methods = {
     abbr(value) {
         return abbr[value] || value;
     },
+    toFixed(value, prec = 2) {
+        return Number(value).toFixed(prec);
+    },
     totalPercent(value, prec = 2) {
         const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
         const percent = 100 * value / totalTime;
@@ -161,7 +165,7 @@ const methods = {
         return (value / 1000).toFixed(1) + 'ms';
     },
     bytes(current, bytes = true) {
-        return shortNum(current, [bytes ? 'bytes' : '', 'Kb', 'Mb', 'Gb']);
+        return shortNum(current, [bytes ? 'bytes' : '', 'Kb', 'Mb', 'Gb'], 1024);
     },
     shortNum(current) {
         return shortNum(current, ['', 'K', 'M', 'G']);
@@ -356,6 +360,131 @@ const methods = {
         // bins[0] = step;
 
         return Array.from(bins); // TODO: remove when jora has support for TypedArrays
+    },
+    binMemory(heapEvents, eventFilter = 'new', n = 500) {
+        const { totalTime } = this.context.data;
+        const bins = new Float64Array(n);
+        const step = totalTime / n;
+        let end = step;
+        let binIdx = 0;
+
+        for (let i = 0; i < heapEvents.length; i++) {
+            const { tm, event, size } = heapEvents[i];
+
+            if (tm === 0 || event !== eventFilter) {
+                continue;
+            }
+
+            while (tm > end) {
+                binIdx++;
+                end += step;
+            }
+
+            bins[binIdx] += size;
+        }
+
+        return bins;
+    },
+    binMemoryTotal(heapEvents, n = 500) {
+        const { totalTime } = this.context.data;
+        const bins = new Float64Array(n);
+        const step = totalTime / n;
+        let end = step;
+        let binIdx = 0;
+
+        for (let i = 0; i < heapEvents.length; i++) {
+            const { tm, event, size } = heapEvents[i];
+
+            if (tm === 0) {
+                continue;
+            }
+
+            while (tm > end) {
+                binIdx++;
+                bins[binIdx] = bins[binIdx - 1];
+                end += step;
+            }
+
+            bins[binIdx] += event === 'new' ? size : -size;
+        }
+
+        if (binIdx < n - 1) {
+            bins.fill(bins[binIdx], binIdx + 1);
+        }
+
+        return bins;
+    },
+    binFunctionStates(functionStates, n = 500) {
+        const { totalTime } = this.context.data;
+        const bins = new Uint32Array(n);
+        const step = totalTime / n;
+        let end = step;
+        let binIdx = 0;
+
+        for (let i = 0; i < functionStates.length; i++) {
+            const { tm } = functionStates[i];
+
+            while (tm > end) {
+                binIdx++;
+                end += step;
+            }
+
+            bins[binIdx] += 1;
+        }
+
+        if (binIdx < n - 1) {
+            bins.fill(bins[binIdx], binIdx + 1);
+        }
+
+        return bins;
+    },
+    binFunctionStatesTotal(functionStates, n = 500) {
+        const { totalTime } = this.context.data;
+        const step = totalTime / n;
+        const binByTier = new Map();
+        const fnTier = new Map();
+        const fnCount = new Uint32Array(n);
+        let end = step;
+        let binIdx = 0;
+
+        for (const tier of vmFunctionStateTiers) {
+            binByTier.set(tier, new Uint32Array(n));
+        }
+
+        for (let i = 0; i < functionStates.length; i++) {
+            const { tm, tier, scriptFunction } = functionStates[i];
+
+            while (tm > end) {
+                binIdx++;
+                fnCount[binIdx] = fnCount[binIdx - 1];
+                for (let bins of binByTier.values()) {
+                    bins[binIdx] = bins[binIdx - 1];
+                }
+                end += step;
+            }
+
+            const currentTier = fnTier.get(scriptFunction);
+            if (currentTier === undefined) {
+                // new function
+                binByTier.get(tier)[binIdx]++;
+                fnCount[binIdx]++;
+            } else if (tier !== currentTier) {
+                // maybe change function tier
+                binByTier.get(currentTier)[binIdx]--;
+                binByTier.get(tier)[binIdx]++;
+            }
+
+            fnTier.set(scriptFunction, tier);
+        }
+
+        if (binIdx < n - 1) {
+            fnCount.fill(fnCount[binIdx], binIdx + 1);
+            for (let bins of binByTier.values()) {
+                bins.fill(bins[binIdx], binIdx + 1);
+            }
+        }
+
+        return { byTier: [...binByTier.entries()], fnCount: fnCount };
     }
 };
 

@@ -1,0 +1,31 @@
+.view-value-fraction {
+    max-width: 18ex;
+    height: 19.5px;
+    display: flex;
+    text-align: right;
+    align-items: baseline;
+    gap: .65ex;
+}
+.view-tree-leaf .view-value-fraction {
+    display: inline-flex;
+}
+
+.view-value-fraction .num-delim {
+    padding-left: .12em;
+}
+
+.view-value-fraction > .value {
+    flex: 1;
+}
+.view-value-fraction > .value::after {
+    content: attr(data-unit);
+    color: #787878;
+    font-size: 90%;
+    padding-left: 1px;
+}
+
+.view-value-fraction > .fraction {
+    width: 3em;
+    opacity: .65;
+    font-size: 83%;
+}

@@ -1,4 +1,4 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionStateTier } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionStateTier, CpuProScriptFunction } from './types';
 import { packageRegistryEndpoints } from './utils';
 
 export const TIMINGS = false;
@@ -39,6 +39,14 @@ export const vmFunctionStateTiers: V8FunctionStateTier[] = [
     'Turboprop',
     'Turbofan'
 ] as const;
+export const vmFunctionStateTierHotness: Record<V8FunctionStateTier, CpuProScriptFunction['hotness']> = {
+    'Unknown': 'cold',
+    'Ignition': 'cold',
+    'Sparkplug': 'warm',
+    'Maglev': 'warm',
+    'Turboprop': 'warm',
+    'Turbofan': 'hot'
+};
 
 export const knownChromeExtensions = {
     'fmkadmapgofadopljbjfkapdkoienihi': 'React Developer Tools',

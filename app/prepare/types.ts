@@ -128,6 +128,7 @@ export type CpuProScriptFunction = Omit<V8CpuProfileScriptFunction, 'script' | '
     script: CpuProScript | null;
     loc: string | null;
     function: CpuProFunction | null;
+    topTier: V8FunctionStateTier;
     hotness: 'cold' | 'warm' | 'hot';
     deopt: boolean;
     states: CpuProScriptFunctionState[];

@@ -183,6 +183,7 @@
     margin-left: calc(-1 * var(--discovery-page-padding-left));
     margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
+
 .page-default .category-timelines {
     position: relative;
     display: grid;
@@ -190,15 +191,32 @@
     padding: 15px 0 0;
     user-select: none;
 }
-.page-default .category-timelines .view-time-ruler {
+
+.page-default .category-timelines > .view-time-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
     margin: 0 1px;
     --overlay-offset-top: -1px;
     --overlay-offset-bottom: -3px;
 }
-.page-default .category-timelines .view-time-ruler .interval-marker:first-child {
+.page-default .category-timelines > .view-time-ruler .interval-marker:first-child {
     margin-left: -1px;
+}
+
+.page-default .category-timelines > .view-expand {
+    display: contents;
+}
+.page-default .category-timelines > .view-expand > .header {
+    grid-column: 1/4;
+    position: relative;
+    z-index: 1;
+    margin-top: 1px;
+}
+.page-default .category-timelines > .view-expand > .content {
+    display: contents;
+}
+.page-default .category-timelines > .view-expand > .content > .category-timelines-item:first-child > * {
+    margin-top: 1px;
 }
 
 .page-default .category-timelines-list,
@@ -212,7 +230,10 @@
 .page-default .category-timelines-item .view-timeline-segments {
     margin: 0 1px;
 }
-.page-default .category-timelines-item:hover > * {
+.page-default .category-timelines-item:has(+ .category-timelines-list) > * {
+    margin-bottom: -1px;
+}
+.page-default .category-timelines-item[href]:hover > * {
     background: rgba(165,165,165,.3);
 }
 .page-default .category-timelines-item > .label {
@@ -220,6 +241,7 @@
     text-align: right;
     padding: 0px 4px 0 12px;
     border-bottom: 1px solid #0004;
+    min-width: 70px;
 }
 .page-default .category-timelines-item > .label::after {
     content: '';
@@ -240,7 +262,7 @@
     border-bottom: 1px solid #0004;
     color: #888;
 }
-.page-default .category-timelines-item > .total-percent::after {
+.page-default .category-timelines-item > .total-percent:not(:empty)::after {
     content: '%';
     font-size: 8px;
     opacity: .5;
@@ -424,4 +446,8 @@
 .page-default .welcome-page .examples .view-button.edge::before {
     background-image: var(--runtime-edge);
     filter: brightness(.95);
+}
+
+.heap-delete-chunks {
+    transform: translateY(-1px) scaleY(-1);
 }

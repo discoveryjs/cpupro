@@ -1,15 +1,13 @@
-import { vmFunctionStateTiers } from './const.js';
+import { vmFunctionStateTierHotness, vmFunctionStateTiers } from './const.js';
 import {
     CpuProScript,
     CpuProScriptFunction,
     V8CpuProfileScriptFunction,
     V8CpuProfileScript,
     CpuProModule,
-    CpuProFunction
+    CpuProFunction,
+    V8FunctionStateTier
 } from './types.js';
-
-const hotTier = vmFunctionStateTiers.indexOf('Turbofan');
-const warmTier = vmFunctionStateTiers.indexOf('Sparkplug');
 
 function normalizeUrl(url: string) {
     let protocol = url.match(/^([a-z\-]+):/i)?.[1] || '';
@@ -67,7 +65,7 @@ export function processScripts(
     for (const inputFn of inputFunctions || []) {
         const script = inputFn.script !== null ? scriptById.get(inputFn.script) || null : null;
         const states = inputFn.states;
-        let highestTier: number = 0;
+        let topTier: V8FunctionStateTier = 'Unknown';
         let deopt = false;
         const loc = script !== null && inputFn.line !== -1 && inputFn.column !== -1
             ? `:${inputFn.line}:${inputFn.column}`
@@ -77,6 +75,7 @@ export function processScripts(
             script,
             loc,
             function: null,
+            topTier,
             hotness: 'cold',
             deopt,
             states: new Array(states.length),
@@ -96,7 +95,7 @@ export function processScripts(
         }
 
         // process function's states
-        for (let i = 0; i < states.length; i++) {
+        for (let i = 0, topTierWeight = 0; i < states.length; i++) {
             const state = states[i];
             const tier = state.tier;
             const tierWeight = vmFunctionStateTiers.indexOf(tier);
@@ -110,20 +109,17 @@ export function processScripts(
                 scriptFunction: fn
             };
 
-            if (tierWeight > highestTier) {
-                highestTier = tierWeight;
-            } else if (tierWeight < highestTier) {
+            if (tierWeight > topTierWeight) {
+                topTierWeight = tierWeight;
+                topTier = tier;
+            } else if (tierWeight < topTierWeight) {
                 deopt = true;
             }
         }
 
+        fn.topTier = topTier;
+        fn.hotness = vmFunctionStateTierHotness[topTier];
         fn.deopt = deopt;
-        fn.hotness =
-            highestTier >= hotTier
-                ? 'hot'
-                : highestTier >= warmTier
-                    ? 'warm'
-                    : 'cold';
     }
 
     // link script functions with call tree functions
