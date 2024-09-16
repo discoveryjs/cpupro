@@ -32,12 +32,12 @@ export const vmStateNodeTypes = new Set<WellKnownType>([
     'atomics-wait'
 ]);
 export const vmFunctionStateTiers: V8FunctionStateTier[] = [
+    'Unknown',
     'Ignition',
     'Sparkplug',
     'Maglev',
     'Turboprop',
-    'Turbofan',
-    'Unknown'
+    'Turbofan'
 ] as const;
 
 export const knownChromeExtensions = {
@@ -102,12 +102,12 @@ export const typeColor: Record<PackageType | PackageRegistry | V8FunctionStateTi
     'idle': '#888888a0',
     'unknown': '#888888a0',
 
+    'Unknown': '#888888a0',
     'Ignition': '#b9b9b9a0',
     'Sparkplug': '#e3c685a0',
     'Maglev': '#dba543a0',
     'Turboprop': '#dba543a0',
-    'Turbofan': '#f78080a0',
-    'Unknown': '#888888a0'
+    'Turbofan': '#f78080a0'
 };
 export const typeColorComponents = Object.fromEntries(Object.entries(typeColor)
     .map(([type, color]) =>[type, [

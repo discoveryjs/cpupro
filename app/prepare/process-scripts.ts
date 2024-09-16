@@ -1,3 +1,4 @@
+import { vmFunctionStateTiers } from './const.js';
 import {
     CpuProScript,
     CpuProScriptFunction,
@@ -6,6 +7,9 @@ import {
     CpuProModule,
     CpuProFunction
 } from './types.js';
+
+const hotTier = vmFunctionStateTiers.indexOf('Turbofan');
+const warmTier = vmFunctionStateTiers.indexOf('Sparkplug');
 
 function normalizeUrl(url: string) {
     let protocol = url.match(/^([a-z\-]+):/i)?.[1] || '';
@@ -37,7 +41,8 @@ function mapScriptFunctionToFunction(fn: CpuProScriptFunction, locToFn: Map<stri
 export function processScripts(
     inputScripts: V8CpuProfileScript[] = [],
     inputFunctions: V8CpuProfileScriptFunction[] = [],
-    moduleByScriptId: Map<number, CpuProModule>
+    moduleByScriptId: Map<number, CpuProModule> = new Map(),
+    startTime: number = 0
 ) {
     const scripts: CpuProScript[] = [];
     const scriptFunctions: CpuProScriptFunction[] = [];
@@ -61,6 +66,9 @@ export function processScripts(
     // process script's functions
     for (const inputFn of inputFunctions || []) {
         const script = inputFn.script !== null ? scriptById.get(inputFn.script) || null : null;
+        const states = inputFn.states;
+        let highestTier: number = 0;
+        let deopt = false;
         const loc = script !== null && inputFn.line !== -1 && inputFn.column !== -1
             ? `:${inputFn.line}:${inputFn.column}`
             : null;
@@ -69,13 +77,10 @@ export function processScripts(
             script,
             loc,
             function: null,
-            inlinedInto: null,
-            states: inputFn.states.map((state, idx, array) => ({
-                ...state,
-                duration: idx !== array.length - 1
-                    ? array[idx + 1].tm - state.tm
-                    : 0
-            }))
+            hotness: 'cold',
+            deopt,
+            states: new Array(states.length),
+            inlinedInto: null
         };
 
         scriptFunctions.push(fn);
@@ -89,6 +94,36 @@ export function processScripts(
                 script.functions.push(fn);
             }
         }
+
+        // process function's states
+        for (let i = 0; i < states.length; i++) {
+            const state = states[i];
+            const tier = state.tier;
+            const tierWeight = vmFunctionStateTiers.indexOf(tier);
+
+            fn.states[i] = {
+                ...state,
+                tm: state.tm - startTime,
+                duration: i !== states.length - 1
+                    ? states[i + 1].tm - state.tm
+                    : 0,
+                scriptFunction: fn
+            };
+
+            if (tierWeight > highestTier) {
+                highestTier = tierWeight;
+            } else if (tierWeight < highestTier) {
+                deopt = true;
+            }
+        }
+
+        fn.deopt = deopt;
+        fn.hotness =
+            highestTier >= hotTier
+                ? 'hot'
+                : highestTier >= warmTier
+                    ? 'warm'
+                    : 'cold';
     }
 
     // link script functions with call tree functions
