@@ -2,10 +2,10 @@ const safeRequestIdleCallback = typeof requestIdleCallback === 'function'
     ? requestIdleCallback
     : (fn: () => void) => setTimeout(fn, 100);
 
-export function trackExecutionTime(methods: Record<string, () => unknown>, trackMethodNames: string[]) {
-    let scheduleTimingsLoggingBuffer = [[]];
-    let scheduleTimingsLoggingFrameTimer = null;
-    let scheduleTimingsLoggingTimer = null;
+export function trackExecutionTime<T extends Record<string,(...args: unknown[]) => unknown>>(methods: T, trackMethodNames: (keyof T & string)[]) {
+    let scheduleTimingsLoggingBuffer: [label: string, ...unknown[]][][] = [[]];
+    let scheduleTimingsLoggingFrameTimer: number | null = null;
+    let scheduleTimingsLoggingTimer: number | null = null;
     let frameIdx = 0;
 
     for (const methodName of trackMethodNames) {
@@ -17,7 +17,7 @@ export function trackExecutionTime(methods: Record<string, () => unknown>, track
             try {
                 return fn.apply(this, args);
             } finally {
-                scheduleTimingsLoggingBuffer.at(-1).push([`${methodName}() — ${Date.now() - startTime}ms`, args]);
+                scheduleTimingsLoggingBuffer.at(-1)?.push([`${methodName}() — ${Date.now() - startTime}ms`, args]);
 
                 if (scheduleTimingsLoggingFrameTimer === null) {
                     scheduleTimingsLoggingFrameTimer = requestAnimationFrame(() => {
@@ -30,13 +30,13 @@ export function trackExecutionTime(methods: Record<string, () => unknown>, track
                     scheduleTimingsLoggingTimer = safeRequestIdleCallback(() => {
                         const buffer = scheduleTimingsLoggingBuffer;
 
-                        cancelAnimationFrame(scheduleTimingsLoggingFrameTimer);
+                        cancelAnimationFrame(scheduleTimingsLoggingFrameTimer as number);
 
                         scheduleTimingsLoggingFrameTimer = null;
                         scheduleTimingsLoggingTimer = null;
                         scheduleTimingsLoggingBuffer = [[]];
 
-                        if (buffer.at(-1).length === 0) {
+                        if (buffer.at(-1)?.length === 0) {
                             buffer.pop();
                         }
 
@@ -52,6 +52,6 @@ export function trackExecutionTime(methods: Record<string, () => unknown>, track
                     });
                 }
             }
-        };
+        } as T[typeof methodName];
     }
 }
