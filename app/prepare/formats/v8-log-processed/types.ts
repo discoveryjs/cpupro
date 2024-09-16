@@ -3,6 +3,11 @@ export type V8LogProfile = {
     ticks: Tick[];
     functions: ProfileFunction[];
     scripts: Script[];
+    heap?: {
+        available: null | number;
+        capacity: null | number;
+        events: HeapEvent[];
+    };
 }
 
 export type Code = {
@@ -81,4 +86,11 @@ export type CallNode = {
     id: number;
     callFrame: CallFrame;
     children: number[];
+}
+
+export type HeapEvent = {
+    tm: number;
+    event: 'new' | 'delete';
+    address: string;
+    size: number;
 }

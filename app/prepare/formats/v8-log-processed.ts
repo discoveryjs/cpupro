@@ -35,6 +35,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         // cpupro extensions
         _samplesInterval: samplesInterval,
         _scripts: scripts,
-        _scriptFunctions: scriptFunctions
+        _scriptFunctions: scriptFunctions,
+        _heap: v8log.heap
     };
 }

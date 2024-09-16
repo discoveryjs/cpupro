@@ -209,7 +209,8 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         categoriesTree,
         categoriesTreeTimings,
         categoriesTreeTimingsFiltered,
-        categoriesTreeTimestamps
+        categoriesTreeTimestamps,
+        heap: data._heap
     };
 
     markTime('finish');

@@ -12,6 +12,11 @@ export type V8CpuProfileCpuproExtensions = {
     _scripts?: V8CpuProfileScript[];
     _scriptFunctions?: V8CpuProfileScriptFunction[];
     _executionContexts?: V8CpuProfileExecutionContext[];
+    _heap?: {
+        available: null | number;
+        capacity: null | number;
+        events: V8HeapEvent[];
+    };
 }
 export type V8CpuProfileNode = {
     id: number;
@@ -51,6 +56,13 @@ export type V8CpuProfileScriptFunctionState = {
     inlined: string;
     fns: number[];
 }
+export type V8HeapEvent = {
+    tm: number;
+    event: 'new' | 'delete';
+    address: string;
+    size: number;
+}
+
 export type RuntimeCode =
     | 'chromium'
     | 'deno'
