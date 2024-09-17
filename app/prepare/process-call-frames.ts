@@ -213,7 +213,7 @@ function resolvePackage(
         // case 'blink':
         case 'v8': {
             ref = `(${moduleType})`;
-            type = 'engine';
+            type = 'internals';
             name = `(${moduleType} modules)`;
             path = `${moduleType}/`;
 
@@ -257,7 +257,8 @@ function resolvePackage(
         case 'gc':
         case 'idle':
         case 'internals':
-        case 'engine':
+        case 'compilation':
+        case 'blocking':
             ref = moduleType;
             type = moduleType;
             name = moduleType !== 'gc' ? `(${moduleType})` : '(garbage collector)';
@@ -308,9 +309,7 @@ function resolveModule(
 
     if (entry.wellKnown !== null) {
         entry.ref = functionName;
-        entry.type = engineNodeNames.has(functionName as WellKnownName)
-            ? 'engine'
-            : entry.wellKnown;
+        entry.type = engineNodeNames.get(functionName as WellKnownName) || entry.wellKnown;
         entry.name = functionName;
     } else if (!url || url.startsWith('evalmachine.')) {
         if (scriptId === 0) {
@@ -318,13 +317,17 @@ function resolveModule(
                 entry.ref = '(regexp)';
                 entry.type = 'regexp';
                 entry.name = '(regexp)';
-            } else if (engineNodeNames.has(functionName as WellKnownName)) {
-                entry.ref = functionName;
-                entry.type = 'engine';
-                entry.name = functionName;
             } else {
-                entry.type = 'internals';
-                entry.name = '(internals)';
+                const engineType = engineNodeNames.get(functionName  as WellKnownName);
+
+                if (engineType !== undefined) {
+                    entry.ref = functionName;
+                    entry.type = engineType;
+                    entry.name = functionName;
+                } else {
+                    entry.type = 'internals';
+                    entry.name = '(internals)';
+                }
             }
         } else {
             let anonymousName = anonymousModuleByScriptId.get(scriptId);

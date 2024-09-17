@@ -6,7 +6,8 @@
     - Added call trees updating on filters change on the function page
     - Improved the parsing of function names and URLs during the conversion of preprocessed V8 logs into cpuprofile
     - Limited the display of very long regular expressions in the function page header to only the first 256 characters only
-    - Fixed processing of `v8/gc` call frames that appear when node `--expose-gc` is used and `global.gc()` is invoked
+    - Replaced the `engine` category with `compilation` (covering parsers and compilers) and `blocking` (atomics wait) categories
+    - Fixed processing of `v8/gc` call frames that appear when node `--expose-gc` is used and `global.gc()` is invoked (added into `internals`)
 
 ## 0.5.1 (2024-05-10)
 

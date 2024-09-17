@@ -168,7 +168,7 @@ const functionStatesView = [
                 bins: '=transitions',
                 // max: '=byTierMax',
                 binsMax: true,
-                color: '="engine".color()'
+                color: '="compilation".color()'
             }
         ]
     },

@@ -16,11 +16,11 @@ export const wellKnownNodeName = new Map<WellKnownName, WellKnownType>([
     ['(compiler)', 'compiler'],
     ['(atomics wait)', 'atomics-wait']
 ]);
-export const engineNodeNames = new Set<WellKnownName>([
-    '(parser)',
-    '(compiler bytecode)',
-    '(compiler)',
-    '(atomics wait)'
+export const engineNodeNames = new Map<WellKnownName, PackageType>([
+    ['(parser)', 'compilation'],
+    ['(compiler bytecode)', 'compilation'],
+    ['(compiler)', 'compilation'],
+    ['(atomics wait)', 'blocking']
 ]);
 export const vmStateNodeTypes = new Set<WellKnownType>([
     'program',
@@ -105,7 +105,8 @@ export const typeColor: Record<PackageType | PackageRegistry | V8FunctionStateTi
     'chrome-extension': '#7dfacda0',
     'webpack/runtime': '#888888a0',
     'gc': '#f1b6fda0',
-    'engine': '#fc9a9aa0',
+    'compilation': '#fc9a9aa0',
+    'blocking': '#f2a376a0',
     'root': '#444444a0',
     'idle': '#888888a0',
     'unknown': '#888888a0',
