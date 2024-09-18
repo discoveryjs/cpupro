@@ -112,7 +112,8 @@ export function processFunctionCodes(v8log: V8LogProfile, codes: number[]): V8Cp
             tier: functionTier(code.kind),
             positions: codeSource?.positions || '',
             inlined: codeSource?.inlined || '',
-            fns: codeSource?.fns || []
+            fns: codeSource?.fns || [],
+            deopt: code.deopt
         };
     });
 }

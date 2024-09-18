@@ -55,6 +55,15 @@ export type V8CpuProfileScriptFunctionState = {
     positions: string;
     inlined: string;
     fns: number[];
+    deopt: V8CpuProfileDeopt | undefined;
+}
+export type V8CpuProfileDeopt = {
+    tm: number;
+    inliningId: number;
+    scriptOffset: number;
+    posText: string;
+    reason: string;
+    bailoutType: string;
 }
 export type V8HeapEvent = {
     tm: number;

@@ -37,6 +37,7 @@ export type Code = {
     func?: number;
     tm?: number;
     source?: CodeSource;
+    deopt?: Deopt;
 }
 
 export type CodeSource = {
@@ -46,6 +47,15 @@ export type CodeSource = {
     positions: string;
     inlined: string;
     fns: number[];
+}
+
+export type Deopt = {
+    tm: number;
+    inliningId: number;
+    scriptOffset: number;
+    posText: string;
+    reason: string;
+    bailoutType: string;
 }
 
 export type ProfileFunction = {
