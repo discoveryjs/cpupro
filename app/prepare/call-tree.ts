@@ -12,11 +12,16 @@ type NumericArray =
     // | Uint16Array
     | Uint32Array;
 
+type TestFunction<T> = (entry: T) => boolean;
+type TestFunctionOrEntry<T> = T | TestFunction<T>;
+
 const NULL_ARRAY = new Uint32Array();
 
-function makeDictMask(tree, test) {
+function makeDictMask<T>(tree: CallTree<T>, test: TestFunctionOrEntry<T>) {
     const { dictionary } = tree;
-    const accept = typeof test === 'function' ? test : (entry) => entry === test;
+    const accept = typeof test === 'function'
+        ? test as TestFunction<T>
+        : (entry: T) => entry === test;
     const mask = new Uint8Array(dictionary.length);
 
     for (let i = 0; i < mask.length; i++) {
@@ -201,7 +206,7 @@ export class CallTree<T> {
             }
         }
     }
-    *selectBy(test: T | ((entry: T) => boolean)) {
+    *selectBy(test: TestFunctionOrEntry<T>) {
         const { nodes } = this;
         const mask = makeDictMask(this, test);
         const result = [];
