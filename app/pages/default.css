@@ -241,7 +241,7 @@
     text-align: right;
     padding: 0px 4px 0 12px;
     border-bottom: 1px solid #0004;
-    min-width: 70px;
+    min-width: 72px;
 }
 .page-default .category-timelines-item > .label::after {
     content: '';

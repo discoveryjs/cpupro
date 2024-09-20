@@ -166,8 +166,6 @@ const functionStatesView = [
             {
                 view: 'timeline-segments-bin',
                 bins: '=transitions',
-                // max: '=byTierMax',
-                binsMax: true,
                 color: '="compilation".color()'
             }
         ]
@@ -190,7 +188,6 @@ const functionStatesView = [
             {
                 view: 'timeline-segments-bin',
                 bins: '=totalBins',
-                binsMax: true,
                 color: '=totalColor'
             }
         ]

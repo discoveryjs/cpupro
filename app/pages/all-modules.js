@@ -24,7 +24,7 @@ discovery.page.define('modules', [
             {
                 view: 'table',
                 data: `
-                    .[left.entry.name ~= #.filter]
+                    .[name ~= #.filter]
                     .sort(left.selfTime desc, left.totalTime desc)
                 `,
                 cols: [
