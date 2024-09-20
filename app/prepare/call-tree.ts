@@ -42,9 +42,17 @@ export class CallTree<T> {
     subtreeSize: NumericArray;    // nodeIndex -> number of nodes in subtree, 0 when no children
     nested: NumericArray;         // nodeIndex -> index of nodes
 
-    valueNodes: NumericArray;
-    valueNodesOffset: NumericArray;
-    valueNodesLength: NumericArray;
+    // The following arrays are used for fast selection of nodes that refer to a specific entry in the dictionary.
+    // Generally, nodes are rearranged to ensure that all of an entry's nodes follow one continuous sequence. This allows
+    // for fast selections like:
+    //
+    //   const start = tree.entryNodesOffset[entryIndex];
+    //   const end = start + tree.entryNodesCount[entryIndex];
+    //   entryNodes.slice(start, end)
+    //
+    entryNodes: NumericArray;       // node indices
+    entryNodesOffset: NumericArray; // start offset for a sequence of entry's node indices: entry index -> offset in entryNodes
+    entryNodesCount: NumericArray;  // length of sequence for entry's node indices, or the number of nodes per entry
 
     root: Entry<T>;
     #entryRefMap: Map<number, WeakRef<Entry<T>>>;
@@ -67,9 +75,9 @@ export class CallTree<T> {
         this.subtreeSize = subtreeSize || new Uint32Array(nodes.length);
         this.nested = nested || new Uint32Array(nodes.length);
 
-        this.valueNodes = new Uint32Array(nodes.length);
-        this.valueNodesOffset = new Uint32Array(dictionary.length);
-        this.valueNodesLength = new Uint32Array(dictionary.length);
+        this.entryNodes = NULL_ARRAY; // overrides by computeEntryNodes()
+        this.entryNodesOffset = NULL_ARRAY;
+        this.entryNodesCount = NULL_ARRAY;
 
         this.#entryRefMap = new Map();
         this.#childrenRefMap = new Map();
@@ -81,29 +89,42 @@ export class CallTree<T> {
         });
     }
 
-    computeValueNodes() {
-        const { nodes, valueNodes, valueNodesLength, valueNodesOffset } = this;
+    computeEntryNodes() {
+        // skip computations if already done
+        if (this.entryNodes !== NULL_ARRAY) {
+            return this;
+        }
+
+        const { nodes, dictionary } = this;
+        const entryNodes = new Uint32Array(nodes.length);
+        const entryNodesOffset = new Uint32Array(dictionary.length);
+        const entryNodesCount = new Uint32Array(dictionary.length);
 
         // compute length
         for (let i = 0; i < nodes.length; i++) {
-            valueNodesLength[nodes[i]]++;
+            entryNodesCount[nodes[i]]++;
         }
 
         // compute offsets
-        for (let i = 0, offset = 0; i < valueNodesLength.length; i++) {
-            valueNodesOffset[i] = offset;
-            offset += valueNodesLength[i];
+        for (let i = 0, offset = 0; i < entryNodesCount.length; i++) {
+            entryNodesOffset[i] = offset;
+            offset += entryNodesCount[i];
         }
 
-        // fill valueNodes
-        for (let i = 0; i < valueNodes.length; i++) {
-            valueNodes[valueNodesOffset[nodes[i]]++] = i;
+        // fill entryNodes
+        for (let i = 0; i < entryNodes.length; i++) {
+            entryNodes[entryNodesOffset[nodes[i]]++] = i;
         }
 
         // restore offsets
-        for (let i = 0; i < valueNodesLength.length; i++) {
-            valueNodesOffset[i] -= valueNodesLength[i];
+        for (let i = 0; i < entryNodesCount.length; i++) {
+            entryNodesOffset[i] -= entryNodesCount[i];
         }
+
+        // store new arrays on the tree
+        this.entryNodes = entryNodes;
+        this.entryNodesOffset = entryNodesOffset;
+        this.entryNodesCount = entryNodesCount;
 
         return this;
     }
@@ -189,17 +210,17 @@ export class CallTree<T> {
     }
 
     *selectNodes(value: number | T, includeNested = false) {
-        const { dictionary, nested, valueNodes, valueNodesOffset, valueNodesLength } = this;
+        const { dictionary, nested, entryNodes, entryNodesOffset, entryNodesCount } = this;
 
         if (typeof value !== 'number') {
             value = dictionary.indexOf(value);
         }
 
-        const start = valueNodesOffset[value];
-        const end = start + valueNodesLength[value];
+        const start = entryNodesOffset[value];
+        const end = start + entryNodesCount[value];
 
         for (let i = start; i < end; i++) {
-            const nodeIndex = valueNodes[i];
+            const nodeIndex = entryNodes[i];
 
             if (includeNested || nested[nodeIndex] === 0) {
                 yield nodeIndex;

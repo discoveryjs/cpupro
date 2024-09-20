@@ -169,12 +169,13 @@ export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
         callFramesTree.parent,
         callFramesTree.subtreeSize
     );
-    callFramesTree.computeValueNodes();
 
     if (TIMINGS) {
         console.log('>> buildCallFrameTree()', Date.now() - buildTreeStart);
     }
 
+    // FIXME: Looks like it doesn't rely on callFramesTree and can be computed
+    // before a callFramesTree construction
     const dedupCallFramesStart = Date.now();
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[callFramesTree.nodes[i]];
@@ -190,6 +191,9 @@ export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
     if (TIMINGS) {
         console.log('>> dedup call frames', Date.now() - dedupCallFramesStart);
     }
+
+    // should be computed once classFrames is done
+    callFramesTree.computeEntryNodes();
 
     return {
         callFrames,

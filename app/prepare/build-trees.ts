@@ -214,7 +214,7 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
 
     const createTreeStart = Date.now();
     const tree = new CallTree(dictionary, sourceToNode, nodes, parent, subtreeSize, nested)
-        .computeValueNodes();
+        .computeEntryNodes();
 
     if (TIMINGS) {
         console.info(
