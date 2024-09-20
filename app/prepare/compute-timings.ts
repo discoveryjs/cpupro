@@ -134,6 +134,9 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
         let { originalTimeDeltas } = this;
 
         if (timeDeltas === originalTimeDeltas) {
+            // Store the state of timeDeltas before the first changes to be able to fill it according
+            // to filters or restore it. We can't replace timeDeltas with its copy since it may be part
+            // of Wasm memory, which is used by Wasm code for computations
             this.originalTimeDeltas = originalTimeDeltas = timeDeltas.slice();
         }
 
