@@ -96,6 +96,7 @@ export type CallNode = {
     id: number;
     callFrame: CallFrame;
     children: number[];
+    parentScriptOffset: number;
 }
 
 export type HeapEvent = {

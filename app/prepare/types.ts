@@ -8,6 +8,7 @@ export type V8CpuProfile = {
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
     _samplesInterval?: number;
+    _samplePositions?: number[];
     _runtime?: RuntimeCode;
     _scripts?: V8CpuProfileScript[];
     _scriptFunctions?: V8CpuProfileScriptFunction[];

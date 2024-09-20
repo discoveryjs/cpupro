@@ -1,301 +1,132 @@
-import { parseJsName } from './functions.js';
-import type { CallFrame, CallNode, Code, CodeCallFrameInfo, Script, V8LogProfile } from './types.js';
+import { createCallFrame, createLogCallFrames } from './call-frames.js';
+import { findPositionsCodeIndex, processCodePositions } from './positions.js';
+import { VM_STATE_GC, VM_STATE_IDLE, VM_STATE_OTHER } from './const.js';
+import type { CallFrame, CallNode, V8LogProfile } from './types.js';
 
-export const VM_STATE_JS = 0;
-export const VM_STATE_GC = 1;
-export const VM_STATE_OTHER = 5;
-export const VM_STATE_EXTERNAL = 6;
-export const VM_STATE_IDLE = 7;
-export const vmState = [
-    /* 0 */ 'js',
-    /* 1 */ 'garbage collector',
-    /* 2 */ 'parser',
-    /* 3 */ 'compiler bytecode',
-    /* 4 */ 'compiler',
-    /* 5 */ 'other',
-    /* 6 */ 'external',
-    /* 7 */ 'idle',
-    /* 8 */ 'atomics wait',
-    /* 9 */ 'logging'
-] as const;
-const vmStateIgnoreStack = new Uint32Array(vmState.length);
-vmStateIgnoreStack[VM_STATE_GC] = 1; // FIXME: probably stack is available on GC, but in cpuprofile GC is always on root
-vmStateIgnoreStack[VM_STATE_IDLE] = 1;
+const parentOffsetBase = 0x0010_0000;
+const useMapForChildren = 8;
 
-function findBalancePair(str: string, offset: number, pattern: string): number {
-    const stack: string[] = [];
-    for (let i = offset; i < str.length; i++) {
-        if (stack.length === 0) {
-            if (str[i] === pattern) {
-                return i;
-            }
-        } else if (stack[stack.length - 1] === str[i]) {
-            stack.pop();
-            continue;
-        }
-
-        switch (str[i]) {
-            case '<': stack.push('>'); break;
-            case '(': stack.push(')'); break;
-            case '[': stack.push(']'); break;
-        }
-    }
-
-    return str.length;
-}
-
-function cleanupInternalName(name: string): string {
-    // cut off ::(anonymous namespace)
-    name = name.replace(/::\(.+?\)/g, '');
-
-    // cut off (...) and <...>
-    for (let i = 0; i < name.length; i++) {
-        switch (name[i]) {
-            case '<':
-                name = name.slice(0, i) + name.slice(findBalancePair(name, i + 1, '>') + 1);
-                i--;
-                break;
-            case '(':
-                name = name.slice(0, i) + name.slice(findBalancePair(name, i + 1, ')') + 1);
-                i--;
-                break;
-        }
-    }
-
-    // cut off a types in prefix, i.e. void FunctionName
-    const wsIndex = name.lastIndexOf(' ');
-    name = wsIndex !== -1
-        ? name.slice(wsIndex + 1)
-        : name;
-
-    return name;
-}
-
-function codeToCallFrameInfo(code: Code, scripts: Script[]): CodeCallFrameInfo {
-    if (!code || !code.type) {
-        return {
-            name: '(unknown)'
-        };
-    }
-
-    let name = code.name;
-    let lowlevel = false;
-
-    switch (code.type) {
-        case 'CPP': {
-            if (name[1] === ' ') {
-                name = cleanupInternalName(name.slice(2));
-            }
-            break;
-        }
-
-        case 'SHARED_LIB': {
-            // FIXME: there is no way in cpuprofile to express shared libs at the moment,
-            // so represent them as (program) for now
-            name = '(LIB) ' + name; // '(program)';
-            lowlevel = true;
-            break;
-        }
-
-        case 'JS': {
-            const scriptId = code.source?.script;
-            const script = typeof scriptId === 'number' ? scripts?.[scriptId] : undefined;
-            const { functionName, scriptUrl, line, column } = parseJsName(name, script);
-
-            return {
-                name: functionName,
-                file: scriptUrl,
-                line,
-                column
-            };
-        }
-
-        case 'CODE': {
-            switch (code.kind) {
-                case 'LoadIC':
-                case 'StoreIC':
-                case 'KeyedStoreIC':
-                case 'KeyedLoadIC':
-                case 'LoadGlobalIC':
-                case 'Handler':
-                    name = '(IC) ' + name;
-                    lowlevel = true;
-                    break;
-
-                case 'BytecodeHandler':
-                    name = '(bytecode) ~' + name;
-                    lowlevel = true;
-                    break;
-
-                case 'Stub':
-                    name = '(stub) ' + name;
-                    lowlevel = true;
-                    break;
-
-                case 'Builtin':
-                    name = '(builtin) ' + name;
-                    lowlevel = true;
-                    break;
-
-                case 'RegExp':
-                    name = 'RegExp: ' + name;
-                    break;
-            }
-
-            break;
-        }
-
-        default: {
-            name = `(${code.type}) ${name}`;
-        }
-    }
-
-    return { name, lowlevel };
-}
-
-function createCallFrame(
-    functionName: string,
-    url = '',
-    lineNumber = -1,
-    columnNumber = -1,
-    scriptId = 0,
-    functionId: number | null = null
-): CallFrame {
-    return {
-        scriptId,
-        functionId,
-        functionName,
-        url,
-        lineNumber,
-        columnNumber
-    };
-}
-
-function createNode(id: number, callFrame: CallFrame): CallNode {
+function createNode(id: number, callFrame: CallFrame, parentScriptOffset = 0): CallNode {
     return {
         id,
         callFrame,
+        parentScriptOffset,
         children: []
     };
 }
 
+type CallNodeMap = Map<number, CallNode>;
+
 export function processTicks(v8log: V8LogProfile) {
-    const scriptIdByUrl = new Map<string, number>([['', 0]]);
-    const getScriptIdByUrl = (url: string) => scriptIdByUrl.has(url)
-        ? scriptIdByUrl.get(url)
-        : scriptIdByUrl.set(url, scriptIdByUrl.size).size - 1;
-    const vmStateCallFrames = vmState.map(name =>
-        name !== 'js'
-            ? createCallFrame(`(${
-                // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L34
-                name == 'other' || name === 'external' || name === 'logging'
-                    ? 'program'
-                    : name
-            })`)
-            : null
-    );
-    const rootCallFrame = createCallFrame('(root)');
-    const programCallFrame = createCallFrame('(program)');
-    const callFrameById = new Map<number, CallFrame | null>();
-    const rootNode = createNode(1, rootCallFrame);
-    const rootNodeMap = new Map<CallFrame, CallNode>();
-    const nodes = [rootNode];
-    const nodesTransition = new Map<number, Map<CallFrame, CallNode>>([[1, rootNodeMap]]);
-    let nodeIdSeed = 1;
+    const {
+        callFrames,
+        callFrameIndexByVmState,
+        callFrameIndexByCode
+    } = createLogCallFrames(v8log);
+    const callFrameIndexByAddress = new Map<number, number>();
+    const callFrameIndexByNode: number[] = [0]; // 0 for rootNode
+    const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_OTHER];
+    const rootNode = createNode(1, callFrames[0]);
+    const nodes: CallNode[] = [rootNode];
+    const nodesTransition = new Map<CallNode, CallNodeMap>();
+    const maxCodeIndex = v8log.code.length - 1;
+    const ticks = v8log.ticks;
+    const samples = new Array(ticks.length);
+    const timeDeltas = new Array(ticks.length);
+    const samplePositions = new Array(ticks.length);
+    const positionsByCode = processCodePositions(v8log.code);
     let lastTm = 0;
-    const timeDeltas = new Array(v8log.ticks.length);
-    const samples = new Array(v8log.ticks.length);
 
-    v8log.ticks.sort((a, b) => a.tm - b.tm);
+    // sort ticks by a timestamp
+    ticks.sort((a, b) => a.tm - b.tm);
 
-    for (let tickIndex = 0; tickIndex < v8log.ticks.length; tickIndex++) {
-        const tick = v8log.ticks[tickIndex];
-        let vmStateCallFrame = vmStateCallFrames[tick.vm];
+    // replace function index in inline info for a call frame index (first code in function's codes)
+    for (const positions of positionsByCode) {
+        if (positions === null || !positions.inlined) {
+            continue;
+        }
+
+        for (let i = 0; i < positions.inlined.length; i += 3) {
+            const callFrameIndex = callFrameIndexByCode[v8log.functions[positions.inlined[i]].codes[0]];
+            positions.inlined[i] = callFrameIndex as number;
+
+            if (typeof callFrameIndex !== 'number') {
+                throw new Error('Can\'t resolve call frame for an inlined function');
+            }
+        }
+    }
+
+    // process ticks
+    for (let tickIndex = 0; tickIndex < ticks.length; tickIndex++) {
+        const tick = ticks[tickIndex];
+        const tickStack = tick.s;
+        const tickVmState = tick.vm;
+        let vmStateCallFrameIndex = callFrameIndexByVmState[tickVmState];
         let currentNode = rootNode;
-        let currentNodeMap = rootNodeMap;
+        let prevSourceOffset = 0;
 
-        if (vmStateIgnoreStack[tick.vm] !== 1) {
-            for (let i = tick.s.length - 2; i >= 0; i -= 2) {
-                const id = tick.s[i];
+        if (tickVmState !== VM_STATE_GC && tickVmState !== VM_STATE_IDLE) {
+            for (let i = tickStack.length - 2; i >= 0; i -= 2) {
+                const id = tickStack[i];
 
                 if (id === -1) {
                     continue;
                 }
 
-                let callFrame = callFrameById.get(id);
-
-                if (callFrame === undefined) {
-                    if (id > v8log.code.length) {
-                        // treat unknown ids as a memory address
-                        callFrame = createCallFrame(`0x${id.toString(16)}`);
-                    } else {
-                        const code = v8log.code[id];
-
-                        // FIXME: ignore Abort.Wide/ExtraWide for now since it too noisy;
-                        // not sure what it stands for, but looks like an execution pause
-                        if (code.kind === 'BytecodeHandler') {
-                            if (code.name === 'Abort.Wide' || code.name === 'Abort.ExtraWide') {
-                                continue;
-                            }
-                        }
-
-                        const { name, file, line, column, lowlevel } = codeToCallFrameInfo(code, v8log.scripts);
-                        callFrame = lowlevel ? null : createCallFrame(
-                            name,
-                            file,
-                            line,
-                            column,
-                            code.source ? code.source.script : getScriptIdByUrl(file || ''),
-                            typeof code.func === 'number' ? code.func : null
-                        );
-                    }
-
-                    callFrameById.set(id, callFrame);
-                }
+                const callFrameIndex = id <= maxCodeIndex
+                    // get precomputed call frame for the code
+                    ? callFrameIndexByCode[id]
+                    // treat unknown ids as a memory address
+                    : getCallFrameByAddressIndex(id);
 
                 // skip ignored call frames
-                if (callFrame === null) {
+                if (callFrameIndex === null) {
                     continue;
                 }
 
-                let nextNode = currentNodeMap.get(callFrame);
+                // resolve next node
+                currentNode = getNextNode(currentNode, callFrameIndex, prevSourceOffset);
 
-                if (nextNode === undefined) {
-                    nextNode = createNode(++nodeIdSeed, callFrame);
-                    nodes.push(nextNode);
-                    currentNodeMap.set(callFrame, nextNode);
-                    currentNode.children.push(nextNode.id);
-                    nodesTransition.set(nodeIdSeed, currentNodeMap = new Map());
+                // find a script positions if possible
+                const codePositions = id <= maxCodeIndex
+                    ? positionsByCode[id]
+                    : null;
+
+                if (codePositions !== null) {
+                    const codePositionsIndex = findPositionsCodeIndex(codePositions.positions, tickStack[i + 1]);
+
+                    // store the script offset for next call frame
+                    prevSourceOffset = codePositions.positions[codePositionsIndex + 1];
+
+                    // unroll the inlined functions chain when the code contains inlined functions
+                    if (codePositions.inlined !== null) {
+                        const inlinedIndex = codePositions.positions[codePositionsIndex + 2];
+
+                        if (inlinedIndex !== -1) {
+                            currentNode = getNodeFromInline(currentNode, codePositions.inlined, inlinedIndex);
+                        }
+                    }
                 } else {
-                    currentNodeMap = nodesTransition.get(nextNode.id) as Map<CallFrame, CallNode>;
+                    // when positions are not available for the code, store the script offset as zero as a fallback
+                    prevSourceOffset = 0;
                 }
-
-                currentNode = nextNode;
             }
         }
 
-        if (vmStateCallFrame === null && currentNode === rootNode) {
+        if (vmStateCallFrameIndex === null && currentNode === rootNode) {
             // v8 profiler uses (program) in case no stack captured
             // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L174
-            vmStateCallFrame = programCallFrame;
+            vmStateCallFrameIndex = programCallFrameIndex;
         }
 
-        if (vmStateCallFrame !== null) {
-            let node = currentNodeMap.get(vmStateCallFrame);
-
-            if (node === undefined) {
-                node = createNode(++nodeIdSeed, vmStateCallFrame);
-                nodes.push(node);
-                currentNodeMap.set(vmStateCallFrame, node);
-                currentNode.children.push(node.id);
-                nodesTransition.set(nodeIdSeed, new Map());
-            }
-
-            currentNode = node;
+        if (vmStateCallFrameIndex !== null) {
+            currentNode = getNextNode(currentNode, vmStateCallFrameIndex, prevSourceOffset);
+            prevSourceOffset = 0;
         }
 
         samples[tickIndex] = currentNode.id;
         timeDeltas[tickIndex] = tick.tm - lastTm;
+        samplePositions[tickIndex] = prevSourceOffset;
 
         lastTm = tick.tm;
     }
@@ -303,6 +134,92 @@ export function processTicks(v8log: V8LogProfile) {
     return {
         nodes,
         samples,
-        timeDeltas
+        timeDeltas,
+        samplePositions
     };
+
+    function getCallFrameByAddressIndex(address: number) {
+        let callFrameIndex = callFrameIndexByAddress.get(address);
+
+        if (callFrameIndex === undefined) {
+            const callFrame = createCallFrame(`0x${address.toString(16)}`);
+
+            callFrameIndex = callFrames.push(callFrame) - 1;
+            callFrameIndexByAddress.set(address, callFrameIndex);
+        }
+
+        return callFrameIndex;
+    }
+
+    function getNextNodeRef(callFrameIndex: number, parentScriptOffset: number) {
+        return callFrameIndex + (parentScriptOffset * parentOffsetBase);
+    }
+
+    function getNextNode(currentNode: CallNode, callFrameIndex: number, parentScriptOffset: number) {
+        const childrenLength = currentNode.children.length;
+
+        if (childrenLength === 0) {
+            return createNextNode(currentNode, callFrameIndex, parentScriptOffset);
+        }
+
+        if (childrenLength < useMapForChildren) {
+            const callFrame = callFrames[callFrameIndex];
+
+            for (const childId of currentNode.children) {
+                const child = nodes[childId - 1];
+
+                if (child.callFrame === callFrame && child.parentScriptOffset === parentScriptOffset) {
+                    return child;
+                }
+            }
+
+            return createNextNode(currentNode, callFrameIndex, parentScriptOffset);
+        }
+
+        // cast to CallNodeMap because the map is guaranteed to be defined, but TypeScript can't be sure of that
+        return (
+            (nodesTransition.get(currentNode) as CallNodeMap).get(getNextNodeRef(callFrameIndex, parentScriptOffset)) ||
+            createNextNode(currentNode, callFrameIndex, parentScriptOffset)
+        );
+    }
+
+    function createNextNode(currentNode: CallNode, callFrameIndex: number, parentScriptOffset: number) {
+        const nextNode = createNode(nodes.length + 1, callFrames[callFrameIndex], parentScriptOffset);
+        const newChildrenLength = currentNode.children.push(nextNode.id);
+
+        nodes.push(nextNode);
+        callFrameIndexByNode.push(callFrameIndex);
+
+        if (newChildrenLength >= useMapForChildren) {
+            if (newChildrenLength === useMapForChildren) {
+                nodesTransition.set(currentNode, new Map(currentNode.children.map(childId => [
+                    getNextNodeRef(
+                        callFrameIndexByNode[childId - 1],
+                        nodes[childId - 1].parentScriptOffset
+                    ),
+                    nodes[childId - 1]
+                ])));
+            } else {
+                // cast to CallNodeMap because the map is guaranteed to be defined, but TypeScript can't be sure of that
+                (nodesTransition.get(currentNode) as CallNodeMap).set(
+                    getNextNodeRef(callFrameIndex, parentScriptOffset),
+                    nextNode
+                );
+            }
+        }
+
+        return nextNode;
+    }
+
+    function getNodeFromInline(currentNode: CallNode, inlined: number[], i: number) {
+        const callFrameIndex = inlined[i * 3];
+        const codeOffset = inlined[i * 3 + 1];
+        const nextInlinedIndex = inlined[i * 3 + 2];
+        const fromNode: CallNode = nextInlinedIndex !== -1
+            ? getNodeFromInline(currentNode, inlined, nextInlinedIndex)
+            : currentNode;
+        const nextNode = getNextNode(fromNode, callFrameIndex, codeOffset);
+
+        return nextNode;
+    }
 }
