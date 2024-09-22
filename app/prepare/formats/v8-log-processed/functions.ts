@@ -15,9 +15,11 @@ export type ParseJsNameResult = {
 function parseLoc(url: string) {
     const locMatch = url.match(/\:(\d+)\:(\d+)$/);
     const loc = locMatch ? locMatch[0] : null;
-    // V8 log locations are 1-based, but CPU profiles are zero-based;
-    // therefore, convert line and column to zero-based for consistency
-    const line = locMatch !== null ? Number(locMatch[1]) - 1 : -1;
+    // V8 log locations are 1-based, but CPU profiles are zero-based.
+    // Therefore, convert line and column to zero-based for consistency.
+    // In some rare cases, V8 uses 0-based lines for specific locations, typically the first line,
+    // so retain 0 for such lines
+    const line = locMatch !== null ? (locMatch[1] === '0' ? 0 : Number(locMatch[1]) - 1) : -1;
     const column = locMatch !== null ? Number(locMatch[2]) - 1 : -1;
 
     return { loc, line, column };
