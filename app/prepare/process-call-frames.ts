@@ -440,14 +440,14 @@ export function createCpuProFrame(
         category: null as unknown as CpuProCategory,
         package: null as unknown as CpuProPackage,
         module: null as unknown as CpuProModule,
-        function: null as unknown as CpuProFunction
+        function: null as unknown as CpuProFunction,
     };
 }
 
 export function processCallFrames(
     callFrames: CpuProCallFrame[],
     scripts: V8CpuProfileScript[] = [],
-    scriptFunctions: V8CpuProfileScriptFunction[] = [],
+    scriptById: Map<number, CpuProScript>,
     executionContexts: V8CpuProfileExecutionContext[] = []
 ) {
     // shared dictionaries

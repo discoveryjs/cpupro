@@ -1,4 +1,4 @@
-import { Code } from './types.js';
+import { V8LogCode } from './types.js';
 
 // Parse "positions" and "inlined" of code.source:
 // - "positions" is a sequence of entries with pattern /C\d+O\d+(I\d+)?/, e.g. "C0O1C20O30I0..."
@@ -78,7 +78,7 @@ export function findPositionsCodeIndex(parsedPositions: number[], target: number
     return high * 3;
 }
 
-export function processCodePositions(codes: Code[]) {
+export function processCodePositions(codes: V8LogCode[]) {
     return codes.map(code => {
         const funcIdx = code.func;
         const source = code.source;

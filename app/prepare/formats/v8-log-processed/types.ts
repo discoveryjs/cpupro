@@ -1,16 +1,16 @@
 export type V8LogProfile = {
-    code: Code[];
-    ticks: Tick[];
-    functions: ProfileFunction[];
-    scripts: Script[];
+    code: V8LogCode[];
+    ticks: V8LogTick[];
+    functions: V8LogFunction[];
+    scripts: V8LogScripts;
     heap?: {
         available: null | number;
         capacity: null | number;
-        events: HeapEvent[];
+        events: V8LogHeapEvent[];
     };
 }
 
-export type Code = {
+export type V8LogCode = {
     name: string;
     type: 'CODE' | 'CPP' | 'JS' | 'SHARED_LIB';
     timestamp?: number;
@@ -36,11 +36,11 @@ export type Code = {
         | 'RegExp';
     func?: number;
     tm?: number;
-    source?: CodeSource;
+    source?: V8LogCodeSource;
     deopt?: Deopt;
 }
 
-export type CodeSource = {
+export type V8LogCodeSource = {
     script: number;
     start: number;
     end: number;
@@ -58,26 +58,27 @@ export type Deopt = {
     bailoutType: string;
 }
 
-export type ProfileFunction = {
+export type V8LogFunction = {
     name: string;
     codes: number[];
 }
 
-export type Tick = {
+export type V8LogTick = {
     tm: number;  // timestamp
     vm: number;  // vm state
     s: number[]; // stack
 }
 
-export type Script = {
+export type V8LogScripts = (V8LogScript | null)[];
+export type V8LogScript = {
     id: number;
     url: string;
     source: string;
 }
 
-export type CodeCallFrameInfo = {
+export type V8LogCodeCallFrameInfo = {
     name: string;
-    file?: string; // file path
+    url?: string; // file path
     line?: number;
     column?: number;
     lowlevel?: boolean;
@@ -99,7 +100,7 @@ export type CallNode = {
     parentScriptOffset: number;
 }
 
-export type HeapEvent = {
+export type V8LogHeapEvent = {
     tm: number;
     event: 'new' | 'delete';
     address: string;

@@ -1,7 +1,7 @@
-import { createCallFrame, createLogCallFrames } from './call-frames.js';
-import { findPositionsCodeIndex, processCodePositions } from './positions.js';
+import { createCallFrame } from './call-frames.js';
+import { findPositionsCodeIndex } from './positions.js';
 import { VM_STATE_GC, VM_STATE_IDLE, VM_STATE_OTHER } from './const.js';
-import type { CallFrame, CallNode, V8LogProfile } from './types.js';
+import type { CallFrame, CallNode, V8LogTick } from './types.js';
 
 const parentOffsetBase = 0x0010_0000;
 const useMapForChildren = 8;
@@ -17,48 +17,29 @@ function createNode(id: number, callFrame: CallFrame, parentScriptOffset = 0): C
 
 type CallNodeMap = Map<number, CallNode>;
 
-export function processTicks(v8log: V8LogProfile) {
-    const {
-        callFrames,
-        callFrameIndexByVmState,
-        callFrameIndexByCode
-    } = createLogCallFrames(v8log);
+export function processTicks(
+    ticks: V8LogTick[],
+    callFrames: CallFrame[],
+    callFrameIndexByVmState: (number | null)[],
+    callFrameIndexByCode: (number | null)[],
+    positionsByCode
+) {
     const callFrameIndexByAddress = new Map<number, number>();
     const callFrameIndexByNode: number[] = [0]; // 0 for rootNode
     const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_OTHER];
+    const maxCodeCallFrameIndex = callFrameIndexByCode.length - 1;
     const rootNode = createNode(1, callFrames[0]);
     const nodes: CallNode[] = [rootNode];
-    const nodesTransition = new Map<CallNode, CallNodeMap>();
-    const maxCodeIndex = v8log.code.length - 1;
-    const ticks = v8log.ticks;
+    const nodeTransitionMaps = new Map<CallNode, CallNodeMap>();
     const samples = new Array(ticks.length);
     const timeDeltas = new Array(ticks.length);
     const samplePositions = new Array(ticks.length);
-    const positionsByCode = processCodePositions(v8log.code);
+    const sortedTicks = ticks.slice().sort((a, b) => a.tm - b.tm); // sort a copy of ticks by a timestamp
     let lastTm = 0;
 
-    // sort ticks by a timestamp
-    ticks.sort((a, b) => a.tm - b.tm);
-
-    // replace function index in inline info for a call frame index (first code in function's codes)
-    for (const positions of positionsByCode) {
-        if (positions === null || !positions.inlined) {
-            continue;
-        }
-
-        for (let i = 0; i < positions.inlined.length; i += 3) {
-            const callFrameIndex = callFrameIndexByCode[v8log.functions[positions.inlined[i]].codes[0]];
-            positions.inlined[i] = callFrameIndex as number;
-
-            if (typeof callFrameIndex !== 'number') {
-                throw new Error('Can\'t resolve call frame for an inlined function');
-            }
-        }
-    }
-
     // process ticks
-    for (let tickIndex = 0; tickIndex < ticks.length; tickIndex++) {
-        const tick = ticks[tickIndex];
+    for (let tickIndex = 0; tickIndex < sortedTicks.length; tickIndex++) {
+        const tick = sortedTicks[tickIndex];
         const tickStack = tick.s;
         const tickVmState = tick.vm;
         let vmStateCallFrameIndex = callFrameIndexByVmState[tickVmState];
@@ -73,7 +54,7 @@ export function processTicks(v8log: V8LogProfile) {
                     continue;
                 }
 
-                const callFrameIndex = id <= maxCodeIndex
+                const callFrameIndex = id <= maxCodeCallFrameIndex
                     // get precomputed call frame for the code
                     ? callFrameIndexByCode[id]
                     // treat unknown ids as a memory address
@@ -88,7 +69,7 @@ export function processTicks(v8log: V8LogProfile) {
                 currentNode = getNextNode(currentNode, callFrameIndex, prevSourceOffset);
 
                 // find a script positions if possible
-                const codePositions = id <= maxCodeIndex
+                const codePositions = id <= maxCodeCallFrameIndex
                     ? positionsByCode[id]
                     : null;
 
@@ -132,6 +113,8 @@ export function processTicks(v8log: V8LogProfile) {
     }
 
     return {
+        firstTimestamp: ticks[0].tm,
+        lastTimestamp: lastTm,
         nodes,
         samples,
         timeDeltas,
@@ -178,7 +161,7 @@ export function processTicks(v8log: V8LogProfile) {
 
         // cast to CallNodeMap because the map is guaranteed to be defined, but TypeScript can't be sure of that
         return (
-            (nodesTransition.get(currentNode) as CallNodeMap).get(getNextNodeRef(callFrameIndex, parentScriptOffset)) ||
+            (nodeTransitionMaps.get(currentNode) as CallNodeMap).get(getNextNodeRef(callFrameIndex, parentScriptOffset)) ||
             createNextNode(currentNode, callFrameIndex, parentScriptOffset)
         );
     }
@@ -192,7 +175,7 @@ export function processTicks(v8log: V8LogProfile) {
 
         if (newChildrenLength >= useMapForChildren) {
             if (newChildrenLength === useMapForChildren) {
-                nodesTransition.set(currentNode, new Map(currentNode.children.map(childId => [
+                nodeTransitionMaps.set(currentNode, new Map(currentNode.children.map(childId => [
                     getNextNodeRef(
                         callFrameIndexByNode[childId - 1],
                         nodes[childId - 1].parentScriptOffset
@@ -201,7 +184,7 @@ export function processTicks(v8log: V8LogProfile) {
                 ])));
             } else {
                 // cast to CallNodeMap because the map is guaranteed to be defined, but TypeScript can't be sure of that
-                (nodesTransition.get(currentNode) as CallNodeMap).set(
+                (nodeTransitionMaps.get(currentNode) as CallNodeMap).set(
                     getNextNodeRef(callFrameIndex, parentScriptOffset),
                     nextNode
                 );

@@ -1,11 +1,11 @@
-import type { V8LogProfile } from './types.js';
+import type { V8LogScripts } from './types.js';
 import type { V8CpuProfileScript } from '../../types.js';
 
-export function processScripts(v8log: V8LogProfile) {
-    const scripts: V8CpuProfileScript[] = [];
+export function processScripts(scripts: V8LogScripts) {
+    const processedScripts: V8CpuProfileScript[] = [];
 
-    for (const { id, url, source } of v8log.scripts.filter(Boolean)) {
-        scripts.push({
+    for (const { id, url, source } of scripts.filter(script => script !== null)) {
+        processedScripts.push({
             id,
             // treat <unknown> urls as empty strings which is better for futher processing
             url: url === '<unknown>'
@@ -19,5 +19,5 @@ export function processScripts(v8log: V8LogProfile) {
         });
     }
 
-    return scripts;
+    return processedScripts;
 }

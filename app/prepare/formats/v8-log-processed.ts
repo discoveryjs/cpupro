@@ -13,11 +13,13 @@
 //   > node --prof --log-deopt --prof-sampling-interval=250 ...
 //
 
-import type { V8LogProfile } from './v8-log-processed/types.js';
+import type { V8LogCode, V8LogFunction, V8LogProfile } from './v8-log-processed/types.js';
 import type { V8CpuProfile } from '../types.js';
 import { processTicks } from './v8-log-processed/ticks.js';
 import { processScripts } from './v8-log-processed/scripts.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
+import { createLogCallFrames } from './v8-log-processed/call-frames.js';
+import { processCodePositions } from './v8-log-processed/positions.js';
 
 export function isV8Log(data: unknown): data is V8LogProfile {
     const maybe = data as Partial<V8LogProfile>;
@@ -29,21 +31,56 @@ export function isV8Log(data: unknown): data is V8LogProfile {
     );
 }
 
+function processPositions(codes: V8LogCode[], functions: V8LogFunction[], callFrameIndexByCode: (number | null)[]) {
+    const positionsByCode = processCodePositions(codes);
+
+    // replace function index in inline info for a call frame index (first code in function's codes)
+    for (const positions of positionsByCode) {
+        if (positions === null || !positions.inlined) {
+            continue;
+        }
+
+        for (let i = 0; i < positions.inlined.length; i += 3) {
+            const callFrameIndex = callFrameIndexByCode[functions[positions.inlined[i]].codes[0]];
+
+            if (typeof callFrameIndex !== 'number') {
+                throw new Error('Can\'t resolve call frame for an inlined function');
+            }
+
+            positions.inlined[i] = callFrameIndex;
+        }
+    }
+
+    return positionsByCode;
+}
+
 export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
-    const { nodes, samples, timeDeltas } = processTicks(v8log);
-    const scripts = processScripts(v8log);
-    const scriptFunctions = processScriptFunctions(v8log);
+    const {
+        callFrames,
+        callFrameIndexByVmState,
+        callFrameIndexByCode
+    } = createLogCallFrames(v8log.code, v8log.functions, v8log.scripts);
+    const positionsByCode = processPositions(v8log.code, v8log.functions, callFrameIndexByCode);
+    const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
+        v8log.ticks,
+        callFrames,
+        callFrameIndexByVmState,
+        callFrameIndexByCode,
+        positionsByCode
+    );
+    const scripts = processScripts(v8log.scripts);
+    const scriptFunctions = processScriptFunctions(v8log.functions, v8log.code, v8log.scripts);
     const samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1];
-    const lastTm = v8log.ticks[v8log.ticks.length - 1].tm;
 
     return {
         startTime: 0,
-        endTime: lastTm + samplesInterval,
+        endTime: lastTimestamp + samplesInterval,
         nodes,
         samples,
         timeDeltas,
         // cpupro extensions
         _samplesInterval: samplesInterval,
+        _samplePositions: samplePositions,
         _scripts: scripts,
         _scriptFunctions: scriptFunctions,
         _heap: v8log.heap

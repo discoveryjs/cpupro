@@ -1,4 +1,4 @@
-import type { Code, ProfileFunction, Script, V8LogProfile } from './types.js';
+import type { V8LogCode, V8LogFunction, V8LogScript, V8LogScripts } from './types.js';
 import type {
     V8CpuProfileScriptFunction,
     V8CpuProfileScriptFunctionState,
@@ -30,13 +30,13 @@ function cleanupFunctionName(name: string) {
     return name.trim();
 }
 
-export function parseJsName(name: string, script?: Script): ParseJsNameResult {
-    if (name.startsWith('wasm-function')) {
-        script = { url: 'wasm://wasm/' + name } as Script;
-        name += ' ' + script.url;
-    }
+export function parseJsName(name: string, script: V8LogScript | null = null): ParseJsNameResult {
+    let scriptUrl = script?.url || null;
 
-    const scriptUrl = script?.url || null;
+    if (name.startsWith('wasm-function')) {
+        scriptUrl = 'wasm://wasm/' + name;
+        name += ' ' + scriptUrl;
+    }
 
     if (scriptUrl === '' || scriptUrl === '<unknown>') {
         const { loc, line, column } = parseLoc(name);
@@ -78,7 +78,7 @@ export function parseJsName(name: string, script?: Script): ParseJsNameResult {
     };
 }
 
-export function functionTier(kind: Code['kind']): V8FunctionStateTier {
+export function functionTier(kind: V8LogCode['kind']): V8FunctionStateTier {
     switch (kind) {
         case 'Builtin':
         case 'Ignition':
@@ -104,9 +104,9 @@ export function functionTier(kind: Code['kind']): V8FunctionStateTier {
     }
 }
 
-export function processFunctionCodes(v8log: V8LogProfile, codes: number[]): V8CpuProfileScriptFunctionState[] {
-    return codes.map(codeIndex => {
-        const code = v8log.code[codeIndex];
+export function processFunctionCodes(codeIndices: number[], v8logCodes: V8LogCode[]): V8CpuProfileScriptFunctionState[] {
+    return codeIndices.map(codeIndex => {
+        const code = v8logCodes[codeIndex];
         const codeSource = code.source || null;
 
         return {
@@ -120,41 +120,46 @@ export function processFunctionCodes(v8log: V8LogProfile, codes: number[]): V8Cp
     });
 }
 
-export function processScriptFunctions(v8log: V8LogProfile) {
+export function processScriptFunctions(
+    functions: V8LogFunction[],
+    codes: V8LogCode[],
+    scripts: V8LogScripts
+): V8CpuProfileScriptFunction[] {
     const scriptFunctions: V8CpuProfileScriptFunction[] = [];
 
-    for (let i = 0, k = 0, prev: ProfileFunction | null = null; i < v8log.functions.length; i++) {
-        const fn = v8log.functions[i];
-        const source = v8log.code[fn.codes[0]].source; // all the function codes have the same reference to script source
-        const { functionName, line, column } = parseJsName(fn.name, source && v8log.scripts[source.script]);
+    for (let i = 0, k = 0, prev: V8LogFunction | null = null; i < functions.length; i++) {
+        const fn = functions[i];
+        const source = codes[fn.codes[0]].source; // all the function codes have the same reference to script source
+        const { functionName, line, column } = parseJsName(fn.name, source && scripts[source.script]);
 
-        if (!source) {
+        if (source === undefined) {
             // wasm functions and some other has no source;
             // temporary ignore such functions
-            // console.log(fn, fn.codes.map(x => v8log.code[x]));
+            // console.log(fn, fn.codes.map(x => codes[x]));
             continue;
         }
 
         // V8 usually adds a first-pass parsing state of a module as a separate function, followed by a fully parsed state function;
         // in that case, merge script function entries into a single function with concatenated states
         if (prev !== null && prev.name === fn.name && line === 0 && column === 0) {
-            scriptFunctions[k - 1].states.push(...processFunctionCodes(v8log, fn.codes));
+            scriptFunctions[k - 1].states.push(...processFunctionCodes(fn.codes, codes));
             continue;
         }
 
         scriptFunctions[k++] = {
             id: k,
             name: functionName,
-            script: source?.script ?? null,
-            start: source?.start ?? -1,
-            end: source?.end ?? -1,
+            script: source.script,
+            start: source.start,
+            end: source.end,
             line,
             column,
-            states: processFunctionCodes(v8log, fn.codes)
+            states: processFunctionCodes(fn.codes, codes)
         };
 
         prev = fn;
     }
+
 
     return scriptFunctions;
 }

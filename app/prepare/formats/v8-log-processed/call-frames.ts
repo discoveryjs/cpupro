@@ -1,6 +1,6 @@
 import { parseJsName } from './functions.js';
 import { VM_STATES } from './const.js';
-import { CallFrame, Code, CodeCallFrameInfo, Script, V8LogProfile } from './types.js';
+import { CallFrame, V8LogCode, V8LogCodeCallFrameInfo, V8LogFunction, V8LogScripts } from './types.js';
 
 function findBalancePair(str: string, offset: number, pattern: string): number {
     const stack: string[] = [];
@@ -51,7 +51,7 @@ function cleanupInternalName(name: string): string {
     return name;
 }
 
-function callFrameInfoFromCode(code: Code, scripts: Script[]): CodeCallFrameInfo {
+function callFrameInfoFromCode(code: V8LogCode, scripts: V8LogScripts): V8LogCodeCallFrameInfo {
     if (!code || !code.type) {
         return {
             name: '(unknown)'
@@ -84,7 +84,7 @@ function callFrameInfoFromCode(code: Code, scripts: Script[]): CodeCallFrameInfo
 
             return {
                 name: functionName,
-                file: scriptUrl,
+                url: scriptUrl,
                 line,
                 column
             };
@@ -168,15 +168,15 @@ export function createVmCallFrames(callFrames: CallFrame[]) {
     });
 }
 
-function createCodeCallFrames(callFrames: CallFrame[], v8log: V8LogProfile) {
-    const scriptIdByUrl = new Map<string, number>([['', 0]]);
-    const getScriptIdByUrl = (url: string) => scriptIdByUrl.has(url)
-        ? scriptIdByUrl.get(url)
-        : scriptIdByUrl.set(url, scriptIdByUrl.size).size - 1;
+function createCodeCallFrames(
+    callFrames: CallFrame[],
+    codes: V8LogCode[],
+    functions: V8LogFunction[],
+    scripts: V8LogScripts
+) {
+    const funcToCallFrame: (number | null)[] = Array.from({ length: functions.length }, () => null);
 
-    const funcToCallFrame: (number | null)[] = Array.from({ length: v8log.functions.length }, () => null);
-
-    return v8log.code.map((code) => {
+    return codes.map((code) => {
         // FIXME: ignore Abort.Wide/ExtraWide for now since it too noisy;
         // not sure what it stands for, but looks like an execution pause
         if (code.kind === 'BytecodeHandler') {
@@ -191,14 +191,14 @@ function createCodeCallFrames(callFrames: CallFrame[], v8log: V8LogProfile) {
             return funcToCallFrame[func];
         }
 
-        const { name, file, line, column, lowlevel } = callFrameInfoFromCode(code, v8log.scripts);
+        const { name, url, line, column, lowlevel } = callFrameInfoFromCode(code, scripts);
         const callFrame = lowlevel ? null : createCallFrame(
             name,
-            file,
+            url,
             line,
             column,
-            code.source ? code.source.script : getScriptIdByUrl(file || ''),
-            typeof code.func === 'number' ? code.func : null
+            code.source ? code.source.script : 0,
+            typeof func === 'number' ? func : null
         );
         const callFrameIndex = callFrame !== null
             ? callFrames.push(callFrame) - 1
@@ -212,10 +212,14 @@ function createCodeCallFrames(callFrames: CallFrame[], v8log: V8LogProfile) {
     });
 }
 
-export function createLogCallFrames(v8log: V8LogProfile) {
+export function createLogCallFrames(
+    codes: V8LogCode[],
+    functions: V8LogFunction[],
+    scripts: V8LogScripts
+) {
     const callFrames: CallFrame[] = [createCallFrame('(root)')];
     const callFrameIndexByVmState = createVmCallFrames(callFrames);
-    const callFrameIndexByCode = createCodeCallFrames(callFrames, v8log);
+    const callFrameIndexByCode = createCodeCallFrames(callFrames, codes, functions, scripts);
 
     return {
         callFrames,
