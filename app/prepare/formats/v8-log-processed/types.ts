@@ -76,14 +76,6 @@ export type V8LogScript = {
     source: string;
 }
 
-export type V8LogCodeCallFrameInfo = {
-    name: string;
-    url?: string; // file path
-    line?: number;
-    column?: number;
-    lowlevel?: boolean;
-}
-
 export type CallFrame = {
     scriptId: number;
     functionId?: number | null;

@@ -1,6 +1,6 @@
-import { parseJsName } from './functions.js';
 import { VM_STATES } from './const.js';
-import { CallFrame, V8LogCode, V8LogCodeCallFrameInfo, V8LogFunction, V8LogScripts } from './types.js';
+import { CallFrame, V8LogCode } from './types.js';
+import { V8CpuProfileScriptFunction } from '../../types.js';
 
 function findBalancePair(str: string, offset: number, pattern: string): number {
     const stack: string[] = [];
@@ -51,11 +51,16 @@ function cleanupInternalName(name: string): string {
     return name;
 }
 
-function callFrameInfoFromCode(code: V8LogCode, scripts: V8LogScripts): V8LogCodeCallFrameInfo {
+function callFrameInfoFromNonJsCode(code: V8LogCode): { name: string; lowlevel?: boolean } {
     if (!code || !code.type) {
         return {
             name: '(unknown)'
         };
+    }
+
+    if (code.type === 'JS') {
+        // codes of type JS must be processed separately
+        throw new Error('Wrong code type: JS');
     }
 
     let name = code.name;
@@ -75,19 +80,6 @@ function callFrameInfoFromCode(code: V8LogCode, scripts: V8LogScripts): V8LogCod
             name = '(LIB) ' + name; // '(program)';
             lowlevel = true;
             break;
-        }
-
-        case 'JS': {
-            const scriptId = code.source?.script;
-            const script = typeof scriptId === 'number' ? scripts?.[scriptId] : undefined;
-            const { functionName, scriptUrl, line, column } = parseJsName(name, script);
-
-            return {
-                name: functionName,
-                url: scriptUrl,
-                line,
-                column
-            };
         }
 
         case 'CODE': {
@@ -135,10 +127,10 @@ function callFrameInfoFromCode(code: V8LogCode, scripts: V8LogScripts): V8LogCod
 
 export function createCallFrame(
     functionName: string,
+    scriptId = 0,
     url = '',
     lineNumber = -1,
     columnNumber = -1,
-    scriptId = 0,
     functionId: number | null = null
 ): CallFrame {
     return {
@@ -168,14 +160,27 @@ export function createVmCallFrames(callFrames: CallFrame[]) {
     });
 }
 
+export function createFunctionCallFrames(
+    callFrames: CallFrame[],
+    functions: V8CpuProfileScriptFunction[]
+) {
+    return functions.map((fn) =>
+        callFrames.push(createCallFrame(
+            fn.name,
+            fn.script,
+            '', // will be set later
+            fn.line,
+            fn.column,
+            fn.id
+        )) - 1
+    );
+}
+
 function createCodeCallFrames(
     callFrames: CallFrame[],
     codes: V8LogCode[],
-    functions: V8LogFunction[],
-    scripts: V8LogScripts
+    callFrameIndexByFunction: number[]
 ) {
-    const funcToCallFrame: (number | null)[] = Array.from({ length: functions.length }, () => null);
-
     return codes.map((code) => {
         // FIXME: ignore Abort.Wide/ExtraWide for now since it too noisy;
         // not sure what it stands for, but looks like an execution pause
@@ -187,43 +192,34 @@ function createCodeCallFrames(
 
         const func = code.func;
 
-        if (func !== undefined && funcToCallFrame[func] !== null) {
-            return funcToCallFrame[func];
-        }
-
-        const { name, url, line, column, lowlevel } = callFrameInfoFromCode(code, scripts);
-        const callFrame = lowlevel ? null : createCallFrame(
-            name,
-            url,
-            line,
-            column,
-            code.source ? code.source.script : 0,
-            typeof func === 'number' ? func : null
-        );
-        const callFrameIndex = callFrame !== null
-            ? callFrames.push(callFrame) - 1
-            : null;
-
         if (func !== undefined) {
-            funcToCallFrame[func] = callFrameIndex;
+            return callFrameIndexByFunction[func];
         }
 
-        return callFrameIndex;
+        const { name, lowlevel } = callFrameInfoFromNonJsCode(code);
+
+        // FIXME: temporary
+        if (lowlevel) {
+            return null;
+        }
+
+        return callFrames.push(createCallFrame(name)) - 1;
     });
 }
 
-export function createLogCallFrames(
-    codes: V8LogCode[],
-    functions: V8LogFunction[],
-    scripts: V8LogScripts
+export function createCallFrames(
+    functions: V8CpuProfileScriptFunction[],
+    codes: V8LogCode[]
 ) {
     const callFrames: CallFrame[] = [createCallFrame('(root)')];
     const callFrameIndexByVmState = createVmCallFrames(callFrames);
-    const callFrameIndexByCode = createCodeCallFrames(callFrames, codes, functions, scripts);
+    const callFrameIndexByFunction = createFunctionCallFrames(callFrames, functions);
+    const callFrameIndexByCode = createCodeCallFrames(callFrames, codes, callFrameIndexByFunction);
 
     return {
         callFrames,
         callFrameIndexByVmState,
+        callFrameIndexByFunction,
         callFrameIndexByCode
     };
 }

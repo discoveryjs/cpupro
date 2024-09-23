@@ -4,6 +4,7 @@ import type {
     V8CpuProfileScriptFunctionState,
     V8FunctionStateTier
 } from '../../types.js';
+import { processScripts } from './scripts.js';
 
 export type ParseJsNameResult = {
     functionName: string;
@@ -33,8 +34,9 @@ function cleanupFunctionName(name: string) {
 export function parseJsName(name: string, script: V8LogScript | null = null): ParseJsNameResult {
     let scriptUrl = script?.url || null;
 
-    if (name.startsWith('wasm-function')) {
-        scriptUrl = 'wasm://wasm/' + name;
+    // V8 preprocessor don't include an url to wasm function names
+    if (name.startsWith('wasm-function') && !name.includes('wasm:')) {
+        scriptUrl = 'wasm://wasm/unknown-script';
         name += ' ' + scriptUrl;
     }
 
@@ -124,42 +126,49 @@ export function processScriptFunctions(
     functions: V8LogFunction[],
     codes: V8LogCode[],
     scripts: V8LogScripts
-): V8CpuProfileScriptFunction[] {
-    const scriptFunctions: V8CpuProfileScriptFunction[] = [];
+) {
+    const missedScriptsByUrl = new Map<string, V8LogScript>();
+    const getScriptByUrl = (scriptUrl: string) => {
+        let script = missedScriptsByUrl.get(scriptUrl);
 
-    for (let i = 0, k = 0, prev: V8LogFunction | null = null; i < functions.length; i++) {
-        const fn = functions[i];
+        if (script === undefined) {
+            script = {
+                id: processedScripts.length,
+                url: scriptUrl,
+                source: ''
+            };
+
+            processedScripts.push(script);
+            missedScriptsByUrl.set(scriptUrl, script);
+        }
+
+        return script;
+    };
+
+    const processedScripts = processScripts(scripts);
+    const processedScriptFunctions: V8CpuProfileScriptFunction[] = functions.map((fn, id) => {
         const source = codes[fn.codes[0]].source; // all the function codes have the same reference to script source
-        const { functionName, line, column } = parseJsName(fn.name, source && scripts[source.script]);
+        const v8logScript = source && scripts[source.script];
+        const { functionName, scriptUrl, line, column } = parseJsName(fn.name, v8logScript);
 
-        if (source === undefined) {
-            // wasm functions and some other has no source;
-            // temporary ignore such functions
-            // console.log(fn, fn.codes.map(x => codes[x]));
-            continue;
-        }
+        // wasm functions and some other has no source/script;
+        // create a script by scriptUrl in that case
+        const script = v8logScript || getScriptByUrl(scriptUrl);
 
-        // V8 usually adds a first-pass parsing state of a module as a separate function, followed by a fully parsed state function;
-        // in that case, merge script function entries into a single function with concatenated states
-        if (prev !== null && prev.name === fn.name && line === 0 && column === 0) {
-            scriptFunctions[k - 1].states.push(...processFunctionCodes(fn.codes, codes));
-            continue;
-        }
-
-        scriptFunctions[k++] = {
-            id: k,
+        return {
+            id,
             name: functionName,
-            script: source.script,
-            start: source.start,
-            end: source.end,
+            script: script.id,
+            start: source?.start ?? -1,
+            end: source?.end ?? -1,
             line,
             column,
             states: processFunctionCodes(fn.codes, codes)
         };
+    });
 
-        prev = fn;
-    }
-
-
-    return scriptFunctions;
+    return {
+        scripts: processedScripts,
+        scriptFunctions: processedScriptFunctions
+    };
 }

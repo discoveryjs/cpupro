@@ -13,12 +13,11 @@
 //   > node --prof --log-deopt --prof-sampling-interval=250 ...
 //
 
-import type { V8LogCode, V8LogFunction, V8LogProfile } from './v8-log-processed/types.js';
-import type { V8CpuProfile } from '../types.js';
+import type { CallFrame, V8LogCode, V8LogFunction, V8LogProfile } from './v8-log-processed/types.js';
+import type { V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import { processTicks } from './v8-log-processed/ticks.js';
-import { processScripts } from './v8-log-processed/scripts.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
-import { createLogCallFrames } from './v8-log-processed/call-frames.js';
+import { createCallFrames } from './v8-log-processed/call-frames.js';
 import { processCodePositions } from './v8-log-processed/positions.js';
 
 export function isV8Log(data: unknown): data is V8LogProfile {
@@ -54,12 +53,38 @@ function processPositions(codes: V8LogCode[], functions: V8LogFunction[], callFr
     return positionsByCode;
 }
 
+function normalizeUrl(url: string) {
+    let protocol = url.match(/^([a-z\-]+):/i)?.[1] || '';
+
+    if (protocol.length === 1 && protocol >= 'A' && protocol <= 'Z') {
+        protocol = '';
+        url = url.slice(2);
+    }
+
+    if (protocol === '' && /^[\\/]/.test(url)) {
+        return 'file://' + url.replace(/\\/g, '/');
+    }
+
+    return url;
+}
+
+function processUrls(scripts: (V8CpuProfileScript | null)[], callFrames: CallFrame[]) {
+    for (const script of scripts) {
+        if (script !== null && script.url !== '') {
+            script.url = normalizeUrl(script.url);
+        }
+    }
+
+    for (const callFrame of callFrames) {
+        if (callFrame.scriptId !== 0) {
+            callFrame.url = (scripts[callFrame.scriptId] as V8CpuProfileScript).url;
+        }
+    }
+}
+
 export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
-    const {
-        callFrames,
-        callFrameIndexByVmState,
-        callFrameIndexByCode
-    } = createLogCallFrames(v8log.code, v8log.functions, v8log.scripts);
+    const { scripts, scriptFunctions } = processScriptFunctions(v8log.functions, v8log.code, v8log.scripts);
+    const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(scriptFunctions, v8log.code);
     const positionsByCode = processPositions(v8log.code, v8log.functions, callFrameIndexByCode);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
         v8log.ticks,
@@ -68,9 +93,9 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         callFrameIndexByCode,
         positionsByCode
     );
-    const scripts = processScripts(v8log.scripts);
-    const scriptFunctions = processScriptFunctions(v8log.functions, v8log.code, v8log.scripts);
     const samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1];
+
+    processUrls(scripts, callFrames);
 
     return {
         startTime: 0,
@@ -81,7 +106,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         // cpupro extensions
         _samplesInterval: samplesInterval,
         _samplePositions: samplePositions,
-        _scripts: scripts,
+        _scripts: scripts.filter(script => script !== null),
         _scriptFunctions: scriptFunctions,
         _heap: v8log.heap
     };
