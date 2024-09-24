@@ -85,7 +85,7 @@
 **/
 .view-subject-with-nested-timeline .function-states {
     position: absolute;
-    inset: 0;
+    inset: -6px 0 0;
     margin-left: 1px;
     pointer-events: none;
     contain: paint;
@@ -95,10 +95,11 @@
     --tier-color: #aaaaaaa0;
     position: absolute;
     box-sizing: border-box;
+    top: 0;
     left: calc(100% * var(--pos));
-    top: 12px;
     height: 7.5px;
-    border-left: .5px solid var(--tier-color);
+    border-left: .75px solid var(--tier-color);
+    border-color: color(from var(--tier-color) srgb r g b / 1);
     width: calc(100% * var(--duration) - .5px);
 }
 .view-subject-with-nested-timeline .function-states .tick::before {
