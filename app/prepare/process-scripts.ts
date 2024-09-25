@@ -6,40 +6,21 @@ import {
     V8CpuProfileScript,
     CpuProModule,
     CpuProFunction,
-    V8FunctionStateTier
+    V8FunctionStateTier,
+    CpuProCallFrame
 } from './types.js';
 
-function normalizeUrl(url: string) {
-    let protocol = url.match(/^([a-z\-]+):/i)?.[1] || '';
+export const scriptFunctionsSorting = (a, b) => (a.start - b.start) || (b.end - a.end) || (a.id - b.id);
 
-    if (protocol.length === 1 && /[A-Z]/.test(protocol)) {
-        protocol = '';
-        url = url.slice(2);
-    }
-
-    if (protocol === '' && /^[\\/]/.test(url)) {
-        return 'file://' + url.replace(/\\/g, '/');
-    }
-
-    return url;
-}
-
-function mapScriptFunctionToFunction(fn: CpuProScriptFunction, locToFn: Map<string, CpuProFunction>) {
-    const moduleFn = locToFn.get(`:${fn.line}:${fn.column}`);
-
-    if (moduleFn !== undefined) {
-        fn.function = moduleFn;
-
-        if (!fn.name && moduleFn.name) {
-            fn.name = moduleFn.name;
-        }
-    }
+export function locFromLineColumn(line: number, column: number) {
+    return line !== -1 && column !== -1
+        ? `:${line}:${column}`
+        : null;
 }
 
 export function processScripts(
     inputScripts: V8CpuProfileScript[] = [],
     inputFunctions: V8CpuProfileScriptFunction[] = [],
-    moduleByScriptId: Map<number, CpuProModule> = new Map(),
     startTime: number = 0
 ) {
     const scripts: CpuProScript[] = [];
@@ -51,8 +32,8 @@ export function processScripts(
     for (const inputScript of inputScripts || []) {
         const script: CpuProScript = {
             ...inputScript,
-            url: normalizeUrl(inputScript.url || ''),
-            module: moduleByScriptId.get(inputScript.id) || null,
+            url: inputScript.url,
+            module: null,
             compilation: null,
             functions: []
         };
@@ -66,18 +47,18 @@ export function processScripts(
         const script = inputFn.script !== null ? scriptById.get(inputFn.script) || null : null;
         const states = inputFn.states;
         let topTier: V8FunctionStateTier = 'Unknown';
-        let deopt = false;
-        const loc = script !== null && inputFn.line !== -1 && inputFn.column !== -1
-            ? `:${inputFn.line}:${inputFn.column}`
-            : null;
         const fn: CpuProScriptFunction = {
-            ...inputFn,
+            id: inputFn.id,
+            name: inputFn.name,
             script,
-            loc,
+            line: inputFn.line,
+            column: inputFn.column,
+            start: inputFn.start,
+            end: inputFn.end,
+            loc: locFromLineColumn(inputFn.line, inputFn.column),
             function: null,
             topTier,
             hotness: 'cold',
-            deopt,
             states: new Array(states.length),
             inlinedInto: null
         };
@@ -112,40 +93,15 @@ export function processScripts(
             if (tierWeight > topTierWeight) {
                 topTierWeight = tierWeight;
                 topTier = tier;
-            } else if (tierWeight < topTierWeight) {
-                deopt = true;
             }
         }
 
         fn.topTier = topTier;
         fn.hotness = vmFunctionStateTierHotness[topTier];
-        fn.deopt = deopt;
     }
 
-    // link script functions with call tree functions
-    for (const script of scripts) {
-        if (script.module === null) {
-            continue;
-        }
-
-        const locToFn = new Map<string, CpuProFunction>();
-
-        for (const moduleFn of script.module.functions) {
-            const loc = moduleFn.loc;
-
-            if (loc !== null) {
-                locToFn.set(loc, moduleFn);
-            }
-        }
-
-        for (const fn of script.functions) {
-            mapScriptFunctionToFunction(fn, locToFn);
-        }
-
-        if (script.compilation !== null) {
-            mapScriptFunctionToFunction(script.compilation, locToFn);
-        }
-    }
+    // finalize scripts
+    sortScriptFunctions(scripts);
 
     // process script function states
     // for (const fn of scriptFunctions) {
@@ -173,6 +129,117 @@ export function processScripts(
 
     return {
         scripts,
+        scriptById,
         scriptFunctions
     };
+}
+
+function mapScriptFunctionToFunction(fn: CpuProScriptFunction, locToFn: Map<string, CpuProFunction>) {
+    const moduleFn = fn.loc !== null ? locToFn.get(fn.loc) : undefined;
+
+    if (moduleFn !== undefined) {
+        fn.function = moduleFn;
+
+        if (!fn.name && moduleFn.name) {
+            fn.name = moduleFn.name;
+        }
+    }
+}
+
+// link script functions with call tree functions
+export function linkStriptToModule(
+    scripts: CpuProScript[],
+    moduleByScriptId: Map<number, CpuProModule> = new Map()
+) {
+    for (const script of scripts) {
+        const module = moduleByScriptId.get(script.id);
+
+        if (module === undefined) {
+            continue;
+        }
+
+        const locToFn = new Map<string, CpuProFunction>();
+
+        script.module = module;
+
+        for (const moduleFn of module.functions) {
+            const loc = moduleFn.loc;
+
+            if (loc !== null) {
+                locToFn.set(loc, moduleFn);
+            }
+        }
+
+        for (const fn of script.functions) {
+            mapScriptFunctionToFunction(fn, locToFn);
+        }
+
+        if (script.compilation !== null) {
+            mapScriptFunctionToFunction(script.compilation, locToFn);
+        }
+    }
+}
+
+export function scriptsFromCallFrames(
+    callFrames: CpuProCallFrame[],
+    scripts: CpuProScript[],
+    scriptById: Map<number, CpuProScript>,
+    scriptFunctions: CpuProScriptFunction[] = []
+) {
+    if (scriptById.size > 0) {
+        return;
+    }
+
+    for (const callFrame of callFrames) {
+        const { scriptId, url, functionName, lineNumber, columnNumber } = callFrame;
+
+        if (scriptId !== 0) {
+            let script = scriptById.get(scriptId);
+
+            if (script === undefined) {
+                script = {
+                    id: scriptId,
+                    url: url || '',
+                    module: null,
+                    source: '',
+                    compilation: null,
+                    functions: []
+                };
+
+                scripts.push(script);
+                scriptById.set(scriptId, script);
+            }
+
+            const scriptFunction: CpuProScriptFunction = {
+                id: scriptFunctions.length + 1,
+                name: functionName,
+                script,
+                line: lineNumber,
+                column: columnNumber,
+                start: -1,
+                end: -1,
+                loc: locFromLineColumn(lineNumber, columnNumber),
+                function: null,
+                topTier: 'Unknown',
+                hotness: 'cold',
+                states: [],
+                inlinedInto: null
+            };
+
+            scriptFunctions.push(scriptFunction);
+            script.functions.push(scriptFunction);
+            callFrame.url = script.url;
+        }
+    }
+
+    scripts.sort((a, b) => a.id - b.id);
+    sortScriptFunctions(scripts);
+}
+
+export function sortScriptFunctions(scripts: CpuProScript[]) {
+    for (const script of scripts) {
+        if (script.functions.length > 1) {
+            script.functions.sort(scriptFunctionsSorting);
+        }
+    }
 }

@@ -23,6 +23,7 @@ export type V8CpuProfileNode = {
     id: number;
     callFrame: V8CpuProfileCallFrame;
     children?: number[];
+    parentScriptOffset?: number;
 }
 export type V8CpuProfileCallFrame = {
     scriptId: string | number;
@@ -43,7 +44,7 @@ export type V8CpuProfileScript = {
 export type V8CpuProfileScriptFunction = {
     id: number;
     name: string;
-    script: number | null;
+    script: number;
     line: number;
     column: number;
     start: number;
@@ -124,6 +125,7 @@ export type CpuProCallFrame = {
     module: CpuProModule;
     package: CpuProPackage;
     category: CpuProCategory;
+    script: CpuProScript | null;
 };
 
 export type CpuProScript = {
@@ -140,7 +142,6 @@ export type CpuProScriptFunction = Omit<V8CpuProfileScriptFunction, 'script' | '
     function: CpuProFunction | null;
     topTier: V8FunctionStateTier;
     hotness: 'cold' | 'warm' | 'hot';
-    deopt: boolean;
     states: CpuProScriptFunctionState[];
     inlinedInto: CpuProScriptFunction[] | null;
 }

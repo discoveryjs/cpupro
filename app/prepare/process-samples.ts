@@ -14,8 +14,10 @@ import {
     CpuProModule,
     CpuProCategory,
     CpuProPackage,
-    V8CpuProfileNode
+    V8CpuProfileNode,
+    CpuProNode
 } from './types.js';
+import { convertToUint32Array } from './utils.js';
 
 const kinds = ['functions', 'modules', 'packages', 'categories'] as const;
 
@@ -51,26 +53,51 @@ type SamplesResult = {
 
 // Merging sequentially identical samples and coresponsing timeDeltas.
 // Usually it allows to reduce number of samples for further processing at least by x2
-function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array) {
+export function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array, samplePositions: Uint32Array | null) {
+    const sampleCounts = new Uint32Array(samples.length).fill(1);
     let k = 1;
 
-    for (let i = 1; i < samples.length; i++) {
-        if (samples[i] !== samples[i - 1]) {
-            timeDeltas[k] = timeDeltas[i];
-            samples[k] = samples[i];
-            k++;
-        } else {
-            timeDeltas[k - 1] += timeDeltas[i];
+    if (samplePositions !== null) {
+        for (let i = 1; i < samples.length; i++) {
+            if (samples[i] !== samples[i - 1] || samplePositions[i] !== samplePositions[i - 1]) {
+                timeDeltas[k] = timeDeltas[i];
+                samples[k] = samples[i];
+                samplePositions[k] = samplePositions[i];
+                k++;
+            } else {
+                timeDeltas[k - 1] += timeDeltas[i];
+                sampleCounts[k - 1]++;
+            }
+        }
+    } else {
+        for (let i = 1; i < samples.length; i++) {
+            if (samples[i] !== samples[i - 1]) {
+                timeDeltas[k] = timeDeltas[i];
+                samples[k] = samples[i];
+                k++;
+            } else {
+                timeDeltas[k - 1] += timeDeltas[i];
+                sampleCounts[k - 1]++;
+            }
         }
     }
 
-    return {
-        samples: k !== samples.length ? samples.slice(0, k) : samples,
-        timeDeltas: k !== timeDeltas.length ? timeDeltas.slice(0, k) : timeDeltas
-    };
+    return k !== samples.length
+        ? {
+            samples: samples.slice(0, k),
+            sampleCounts,
+            samplePositions: samplePositions !== null ? samplePositions.slice(0, k) : samplePositions,
+            timeDeltas: timeDeltas.slice(0, k)
+        }
+        : {
+            samples,
+            sampleCounts,
+            samplePositions,
+            timeDeltas
+        };
 }
 
-function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
+export function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
     const tmpMap = new Uint32Array(nodeById.length);
     const samplesMap: number[] = []; // -> callFramesTree.nodes
     let sampledNodesCount = 0;
@@ -90,35 +117,29 @@ function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
     }
 
     // convert to typed array for faster processing
-    return new Uint32Array(samplesMap);
+    return convertToUint32Array(samplesMap);
+}
+
+export function remapTreeSamples(samples: Uint32Array, entryTree: CallTree<CpuProNode>, ...restTrees: CallTree<CpuProNode>[]) {
+    let sampleIdToNode = remapSamples(samples, entryTree.sourceIdToNode);
+
+    entryTree.sampleIdToNode = sampleIdToNode;
+
+    for (const tree of restTrees) {
+        tree.sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
+        sampleIdToNode = tree.sampleIdToNode;
+    }
 }
 
 export function processSamples(
-    rawSamples: Uint32Array,
-    rawTimeDeltas: Uint32Array,
+    samples: Uint32Array,
+    timeDeltas: Uint32Array,
     callFramesTree: CallTree<CpuProCallFrame>,
     functionsTree: CallTree<CpuProFunction>,
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
     categoriesTree: CallTree<CpuProCategory>
 ): SamplesResult {
-    // merge samples
-    const mergeSamplesStart = Date.now();
-    const { samples, timeDeltas } = mergeSamples(rawSamples, rawTimeDeltas);
-    TIMINGS && console.log('merge samples', Date.now() - mergeSamplesStart);
-
-    // re-map samples
-    const remapSamplesStart = Date.now();
-    let sampleIdToNode = remapSamples(samples, callFramesTree.sourceIdToNode);
-    callFramesTree.sampleIdToNode = sampleIdToNode;
-
-    for (const tree of [functionsTree, modulesTree, packagesTree, categoriesTree] as const) {
-        tree.sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
-        sampleIdToNode = tree.sampleIdToNode;
-    }
-
-    TIMINGS && console.log('re-map samples', Date.now() - remapSamplesStart);
-
     // create timings
     const computeTimingsStart = Date.now();
     const {

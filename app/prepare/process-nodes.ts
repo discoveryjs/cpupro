@@ -6,15 +6,12 @@ import { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame } from './type
 type CallFrameMap = Map<
     number, // scriptId
     Map<
-        string | null, // url
+        string, // function name
         Map<
-            string, // function name
+            number, // line
             Map<
-                number, // line
-                Map<
-                    number, // column
-                    CpuProCallFrame
-                >
+                number, // column
+                CpuProCallFrame
             >
         >
     >
@@ -29,14 +26,13 @@ function normalizeLoc(value: unknown) {
 function getCallFrame(
     callFrame: V8CpuProfileCallFrame,
     callFrames: CpuProCallFrame[],
-    byScriptIdMap: CallFrameMap,
-    urlByScriptId: Map<number, string>
+    byScriptIdMap: CallFrameMap
 ) {
     const functionName = callFrame.functionName || '';
     const lineNumber = normalizeLoc(callFrame.lineNumber);
     const columnNumber = normalizeLoc(callFrame.columnNumber);
+    const url = callFrame.url || null;
     let scriptId = callFrame.scriptId;
-    let url = callFrame.url || null;
 
     // ensure scriptId is a number
     // some tools are generating scriptId as a stringified number
@@ -59,23 +55,10 @@ function getCallFrame(
         }
     }
 
-    // address a known issue where some callFrames lack a URL;
-    // if a URL exists, associate it with its scriptId for reference
-    if (url !== null) {
-        urlByScriptId.set(scriptId, url);
-    } else if (scriptId !== 0) {
-        url = urlByScriptId.get(scriptId) || '';
-    }
-
     // resolve a callFrame through a chain of maps
-    let byUrlMap = byScriptIdMap.get(scriptId);
-    if (byUrlMap === undefined) {
-        byScriptIdMap.set(scriptId, byUrlMap = new Map());
-    }
-
-    let byFunctionNameMap = byUrlMap.get(url);
+    let byFunctionNameMap = byScriptIdMap.get(scriptId);
     if (byFunctionNameMap === undefined) {
-        byUrlMap.set(url, byFunctionNameMap = new Map());
+        byScriptIdMap.set(scriptId, byFunctionNameMap = new Map());
     }
 
     let byLineNumberMap = byFunctionNameMap.get(functionName);
@@ -142,9 +125,11 @@ function buildCallFrameTree(
     return cursor;
 }
 
-export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
+export function processNodes(
+    nodes: V8CpuProfileNode[],
+    maxNodeId: number
+) {
     const initStart = Date.now();
-    const urlByScriptId = new Map<number, string>();
     const callFramesMap: CallFrameMap = new Map();
     const callFrames: CpuProCallFrame[] = [];
     const nodeById = new Uint32Array(maxNodeId + 1);
@@ -182,8 +167,7 @@ export function processNodes(nodes: V8CpuProfileNode[], maxNodeId: number) {
         const callFrame = getCallFrame(
             node.callFrame,
             callFrames,
-            callFramesMap,
-            urlByScriptId
+            callFramesMap
         );
 
         callFramesTree.nodes[i] = callFrame.id - 1;

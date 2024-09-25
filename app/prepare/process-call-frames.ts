@@ -13,16 +13,16 @@ import {
     CpuProPackage,
     CpuProModule,
     CpuProFunction,
+    CpuProScriptFunction,
+    CpuProScript,
+    CpuProFunctionKind,
     ModuleType,
     PackageType,
     WellKnownName,
     WellKnownType,
     PackageRegistry,
-    V8CpuProfileScriptFunction,
-    V8CpuProfileScript,
     CDN,
-    V8CpuProfileExecutionContext,
-    CpuProFunctionKind
+    V8CpuProfileExecutionContext
 } from './types';
 
 type ReferenceCategory = {
@@ -441,13 +441,14 @@ export function createCpuProFrame(
         package: null as unknown as CpuProPackage,
         module: null as unknown as CpuProModule,
         function: null as unknown as CpuProFunction,
+        script: null as unknown as CpuProScript
     };
 }
 
 export function processCallFrames(
     callFrames: CpuProCallFrame[],
-    scripts: V8CpuProfileScript[] = [],
     scriptById: Map<number, CpuProScript>,
+    scriptFunctions: CpuProScriptFunction[] = [],
     executionContexts: V8CpuProfileExecutionContext[] = []
 ) {
     // shared dictionaries
@@ -472,21 +473,14 @@ export function processCallFrames(
 
     // input
     const inputCallFrames = [...callFrames]; // make a copy to not pollute original callFrames array
-    const scriptById = new Map<number, V8CpuProfileScript>();
-
-    for (const script of scripts) {
-        scriptById.set(script.id, script);
-    }
 
     // create callFrames from script functions to produce function/module/package/category instantes for compiled code
     for (const fn of scriptFunctions) {
-        const script = fn.script !== null ? scriptById.get(fn.script) || null : null;
-
-        if (script !== null) {
+        if (fn.script !== null) {
             inputCallFrames.push(createCpuProFrame(
                 inputCallFrames.length + 1,
-                script.id,
-                script.url,
+                fn.script.id,
+                fn.script.url,
                 fn.name,
                 fn.line,
                 fn.column
@@ -585,6 +579,7 @@ export function processCallFrames(
         callFrame.package = callFrameModule.package;
         callFrame.module = callFrameModule;
         callFrame.function = callFrameFunction;
+        callFrame.script = scriptById.get(scriptId) || null;
     }
 
     return {

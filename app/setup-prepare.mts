@@ -5,11 +5,11 @@ import { processCallFrames } from './prepare/process-call-frames.js';
 import { processNodes } from './prepare/process-nodes.js';
 import { processPaths } from './prepare/process-paths.js';
 import { processDisplayNames } from './prepare/process-module-names.js';
-import { gcReparenting, processSamples } from './prepare/process-samples.js';
+import { gcReparenting, mergeSamples, processSamples, remapTreeSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/build-trees.js';
-import { processScripts } from './prepare/process-scripts.js';
+import { processScripts, linkStriptToModule, scriptsFromCallFrames } from './prepare/process-scripts.js';
 import { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 
 export default (function(input: unknown, { rejectData, markers }: PrepareContextApi) {
@@ -44,18 +44,43 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
     // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
     // are correcting within processTimeDeltas()
     markTime('convert samples and timeDeltas into TypeArrays');
-    const samples = convertToUint32Array(data.samples);
-    const timeDeltas = convertToUint32Array(data.timeDeltas);
+    const rawSamples = convertToUint32Array(data.samples);
+    const rawTimeDeltas = convertToUint32Array(data.timeDeltas);
+    const rawSamplePositions = Array.isArray(data._samplePositions) ? convertToUint32Array(data._samplePositions) : null;
+
+    // merge samples
+    markTime('merge samples');
+    const {
+        samples,
+        sampleCounts,
+        samplePositions,
+        timeDeltas
+    } = mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions);
 
     // GC nodes reparenting should be performed before node processing since it adds additional nodes
     markTime('gcReparenting()');
     maxNodeId = gcReparenting(samples, data.nodes, maxNodeId);
+
+    // preprocess scripts and script functions if any
+    markTime('processScripts()');
+    const {
+        scripts,
+        scriptById,
+        scriptFunctions
+    } = processScripts(
+        data._scripts,
+        data._scriptFunctions,
+        startNoSamplesTime
+    );
 
     markTime('processNodes()');
     const {
         callFrames,
         callFramesTree
     } = processNodes(data.nodes, maxNodeId);
+
+    markTime('scripts and scriptFunctions from callFrames');
+    scriptsFromCallFrames(callFrames, scripts, scriptById, scriptFunctions);
 
     // callFrames -> functions, modules, packages, categories
     markTime('processCallFrames()');
@@ -68,10 +93,14 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         functions
     } = processCallFrames(
         callFrames,
-        data._scripts,
-        data._scriptFunctions,
+        scriptById,
+        scriptFunctions,
         data._executionContexts
     );
+
+    // attach modules to scripts
+    markTime('linkStriptToModule()');
+    linkStriptToModule(scripts, moduleByScriptId);
 
     // process dictionaries
     markTime('processPaths()');
@@ -103,18 +132,6 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         categories
     );
 
-    // relink scripts and script functions
-    markTime('processScripts()');
-    const {
-        scripts,
-        scriptFunctions
-    } = processScripts(
-        data._scripts,
-        data._scriptFunctions,
-        moduleByScriptId,
-        startNoSamplesTime
-    );
-
     // apply object marker
     markTime('apply discovery object markers');
     callFrames.forEach(markers.callFrame);
@@ -124,6 +141,18 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
     categories.forEach(markers.category);
     scripts.forEach(markers.script);
     scriptFunctions.forEach(markers['script-function']);
+
+    // re-map samples
+    // FIXME: remap callFramesTree only, before buildTrees()?
+    markTime('remap tree samples');
+    remapTreeSamples(
+        samples,
+        callFramesTree,
+        functionsTree,
+        modulesTree,
+        packagesTree,
+        categoriesTree
+    );
 
     // build samples lists & trees
     markTime('processSamples()');
@@ -176,6 +205,8 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         endNoSamplesTime,
         totalTime,
         samples: samplesTimings.samples,
+        sampleCounts,
+        samplePositions,
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
@@ -210,7 +241,7 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         categoriesTreeTimings,
         categoriesTreeTimingsFiltered,
         categoriesTreeTimestamps,
-        heap: data._heap
+        heap: data._heap || null
     };
 
     markTime('finish');
