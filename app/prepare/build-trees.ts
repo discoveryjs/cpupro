@@ -2,9 +2,6 @@ import { TIMINGS } from './const';
 import { CallTree } from './call-tree.js';
 import { CpuProCategory, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from './types.js';
 import { makeFirstNextArrays } from './build-trees-wasm-wrapper.js';
-import { buildCallTreeAndCompareWithBaseline } from './build-trees-baseline.js';
-
-const compareWithBaseline = false;
 
 function finalizeArrays(
     dictionarySize: number,
@@ -240,9 +237,7 @@ function buildCallTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
 ) {
     TIMINGS && console.group(`Build tree for ${name}`);
     try {
-        return compareWithBaseline
-            ? buildCallTreeAndCompareWithBaseline(sourceTree, dictionary, sourceNodeToDictionaryFn).tree
-            : buildCallTree(sourceTree, dictionary, sourceNodeToDictionaryFn);
+        return buildCallTree(sourceTree, dictionary, sourceNodeToDictionaryFn);
     } finally {
         TIMINGS && console.groupEnd();
     }
