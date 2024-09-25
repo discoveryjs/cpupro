@@ -1,10 +1,5 @@
-import type { V8LogCode, V8LogFunction, V8LogScript, V8LogScripts } from './types.js';
-import type {
-    V8CpuProfileScriptFunction,
-    V8CpuProfileScriptFunctionState,
-    V8FunctionStateTier
-} from '../../types.js';
-import { processScripts } from './scripts.js';
+import type { V8LogProfile, V8LogScript, V8LogScripts } from './types.js';
+import type { V8CpuProfileFunction } from '../../types.js';
 
 export type ParseJsNameResult = {
     functionName: string;
@@ -31,9 +26,7 @@ function cleanupFunctionName(name: string) {
     return name.trim();
 }
 
-export function parseJsName(name: string, script: V8LogScript | null = null): ParseJsNameResult {
-    let scriptUrl = script?.url || null;
-
+export function parseJsName(name: string, scriptUrl: string | null = null): ParseJsNameResult {
     // V8 preprocessor don't include an url to wasm function names
     if (name.startsWith('wasm-function') && !name.includes('wasm:')) {
         scriptUrl = 'wasm://wasm/unknown-script';
@@ -80,51 +73,9 @@ export function parseJsName(name: string, script: V8LogScript | null = null): Pa
     };
 }
 
-export function functionTier(kind: V8LogCode['kind']): V8FunctionStateTier {
-    switch (kind) {
-        case 'Builtin':
-        case 'Ignition':
-        case 'Unopt':
-            return 'Ignition';
-
-        case 'Baseline':
-        case 'Sparkplug':
-            return 'Sparkplug';
-
-        case 'Maglev':
-            return 'Maglev';
-
-        case 'Turboprop':
-            return 'Turboprop';
-
-        case 'Opt':
-        case 'Turbofan':
-            return 'Turbofan';
-
-        default:
-            return 'Unknown';
-    }
-}
-
-export function processFunctionCodes(codeIndices: number[], v8logCodes: V8LogCode[]): V8CpuProfileScriptFunctionState[] {
-    return codeIndices.map(codeIndex => {
-        const code = v8logCodes[codeIndex];
-        const codeSource = code.source || null;
-
-        return {
-            tm: code.tm || 0,
-            tier: functionTier(code.kind),
-            positions: codeSource?.positions || '',
-            inlined: codeSource?.inlined || '',
-            fns: codeSource?.fns || [],
-            deopt: code.deopt
-        };
-    });
-}
-
 export function processScriptFunctions(
-    functions: V8LogFunction[],
-    codes: V8LogCode[],
+    functions: V8LogProfile['functions'],
+    codes: V8LogProfile['code'],
     scripts: V8LogScripts
 ) {
     const missedScriptsByUrl = new Map<string, V8LogScript>();
@@ -133,42 +84,38 @@ export function processScriptFunctions(
 
         if (script === undefined) {
             script = {
-                id: processedScripts.length,
+                id: scripts.length,
                 url: scriptUrl,
                 source: ''
             };
 
-            processedScripts.push(script);
+            scripts.push(script);
             missedScriptsByUrl.set(scriptUrl, script);
         }
 
         return script;
     };
 
-    const processedScripts = processScripts(scripts);
-    const processedScriptFunctions: V8CpuProfileScriptFunction[] = functions.map((fn, id) => {
+    const processedFunctions: V8CpuProfileFunction[] = [];
+
+    for (const fn of functions) {
         const source = codes[fn.codes[0]].source; // all the function codes have the same reference to script source
         const v8logScript = source && scripts[source.script];
-        const { functionName, scriptUrl, line, column } = parseJsName(fn.name, v8logScript);
+        const { functionName, scriptUrl, line, column } = parseJsName(fn.name, v8logScript?.url);
 
         // wasm functions and some other has no source/script;
         // create a script by scriptUrl in that case
         const script = v8logScript || getScriptByUrl(scriptUrl);
 
-        return {
-            id,
+        processedFunctions.push({
+            scriptId: script.id,
             name: functionName,
-            script: script.id,
             start: source?.start ?? -1,
             end: source?.end ?? -1,
             line,
-            column,
-            states: processFunctionCodes(fn.codes, codes)
-        };
-    });
+            column
+        });
+    }
 
-    return {
-        scripts: processedScripts,
-        scriptFunctions: processedScriptFunctions
-    };
+    return processedFunctions;
 }

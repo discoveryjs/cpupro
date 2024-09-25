@@ -1,6 +1,6 @@
+import type { CallFrame, V8LogCode } from './types.js';
+import type { V8CpuProfileFunction } from '../../types.js';
 import { VM_STATES } from './const.js';
-import { CallFrame, V8LogCode } from './types.js';
-import { V8CpuProfileScriptFunction } from '../../types.js';
 
 function findBalancePair(str: string, offset: number, pattern: string): number {
     const stack: string[] = [];
@@ -128,14 +128,12 @@ function callFrameInfoFromNonJsCode(code: V8LogCode): { name: string; lowlevel?:
 export function createCallFrame(
     functionName: string,
     scriptId = 0,
-    url = '',
     lineNumber = -1,
     columnNumber = -1,
-    functionId: number | null = null
+    url = ''
 ): CallFrame {
     return {
         scriptId,
-        functionId,
         functionName,
         url,
         lineNumber,
@@ -143,7 +141,7 @@ export function createCallFrame(
     };
 }
 
-export function createVmCallFrames(callFrames: CallFrame[]) {
+export function createVmStateCallFrames(callFrames: CallFrame[]) {
     const programCallFrame = createCallFrame('(program)');
 
     return VM_STATES.map(name => {
@@ -162,16 +160,14 @@ export function createVmCallFrames(callFrames: CallFrame[]) {
 
 export function createFunctionCallFrames(
     callFrames: CallFrame[],
-    functions: V8CpuProfileScriptFunction[]
+    functions: V8CpuProfileFunction[]
 ) {
     return functions.map((fn) =>
         callFrames.push(createCallFrame(
             fn.name,
-            fn.script,
-            '', // will be set later
+            fn.scriptId,
             fn.line,
-            fn.column,
-            fn.id
+            fn.column
         )) - 1
     );
 }
@@ -208,11 +204,11 @@ function createCodeCallFrames(
 }
 
 export function createCallFrames(
-    functions: V8CpuProfileScriptFunction[],
+    functions: V8CpuProfileFunction[],
     codes: V8LogCode[]
 ) {
     const callFrames: CallFrame[] = [createCallFrame('(root)')];
-    const callFrameIndexByVmState = createVmCallFrames(callFrames);
+    const callFrameIndexByVmState = createVmStateCallFrames(callFrames);
     const callFrameIndexByFunction = createFunctionCallFrames(callFrames, functions);
     const callFrameIndexByCode = createCodeCallFrames(callFrames, codes, callFrameIndexByFunction);
 

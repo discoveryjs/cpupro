@@ -1,7 +1,7 @@
-import type { V8LogScripts } from './types.js';
+import type { V8LogProfile } from './types.js';
 import type { V8CpuProfileScript } from '../../types.js';
 
-export function processScripts(scripts: V8LogScripts): (V8CpuProfileScript | null)[] {
+export function processScripts(scripts: V8LogProfile['scripts']): (V8CpuProfileScript | null)[] {
     return scripts.map((script) => {
         if (script === null) {
             return null;

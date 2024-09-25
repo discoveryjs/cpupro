@@ -1,4 +1,4 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionStateTier, CpuProScriptFunction } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionCodeType, CpuProScriptFunction } from './types';
 import { packageRegistryEndpoints } from './utils';
 
 export const TIMINGS = false;
@@ -31,15 +31,15 @@ export const vmStateNodeTypes = new Set<WellKnownType>([
     'compiler',
     'atomics-wait'
 ]);
-export const vmFunctionStateTiers: V8FunctionStateTier[] = [
+export const vmFunctionStateTiers: V8FunctionCodeType[] = [
     'Unknown',
     'Ignition',
     'Sparkplug',
     'Maglev',
-    'Turboprop',
+    'Turboprop', // Removed in 2022 https://issues.chromium.org/issues/42202499
     'Turbofan'
 ] as const;
-export const vmFunctionStateTierHotness: Record<V8FunctionStateTier, CpuProScriptFunction['hotness']> = {
+export const vmFunctionStateTierHotness: Record<V8FunctionCodeType, CpuProScriptFunction['hotness']> = {
     'Unknown': 'cold',
     'Ignition': 'cold',
     'Sparkplug': 'warm',
@@ -89,7 +89,7 @@ export const knownRegistry: Record<string, PackageProvider> = {
 };
 
 // colors in order of apperiance in a list
-export const typeColor: Record<PackageType | PackageRegistry | V8FunctionStateTier, string> = {
+export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeType, string> = {
     'script': '#fee29ca0',
     'npm': '#f98e94a0',
     'github': '#666666a0',

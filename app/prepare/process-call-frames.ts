@@ -6,14 +6,15 @@ import {
     typeOrder,
     vmStateNodeTypes,
     wellKnownNodeName
-} from './const';
-import {
+} from './const.js';
+import { locFromLineColumn } from './process-functions.js';
+import { sortScriptFunctions } from './process-scripts.js';
+import type {
     CpuProCallFrame,
     CpuProCategory,
     CpuProPackage,
     CpuProModule,
     CpuProFunction,
-    CpuProScriptFunction,
     CpuProScript,
     CpuProFunctionKind,
     ModuleType,
@@ -22,13 +23,10 @@ import {
     WellKnownType,
     PackageRegistry,
     CDN,
-    V8CpuProfileExecutionContext
-} from './types';
+    V8CpuProfileExecutionContext,
+    CpuProScriptFunction
+} from './types.js';
 
-type ReferenceCategory = {
-    ref: string;
-    name: string;
-};
 type RegistryPackage = {
     type: PackageType;
     name: string;
@@ -37,32 +35,30 @@ type RegistryPackage = {
     registry: PackageRegistry | null;
     cdn: CDN | null;
 }
-type ReferencePackage = {
-    ref: string;
-    type: PackageType;
-    name: string;
-    path: string | null;
-    version: string | null;
-    registry: PackageRegistry | null;
-    cdn: CDN | null;
-};
-type ReferenceModule = {
-    ref: string;
-    type: ModuleType;
-    name: string | null;
-    path: string | null;
-    wellKnown: WellKnownType | null;
-};
+type Dict = {
+    modules: Map<number | string, CpuProModule>;
+    anonymousModuleByScriptId: Map<number, string>
+    nameByOrigin: Map<string, string>;
+    packages: Map<string, CpuProPackage>;
+    categories: Map<string, CpuProCategory> & {
+        unknownTypeOrder: number;
+    };
+}
 
-function resolveCategory(moduleType: ModuleType): ReferenceCategory {
+function resolveCategory(dict: Dict, moduleType: ModuleType): CpuProCategory {
     const name = moduleType === 'bundle' || moduleType === 'webpack/runtime'
         ? 'script'
         : moduleType;
+    let category = dict.categories.get(name);
 
-    return {
-        ref: name,
-        name
-    };
+    if (category === undefined) {
+        dict.categories.set(name, category = {
+            id: typeOrder[name] || dict.categories.unknownTypeOrder++,
+            name
+        });
+    }
+
+    return category;
 }
 
 function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
@@ -117,17 +113,16 @@ function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
 }
 
 function resolvePackage(
-    cache: Map<ReferenceModule, ReferencePackage>,
-    moduleRef: ReferenceModule,
-    nameByOrigin: Map<string, string>
-): ReferencePackage {
-    let entry = cache.get(moduleRef);
+    dict: Dict,
+    moduleType: ModuleType,
+    modulePath: string | null
+): CpuProPackage {
+    let pkg = dict.packages.get(`${moduleType}/${modulePath}`);
 
-    if (entry !== undefined) {
-        return entry;
+    if (pkg !== undefined) {
+        return pkg;
     }
 
-    const moduleType = moduleRef.type;
     let ref = 'unknown';
     let type: PackageType = 'unknown';
     let name = '(unknown)';
@@ -136,10 +131,11 @@ function resolvePackage(
     let registry: PackageRegistry | null = null;
     let cdn: CDN | null = null;
 
+    modulePath = modulePath || '';
+
     switch (moduleType) {
         case 'script':
         case 'bundle': {
-            const modulePath = moduleRef.path || '';
             const packageInfo = resolveRegistryPackage(modulePath);
 
             if (packageInfo !== null) {
@@ -234,7 +230,7 @@ function resolvePackage(
             ref = '(wasm)';
             type = 'wasm';
             name = '(wasm)';
-            path = moduleRef.path?.startsWith('wasm://wasm/')
+            path = modulePath.startsWith('wasm://wasm/')
                 ? 'wasm://wasm/'
                 : null;
 
@@ -242,11 +238,11 @@ function resolvePackage(
         }
 
         case 'chrome-extension': {
-            const url = new URL(moduleRef.path || '');
+            const url = new URL(modulePath);
 
             ref = url.origin;
             type = 'chrome-extension';
-            name = nameByOrigin.get(url.host) || url.host;
+            name = dict.nameByOrigin.get(url.host) || url.host;
             path = url.origin;
 
             break;
@@ -274,32 +270,86 @@ function resolvePackage(
             //     break;
     }
 
-    cache.set(moduleRef, entry = {
-        ref,
-        type,
-        name,
-        path,
-        version,
-        registry,
-        cdn
-    });
+    pkg = dict.packages.get(ref);
 
-    return entry;
+    if (pkg === undefined) {
+        dict.packages.set(ref, pkg = {
+            id: dict.packages.size + 1,
+            type,
+            name,
+            path,
+            version,
+            registry,
+            cdn,
+            category: resolveCategory(dict, moduleType)
+        });
+    }
+
+    return pkg;
 }
 
-function resolveModule(
+function createModule(dict: Dict, type: ModuleType, name: string | null, path: string | null = null, scriptId: number = 0) {
+    const moduleKey = scriptId === 0 ? name as string : scriptId;
+    let module = dict.modules.get(moduleKey);
+
+    if (module === undefined) {
+        const pkg = resolvePackage(dict, type, path);
+        const category = resolveCategory(dict, type); // FIXME: use pkg.category
+        module = {
+            id: dict.modules.size + 1, // starts with 1
+            type,
+            name,
+            path,
+            category,
+            package: pkg,
+            packageRelPath: null
+        };
+
+        dict.modules.set(moduleKey, module);
+    }
+
+    return module;
+}
+
+function createModuleFromFunctionName(
+    dict: Dict,
+    functionName: string
+): CpuProModule {
+    const wellKnown = wellKnownNodeName.get(functionName as WellKnownName) || null;
+    let type: ModuleType = 'unknown';
+    let name: string = 'unknown';
+
+    if (wellKnown !== null) {
+        type = engineNodeNames.get(functionName as WellKnownName) || wellKnown;
+        name = functionName;
+    } else {
+        if (functionName.startsWith('RegExp: ')) {
+            type = 'regexp';
+            name = '(regexp)';
+        } else {
+            const engineType = engineNodeNames.get(functionName  as WellKnownName);
+
+            if (engineType !== undefined) {
+                type = engineType;
+                name = functionName;
+            } else {
+                type = 'internals';
+                name = '(internals)';
+            }
+        }
+    }
+
+    return createModule(dict, type, name);
+}
+
+function createModuleFromScript(
+    dict: Dict,
     scriptId: number,
-    url: string | null,
-    functionName: string,
-    anonymousModuleByScriptId: Map<number, string>
-): ReferenceModule {
-    const entry: Exclude<ReferenceModule, 'package' | 'category'> = {
-        ref: url || String(scriptId),
-        type: 'unknown',
-        name: null,
-        path: null,
-        wellKnown: (scriptId === 0 && wellKnownNodeName.get(functionName as WellKnownName)) || null
-    };
+    url: string | null
+) {
+    let type: ModuleType = 'unknown';
+    let name: string | null = null;
+    let path: string | null = null;
 
     // Edge produces call frames with extensions::SafeBuiltins as url for some reasons,
     // ignore such urls - treat as internals
@@ -307,50 +357,27 @@ function resolveModule(
         url = '';
     }
 
-    if (entry.wellKnown !== null) {
-        entry.ref = functionName;
-        entry.type = engineNodeNames.get(functionName as WellKnownName) || entry.wellKnown;
-        entry.name = functionName;
-    } else if (!url || url.startsWith('evalmachine.')) {
-        if (scriptId === 0) {
-            if (functionName.startsWith('RegExp: ')) {
-                entry.ref = '(regexp)';
-                entry.type = 'regexp';
-                entry.name = '(regexp)';
-            } else {
-                const engineType = engineNodeNames.get(functionName  as WellKnownName);
+    if (!url || url.startsWith('evalmachine.')) {
+        let anonymousName = dict.anonymousModuleByScriptId.get(scriptId);
 
-                if (engineType !== undefined) {
-                    entry.ref = functionName;
-                    entry.type = engineType;
-                    entry.name = functionName;
-                } else {
-                    entry.type = 'internals';
-                    entry.name = '(internals)';
-                }
-            }
-        } else {
-            let anonymousName = anonymousModuleByScriptId.get(scriptId);
-
-            if (anonymousName === undefined) {
-                anonymousModuleByScriptId.set(
-                    scriptId,
-                    anonymousName = `(anonymous module #${anonymousModuleByScriptId.size + 1})`
-                );
-            }
-
-            entry.type = 'script';
-            entry.name = anonymousName;
+        if (anonymousName === undefined) {
+            dict.anonymousModuleByScriptId.set(
+                scriptId,
+                anonymousName = `(anonymous module #${dict.anonymousModuleByScriptId.size + 1})`
+            );
         }
+
+        type = 'script';
+        name = anonymousName;
     } else if (url.startsWith('v8/')) {
-        entry.type = 'v8';
-        entry.path = url;
+        type = 'v8';
+        path = url;
     } else if (url.startsWith('node:electron/') || url.startsWith('electron/')) {
-        entry.type = 'electron';
-        entry.path = url;
+        type = 'electron';
+        path = url;
     } else if (url.startsWith('webpack/runtime/')) {
-        entry.type = 'webpack/runtime';
-        entry.path = url;
+        type = 'webpack/runtime';
+        path = url;
     } else {
         let protocol = (url.match(/^([a-z\-]+):/i) || [])[1] || '';
 
@@ -361,52 +388,54 @@ function resolveModule(
 
         switch (protocol) {
             case '':
-                entry.type = 'script';
-                entry.path = 'file://' + url;
+                type = 'script';
+                path = 'file://' + url;
                 break;
 
             case 'file':
             case 'http':
             case 'https':
-                entry.type = 'script';
-                entry.path = url;
+                type = 'script';
+                path = url;
                 break;
 
             case 'webpack':
             case 'webpack-internal':
-                entry.type = 'bundle';
-                entry.path = url.replace(/\?$/, '');
+                type = 'bundle';
+                path = url.replace(/\?$/, '');
                 break;
 
             case 'node':
             case 'chrome-extension':
             case 'wasm':
-                entry.type = protocol;
-                entry.path = url;
+                type = protocol;
+                path = url;
                 break;
 
             case 'ext':
                 if (/^ext:(core|cli|runtime|deno)/.test(url)) {
-                    entry.type = 'deno';
-                    entry.path = url;
+                    type = 'deno';
+                    path = url;
                     break;
                 }
 
             default:
-                entry.type = `protocol-${protocol}`;
-                entry.name = url;
+                type = `protocol-${protocol}`;
+                name = url;
         }
     }
 
-    return entry;
+    return createModule(dict, type, name, path, scriptId);
 }
 
-function resolveFunctionKind(name: string, regexp: string | null, moduleRef: ReferenceModule): CpuProFunctionKind {
-    if (moduleRef.wellKnown === 'root') {
+function resolveFunctionKind(scriptId: number, name: string, regexp: string | null): CpuProFunctionKind {
+    const wellKnown = scriptId === 0 ? wellKnownNodeName.get(name as WellKnownName) || null : null;
+
+    if (wellKnown === 'root') {
         return 'root';
     }
 
-    if (moduleRef.wellKnown !== null && vmStateNodeTypes.has(moduleRef.wellKnown)) {
+    if (wellKnown !== null && vmStateNodeTypes.has(wellKnown)) {
         return 'vm-state';
     }
 
@@ -445,149 +474,137 @@ export function createCpuProFrame(
     };
 }
 
+export function scriptsAndFunctionsFromCallFrames(
+    callFrames: CpuProCallFrame[],
+    scripts: CpuProScript[],
+    scriptById: Map<number, CpuProScript>,
+    scriptFunctions: CpuProScriptFunction[] = []
+) {
+    for (const callFrame of callFrames) {
+        const { scriptId, url, functionName, lineNumber, columnNumber } = callFrame;
+
+        if (scriptId !== 0) {
+            let script = scriptById.get(scriptId);
+
+            if (script === undefined) {
+                script = {
+                    id: scriptId,
+                    url: url || '',
+                    module: null,
+                    source: '',
+                    compilation: null,
+                    functions: []
+                };
+
+                scripts.push(script);
+                scriptById.set(scriptId, script);
+            }
+
+            const scriptFunction: CpuProScriptFunction = {
+                id: scriptFunctions.length + 1,
+                name: functionName,
+                script,
+                start: -1,
+                end: -1,
+                line: lineNumber,
+                column: columnNumber,
+                loc: locFromLineColumn(lineNumber, columnNumber)
+            };
+
+            scriptFunctions.push(scriptFunction);
+            script.functions.push(scriptFunction);
+
+            callFrame.url = script.url;
+        }
+    }
+
+    sortScriptFunctions(scripts);
+
+    return scriptFunctions;
+}
+
 export function processCallFrames(
     callFrames: CpuProCallFrame[],
+    scripts: CpuProScript[],
     scriptById: Map<number, CpuProScript>,
-    scriptFunctions: CpuProScriptFunction[] = [],
+    scriptFunctions: CpuProScriptFunction[],
     executionContexts: V8CpuProfileExecutionContext[] = []
 ) {
-    // shared dictionaries
-    const categories = Object.assign(new Map<string, CpuProCategory>(), { unknownTypeOrder: typeOrder.unknown });
-    const packages = new Map<string, CpuProPackage>();
-    const packageRefCache = new Map();
-    const modules = new Map<string, CpuProModule>();
-    const functions = Object.assign(new Map<string, CpuProFunction>(), { anonymous: 0 });
-
     // cpuprofile related
     const nameByOrigin = new Map<string, string>([
         ...executionContexts.map(ctx => [new URL(ctx.origin).host, ctx.name]) as [string, string][],
         ...Object.entries(knownChromeExtensions)
     ]);
     const anonymousModuleByScriptId = new Map<number, string>(); // ?? is shared
-    const moduleByScriptId = new Map<number, CpuProModule>();
     const wellKnownCallFrames: Record<Extract<'root' | 'program' | 'idle', WellKnownType>, CpuProCallFrame | null> = {
         root: null,
         program: null,
         idle: null
     };
 
-    // input
-    const inputCallFrames = [...callFrames]; // make a copy to not pollute original callFrames array
+    // shared dictionaries
+    const categories = Object.assign(new Map<string, CpuProCategory>(), { unknownTypeOrder: typeOrder.unknown });
+    const functions = Object.assign([] as CpuProFunction[], { anonymous: 0 });
+    const dict: Dict = {
+        modules: new Map(),
+        anonymousModuleByScriptId,
+        nameByOrigin,
+        packages: new Map(),
+        categories
+    };
 
-    // create callFrames from script functions to produce function/module/package/category instantes for compiled code
-    for (const fn of scriptFunctions) {
-        if (fn.script !== null) {
-            inputCallFrames.push(createCpuProFrame(
-                inputCallFrames.length + 1,
-                fn.script.id,
-                fn.script.url,
-                fn.name,
-                fn.line,
-                fn.column
-            ));
-        }
+    // main part
+    if (scriptFunctions.length === 0) {
+        scriptsAndFunctionsFromCallFrames(callFrames, scripts, scriptById, scriptFunctions);
     }
 
-    for (const callFrame of inputCallFrames) {
-        const { scriptId, functionName, url, lineNumber, columnNumber } = callFrame;
-        const moduleRef = resolveModule(scriptId, url, functionName, anonymousModuleByScriptId);
+    for (const script of scripts) {
+        script.module = createModuleFromScript(dict, script.id, script.url);
+    }
 
-        let callFrameModule = modules.get(moduleRef.ref);
+    for (const callFrame of callFrames) {
+        const { scriptId, functionName, lineNumber, columnNumber } = callFrame;
+        const module = scriptId === 0
+            ? createModuleFromFunctionName(dict, functionName)
+            : dict.modules.get(scriptId) as CpuProModule;
 
-        // module
-        if (callFrameModule === undefined) {
-            const categoryRef = resolveCategory(moduleRef.type);
-            let moduleCategory = categories.get(categoryRef.ref);
-            const packageRef = resolvePackage(packageRefCache, moduleRef, nameByOrigin);
-            let modulePackage = packages.get(packageRef.ref);
+        const isRegExp = module.package.type === 'regexp';
+        const regexp = isRegExp ? functionName.slice('RegExp: '.length) : null;
+        const name = regexp
+            ? (regexp.length <= maxRegExpLength ? regexp : `${regexp.slice(0, maxRegExpLength - 1)}…`)
+            : functionName || (lineNumber === 0 && columnNumber === 0
+                ? '(script)'
+                : `(anonymous function #${functions.anonymous++})`
+            );
+        const fn = {
+            id: functions.length + 1, // id starts with 1
+            name,
+            category: module.category,
+            package: module.package,
+            module,
+            kind: resolveFunctionKind(scriptId, name, regexp),
+            regexp,
+            loc: locFromLineColumn(lineNumber, columnNumber)
+        };
 
-            // create category (cluster) if needed
-            if (moduleCategory === undefined) {
-                categories.set(categoryRef.ref, moduleCategory = {
-                    id: typeOrder[categoryRef.name] || categories.unknownTypeOrder++,
-                    name: categoryRef.name
-                });
-            }
+        functions.push(fn);
 
-            // create package if needed
-            if (modulePackage === undefined) {
-                packages.set(packageRef.ref, modulePackage = {
-                    id: packages.size + 1, // starts with 1
-                    type: packageRef.type,
-                    name: packageRef.name,
-                    version: packageRef.version,
-                    registry: packageRef.registry,
-                    cdn: packageRef.cdn,
-                    path: packageRef.path,
-                    category: moduleCategory,
-                    modules: []
-                });
-            }
-
-            // create module
-            modules.set(moduleRef.ref, callFrameModule = {
-                id: modules.size + 1, // starts with 1
-                type: moduleRef.type,
-                name: moduleRef.name,
-                path: moduleRef.path,
-                category: moduleCategory,
-                package: modulePackage,
-                packageRelPath: null,
-                functions: []
-            });
-
-            modulePackage.modules.push(callFrameModule);
-
-            if (moduleRef.wellKnown !== null && Object.hasOwn(wellKnownCallFrames, moduleRef.wellKnown)) {
-                wellKnownCallFrames[moduleRef.wellKnown] = callFrame;
-            }
-        }
-
-        // function
-        const functionRef = `${callFrameModule.id}:${functionName}:${lineNumber}:${columnNumber}`;
-        let callFrameFunction = functions.get(functionRef);
-
-        if (callFrameFunction === undefined) {
-            const isRegExp = callFrameModule.package.type === 'regexp';
-            const regexp = isRegExp ? functionName.slice('RegExp: '.length) : null;
-            const name = regexp
-                ? (regexp.length <= maxRegExpLength ? regexp : `${regexp.slice(0, maxRegExpLength - 1)}…`)
-                : functionName || (lineNumber === 0 && columnNumber === 0
-                    ? '(script)'
-                    : `(anonymous function #${functions.anonymous++})`
-                );
-
-            functions.set(functionRef, callFrameFunction = {
-                id: functions.size + 1, // id starts with 1
-                name,
-                category: callFrameModule.category,
-                package: callFrameModule.package,
-                module: callFrameModule,
-                kind: resolveFunctionKind(name, regexp, moduleRef),
-                regexp,
-                loc: lineNumber !== -1 && columnNumber !== -1
-                    ? `:${lineNumber}:${columnNumber}`
-                    : null
-            });
-
-            callFrameModule.functions.push(callFrameFunction);
-        }
-
-        moduleByScriptId.set(callFrame.scriptId, callFrameModule);
-
-        callFrame.category = callFrameModule.category;
-        callFrame.package = callFrameModule.package;
-        callFrame.module = callFrameModule;
-        callFrame.function = callFrameFunction;
         callFrame.script = scriptById.get(scriptId) || null;
+        callFrame.module = module;
+        callFrame.package = module.package;
+        callFrame.category = module.category;
+        callFrame.function = fn;
+
+        if (scriptId === 0 && module.name !== null && Object.hasOwn(wellKnownCallFrames, module.name)) {
+            wellKnownCallFrames[module.name] = callFrame;
+        }
     }
 
     return {
-        categories: [...categories.values()],
-        packages: [...packages.values()],
-        modules: [...modules.values()],
-        functions: [...functions.values()],
-        moduleByScriptId,
+        categories: [...dict.categories.values()],
+        packages: [...dict.packages.values()],
+        modules: [...dict.modules.values()],
+        functions,
         wellKnownCallFrames
     };
 }

@@ -1,4 +1,4 @@
-import { V8LogCode } from './types.js';
+import type { V8LogCode } from './types.js';
 
 // Parse "positions" and "inlined" of code.source:
 // - "positions" is a sequence of entries with pattern /C\d+O\d+(I\d+)?/, e.g. "C0O1C20O30I0..."

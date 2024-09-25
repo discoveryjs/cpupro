@@ -13,7 +13,6 @@ export type V8LogProfile = {
 export type V8LogCode = {
     name: string;
     type: 'CODE' | 'CPP' | 'JS' | 'SHARED_LIB';
-    timestamp?: number;
     kind?:
         | 'Bultin'
         | 'BytecodeHandler'
@@ -37,7 +36,7 @@ export type V8LogCode = {
     func?: number;
     tm?: number;
     source?: V8LogCodeSource;
-    deopt?: Deopt;
+    deopt?: V8LogDeopt;
 }
 
 export type V8LogCodeSource = {
@@ -49,7 +48,7 @@ export type V8LogCodeSource = {
     fns: number[];
 }
 
-export type Deopt = {
+export type V8LogDeopt = {
     tm: number;
     inliningId: number;
     scriptOffset: number;
@@ -76,9 +75,17 @@ export type V8LogScript = {
     source: string;
 }
 
+export type V8LogHeapEvent = {
+    tm: number;
+    event: 'new' | 'delete';
+    address: string;
+    size: number;
+}
+
+// Output
+
 export type CallFrame = {
     scriptId: number;
-    functionId?: number | null;
     functionName: string;
     url: string;
     lineNumber: number;
@@ -90,11 +97,4 @@ export type CallNode = {
     callFrame: CallFrame;
     children: number[];
     parentScriptOffset: number;
-}
-
-export type V8LogHeapEvent = {
-    tm: number;
-    event: 'new' | 'delete';
-    address: string;
-    size: number;
 }

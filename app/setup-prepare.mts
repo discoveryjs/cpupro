@@ -9,8 +9,9 @@ import { gcReparenting, mergeSamples, processSamples, remapTreeSamples } from '.
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/build-trees.js';
-import { processScripts, linkStriptToModule, scriptsFromCallFrames } from './prepare/process-scripts.js';
+import { processScripts } from './prepare/process-scripts.js';
 import { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
+import { processFunctions } from './prepare/process-functions.js';
 
 export default (function(input: unknown, { rejectData, markers }: PrepareContextApi) {
     const markTime = TIMINGS ? createMarkTime() : () => undefined;
@@ -61,17 +62,17 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
     markTime('gcReparenting()');
     maxNodeId = gcReparenting(samples, data.nodes, maxNodeId);
 
-    // preprocess scripts and script functions if any
+    // preprocess scripts if any
     markTime('processScripts()');
     const {
         scripts,
-        scriptById,
+        scriptById
+    } = processScripts(data._scripts);
+
+    markTime('processFunctions()');
+    const {
         scriptFunctions
-    } = processScripts(
-        data._scripts,
-        data._scriptFunctions,
-        startNoSamplesTime
-    );
+    } = processFunctions(data._functions, scriptById);
 
     markTime('processNodes()');
     const {
@@ -79,28 +80,22 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         callFramesTree
     } = processNodes(data.nodes, maxNodeId);
 
-    markTime('scripts and scriptFunctions from callFrames');
-    scriptsFromCallFrames(callFrames, scripts, scriptById, scriptFunctions);
 
     // callFrames -> functions, modules, packages, categories
     markTime('processCallFrames()');
     const {
         wellKnownCallFrames,
-        moduleByScriptId,
         categories,
         packages,
         modules,
         functions
     } = processCallFrames(
         callFrames,
+        scripts,
         scriptById,
         scriptFunctions,
         data._executionContexts
     );
-
-    // attach modules to scripts
-    markTime('linkStriptToModule()');
-    linkStriptToModule(scripts, moduleByScriptId);
 
     // process dictionaries
     markTime('processPaths()');

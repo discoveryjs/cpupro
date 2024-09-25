@@ -1,7 +1,7 @@
+import type { CallFrame, CallNode, V8LogTick } from './types.js';
 import { createCallFrame } from './call-frames.js';
 import { findPositionsCodeIndex } from './positions.js';
 import { VM_STATE_GC, VM_STATE_IDLE, VM_STATE_OTHER } from './const.js';
-import type { CallFrame, CallNode, V8LogTick } from './types.js';
 
 const parentOffsetBase = 0x0010_0000;
 const useMapForChildren = 8;
@@ -113,12 +113,13 @@ export function processTicks(
     }
 
     return {
-        firstTimestamp: ticks[0].tm,
+        firstTimestamp: sortedTicks[0].tm,
         lastTimestamp: lastTm,
         nodes,
         samples,
         timeDeltas,
-        samplePositions
+        samplePositions,
+        callFrameIndexByNode
     };
 
     function getCallFrameByAddressIndex(address: number) {

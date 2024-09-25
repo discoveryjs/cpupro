@@ -11,7 +11,8 @@ export type V8CpuProfileCpuproExtensions = {
     _samplePositions?: number[];
     _runtime?: RuntimeCode;
     _scripts?: V8CpuProfileScript[];
-    _scriptFunctions?: V8CpuProfileScriptFunction[];
+    _functions?: V8CpuProfileFunction[];
+    _functionCodes?: V8CpuProfileFunctionCodes[];
     _executionContexts?: V8CpuProfileExecutionContext[];
     _heap?: {
         available: null | number;
@@ -41,19 +42,21 @@ export type V8CpuProfileScript = {
     url: string;
     source: string;
 }
-export type V8CpuProfileScriptFunction = {
-    id: number;
+export type V8CpuProfileFunction = {
+    scriptId: number;
     name: string;
-    script: number;
-    line: number;
-    column: number;
     start: number;
     end: number;
-    states: V8CpuProfileScriptFunctionState[];
+    line: number;
+    column: number;
 }
-export type V8CpuProfileScriptFunctionState = {
+export type V8CpuProfileFunctionCodes = {
+    function: number;
+    codes: V8CpuProfileFunctionCode[]
+};
+export type V8CpuProfileFunctionCode = {
     tm: number;
-    tier: V8FunctionStateTier;
+    tier: V8FunctionCodeType;
     positions: string;
     inlined: string;
     fns: number[];
@@ -82,7 +85,7 @@ export type RuntimeCode =
     | 'nodejs'
     | 'unknown'
     ;
-export type V8FunctionStateTier =
+export type V8FunctionCodeType =
     | 'Ignition'
     | 'Sparkplug'
     | 'Maglev'
@@ -133,21 +136,31 @@ export type CpuProScript = {
     url: string;
     module: CpuProModule | null;
     source: string;
-    compilation: CpuProScriptFunction | null;
-    functions: CpuProScriptFunction[];
 }
-export type CpuProScriptFunction = Omit<V8CpuProfileScriptFunction, 'script' | 'states'> & {
+export type CpuProScriptFunction = {
+    id: number; // starts with 1
+    name: string;
     script: CpuProScript | null;
+    start: number;
+    end: number;
+    line: number;
+    column: number;
     loc: string | null;
-    function: CpuProFunction | null;
-    topTier: V8FunctionStateTier;
-    hotness: 'cold' | 'warm' | 'hot';
-    states: CpuProScriptFunctionState[];
-    inlinedInto: CpuProScriptFunction[] | null;
 }
-export type CpuProScriptFunctionState = {
-    scriptFunction: CpuProScriptFunction;
+export type CpuProScriptCodes = {
+    script: CpuProScript;
+    compilation: CpuProFunctionCodes | null; // FIXME: find better name
+    functionCodes: CpuProFunctionCodes[];
+};
+export type CpuProFunctionCodes = {
+    function: CpuProScriptFunction;
+    topTier: V8FunctionCodeType;
+    hotness: 'cold' | 'warm' | 'hot';
+    codes: CpuProFunctionCode[];
+};
+export type CpuProFunctionCode = {
     tm: number;
+    function: CpuProScriptFunction;
     tier: string;
     duration: number;
     positions: string;
@@ -193,7 +206,6 @@ export type CpuProModule = {
     category: CpuProCategory;
     package: CpuProPackage;
     packageRelPath: string | null;
-    functions: CpuProFunction[];
 };
 
 export type PackageType = // alphabetical order
@@ -248,7 +260,6 @@ export type CpuProPackage = {
     cdn: CDN | null;
     path: string | null;
     category: CpuProCategory;
-    modules: CpuProModule[];
 };
 
 export type CpuProCategory = {

@@ -19,6 +19,8 @@ import { processTicks } from './v8-log-processed/ticks.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
 import { createCallFrames } from './v8-log-processed/call-frames.js';
 import { processCodePositions } from './v8-log-processed/positions.js';
+import { processScripts } from './v8-log-processed/scripts.js';
+import { processFunctionCodes } from './v8-log-processed/codes.js';
 
 export function isV8Log(data: unknown): data is V8LogProfile {
     const maybe = data as Partial<V8LogProfile>;
@@ -30,7 +32,11 @@ export function isV8Log(data: unknown): data is V8LogProfile {
     );
 }
 
-function processPositions(codes: V8LogCode[], functions: V8LogFunction[], callFrameIndexByCode: (number | null)[]) {
+function processPositions(
+    codes: V8LogCode[],
+    functions: V8LogFunction[],
+    callFrameIndexByCode: (number | null)[]
+) {
     const positionsByCode = processCodePositions(codes);
 
     // replace function index in inline info for a call frame index (first code in function's codes)
@@ -83,8 +89,10 @@ function processUrls(scripts: (V8CpuProfileScript | null)[], callFrames: CallFra
 }
 
 export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
-    const { scripts, scriptFunctions } = processScriptFunctions(v8log.functions, v8log.code, v8log.scripts);
-    const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(scriptFunctions, v8log.code);
+    const scripts = processScripts(v8log.scripts);
+    const functions = processScriptFunctions(v8log.functions, v8log.code, scripts);
+    const functionCodes = processFunctionCodes(v8log.functions, v8log.code);
+    const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(functions, v8log.code);
     const positionsByCode = processPositions(v8log.code, v8log.functions, callFrameIndexByCode);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
         v8log.ticks,
@@ -107,7 +115,8 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         _samplesInterval: samplesInterval,
         _samplePositions: samplePositions,
         _scripts: scripts.filter(script => script !== null),
-        _scriptFunctions: scriptFunctions,
+        _functions: functions,
+        _functionCodes: functionCodes,
         _heap: v8log.heap
     };
 }
