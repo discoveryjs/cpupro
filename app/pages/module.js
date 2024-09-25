@@ -44,11 +44,11 @@ const pageContent = {
                 view: 'source',
                 data: `{
                     $tooltipView: [
-                        'text:tooltipData.function.name',
+                        'text:scriptFunction.name',
                         'html:"<br>"',
                         {
                             view: 'inline-list',
-                            data: 'tooltipData.states',
+                            data: 'scriptFunction.states',
                             item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
                         }
                     ];
@@ -60,13 +60,13 @@ const pageContent = {
                         $marker: states | size() = 1
                             ? tier[].abbr()
                             : size() <= 3
-                                ? tier[].abbr() + tier[-1].abbr()
+                                ? tier.(abbr()).join(' ')
                                 : tier[].abbr() + ' … ' + tier[-1].abbr();
 
                         className: 'function',
                         range: [start, end],
                         marker: $href ? $marker + '" data-href="' + $href : $marker,
-                        tooltipData: { states, function },
+                        scriptFunction: $,
                         tooltip: $tooltipView
                     })
                 }`,

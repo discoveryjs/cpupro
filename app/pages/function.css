@@ -35,3 +35,25 @@
 .page-function .view-source .view-source__source .inline::before {
     content: 'inl';
 }
+.page-function .view-source .view-source__source .code-point {
+    font-size: 0px;
+    vertical-align: top;
+    padding: 4px;
+    border-radius: 4px;
+    background-color: #c4906f;
+    margin: 0 3px 0 1px;
+}
+.page-function .view-source .view-source__source .sample-point {
+    font-size: 85%;
+    font-family: tahoma;
+    vertical-align: top;
+    border: 1px solid #adbead;
+    border-radius: 5px;
+    color: #c0cd46;
+    background-color: black;
+    margin: 0 1px;
+    padding: 1px 2px;
+}
+.page-function .view-source .view-source__source .sample-point::before {
+    content: attr(data-marker);
+}

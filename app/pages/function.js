@@ -202,27 +202,18 @@ const pageContent = {
                         $start: scriptFunction.start;
                         $end: scriptFunction.end;
                         $inlinedRefs: scriptFunction.states[-1].inlined.match(/O\\d+(?=F|$)/g).matched |
-                            ? .({ className: 'inline', range: [+$[1:] - @.start, +$[1:] - @.start] })
+                            ? .($pos: +$[1:] - @.start; { className: 'inline', range: [$pos, $pos] })
                             : [];
-
-                        ...,
-                        syntax: "js",
-                        content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
-                        lineNum: => $ + $line,
-                        refs: $inlinedRefs + scriptFunction.script.functions.[start >= $start and end <= $end].({
-                            $href: @.scriptFunction.function != function ? function.marker().href;
-                            $marker: states | size() = 1
-                                ? tier[].abbr()
-                                : size() <= 3
-                                    ? tier[].abbr() + ' ' + tier[-1].abbr()
-                                    : tier[].abbr() + ' … ' + tier[-1].abbr();
-
-                            className: 'function',
-                            range: [start - @.start, end - @.start],
-                            marker: $href ? $marker + '" data-href="' + $href : $marker,
-                            tooltipData: { states, function },
-                            tooltip: { className: 'hint-tooltip', content: [
-                                'text:tooltipData.function.name',
+                        $codePoints: scriptFunction.states.[positions][-1].positions.match(/O\\d+(?=C|$)/g).matched |
+                            ? .($pos: +$[1:] - @.start; $pos ? { className: 'code-point', range: [$pos, $pos] })
+                            : [];
+                        $samplePoints: scriptFunction.function._locations.entries() |
+                            ? .($pos: +key - @.start; $pos ? { className: 'sample-point', range: [$pos, $pos], marker: value.ms() })
+                            : [];
+                        $tooltipView: {
+                            className: 'hint-tooltip',
+                            content: [
+                                'text:scriptFunction.name',
                                 'html:"<br>"',
                                 // {
                                 //     view: 'context',
@@ -237,10 +228,31 @@ const pageContent = {
                                 // 'html:"<br>"',
                                 {
                                     view: 'inline-list',
-                                    data: 'tooltipData.states',
+                                    data: 'scriptFunction.states',
                                     item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
                                 }
-                            ] }
+                        ] };
+
+                        ...,
+                        syntax: "js",
+                        content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
+                        lineNum: => $ + $line,
+                        $inlinedRefs,
+                        $codePoints,
+                        $samplePoints,
+                        refs: $codePoints + $inlinedRefs + $samplePoints + scriptFunction.script.functions.[start >= $start and end <= $end].({
+                            $href: @.scriptFunction != $ ? function.marker().href;
+                            $marker: states | size() = 1
+                                ? tier[].abbr()
+                                : size() <= 3
+                                    ? tier.(abbr()).join(' ')
+                                    : tier[].abbr() + ' … ' + tier[-1].abbr();
+
+                            className: 'function',
+                            range: [start - @.start, end - @.start],
+                            marker: $href ? $marker + '" data-href="' + $href : $marker,
+                            scriptFunction: $,
+                            tooltip: $tooltipView
                         })
                     }`,
                     postRender(el) {
