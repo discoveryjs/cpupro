@@ -49,17 +49,10 @@ export function parsePositions(positions: string) {
 }
 
 export function findPositionsCodeIndex(parsedPositions: number[], target: number) {
-    const n = Math.floor(parsedPositions.length / 3); // Number of indices to search over
     let low = 0;
-    let high = n - 1;
+    let high = (parsedPositions.length / 3) - 1;
 
-    // sometimes positions do not start from zero, but a position
-    // before the first offset is requested, in this case return the zero index
-    // if (target < parsePositions[0]) {
-    //     return 0;
-    // }
-
-    while (low <= high) {
+    while (low < high) {
         const mid = (low + high) >> 1;
         const idx = mid * 3;
         const midValue = parsedPositions[idx];
@@ -75,7 +68,7 @@ export function findPositionsCodeIndex(parsedPositions: number[], target: number
         }
     }
 
-    return high * 3;
+    return low * 3;
 }
 
 export function processCodePositions(codes: V8LogCode[]) {

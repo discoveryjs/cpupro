@@ -1,5 +1,4 @@
 import type { CallFrame, CallNode, V8LogTick } from './types.js';
-import { createCallFrame } from './call-frames.js';
 import { findPositionsCodeIndex } from './positions.js';
 import { VM_STATE_GC, VM_STATE_IDLE, VM_STATE_OTHER } from './const.js';
 
@@ -20,11 +19,10 @@ type CallNodeMap = Map<number, CallNode>;
 export function processTicks(
     ticks: V8LogTick[],
     callFrames: CallFrame[],
-    callFrameIndexByVmState: (number | null)[],
-    callFrameIndexByCode: (number | null)[],
+    callFrameIndexByVmState: number[] | Uint32Array,
+    callFrameIndexByCode: number[] | Uint32Array,
     positionsByCode
 ) {
-    const callFrameIndexByAddress = new Map<number, number>();
     const callFrameIndexByNode: number[] = [0]; // 0 for rootNode
     const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_OTHER];
     const maxCodeCallFrameIndex = callFrameIndexByCode.length - 1;
@@ -50,18 +48,15 @@ export function processTicks(
             for (let i = tickStack.length - 2; i >= 0; i -= 2) {
                 const id = tickStack[i];
 
-                if (id === -1) {
+                if (id < 0 || id > maxCodeCallFrameIndex) {
                     continue;
                 }
 
-                const callFrameIndex = id <= maxCodeCallFrameIndex
-                    // get precomputed call frame for the code
-                    ? callFrameIndexByCode[id]
-                    // treat unknown ids as a memory address
-                    : getCallFrameByAddressIndex(id);
+                // get precomputed call frame for the code
+                const callFrameIndex = callFrameIndexByCode[id];
 
                 // skip ignored call frames
-                if (callFrameIndex === null) {
+                if (callFrameIndex === 0) {
                     continue;
                 }
 
@@ -69,9 +64,7 @@ export function processTicks(
                 currentNode = getNextNode(currentNode, callFrameIndex, prevSourceOffset);
 
                 // find a script positions if possible
-                const codePositions = id <= maxCodeCallFrameIndex
-                    ? positionsByCode[id]
-                    : null;
+                const codePositions = positionsByCode[id];
 
                 if (codePositions !== null) {
                     const codePositionsIndex = findPositionsCodeIndex(codePositions.positions, tickStack[i + 1]);
@@ -94,13 +87,13 @@ export function processTicks(
             }
         }
 
-        if (vmStateCallFrameIndex === null && currentNode === rootNode) {
+        if (vmStateCallFrameIndex === 0 && currentNode === rootNode) {
             // v8 profiler uses (program) in case no stack captured
             // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L174
             vmStateCallFrameIndex = programCallFrameIndex;
         }
 
-        if (vmStateCallFrameIndex !== null) {
+        if (vmStateCallFrameIndex !== 0) {
             currentNode = getNextNode(currentNode, vmStateCallFrameIndex, prevSourceOffset);
             prevSourceOffset = 0;
         }
@@ -121,19 +114,6 @@ export function processTicks(
         samplePositions,
         callFrameIndexByNode
     };
-
-    function getCallFrameByAddressIndex(address: number) {
-        let callFrameIndex = callFrameIndexByAddress.get(address);
-
-        if (callFrameIndex === undefined) {
-            const callFrame = createCallFrame(`0x${address.toString(16)}`);
-
-            callFrameIndex = callFrames.push(callFrame) - 1;
-            callFrameIndexByAddress.set(address, callFrameIndex);
-        }
-
-        return callFrameIndex;
-    }
 
     function getNextNodeRef(callFrameIndex: number, parentScriptOffset: number) {
         return callFrameIndex + (parentScriptOffset * parentOffsetBase);
@@ -202,8 +182,7 @@ export function processTicks(
         const fromNode: CallNode = nextInlinedIndex !== -1
             ? getNodeFromInline(currentNode, inlined, nextInlinedIndex)
             : currentNode;
-        const nextNode = getNextNode(fromNode, callFrameIndex, codeOffset);
 
-        return nextNode;
+        return getNextNode(fromNode, callFrameIndex, codeOffset);
     }
 }

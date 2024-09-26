@@ -51,11 +51,9 @@ function cleanupInternalName(name: string): string {
     return name;
 }
 
-function callFrameInfoFromNonJsCode(code: V8LogCode): { name: string; lowlevel?: boolean } {
+function callFrameInfoFromNonJsCode(code: V8LogCode): string | null {
     if (!code || !code.type) {
-        return {
-            name: '(unknown)'
-        };
+        return '(unknown)';
     }
 
     if (code.type === 'JS') {
@@ -122,7 +120,8 @@ function callFrameInfoFromNonJsCode(code: V8LogCode): { name: string; lowlevel?:
         }
     }
 
-    return { name, lowlevel };
+    // FIXME: temporary ignore lowlevel codes
+    return !lowlevel ? name : null;
 }
 
 export function createCallFrame(
@@ -143,64 +142,74 @@ export function createCallFrame(
 
 export function createVmStateCallFrames(callFrames: CallFrame[]) {
     const programCallFrame = createCallFrame('(program)');
+    const callFrameIndexByVmState = new Uint32Array(VM_STATES.length);
 
-    return VM_STATES.map(name => {
+    for (let i = 0; i < VM_STATES.length; i++) {
+        const name = VM_STATES[i];
+
         if (name !== 'js') {
             // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L34
             const callFrame = name == 'other' || name === 'external' || name === 'logging'
                 ? programCallFrame
                 : createCallFrame(`(${name})`);
 
-            return callFrames.push(callFrame) - 1;
+            callFrameIndexByVmState[i] = callFrames.push(callFrame) - 1;
         }
+    }
 
-        return null;
-    });
+    return callFrameIndexByVmState;
 }
 
 export function createFunctionCallFrames(
     callFrames: CallFrame[],
     functions: V8CpuProfileFunction[]
 ) {
-    return functions.map((fn) =>
-        callFrames.push(createCallFrame(
+    const callFrameIndexByFunction = new Uint32Array(functions.length);
+
+    for (let i = 0; i < functions.length; i++) {
+        const fn = functions[i];
+
+        callFrameIndexByFunction[i] = callFrames.push(createCallFrame(
             fn.name,
             fn.scriptId,
             fn.line,
             fn.column
-        )) - 1
-    );
+        )) - 1;
+    };
+
+    return callFrameIndexByFunction;
 }
 
 function createCodeCallFrames(
     callFrames: CallFrame[],
     codes: V8LogCode[],
-    callFrameIndexByFunction: number[]
+    callFrameIndexByFunction: Uint32Array
 ) {
-    return codes.map((code) => {
+    const callFrameIndexByCode = new Uint32Array(codes.length);
+
+    for (let i = 0; i < codes.length; i++) {
+        const code = codes[i];
+
         // FIXME: ignore Abort.Wide/ExtraWide for now since it too noisy;
         // not sure what it stands for, but looks like an execution pause
         if (code.kind === 'BytecodeHandler') {
             if (code.name === 'Abort.Wide' || code.name === 'Abort.ExtraWide') {
-                return null;
+                continue;
             }
         }
 
-        const func = code.func;
+        if (code.func !== undefined) {
+            callFrameIndexByCode[i] = callFrameIndexByFunction[code.func];
+        } else {
+            const name = callFrameInfoFromNonJsCode(code);
 
-        if (func !== undefined) {
-            return callFrameIndexByFunction[func];
+            if (name !== null) {
+                callFrameIndexByCode[i] = callFrames.push(createCallFrame(name)) - 1;
+            }
         }
+    }
 
-        const { name, lowlevel } = callFrameInfoFromNonJsCode(code);
-
-        // FIXME: temporary
-        if (lowlevel) {
-            return null;
-        }
-
-        return callFrames.push(createCallFrame(name)) - 1;
-    });
+    return callFrameIndexByCode;
 }
 
 export function createCallFrames(

@@ -15,6 +15,7 @@
 
 import type { CallFrame, V8LogCode, V8LogFunction, V8LogProfile } from './v8-log-processed/types.js';
 import type { V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import jora from 'jora'; // FIXME: temporary? to calc a median only
 import { processTicks } from './v8-log-processed/ticks.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
 import { createCallFrames } from './v8-log-processed/call-frames.js';
@@ -35,7 +36,7 @@ export function isV8Log(data: unknown): data is V8LogProfile {
 function processPositions(
     codes: V8LogCode[],
     functions: V8LogFunction[],
-    callFrameIndexByCode: (number | null)[]
+    callFrameIndexByCode: Uint32Array
 ) {
     const positionsByCode = processCodePositions(codes);
 
@@ -101,7 +102,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         callFrameIndexByCode,
         positionsByCode
     );
-    const samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1];
+    const samplesInterval = jora.methods.median(timeDeltas);
 
     processUrls(scripts, callFrames);
 
