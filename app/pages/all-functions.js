@@ -47,8 +47,10 @@ discovery.page.define('functions', [
                     data: '.sort(selfTime desc, totalTime desc)',
                     cols: [
                         { header: 'Self time',
+                            className: 'timings',
                             sorting: 'selfTime desc, totalTime desc',
                             colSpan: '=totalTime ? 1 : 3',
+                            contentWhen: 'selfTime or no totalTime',
                             content: {
                                 view: 'switch',
                                 content: [
@@ -58,11 +60,14 @@ discovery.page.define('functions', [
                             }
                         },
                         { header: 'Nested time',
+                            className: 'timings',
                             sorting: 'nestedTime desc, totalTime desc',
                             when: 'totalTime',
+                            contentWhen: 'nestedTime',
                             content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
                         },
                         { header: 'Total time',
+                            className: 'timings',
                             sorting: 'totalTime desc, selfTime desc',
                             when: 'totalTime',
                             content: 'duration:{ time: totalTime, total: #.data.totalTime }'

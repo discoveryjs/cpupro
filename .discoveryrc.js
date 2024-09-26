@@ -23,6 +23,7 @@ module.exports = {
             './pages/all-packages.js',
             './pages/all-modules.js',
             './pages/all-functions.js',
+            './pages/all-page-common.css',
             './pages/common.css',
             './pages/default.js',
             './pages/default.css',
