@@ -91,6 +91,18 @@ function createState(duration, segments, selectionStart = null, selectionEnd = n
     };
 }
 
+function discardCurrentView() {
+    if (currentViewEl) {
+        detailsTooltip.hide();
+
+        if (currentViewEl.dataset.state !== SELECTION_SELECTED) {
+            currentViewEl.dataset.state = SELECTION_NONE;
+        }
+
+        currentViewEl = null;
+    }
+}
+
 function getRulerFractionForPoint(timeRulerEl, x) {
     const { segments, state: currentState } = viewByEl.get(timeRulerEl);
     const rect = timeRulerEl.getBoundingClientRect();
@@ -205,6 +217,10 @@ discovery.addHostElEventListener('selectstart', (e) => {
         e.preventDefault();
     }
 }, true);
+
+// discard the current ruler when the pointer leaves the document;
+// this has no effect when selection mode is active, as currentView is capturing pointer events
+discovery.addGlobalEventListener('pointerleave', discardCurrentView, true);
 
 // track pointer pointer buttons
 discovery.addGlobalEventListener('pointerup', () => {
@@ -324,11 +340,7 @@ utils.pointerXY.subscribe(({ x, y }) => {
     } else if (currentViewEl) {
         // there is no time-ruler element under the pointer that met the conditions,
         // but we had such previously, so hide its details popup and reset the state if needed
-        detailsTooltip.hide();
-
-        if (currentViewEl.dataset.state !== SELECTION_SELECTED) {
-            currentViewEl.dataset.state = SELECTION_NONE;
-        }
+        discardCurrentView();
     }
 
     // remember time-ruler element as current if any
