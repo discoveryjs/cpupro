@@ -1,4 +1,4 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionCodeType, CpuProScriptFunction } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionCodeType, CpuProFunctionCodes } from './types';
 import { packageRegistryEndpoints } from './utils';
 
 export const TIMINGS = false;
@@ -39,7 +39,7 @@ export const vmFunctionStateTiers: V8FunctionCodeType[] = [
     'Turboprop', // Removed in 2022 https://issues.chromium.org/issues/42202499
     'Turbofan'
 ] as const;
-export const vmFunctionStateTierHotness: Record<V8FunctionCodeType, CpuProScriptFunction['hotness']> = {
+export const vmFunctionStateTierHotness: Record<V8FunctionCodeType, CpuProFunctionCodes['hotness']> = {
     'Unknown': 'cold',
     'Ignition': 'cold',
     'Sparkplug': 'warm',
