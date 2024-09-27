@@ -210,7 +210,7 @@ discovery.addHostElEventListener('selectstart', (e) => {
 discovery.addGlobalEventListener('pointerup', () => {
     // cancel selection if not started
     startSelectingRange = null;
-});
+}, true);
 discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y, target }) => {
     // do nothing when not over a time-ruler element or not a main button is pressed
     if (currentViewEl === null || (buttons & 1) === 0) {
