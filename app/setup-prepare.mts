@@ -1,6 +1,6 @@
 import { TIMINGS } from './prepare/const.js';
-import { convertToUint32Array, createMarkTime, findMaxId, remapId } from './prepare/utils.js';
 import { convertValidate } from './prepare/index.js';
+import { convertToUint32Array, findMaxId, remapId } from './prepare/utils.js';
 import { processCallFrames } from './prepare/process-call-frames.js';
 import { processNodes } from './prepare/process-nodes.js';
 import { processPaths } from './prepare/process-paths.js';
@@ -13,20 +13,31 @@ import { processScripts } from './prepare/process-scripts.js';
 import { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 import { processFunctions } from './prepare/process-functions.js';
 
-export default (function(input: unknown, { rejectData, markers }: PrepareContextApi) {
-    const markTime = TIMINGS ? createMarkTime() : () => undefined;
+export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
+    const work = async function<T>(name: string, fn: () => T): Promise<T> {
+        await setWorkTitle(name);
+        const startTime = Date.now();
 
-    markTime('convertValidate()');
-    const data = convertValidate(input, rejectData);
+        try {
+            return fn();
+        } finally {
+            TIMINGS && console.info('>', name, Date.now() - startTime);
+        }
+    };
+
+    // extract & validate
+    const data = await work('extract profile data', () =>
+        extractAndValidate(input, rejectData)
+    );
 
     // store source's initial metrics
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
 
-    markTime('find max node ID');
-    let maxNodeId = findMaxId(data.nodes);
+    let maxNodeId = await work('find max node ID', () =>
+        findMaxId(data.nodes)
+    );
 
-    markTime('processTimeDeltas()');
     const {
         startTime,
         startNoSamplesTime,
@@ -34,123 +45,141 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         endNoSamplesTime,
         totalTime,
         samplesInterval
-    } = processTimeDeltas(
-        data.timeDeltas,
-        data.samples,
-        data.startTime,
-        data.endTime,
-        data._samplesInterval // could be computed on V8 log convertation into cpuprofile
+    } = await work('process time deltas', () =>
+        processTimeDeltas(
+            data.timeDeltas,
+            data.samples,
+            data.startTime,
+            data.endTime,
+            data._samplesInterval // could be computed on V8 log convertation into cpuprofile
+        )
     );
 
     // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
     // are correcting within processTimeDeltas()
-    markTime('convert samples and timeDeltas into TypeArrays');
-    const rawSamples = convertToUint32Array(data.samples);
-    const rawTimeDeltas = convertToUint32Array(data.timeDeltas);
-    const rawSamplePositions = Array.isArray(data._samplePositions) ? convertToUint32Array(data._samplePositions) : null;
+    const {
+        rawSamples,
+        rawTimeDeltas,
+        rawSamplePositions
+    } = await work('convert samples and timeDeltas into TypeArrays', () => ({
+        rawSamples: convertToUint32Array(data.samples),
+        rawTimeDeltas: convertToUint32Array(data.timeDeltas),
+        rawSamplePositions: Array.isArray(data._samplePositions) ? convertToUint32Array(data._samplePositions) : null
+    }));
 
     // merge samples
-    markTime('merge samples');
     const {
         samples,
         sampleCounts,
         samplePositions,
         timeDeltas
-    } = mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions);
+    } = await work('merge samples', () =>
+        mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
+    );
 
     // GC nodes reparenting should be performed before node processing since it adds additional nodes
-    markTime('gcReparenting()');
-    maxNodeId = gcReparenting(samples, data.nodes, maxNodeId);
+    maxNodeId = await work('GC reparenting', () =>
+        gcReparenting(samples, data.nodes, maxNodeId)
+    );
 
     // preprocess scripts if any
-    markTime('processScripts()');
     const {
         scripts,
         scriptById
-    } = processScripts(data._scripts);
+    } = await work('processScripts()', () =>
+        processScripts(data._scripts)
+    );
 
-    markTime('processFunctions()');
     const {
         scriptFunctions
-    } = processFunctions(data._functions, scriptById);
+    } = await work('processFunctions()', () =>
+        processFunctions(data._functions, scriptById)
+    );
 
-    markTime('processNodes()');
     const {
         callFrames,
         callFramesTree
-    } = processNodes(data.nodes, maxNodeId);
+    } = await work('process nodes', () =>
+        processNodes(data.nodes, maxNodeId)
+    );
 
 
     // callFrames -> functions, modules, packages, categories
-    markTime('processCallFrames()');
     const {
         wellKnownCallFrames,
         categories,
         packages,
         modules,
         functions
-    } = processCallFrames(
-        callFrames,
-        scripts,
-        scriptById,
-        scriptFunctions,
-        data._executionContexts
+    } = await work('processCallFrames()', () =>
+        processCallFrames(
+            callFrames,
+            scripts,
+            scriptById,
+            scriptFunctions,
+            data._executionContexts
+        )
     );
 
     // process dictionaries
-    markTime('processPaths()');
-    processPaths(packages, modules);
+    await work('process paths', () =>
+        processPaths(packages, modules)
+    );
 
     // process display names
-    markTime('processDisplayNames()');
-    processDisplayNames(modules);
+    await work('process display names', () =>
+        processDisplayNames(modules)
+    );
 
     // sort dictionaries and remap ids in ascending order
-    markTime('sort dictionaries & remap ids');
-    functions.forEach(remapId);
-    modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : (a.path || '') < (b.path || '') ? -1 : 1).forEach(remapId);
-    packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
-    categories.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
+    await work('sort dictionaries & remap ids', () => {
+        functions.forEach(remapId);
+        modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : (a.path || '') < (b.path || '') ? -1 : 1).forEach(remapId);
+        packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
+        categories.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
+    });
 
     // build trees should be performed after dictionaries are sorted and remaped
-    markTime('buildTrees()');
     const {
         functionsTree,
         modulesTree,
         packagesTree,
         categoriesTree
-    } = buildTrees(
-        callFramesTree,
-        functions,
-        modules,
-        packages,
-        categories
+    } = await work('build trees', () =>
+        buildTrees(
+            callFramesTree,
+            functions,
+            modules,
+            packages,
+            categories
+        )
     );
 
     // apply object marker
-    markTime('apply discovery object markers');
-    callFrames.forEach(markers.callFrame);
-    functions.forEach(markers.function);
-    modules.forEach(markers.module);
-    packages.forEach(markers.package);
-    categories.forEach(markers.category);
-    scripts.forEach(markers.script);
-    scriptFunctions.forEach(markers['script-function']);
+    await work('mark objects', () => {
+        callFrames.forEach(markers.callFrame);
+        functions.forEach(markers.function);
+        modules.forEach(markers.module);
+        packages.forEach(markers.package);
+        categories.forEach(markers.category);
+        scripts.forEach(markers.script);
+        scriptFunctions.forEach(markers['script-function']);
+    });
 
     // re-map samples
     // FIXME: remap callFramesTree only, before buildTrees()?
-    markTime('remap tree samples');
-    remapTreeSamples(
-        samples,
-        callFramesTree,
-        functionsTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree
+    await work('remap tree samples', () =>
+        remapTreeSamples(
+            samples,
+            callFramesTree,
+            functionsTree,
+            modulesTree,
+            packagesTree,
+            categoriesTree
+        )
     );
 
     // build samples lists & trees
-    markTime('processSamples()');
     const {
         samplesTimings,
         samplesTimingsFiltered,
@@ -174,17 +203,18 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         categoriesTreeTimings,
         categoriesTreeTimingsFiltered,
         categoriesTreeTimestamps
-    } = processSamples(
-        samples,
-        timeDeltas,
-        callFramesTree,
-        functionsTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree
+    } = await work('process samples', () =>
+        processSamples(
+            samples,
+            timeDeltas,
+            callFramesTree,
+            functionsTree,
+            modulesTree,
+            packagesTree,
+            categoriesTree
+        )
     );
 
-    markTime('producing result');
     const result = {
         runtime: detectRuntime(categories, packages, data._runtime),
         sourceInfo: {
@@ -238,8 +268,6 @@ export default (function(input: unknown, { rejectData, markers }: PrepareContext
         categoriesTreeTimestamps,
         heap: data._heap || null
     };
-
-    markTime('finish');
 
     return result;
 } satisfies PrepareFunction);

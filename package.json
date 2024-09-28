@@ -48,7 +48,7 @@
   },
   "devDependencies": {
     "@discoveryjs/cli": "^2.9.1",
-    "@discoveryjs/discovery": "1.0.0-beta.85",
+    "@discoveryjs/discovery": "1.0.0-beta.86",
     "@typescript-eslint/eslint-plugin": "^7.8.0",
     "@typescript-eslint/parser": "^7.8.0",
     "eslint": "^8.7.0",

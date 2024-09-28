@@ -81,22 +81,6 @@ export function remapId(node: CpuProNode, index: number) {
     node.id = index + 1;
 }
 
-export function createMarkTime() {
-    let markTimeTimestamp = Date.now();
-    let markTimeStep: string | null = null;
-
-    return (name: string) => {
-        const newTimestamp = Date.now();
-
-        if (markTimeStep !== null) {
-            console.info('>', markTimeStep, newTimestamp - markTimeTimestamp);
-        }
-
-        markTimeStep = name;
-        markTimeTimestamp = newTimestamp;
-    };
-}
-
 export const createRegistryRx = (function() {
     const pkg = '(?<pkg>(?:[^/]+/)?[^/]+?)';
     const atpkg = '(?<pkg>(?:@[^/]+/)?[^/]+?)';
