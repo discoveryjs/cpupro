@@ -137,6 +137,8 @@ export type CpuProScript = {
     url: string;
     module: CpuProModule | null;
     source: string;
+    compilation: CpuProScriptFunction | null;
+    functions: CpuProScriptFunction[];
 }
 export type CpuProScriptFunction = {
     id: number; // starts with 1

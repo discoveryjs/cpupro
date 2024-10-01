@@ -8,7 +8,6 @@ import type {
     CpuProModule,
     CpuProFunction,
     CpuProScript,
-    WellKnownType,
     V8CpuProfileExecutionContext,
     CpuProScriptFunction
 } from './types.js';
