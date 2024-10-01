@@ -12,6 +12,7 @@ import { buildTrees } from './prepare/build-trees.js';
 import { processScripts } from './prepare/process-scripts.js';
 import { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 import { processFunctions } from './prepare/process-functions.js';
+import { Dictionary } from './prepare/dictionary.js';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
     const work = async function<T>(name: string, fn: () => T): Promise<T> {
@@ -33,6 +34,9 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // store source's initial metrics
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
+
+    // create shared dictionary
+    const dict = new Dictionary();
 
     const {
         startTime,
@@ -77,13 +81,13 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const {
         scripts,
         scriptById
-    } = await work('processScripts()', () =>
+    } = await work('process scripts', () =>
         processScripts(data._scripts)
     );
 
     const {
         scriptFunctions
-    } = await work('processFunctions()', () =>
+    } = await work('process functions', () =>
         processFunctions(data._functions, scriptById)
     );
 
@@ -91,19 +95,19 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         callFrames,
         callFramesTree
     } = await work('process nodes', () =>
-        processNodes(data.nodes, data._callFrames, samples)
+        processNodes(dict, data.nodes, data._callFrames, samples)
     );
 
 
     // callFrames -> functions, modules, packages, categories
     const {
-        wellKnownCallFrames,
         categories,
         packages,
         modules,
         functions
-    } = await work('processCallFrames()', () =>
+    } = await work('process call frames', () =>
         processCallFrames(
+            dict,
             callFrames,
             scripts,
             scriptById,
@@ -113,7 +117,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     );
 
     // process dictionaries
-    await work('process paths', () =>
+    await work('process module paths', () =>
         processPaths(packages, modules)
     );
 
@@ -198,7 +202,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         processSamples(
             samples,
             timeDeltas,
-            callFramesTree,
             functionsTree,
             modulesTree,
             packagesTree,
@@ -226,7 +229,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
-        wellKnownCallFrames,
         callFrames,
         callFramesTree,
         functions,

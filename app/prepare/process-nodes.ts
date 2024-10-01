@@ -1,106 +1,7 @@
 import { CallTree } from './call-tree';
-import { TIMINGS } from './const';
-import { createCpuProFrame } from './process-call-frames';
-import { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame } from './types';
+import { Dictionary } from './dictionary';
+import { V8CpuProfileNode, V8CpuProfileCallFrame } from './types';
 import { findMaxId } from './utils';
-
-type CallFrameMap = Map<
-    number, // scriptId
-    Map<
-        string, // function name
-        Map<
-            number, // line
-            Map<
-                number, // column
-                CpuProCallFrame
-            >
-        >
-    >
->;
-
-const scriptIdFromString = new Map<string, number>();
-
-function normalizeLoc(value: unknown) {
-    return typeof value === 'number' && value >= 0 ? value : -1;
-}
-
-function getCallFrame(
-    callFrame: V8CpuProfileCallFrame,
-    callFrames: CpuProCallFrame[],
-    byScriptIdMap: CallFrameMap
-) {
-    const functionName = callFrame.functionName || '';
-    const lineNumber = normalizeLoc(callFrame.lineNumber);
-    const columnNumber = normalizeLoc(callFrame.columnNumber);
-    const url = callFrame.url || null;
-    let scriptId = callFrame.scriptId;
-
-    // ensure scriptId is a number
-    // some tools are generating scriptId as a stringified number
-    if (typeof scriptId === 'string') {
-        if (/^\d+$/.test(scriptId)) {
-            // the simplest case: a stringified number, convert it to a number
-            scriptId = Number(scriptId);
-        } else {
-            // handle cases where scriptId is represented as an URL or a string in the format ":number"
-            let numericScriptId = scriptIdFromString.get(scriptId);
-
-            if (numericScriptId === undefined) {
-                scriptIdFromString.set(scriptId, numericScriptId = /^:\d+$/.test(scriptId)
-                    ? Number(scriptId.slice(1))
-                    : -scriptIdFromString.size - 1
-                );
-            }
-
-            scriptId = numericScriptId;
-        }
-    }
-
-    // resolve a callFrame through a chain of maps
-    let byFunctionNameMap = byScriptIdMap.get(scriptId);
-    if (byFunctionNameMap === undefined) {
-        byScriptIdMap.set(scriptId, byFunctionNameMap = new Map());
-    }
-
-    let byLineNumberMap = byFunctionNameMap.get(functionName);
-    if (byLineNumberMap === undefined) {
-        byFunctionNameMap.set(functionName, byLineNumberMap = new Map());
-    }
-
-    let resultMap = byLineNumberMap.get(lineNumber);
-    if (resultMap === undefined) {
-        byLineNumberMap.set(lineNumber, resultMap = new Map());
-    }
-
-    let result = resultMap.get(columnNumber);
-    if (result === undefined) {
-        result = createCpuProFrame(
-            callFrames.length + 1,
-            scriptId,
-            url,
-            functionName,
-            lineNumber,
-            columnNumber
-        );
-
-        callFrames.push(result);
-        resultMap.set(columnNumber, result);
-    }
-
-    return result;
-}
-
-function addCallFrame(
-    callFrame: V8CpuProfileCallFrame,
-    callFrames: CpuProCallFrame[],
-    callFramesMap: CallFrameMap
-): number {
-    return getCallFrame(
-        callFrame,
-        callFrames,
-        callFramesMap
-    ).id - 1;
-}
 
 function buildCallFrameTree(
     nodeId: number,
@@ -134,13 +35,13 @@ function buildCallFrameTree(
 }
 
 export function processNodes(
+    dict: Dictionary,
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     inputCallFrames: V8CpuProfileCallFrame[] | null = null,
     samples_: Uint32Array
 ) {
     const samples = samples_.slice();
-    const callFramesMap: CallFrameMap = new Map();
-    const callFrames: CpuProCallFrame[] = [];
+    const callFrames = dict.callFrames;
     let callFrameByNodeIndex = new Uint32Array(nodes.length);
     const maxNodeId: number = findMaxId(nodes);
     let nodeIndexById = new Uint32Array(maxNodeId + 1);
@@ -150,7 +51,7 @@ export function processNodes(
     const inputCallFramesMap = new Uint32Array(inputCallFrames?.length || 0);
     if (inputCallFrames !== null) {
         for (let i = 0; i < inputCallFrames.length; i++) {
-            inputCallFramesMap[i] = addCallFrame(inputCallFrames[i], callFrames, callFramesMap);
+            inputCallFramesMap[i] = dict.resolveCallFrameIndex(inputCallFrames[i]);
         }
 
         // FIXME
@@ -164,7 +65,7 @@ export function processNodes(
         const { id, callFrame, children } = nodes[i];
         const callFrameIndex = typeof callFrame === 'number'
             ? inputCallFramesMap[callFrame]
-            : addCallFrame(callFrame, callFrames, callFramesMap);
+            : dict.resolveCallFrameIndex(callFrame);
 
         nodeIndexById[id] = i;
         nodeChildren[i] = Array.isArray(children) && children.length > 0 ? children : null;

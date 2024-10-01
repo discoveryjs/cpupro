@@ -134,7 +134,6 @@ export function remapTreeSamples(samples: Uint32Array, entryTree: CallTree<CpuPr
 export function processSamples(
     samples: Uint32Array,
     timeDeltas: Uint32Array,
-    callFramesTree: CallTree<CpuProCallFrame>,
     functionsTree: CallTree<CpuProFunction>,
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
