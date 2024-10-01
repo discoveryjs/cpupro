@@ -141,19 +141,17 @@ export function createCallFrame(
 }
 
 export function createVmStateCallFrames(callFrames: CallFrame[]) {
-    const programCallFrame = createCallFrame('(program)');
     const callFrameIndexByVmState = new Uint32Array(VM_STATES.length);
+    const programCallFrameIndex = callFrames.push(createCallFrame('(program)')) - 1;
 
     for (let i = 0; i < VM_STATES.length; i++) {
         const name = VM_STATES[i];
 
         if (name !== 'js') {
             // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L34
-            const callFrame = name == 'other' || name === 'external' || name === 'logging'
-                ? programCallFrame
-                : createCallFrame(`(${name})`);
-
-            callFrameIndexByVmState[i] = callFrames.push(callFrame) - 1;
+            callFrameIndexByVmState[i] = name == 'other' || name === 'external' || name === 'logging'
+                ? programCallFrameIndex
+                : callFrames.push(createCallFrame(`(${name})`)) - 1;
         }
     }
 
