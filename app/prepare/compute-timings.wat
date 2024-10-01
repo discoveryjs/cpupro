@@ -174,8 +174,11 @@
   (local $value i32)
   (local $resultAddr i32) ;; Address in $samplesTimes array.
 
-  ;; for (let i = nodesCount - 1; i > 0; i--) {
-  ;;   nestedTimes[parent[i]] += selfTimes[i] + nestedTimes[i];
+  ;; for (let i = nodesCount - 1; i >= 0; i--) {
+  ;;     const nodeId = totalNodes[i];
+  ;;     const selfTime = nodeSelfTimes[nodeId];
+  ;;     const nestedTime = nodeNestedTimes[nodeId];
+  ;;     totalTimes[totalNodeToDict[i]] += selfTime + nestedTime;
   ;; }
 
   ;; Initialize $offset to the byte position of the last element
@@ -189,6 +192,7 @@
       ) ;; Exit loop if offset === 0
 
       ;; Decrement 'offset' by 4 for the next iteration.
+      ;; $offset = $offset - 4
       (local.set $offset
         (i32.sub
           (local.get $offset)
@@ -196,6 +200,8 @@
         )
       )
 
+      ;; $nodeId = i32.load($totalNodes + $offset) << 2
+      ;; \-> nodeId = totalNodes[offset] * 4
       (local.set $nodeId
         (i32.shl
           (i32.load
@@ -211,6 +217,8 @@
       ;; Continue if value equals zero
       (br_if $loop
         (i32.eqz
+          ;; $value = i32.load($nodeSelfTimes + $nodeId) + i32.load($nodeNestedTimes + $nodeId)
+          ;; \-> value = nodeSelfTimes[nodeId] + nodeNestedTimes[nodeId]
           (local.tee $value
             (i32.add
               (i32.load
@@ -231,6 +239,8 @@
       )
 
       ;; Calculate address in $totalTimes array and store in $resultAddr.
+      ;; $resultAddr = $totalTimes + i32.load($totalNodeToDict + $offset) << 2
+      ;; \-> resultAddr = totalTimes[totalNodeDict[offset] * 4]
       (local.set $resultAddr
         (i32.add
           (local.get $totalTimes)
