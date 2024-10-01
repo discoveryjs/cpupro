@@ -57,7 +57,7 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
 // nodes may missing children field but have parent field, rebuild children arrays then;
 // avoid updating children when nodes have parent and children fields
 export function convertParentIntoChildrenIfNeeded(data: V8CpuProfile) {
-    const nodes: (V8CpuProfileNode & { parent?: number })[] = data.nodes;
+    const nodes: (V8CpuProfileNode<unknown> & { parent?: number })[] = data.nodes;
 
     // no action when just one node or both first nodes has no parent (since only root node can has no parent)
     if (nodes.length < 2 || (typeof nodes[0].parent !== 'number' && typeof nodes[1].parent !== 'number')) {

@@ -65,12 +65,16 @@ export function decodeBase64(input: string) {
 }
 
 // Fastest way to find max id
-export function findMaxId(nodes: V8CpuProfileNode[]) {
+export function findMaxId(nodes: V8CpuProfileNode<unknown>[]) {
     let maxId = nodes[nodes.length - 1].id;
 
-    for (let i = 0; i < nodes.length; i++) {
-        if (nodes[i].id > maxId) {
-            maxId = nodes[i].id;
+    // Usually, maxId equals the length of the nodes array (id in range [1 .. nodes.length]).
+    // Search for maxId only if this condition is not met, indicating that nodes are shuffled or have gaps
+    if (maxId !== nodes.length) {
+        for (let i = 0; i < nodes.length; i++) {
+            if (nodes[i].id > maxId) {
+                maxId = nodes[i].id;
+            }
         }
     }
 

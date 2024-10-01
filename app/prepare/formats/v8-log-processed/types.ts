@@ -92,9 +92,9 @@ export type CallFrame = {
     columnNumber: number;
 }
 
-export type CallNode = {
+export type CallNode<TCallFrame = CallFrame> = {
     id: number;
-    callFrame: CallFrame;
+    callFrame: TCallFrame;
     children: number[];
     parentScriptOffset: number;
 }

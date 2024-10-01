@@ -13,7 +13,7 @@
 //   > node --prof --log-deopt --prof-sampling-interval=250 ...
 //
 
-import type { CallFrame, V8LogCode, V8LogFunction, V8LogProfile } from './v8-log-processed/types.js';
+import type { CallFrame, CallNode, V8LogCode, V8LogFunction, V8LogProfile } from './v8-log-processed/types.js';
 import type { V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import jora from 'jora'; // FIXME: temporary? to calc a median only
 import { processTicks } from './v8-log-processed/ticks.js';
@@ -84,9 +84,30 @@ function processUrls(scripts: (V8CpuProfileScript | null)[], callFrames: CallFra
 
     for (const callFrame of callFrames) {
         if (callFrame.scriptId !== 0) {
-            callFrame.url = (scripts[callFrame.scriptId] as V8CpuProfileScript).url;
+            callFrame.url = scripts[callFrame.scriptId]?.url || '';
         }
     }
+}
+
+function collectCallFramesFromNodes(nodes: CallNode<number>[], callFrames: CallFrame[]) {
+    const nodeCallFrames: CallFrame[] = [];
+    const packedCallFrameIndex = new Int32Array(callFrames.length);
+
+    for (const node of nodes) {
+        const callFrameIndex = node.callFrame;
+        const callFrame = callFrames[callFrameIndex];
+        let nodeCallFramesIndex = packedCallFrameIndex[callFrameIndex];
+
+        if (nodeCallFramesIndex === 0) {
+            nodeCallFramesIndex = nodeCallFrames.length;
+            packedCallFrameIndex[callFrameIndex] = nodeCallFramesIndex;
+            nodeCallFrames.push(callFrame);
+        }
+
+        node.callFrame = /* callFrame ||*/ nodeCallFramesIndex;
+    }
+
+    return nodeCallFrames;
 }
 
 export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
@@ -102,6 +123,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         callFrameIndexByCode,
         positionsByCode
     );
+    const nodeCallFrames = collectCallFramesFromNodes(nodes, callFrames);
     const samplesInterval = jora.methods.median(timeDeltas);
 
     processUrls(scripts, callFrames);
@@ -118,6 +140,7 @@ export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
         _scripts: scripts.filter(script => script !== null),
         _functions: functions,
         _functionCodes: functionCodes,
+        _callFrames: nodeCallFrames,
         _heap: v8log.heap
     };
 }

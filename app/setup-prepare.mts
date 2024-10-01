@@ -1,11 +1,11 @@
 import { TIMINGS } from './prepare/const.js';
-import { convertValidate } from './prepare/index.js';
-import { convertToUint32Array, findMaxId, remapId } from './prepare/utils.js';
+import { convertToUint32Array, remapId } from './prepare/utils.js';
+import { extractAndValidate } from './prepare/index.js';
 import { processCallFrames } from './prepare/process-call-frames.js';
 import { processNodes } from './prepare/process-nodes.js';
 import { processPaths } from './prepare/process-paths.js';
 import { processDisplayNames } from './prepare/process-module-names.js';
-import { gcReparenting, mergeSamples, processSamples, remapTreeSamples } from './prepare/process-samples.js';
+import { mergeSamples, processSamples, remapTreeSamples } from './prepare/process-samples.js';
 import { processTimeDeltas } from './prepare/process-time-deltas.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/build-trees.js';
@@ -33,10 +33,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // store source's initial metrics
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
-
-    let maxNodeId = await work('find max node ID', () =>
-        findMaxId(data.nodes)
-    );
 
     const {
         startTime,
@@ -77,11 +73,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
     );
 
-    // GC nodes reparenting should be performed before node processing since it adds additional nodes
-    maxNodeId = await work('GC reparenting', () =>
-        gcReparenting(samples, data.nodes, maxNodeId)
-    );
-
     // preprocess scripts if any
     const {
         scripts,
@@ -100,7 +91,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         callFrames,
         callFramesTree
     } = await work('process nodes', () =>
-        processNodes(data.nodes, maxNodeId)
+        processNodes(data.nodes, data._callFrames, samples)
     );
 
 

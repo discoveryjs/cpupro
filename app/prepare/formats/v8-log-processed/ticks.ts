@@ -5,7 +5,7 @@ import { VM_STATE_GC, VM_STATE_IDLE, VM_STATE_OTHER } from './const.js';
 const parentOffsetBase = 0x0010_0000;
 const useMapForChildren = 8;
 
-function createNode(id: number, callFrame: CallFrame, parentScriptOffset = 0): CallNode {
+function createNode<T>(id: number, callFrame: T, parentScriptOffset = 0): CallNode<T> {
     return {
         id,
         callFrame,
@@ -14,7 +14,7 @@ function createNode(id: number, callFrame: CallFrame, parentScriptOffset = 0): C
     };
 }
 
-type CallNodeMap = Map<number, CallNode>;
+type CallNodeMap = Map<number, CallNode<number>>;
 
 export function processTicks(
     ticks: V8LogTick[],
@@ -23,12 +23,11 @@ export function processTicks(
     callFrameIndexByCode: number[] | Uint32Array,
     positionsByCode
 ) {
-    const callFrameIndexByNode: number[] = [0]; // 0 for rootNode
     const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_OTHER];
     const maxCodeCallFrameIndex = callFrameIndexByCode.length - 1;
-    const rootNode = createNode(1, callFrames[0]);
-    const nodes: CallNode[] = [rootNode];
-    const nodeTransitionMaps = new Map<CallNode, CallNodeMap>();
+    const rootNode = createNode(1, 0);
+    const nodes: CallNode<number>[] = [rootNode];
+    const nodeTransitionMaps = new Map<CallNode<number>, CallNodeMap>();
     const samples = new Array(ticks.length);
     const timeDeltas = new Array(ticks.length);
     const samplePositions = new Array(ticks.length);
@@ -111,15 +110,14 @@ export function processTicks(
         nodes,
         samples,
         timeDeltas,
-        samplePositions,
-        callFrameIndexByNode
+        samplePositions
     };
 
     function getNextNodeRef(callFrameIndex: number, parentScriptOffset: number) {
         return callFrameIndex + (parentScriptOffset * parentOffsetBase);
     }
 
-    function getNextNode(currentNode: CallNode, callFrameIndex: number, parentScriptOffset: number) {
+    function getNextNode(currentNode: CallNode<number>, callFrameIndex: number, parentScriptOffset: number) {
         const childrenLength = currentNode.children.length;
 
         if (childrenLength === 0) {
@@ -127,12 +125,10 @@ export function processTicks(
         }
 
         if (childrenLength < useMapForChildren) {
-            const callFrame = callFrames[callFrameIndex];
-
             for (const childId of currentNode.children) {
                 const child = nodes[childId - 1];
 
-                if (child.callFrame === callFrame && child.parentScriptOffset === parentScriptOffset) {
+                if (child.callFrame === callFrameIndex && child.parentScriptOffset === parentScriptOffset) {
                     return child;
                 }
             }
@@ -147,22 +143,22 @@ export function processTicks(
         );
     }
 
-    function createNextNode(currentNode: CallNode, callFrameIndex: number, parentScriptOffset: number) {
-        const nextNode = createNode(nodes.length + 1, callFrames[callFrameIndex], parentScriptOffset);
+    function createNextNode(currentNode: CallNode<number>, callFrameIndex: number, parentScriptOffset: number) {
+        const nextNode = createNode(nodes.length + 1, callFrameIndex, parentScriptOffset);
         const newChildrenLength = currentNode.children.push(nextNode.id);
 
         nodes.push(nextNode);
-        callFrameIndexByNode.push(callFrameIndex);
 
         if (newChildrenLength >= useMapForChildren) {
             if (newChildrenLength === useMapForChildren) {
-                nodeTransitionMaps.set(currentNode, new Map(currentNode.children.map(childId => [
-                    getNextNodeRef(
-                        callFrameIndexByNode[childId - 1],
-                        nodes[childId - 1].parentScriptOffset
-                    ),
-                    nodes[childId - 1]
-                ])));
+                nodeTransitionMaps.set(currentNode, new Map(currentNode.children.map(childId => {
+                    const childNode = nodes[childId - 1];
+
+                    return [
+                        getNextNodeRef(childNode.callFrame, childNode.parentScriptOffset),
+                        childNode
+                    ];
+                })));
             } else {
                 // cast to CallNodeMap because the map is guaranteed to be defined, but TypeScript can't be sure of that
                 (nodeTransitionMaps.get(currentNode) as CallNodeMap).set(
@@ -175,11 +171,11 @@ export function processTicks(
         return nextNode;
     }
 
-    function getNodeFromInline(currentNode: CallNode, inlined: number[], i: number) {
+    function getNodeFromInline(currentNode: CallNode<number>, inlined: number[], i: number) {
         const callFrameIndex = inlined[i * 3];
         const codeOffset = inlined[i * 3 + 1];
         const nextInlinedIndex = inlined[i * 3 + 2];
-        const fromNode: CallNode = nextInlinedIndex !== -1
+        const fromNode: CallNode<number> = nextInlinedIndex !== -1
             ? getNodeFromInline(currentNode, inlined, nextInlinedIndex)
             : currentNode;
 

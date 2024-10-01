@@ -1,15 +1,16 @@
 export type V8CpuProfile = {
     startTime: number;
     endTime: number;
-    nodes: V8CpuProfileNode[];
+    nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[];
     timeDeltas: number[];
     samples: number[];
 } & V8CpuProfileCpuproExtensions;
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
+    _runtime?: RuntimeCode;
     _samplesInterval?: number;
     _samplePositions?: number[];
-    _runtime?: RuntimeCode;
+    _callFrames?: V8CpuProfileCallFrame[];
     _scripts?: V8CpuProfileScript[];
     _functions?: V8CpuProfileFunction[];
     _functionCodes?: V8CpuProfileFunctionCodes[];
@@ -20,9 +21,9 @@ export type V8CpuProfileCpuproExtensions = {
         events: V8HeapEvent[];
     };
 }
-export type V8CpuProfileNode = {
+export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     id: number;
-    callFrame: V8CpuProfileCallFrame;
+    callFrame: TCallFrame;
     children?: number[];
     parentScriptOffset?: number;
 }

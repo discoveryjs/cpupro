@@ -2,7 +2,7 @@ import { convertParentIntoChildrenIfNeeded, isCPUProfile } from './formats/cpupr
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuprofile, isV8Log } from './formats/v8-log-processed.js';
-import { V8CpuProfileCpuproExtensions } from './types.js';
+import { V8CpuProfile, V8CpuProfileCpuproExtensions } from './types.js';
 
 export const supportedFormats = [
     '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
@@ -17,7 +17,7 @@ export const supportedFormatsText = supportedFormats
 //     return data && Array.isArray(data.nodes) && Array.isArray(data.profiles);
 // }
 
-export function convertValidate(data: unknown, rejectData: (reason: string, view?: unknown) => void) {
+export function extractAndValidate(data: unknown, rejectData: (reason: string, view?: unknown) => void) {
     let extensions: V8CpuProfileCpuproExtensions = {};
 
     data = data || {};
@@ -43,7 +43,7 @@ export function convertValidate(data: unknown, rejectData: (reason: string, view
             rejectData('CPU profile data not found');
         }
     } else if (isV8Log(data)) {
-        data = convertV8LogIntoCpuprofile(data);
+        return convertV8LogIntoCpuprofile(data) as V8CpuProfile;
     }
 
     // if (isCPUProfileMerge(data)) {
