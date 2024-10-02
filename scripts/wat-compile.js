@@ -5,7 +5,6 @@ const wabtPromise = require('wabt')();
 
 const debug = process.argv.includes('--debug');
 const files = [
-    '../app/prepare/build-trees.wat',
     '../app/prepare/compute-timings.wat'
 ].map(relpath => path.join(__dirname, relpath));
 

@@ -1,7 +1,89 @@
 import { TIMINGS } from './const';
 import { CallTree } from './call-tree.js';
 import { CpuProCategory, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from './types.js';
-import { makeFirstNextArrays } from './build-trees-wasm-wrapper.js';
+
+export function makeFirstNextArrays(parent: Uint32Array) {
+    const firstChild = new Uint32Array(parent.length);
+    const nextSibling = new Uint32Array(parent.length);
+
+    for (let i = parent.length - 1; i > 0; i--) {
+        const pi = parent[i];
+
+        nextSibling[i] = firstChild[pi];
+        firstChild[pi] = i;
+    }
+
+    return {
+        firstChild,
+        nextSibling
+    };
+}
+
+export function computeNested(
+    nested: Uint32Array,
+    nodes: Uint32Array,
+    subtreeSize: Uint32Array,
+    dictionarySize: number
+) {
+    const nestedMask = new Uint32Array(dictionarySize);
+
+    nestedMask[nodes[0]] = nodes.length + 1;
+
+    for (let i = 1; i < nodes.length; i++) {
+        if (nestedMask[nodes[i]] >= i) {
+            nested[i] = 1;
+        } else {
+            nestedMask[nodes[i]] = i + subtreeSize[i];
+        }
+    }
+}
+
+export function computeSubtreeSize(
+    subtreeSize: Uint32Array,
+    parent: Uint32Array
+) {
+    for (let i = parent.length - 1; i > 0; i--) {
+        subtreeSize[parent[i]] += subtreeSize[i] + 1;
+    }
+}
+
+function collapseNodes(
+    nodes: Uint32Array,
+    parent: Uint32Array,
+    sourceToNode: Uint32Array,
+    remap: Uint32Array,
+    firstChild: Uint32Array,
+    nextSibling: Uint32Array
+) {
+    let index = 0;
+    let cursor = 0;
+
+    do {
+        const first = firstChild[cursor];
+        let next = nextSibling[cursor];
+        let nodeIndex = index++;
+
+        nodes[nodeIndex] = cursor;
+        remap[sourceToNode[cursor]] = nodeIndex;
+
+        if (first !== 0) {
+            cursor = first;
+            parent[index] = nodeIndex;
+        } else if (next !== 0) {
+            cursor = next;
+            parent[index] = parent[nodeIndex];
+        } else {
+            cursor = 0;
+            while (nodeIndex = parent[nodeIndex]) {
+                if (next = nextSibling[nodes[nodeIndex]]) {
+                    parent[index] = parent[nodeIndex];
+                    cursor = next;
+                    break;
+                }
+            }
+        }
+    } while (cursor !== 0);
+}
 
 function finalizeArrays(
     dictionarySize: number,
@@ -16,50 +98,23 @@ function finalizeArrays(
     const parent = new Uint32Array(nodesSize);
     const subtreeSize = new Uint32Array(nodesSize);
     const nested = new Uint32Array(nodesSize);
-    const nestedMask = new Uint32Array(dictionarySize);
     const remap = new Uint32Array(nodesSize);
-    let index = 0;
-    let cursor = 0;
 
-    do {
-        const valueIndex = sourceToDictionary[sourceNodes[cursor]];
-        const nestedLevel = nestedMask[valueIndex];
-        const first = firstChild[cursor];
-        let next = nextSibling[cursor];
-        let nodeIndex = index++;
+    collapseNodes(
+        nodes,
+        parent,
+        sourceToNode,
+        remap,
+        firstChild,
+        nextSibling
+    );
 
-        nodes[nodeIndex] = cursor;
-        remap[sourceToNode[cursor]] = nodeIndex;
-
-        if (nestedLevel !== 0) {
-            nested[nodeIndex] = nestedLevel;
-        }
-
-        if (first !== 0) {
-            cursor = first;
-            parent[index] = nodeIndex;
-            nestedMask[valueIndex]++;
-        } else if (next !== 0) {
-            cursor = next;
-            parent[index] = parent[nodeIndex];
-        } else {
-            cursor = 0;
-            while (nodeIndex = parent[nodeIndex]) {
-                nestedMask[sourceToDictionary[sourceNodes[nodes[nodeIndex]]]]--;
-                if (next = nextSibling[nodes[nodeIndex]]) {
-                    parent[index] = parent[nodeIndex];
-                    cursor = next;
-                    break;
-                }
-            }
-        }
-    } while (cursor !== 0);
-
-    nodes[0] = sourceToDictionary[sourceNodes[nodes[0]]];
-    for (let i = nodes.length - 1; i > 0; i--) {
-        subtreeSize[parent[i]] += subtreeSize[i] + 1;
+    for (let i = 0; i < nodes.length; i++) {
         nodes[i] = sourceToDictionary[sourceNodes[nodes[i]]];
     }
+
+    computeSubtreeSize(subtreeSize, parent);
+    computeNested(nested, nodes, subtreeSize, dictionarySize);
 
     for (let i = 0; i < sourceToNode.length; i++) {
         sourceToNode[i] = remap[sourceToNode[i]];
@@ -78,40 +133,42 @@ function rollupTreeByCommonValues(
 ) {
     const valueToNodeEpoch = new Uint32Array(dictionarySize);
     const valueToNode = new Uint32Array(dictionarySize);
-    const stack = [0];
+    const valueToNodeTail = new Uint32Array(dictionarySize);
     let nodesCount = 1;
 
-    while (stack.length > 0) {
-        const nodeIndex = stack.pop() as number;
+    for (let i = 0; i < firstChild.length; i++) {
+        const nodeIndex = i;
         const nodeValue = sourceToDictionary[sourceNodes[nodeIndex]];
         let prevCursor = nodeIndex;
-        let cursor = firstChild[nodeIndex];
 
-        while (cursor !== 0) {
+        for (let cursor = firstChild[i]; cursor !== 0;) {
             const childValue = sourceToDictionary[sourceNodes[cursor]];
 
             if (childValue === nodeValue) {
                 const cursorFirstChild = firstChild[cursor];
+                const cursorNextSibling = nextSibling[cursor];
 
                 sourceToNode[cursor] = sourceToNode[nodeIndex];
 
                 if (prevCursor === nodeIndex) {
-                    firstChild[prevCursor] = cursorFirstChild || nextSibling[cursor];
+                    firstChild[prevCursor] = cursorFirstChild || cursorNextSibling;
                 } else {
-                    nextSibling[prevCursor] = cursorFirstChild || nextSibling[cursor];
+                    nextSibling[prevCursor] = cursorFirstChild || cursorNextSibling;
                 }
 
+                // replace cursor's node with its children
                 if (cursorFirstChild) {
-                    if (nextSibling[cursor]) {
+                    if (cursorNextSibling) {
                         let lastChild = cursorFirstChild;
 
                         while (nextSibling[lastChild] !== 0) {
                             lastChild = nextSibling[lastChild];
                         }
 
-                        nextSibling[lastChild] = nextSibling[cursor];
+                        nextSibling[lastChild] = cursorNextSibling;
                     }
 
+                    firstChild[cursor] = 0;
                     cursor = cursorFirstChild;
                     continue;
                 }
@@ -120,49 +177,54 @@ function rollupTreeByCommonValues(
                 if (valueToNodeEpoch[childValue] === nodeIndex + 1) {
                     // node already created, move children to existing node if any
                     const cursorFirstChild = firstChild[cursor];
-                    const existedCursor = valueToNode[childValue];
+                    const existedNode = valueToNode[childValue];
 
-                    sourceToNode[cursor] = sourceToNode[existedCursor];
+                    sourceToNode[cursor] = sourceToNode[existedNode];
                     nextSibling[prevCursor] = nextSibling[cursor];
 
                     if (cursorFirstChild) {
-                        const existedFirstChild = firstChild[existedCursor];
+                        const existedFirstChild = firstChild[existedNode];
 
+                        // if existed node has children, append cursor's children to then
+                        //
+                        // before:
+                        //
+                        //    [existed node]     [cursor node]
+                        //     ↓                  ↓
+                        //     A → … → B → 0      C → … → D → 0
+                        //
+                        // after:
+                        //
+                        //    [existed node]                [cursor node]
+                        //     ↓                             ↓
+                        //     A → … → B → C → … → D → 0     0
+                        //
                         if (existedFirstChild !== 0) {
-                            // attach children to the end of existed (for parity with initial approach)
-                            // let lastChild = existedFirstChild;
+                            let lastChild = valueToNodeTail[childValue];
 
-                            // while (nextSibling[lastChild] !== 0) {
-                            //     lastChild = nextSibling[lastChild];
-                            // }
-
-                            // nextSibling[lastChild] = cursorFirstChild;
-
-                            // attach children into the beginning of existed node (faster)
-                            // in this case, the children will be traversed only once, unlike inserting at the end, when the complexity can be n^2
-                            let lastChild = cursorFirstChild;
-
+                            // search for last child
                             while (nextSibling[lastChild] !== 0) {
                                 lastChild = nextSibling[lastChild];
                             }
 
-                            firstChild[existedCursor] = cursorFirstChild;
-                            nextSibling[lastChild] = existedFirstChild;
+                            nextSibling[lastChild] = cursorFirstChild;
+                            valueToNodeTail[childValue] = lastChild;
                         } else {
-                            firstChild[existedCursor] = cursorFirstChild;
-                            stack.push(existedCursor);
+                            firstChild[existedNode] = cursorFirstChild;
+                            valueToNodeTail[childValue] = cursorFirstChild;
                         }
+
+                        // prevent further visiting cursor node, because its children moved
+                        firstChild[cursor] = 0;
                     }
                 } else {
-                    // create new
-                    sourceToNode[cursor] = nodesCount++;
+                    // create new node
                     valueToNodeEpoch[childValue] = nodeIndex + 1;
                     valueToNode[childValue] = cursor;
-                    prevCursor = cursor;
+                    valueToNodeTail[childValue] = firstChild[cursor];
 
-                    if (firstChild[cursor]) {
-                        stack.push(cursor);
-                    }
+                    sourceToNode[cursor] = nodesCount++;
+                    prevCursor = cursor;
                 }
             }
 
@@ -182,8 +244,9 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
     const sourceNodes = sourceTree.nodes;
     const sourceToDictionary = new Uint32Array(sourceTree.dictionary.length);
     const sourceToNode = new Uint32Array(sourceNodes.length);
-    const { firstChild, nextSibling } = makeFirstNextArrays(sourceTree.parent, sourceTree.subtreeSize);
+    const { firstChild, nextSibling } = makeFirstNextArrays(sourceTree.parent);
 
+    const sourceToDictStart = Date.now();
     for (let i = 0; i < sourceTree.dictionary.length; i++) {
         sourceToDictionary[i] = sourceNodeToDictionaryFn(sourceTree.dictionary[i]);
     }
@@ -216,15 +279,15 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
     if (TIMINGS) {
         console.info(
             '---> buildTree()',
-            rollupTreeStart - initTimeStart, '+',
-            finalizeStart - rollupTreeStart, '+',
-            createTreeStart - finalizeStart, '+',
+            sourceToDictStart - initTimeStart, '(fc/ns) +',
+            rollupTreeStart - sourceToDictStart, '(dict) +',
+            finalizeStart - rollupTreeStart, '(rollup) +',
+            createTreeStart - finalizeStart, '(finalize) +',
             Date.now() - createTreeStart,
-            '=',
+            '(compute) =',
             Date.now() - initTimeStart, 'ms'
         );
     }
-
 
     return tree;
 }
