@@ -87,7 +87,7 @@ export class Dictionary {
 
     reset() {}
 
-    setPackageNameByOrigin(origin: string, packageName: string) {
+    setPackageNameForOrigin(origin: string, packageName: string) {
         const existingPackageName = this.#packageNameByOriginMap.get(origin);
 
         if (existingPackageName === undefined) {
@@ -334,7 +334,7 @@ export class Dictionary {
 
         if (pkg === undefined) {
             pkg = {
-                id: this.packagesMap.size + 1,
+                id: this.packages.length + 1,
                 type,
                 name,
                 path,

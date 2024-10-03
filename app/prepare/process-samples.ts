@@ -9,7 +9,6 @@ import {
     TreeTiminigs
 } from './compute-timings.js';
 import {
-    CpuProCallFrame,
     CpuProFunction,
     CpuProModule,
     CpuProCategory,
@@ -97,8 +96,10 @@ export function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array, samp
         };
 }
 
-export function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
-    const tmpMap = new Uint32Array(nodeById.length);
+// FIXME: sampleIdMap can contain -1 for missed IDs; normally, this shouldn't happen,
+// but it is possible with corrupted or incomplete input data, so it probably makes sense to handle such cases
+export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
+    const tmpMap = new Uint32Array(sampleIdMap.length);
     const samplesMap: number[] = []; // -> callFramesTree.nodes
     let sampledNodesCount = 0;
 
@@ -108,7 +109,7 @@ export function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
         const newSampleId = tmpMap[id];
 
         if (newSampleId === 0) {
-            samplesMap.push(nodeById[id]);
+            samplesMap.push(sampleIdMap[id]);
             tmpMap[id] = ++sampledNodesCount;
             samples[i] = sampledNodesCount - 1;
         } else {
@@ -120,12 +121,16 @@ export function remapSamples(samples: Uint32Array, nodeById: Uint32Array) {
     return convertToUint32Array(samplesMap);
 }
 
-export function remapTreeSamples(samples: Uint32Array, entryTree: CallTree<CpuProNode>, ...restTrees: CallTree<CpuProNode>[]) {
-    let sampleIdToNode = remapSamples(samples, entryTree.sourceIdToNode);
+export function remapTreeSamples(
+    samples: Uint32Array,
+    sampleIdMap: Int32Array,
+    ...trees: CallTree<CpuProNode>[]
+) {
+    let sampleIdToNode = remapSamples(samples, sampleIdMap);
 
-    entryTree.sampleIdToNode = sampleIdToNode;
+    // entryTree.sampleIdToNode = sampleIdToNode;
 
-    for (const tree of restTrees) {
+    for (const tree of trees) {
         tree.sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
         sampleIdToNode = tree.sampleIdToNode;
     }

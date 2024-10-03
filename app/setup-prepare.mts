@@ -67,13 +67,13 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         rawSamplePositions: Array.isArray(data._samplePositions) ? convertToUint32Array(data._samplePositions) : null
     }));
 
-    // merge samples
+    // process samples
     const {
         samples,
         sampleCounts,
         samplePositions,
         timeDeltas
-    } = await work('merge samples', () =>
+    } = await work('process samples', () =>
         mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
     );
 
@@ -92,8 +92,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     );
 
     const {
-        callFrames,
-        callFramesTree
+        callFramesTree,
+        callFrameByNodeIndex,
+        nodeParent,
+        nodeIndexById
     } = await work('process nodes', () =>
         processNodes(dict, data.nodes, data._callFrames, samples)
     );
@@ -108,7 +110,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     } = await work('process call frames', () =>
         processCallFrames(
             dict,
-            callFrames,
             scripts,
             scriptById,
             scriptFunctions,
@@ -128,45 +129,39 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
     // sort dictionaries and remap ids in ascending order
     await work('sort dictionaries & remap ids', () => {
-        functions.forEach(remapId);
-        modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : (a.path || '') < (b.path || '') ? -1 : 1).forEach(remapId);
-        packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
+        // functions.forEach(remapId);
+        // modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : (a.path || '') < (b.path || '') ? -1 : 1).forEach(remapId);
+        // packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
         categories.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
     });
 
     // build trees should be performed after dictionaries are sorted and remaped
     const {
+        treeSource,
         functionsTree,
         modulesTree,
         packagesTree,
         categoriesTree
     } = await work('build trees', () =>
         buildTrees(
-            callFramesTree,
+            nodeParent,
+            nodeIndexById,
+            callFrameByNodeIndex,
+            dict.callFrames,
             functions,
             modules,
             packages,
-            categories
+            categories,
+            callFramesTree
         )
     );
-
-    // apply object marker
-    await work('mark objects', () => {
-        callFrames.forEach(markers.callFrame);
-        functions.forEach(markers.function);
-        modules.forEach(markers.module);
-        packages.forEach(markers.package);
-        categories.forEach(markers.category);
-        scripts.forEach(markers.script);
-        scriptFunctions.forEach(markers['script-function']);
-    });
 
     // re-map samples
     // FIXME: remap callFramesTree only, before buildTrees()?
     await work('remap tree samples', () =>
         remapTreeSamples(
             samples,
-            callFramesTree,
+            treeSource.sourceIdToNode,
             functionsTree,
             modulesTree,
             packagesTree,
@@ -209,6 +204,17 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         )
     );
 
+    // apply object marker
+    await work('mark objects', () => {
+        dict.callFrames.forEach(markers.callFrame);
+        dict.functions.forEach(markers.function);
+        dict.modules.forEach(markers.module);
+        dict.packages.forEach(markers.package);
+        dict.categories.forEach(markers.category);
+        scripts.forEach(markers.script);
+        scriptFunctions.forEach(markers['script-function']);
+    });
+
     const result = {
         runtime: detectRuntime(categories, packages, data._runtime),
         sourceInfo: {
@@ -229,7 +235,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
-        callFrames,
+        callFrames: dict.callFrames,
         callFramesTree,
         functions,
         functionsTimings,

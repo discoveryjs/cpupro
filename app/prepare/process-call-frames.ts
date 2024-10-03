@@ -87,7 +87,6 @@ export function scriptsAndFunctionsFromCallFrames(
 
 export function processCallFrames(
     dict: Dictionary,
-    callFrames: CpuProCallFrame[],
     scripts: CpuProScript[],
     scriptById: Map<number, CpuProScript>,
     scriptFunctions: CpuProScriptFunction[],
@@ -95,18 +94,18 @@ export function processCallFrames(
 ) {
     // main part
     for (const { origin, name } of executionContexts) {
-        dict.setPackageNameByOrigin(new URL(origin).host, name);
+        dict.setPackageNameForOrigin(new URL(origin).host, name);
     }
 
     if (scriptFunctions.length === 0) {
-        scriptsAndFunctionsFromCallFrames(callFrames, scripts, scriptById, scriptFunctions);
+        scriptsAndFunctionsFromCallFrames(dict.callFrames, scripts, scriptById, scriptFunctions);
     }
 
     for (const script of scripts) {
         script.module = dict.resolveModuleByScript(script.id, script.url);
     }
 
-    for (const callFrame of callFrames) {
+    for (const callFrame of dict.callFrames) {
         const { scriptId, functionName, lineNumber, columnNumber } = callFrame;
         const fn = dict.createFunction(scriptId, functionName, lineNumber, columnNumber);
 

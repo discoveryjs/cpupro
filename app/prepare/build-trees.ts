@@ -2,10 +2,49 @@ import { TIMINGS } from './const';
 import { CallTree } from './call-tree.js';
 import { CpuProCategory, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from './types.js';
 
-export function makeFirstNextArrays(parent: Uint32Array) {
-    const firstChild = new Uint32Array(parent.length);
-    const nextSibling = new Uint32Array(parent.length);
+interface TreeSource<S> {
+    dictionary: S[];
+    parent: Uint32Array;
+    nodes: Uint32Array;
+    sourceIdToNode: Int32Array;
+}
 
+export function createTreeSourceFromParent<S>(
+    parent: Uint32Array,
+    sourceIdToNode: Int32Array,
+    callFrameByNodeIndex: Uint32Array,
+    dictionary: S[]
+): TreeSource<S> {
+    const nodeToSourceId = new Uint32Array(parent.length);
+    const { firstChild, nextSibling } = firstNextFromParent(parent);
+    const { nodes: computedNodes, parent: computedParent } = nodesParentFromFirstNext(firstChild, nextSibling);
+
+    for (let id = 0; id < sourceIdToNode.length; id++) {
+        const index = sourceIdToNode[id];
+
+        if (index !== -1) {
+            nodeToSourceId[index] = id;
+        }
+    }
+
+    for (let i = 0; i < parent.length; i++) {
+        sourceIdToNode[nodeToSourceId[computedNodes[i]]] = i;
+        computedNodes[i] = callFrameByNodeIndex[computedNodes[i]];
+    }
+
+    return {
+        dictionary,
+        sourceIdToNode,
+        parent: computedParent,
+        nodes: computedNodes
+    };
+}
+
+export function firstNextFromParent(
+    parent: Uint32Array,
+    firstChild = new Uint32Array(parent.length),
+    nextSibling = new Uint32Array(parent.length)
+) {
     for (let i = parent.length - 1; i > 0; i--) {
         const pi = parent[i];
 
@@ -19,11 +58,11 @@ export function makeFirstNextArrays(parent: Uint32Array) {
     };
 }
 
-export function computeNested(
-    nested: Uint32Array,
+export function nestedFromNodesSubtree(
     nodes: Uint32Array,
     subtreeSize: Uint32Array,
-    dictionarySize: number
+    dictionarySize: number,
+    nested = new Uint32Array(nodes.length)
 ) {
     const nestedMask = new Uint32Array(dictionarySize);
 
@@ -36,27 +75,31 @@ export function computeNested(
             nestedMask[nodes[i]] = i + subtreeSize[i];
         }
     }
+
+    return nested;
 }
 
-export function computeSubtreeSize(
-    subtreeSize: Uint32Array,
-    parent: Uint32Array
+export function subtreeFromParent(
+    parent: Uint32Array,
+    subtreeSize = new Uint32Array(parent.length)
 ) {
     for (let i = parent.length - 1; i > 0; i--) {
         subtreeSize[parent[i]] += subtreeSize[i] + 1;
     }
+
+    return subtreeSize;
 }
 
-function collapseNodes(
-    nodes: Uint32Array,
-    parent: Uint32Array,
-    sourceToNode: Uint32Array,
-    remap: Uint32Array,
+// costruct a new nodes order by firstChild and nextSibling arrays
+// nodes[i] -> index in a source array
+export function nodesParentFromFirstNext(
     firstChild: Uint32Array,
-    nextSibling: Uint32Array
+    nextSibling: Uint32Array,
+    nodes = new Uint32Array(firstChild.length),
+    parent = new Uint32Array(firstChild.length)
 ) {
-    let index = 0;
     let cursor = 0;
+    let index = 0;
 
     do {
         const first = firstChild[cursor];
@@ -64,7 +107,6 @@ function collapseNodes(
         let nodeIndex = index++;
 
         nodes[nodeIndex] = cursor;
-        remap[sourceToNode[cursor]] = nodeIndex;
 
         if (first !== 0) {
             cursor = first;
@@ -83,12 +125,32 @@ function collapseNodes(
             }
         }
     } while (cursor !== 0);
+
+    return { nodes, parent };
+}
+
+function remapNodes(
+    nodes: Uint32Array,
+    sourceNodes: Uint32Array,
+    sourceToNode: Int32Array,
+    sourceToDictionary: Uint32Array
+) {
+    const remap = new Uint32Array(nodes.length);
+
+    for (let i = 0; i < nodes.length; i++) {
+        remap[sourceToNode[nodes[i]]] = i;
+        nodes[i] = sourceToDictionary[sourceNodes[nodes[i]]];
+    }
+
+    for (let i = 0; i < sourceToNode.length; i++) {
+        sourceToNode[i] = remap[sourceToNode[i]];
+    }
 }
 
 function finalizeArrays(
     dictionarySize: number,
     sourceNodes: Uint32Array,
-    sourceToNode: Uint32Array,
+    sourceToNode: Int32Array,
     sourceToDictionary: Uint32Array,
     nodesSize: number,
     firstChild: Uint32Array,
@@ -98,27 +160,11 @@ function finalizeArrays(
     const parent = new Uint32Array(nodesSize);
     const subtreeSize = new Uint32Array(nodesSize);
     const nested = new Uint32Array(nodesSize);
-    const remap = new Uint32Array(nodesSize);
 
-    collapseNodes(
-        nodes,
-        parent,
-        sourceToNode,
-        remap,
-        firstChild,
-        nextSibling
-    );
-
-    for (let i = 0; i < nodes.length; i++) {
-        nodes[i] = sourceToDictionary[sourceNodes[nodes[i]]];
-    }
-
-    computeSubtreeSize(subtreeSize, parent);
-    computeNested(nested, nodes, subtreeSize, dictionarySize);
-
-    for (let i = 0; i < sourceToNode.length; i++) {
-        sourceToNode[i] = remap[sourceToNode[i]];
-    }
+    nodesParentFromFirstNext(firstChild, nextSibling, nodes, parent);
+    remapNodes(nodes, sourceNodes, sourceToNode, sourceToDictionary);
+    subtreeFromParent(parent, subtreeSize);
+    nestedFromNodesSubtree(nodes, subtreeSize, dictionarySize, nested);
 
     return { nodes, parent, subtreeSize, nested };
 }
@@ -126,7 +172,7 @@ function finalizeArrays(
 function rollupTreeByCommonValues(
     dictionarySize: number,
     sourceNodes: Uint32Array,
-    sourceToNode: Uint32Array,
+    sourceIdToNode: Int32Array,
     sourceToDictionary: Uint32Array,
     firstChild: Uint32Array,
     nextSibling: Uint32Array
@@ -148,7 +194,7 @@ function rollupTreeByCommonValues(
                 const cursorFirstChild = firstChild[cursor];
                 const cursorNextSibling = nextSibling[cursor];
 
-                sourceToNode[cursor] = sourceToNode[nodeIndex];
+                sourceIdToNode[cursor] = sourceIdToNode[nodeIndex];
 
                 if (prevCursor === nodeIndex) {
                     firstChild[prevCursor] = cursorFirstChild || cursorNextSibling;
@@ -179,7 +225,7 @@ function rollupTreeByCommonValues(
                     const cursorFirstChild = firstChild[cursor];
                     const existedNode = valueToNode[childValue];
 
-                    sourceToNode[cursor] = sourceToNode[existedNode];
+                    sourceIdToNode[cursor] = sourceIdToNode[existedNode];
                     nextSibling[prevCursor] = nextSibling[cursor];
 
                     if (cursorFirstChild) {
@@ -223,7 +269,7 @@ function rollupTreeByCommonValues(
                     valueToNode[childValue] = cursor;
                     valueToNodeTail[childValue] = firstChild[cursor];
 
-                    sourceToNode[cursor] = nodesCount++;
+                    sourceIdToNode[cursor] = nodesCount++;
                     prevCursor = cursor;
                 }
             }
@@ -236,26 +282,27 @@ function rollupTreeByCommonValues(
 }
 
 export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
-    sourceTree: CallTree<S>,
+    source: TreeSource<S>,
     dictionary: D[],
     sourceNodeToDictionaryFn: (node: S) => number
 ) {
     const initTimeStart = Date.now();
-    const sourceNodes = sourceTree.nodes;
-    const sourceToDictionary = new Uint32Array(sourceTree.dictionary.length);
-    const sourceToNode = new Uint32Array(sourceNodes.length);
-    const { firstChild, nextSibling } = makeFirstNextArrays(sourceTree.parent);
+    const sourceNodes = source.nodes;
+    const sourceDictionary = source.dictionary;
+    const sourceIdToNode = new Int32Array(sourceNodes.length);
+    const sourceToDictionary = new Uint32Array(sourceDictionary.length);
+    const { firstChild, nextSibling } = firstNextFromParent(source.parent);
 
     const sourceToDictStart = Date.now();
-    for (let i = 0; i < sourceTree.dictionary.length; i++) {
-        sourceToDictionary[i] = sourceNodeToDictionaryFn(sourceTree.dictionary[i]);
+    for (let i = 0; i < sourceDictionary.length; i++) {
+        sourceToDictionary[i] = sourceNodeToDictionaryFn(sourceDictionary[i]);
     }
 
     const rollupTreeStart = Date.now();
     const nodesCount = rollupTreeByCommonValues(
         dictionary.length,
         sourceNodes,
-        sourceToNode,
+        sourceIdToNode,
         sourceToDictionary,
         firstChild,
         nextSibling
@@ -265,7 +312,7 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
     const { nodes, parent, subtreeSize, nested } = finalizeArrays(
         dictionary.length,
         sourceNodes,
-        sourceToNode,
+        sourceIdToNode,
         sourceToDictionary,
         nodesCount,
         firstChild,
@@ -273,7 +320,7 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
     );
 
     const createTreeStart = Date.now();
-    const tree = new CallTree(dictionary, sourceToNode, nodes, parent, subtreeSize, nested)
+    const tree = new CallTree(dictionary, sourceIdToNode, nodes, parent, subtreeSize, nested)
         .computeEntryNodes();
 
     if (TIMINGS) {
@@ -294,31 +341,58 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
 
 function buildCallTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
     name: string,
-    sourceTree: CallTree<S>,
+    source: TreeSource<S>,
     dictionary: D[],
     sourceNodeToDictionaryFn: (node: S) => number
 ) {
-    TIMINGS && console.group(`Build tree for ${name}`);
+    TIMINGS && console.group(`Build ${name} tree`);
     try {
-        return buildCallTree(sourceTree, dictionary, sourceNodeToDictionaryFn);
+        return buildCallTree(source, dictionary, sourceNodeToDictionaryFn);
     } finally {
         TIMINGS && console.groupEnd();
     }
 }
 
+function buildTreeSource(
+    nodeParent: Uint32Array,
+    nodeIndexById: Int32Array,
+    callFrameByNodeIndex: Uint32Array,
+    callFrames: CpuProCallFrame[]
+) {
+    const t = Date.now();
+
+    const treeSource = createTreeSourceFromParent(nodeParent, nodeIndexById.slice(), callFrameByNodeIndex, callFrames);
+
+    TIMINGS && console.log('buildTreeSource()', Date.now() - t);
+
+    return treeSource;
+}
+
 export function buildTrees(
-    callFramesTree: CallTree<CpuProCallFrame>,
+    nodeParent: Uint32Array,
+    nodeIndexById: Int32Array,
+    callFrameByNodeIndex: Uint32Array,
+    callFrames: CpuProCallFrame[],
     functions: CpuProFunction[],
     modules: CpuProModule[],
     packages: CpuProPackage[],
-    categories: CpuProCategory[]
+    categories: CpuProCategory[],
+    callFramesTree?: CallTree<CpuProCallFrame>
 ) {
-    const functionsTree = buildCallTreeFor('functions', callFramesTree, functions, callFrame => callFrame.function.id - 1);
+    const treeSource = callFramesTree || buildTreeSource(
+        nodeParent,
+        nodeIndexById,
+        callFrameByNodeIndex,
+        callFrames
+    );
+
+    const functionsTree = buildCallTreeFor('functions', treeSource, functions, callFrame => callFrame.function.id - 1);
     const modulesTree = buildCallTreeFor('modules', functionsTree, modules, callFrame => callFrame.module.id - 1);
     const packagesTree = buildCallTreeFor('packages', modulesTree, packages, callFrame => callFrame.package.id - 1);
     const categoriesTree = buildCallTreeFor('categories', packagesTree, categories, callFrame => callFrame.category.id - 1);
 
     return {
+        treeSource,
         functionsTree,
         modulesTree,
         packagesTree,

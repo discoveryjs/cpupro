@@ -35,7 +35,7 @@ function makeDictMask<T>(tree: CallTree<T>, test: TestFunctionOrEntry<T>) {
 
 export class CallTree<T> {
     dictionary: T[];              // entries
-    sourceIdToNode: NumericArray; // sourceNodeId -> index of nodes
+    sourceIdToNode: Int32Array;   // sourceNodeId -> index of nodes
     sampleIdToNode: NumericArray; // sampleId  -> index of nodes
     nodes: NumericArray;          // nodeIndex -> index of dictionary
     parent: NumericArray;         // nodeIndex -> index of nodes
@@ -60,7 +60,7 @@ export class CallTree<T> {
 
     constructor(
         dictionary: T[],
-        sourceIdToNode: NumericArray,
+        sourceIdToNode: Int32Array,
         nodes: NumericArray,
         parent?: NumericArray,
         subtreeSize?: NumericArray,
