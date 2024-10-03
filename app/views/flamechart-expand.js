@@ -1,4 +1,4 @@
-const { FocusCallTree } = require('../prepare/call-tree.js');
+const { FocusCallTree } = require('../prepare/computations/call-tree.js');
 
 discovery.view.define('flamechart-expand', function(el, config, data, context) {
     const { header, tree, timings, value } = config;
