@@ -1,6 +1,6 @@
-const { utils } = require('@discoveryjs/discovery');
-const { FlameChart } = require('./flamechart/index');
-const Tooltip = require('./flamechart/tooltip').default;
+import { utils } from '@discoveryjs/discovery';
+import { FlameChart } from './flamechart/index.js';
+import Tooltip from './flamechart/tooltip.js';
 
 function findFirstPageContentChild(el) {
     let cursor = el;

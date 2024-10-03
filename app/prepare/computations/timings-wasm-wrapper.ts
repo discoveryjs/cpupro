@@ -1,8 +1,8 @@
 /* eslint-env browser */
-import { decodeBase64 } from './utils';
-import computeTimingsWasmSourceBase64 from './compute-timings.wasm';
+import { decodeBase64 } from '../utils';
+import computeTimingsWasmSourceBase64 from './timings.wasm';
 import { CallTree } from './call-tree';
-import { CpuProNode } from './types';
+import { CpuProNode } from '../types';
 
 export type BufferMapRecord = { offset: number, array: Uint32Array };
 export type BufferMap<T> = {
@@ -11,6 +11,13 @@ export type BufferMap<T> = {
     tree: BufferTreeTimingsMap<T>[];
     dict: BufferDictionaryTimingsMap<T>[];
 };
+// export type BufferTreeDict = Record<string, CallTree<CpuProNode>>;
+// export type BufferMap<T extends BufferTreeDict> = {
+//     memory: Uint32Array | WebAssembly.Memory;
+//     samples: BufferSamplesTimingsMap;
+//     tree: { [K in keyof T]: BufferTreeTimingsMap<T[K] extends CallTree<infer V> ? V : never> };
+//     dict: { [K in keyof T]: BufferDictionaryTimingsMap<T[K] extends CallTree<infer V> ? V : never> };
+// };
 export type BufferSamplesTimingsMap = {
     buffer: Uint32Array;
     samples: BufferMapRecord;

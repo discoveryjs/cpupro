@@ -1,4 +1,4 @@
-import type { CpuProScript, CpuProScriptFunction, V8CpuProfileFunction } from './types.js';
+import type { CpuProScript, CpuProScriptFunction, V8CpuProfileFunction } from '../types.js';
 
 export function locFromLineColumn(line: number, column: number) {
     return line !== -1 && column !== -1

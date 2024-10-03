@@ -1,6 +1,6 @@
-import { Dictionary } from './dictionary.js';
-import { locFromLineColumn } from './process-functions.js';
-import { sortScriptFunctions } from './process-scripts.js';
+import { Dictionary } from '../dictionary.js';
+import { locFromLineColumn } from './functions.js';
+import { sortScriptFunctions } from './scripts.js';
 import type {
     CpuProCallFrame,
     CpuProCategory,
@@ -10,7 +10,7 @@ import type {
     CpuProScript,
     V8CpuProfileExecutionContext,
     CpuProScriptFunction
-} from './types.js';
+} from '../types.js';
 
 export function createCpuProFrame(
     id: number,

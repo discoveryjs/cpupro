@@ -1,5 +1,5 @@
-import { USE_WASM } from './const.js';
-import { CpuProNode } from './types.js';
+import { USE_WASM } from '../const.js';
+import { CpuProNode } from '../types.js';
 import { CallTree } from './call-tree.js';
 import {
     BufferDictionaryTimingsMap,
@@ -9,7 +9,7 @@ import {
     ComputeTimingsApi,
     createJavaScriptApi,
     createWasmApi
-} from './compute-timings-wasm-wrapper.js';
+} from './timings-wasm-wrapper.js';
 
 function binarySearch(array: Uint32Array, value: number): number {
     let left = 0;

@@ -1,7 +1,7 @@
-import { CallTree } from './call-tree';
-import { Dictionary } from './dictionary';
-import { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame } from './types';
-import { findMaxId } from './utils';
+import { CallTree } from '../computations/call-tree';
+import { Dictionary } from '../dictionary';
+import { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame } from '../types';
+import { findMaxId } from '../utils';
 
 function buildCallFrameTree(
     nodeId: number,

@@ -1,5 +1,5 @@
-import type { CpuProFunctionCodes, CpuProScriptFunction, V8CpuProfileFunctionCodes, V8FunctionCodeType } from './types.js';
-import { vmFunctionStateTierHotness, vmFunctionStateTiers } from './const.js';
+import type { CpuProFunctionCodes, CpuProScriptFunction, V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../types.js';
+import { vmFunctionStateTierHotness, vmFunctionStateTiers } from '../const.js';
 
 export function processFunctionCodes(
     functionCodes: V8CpuProfileFunctionCodes[] = [],

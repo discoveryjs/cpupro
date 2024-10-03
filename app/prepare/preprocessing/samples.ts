@@ -1,5 +1,5 @@
-import { TIMINGS } from './const.js';
-import { CallTree } from './call-tree.js';
+import { TIMINGS } from '../const.js';
+import { CallTree } from '../computations/call-tree.js';
 import {
     createTreeCompute,
     DictionaryTiminigs,
@@ -7,7 +7,7 @@ import {
     SamplesTiminigsFiltered,
     TreeTimestamps,
     TreeTiminigs
-} from './compute-timings.js';
+} from '../computations/timings.js';
 import {
     CpuProFunction,
     CpuProModule,
@@ -15,8 +15,8 @@ import {
     CpuProPackage,
     V8CpuProfileNode,
     CpuProNode
-} from './types.js';
-import { convertToUint32Array } from './utils.js';
+} from '../types.js';
+import { convertToUint32Array } from '../utils.js';
 
 const kinds = ['functions', 'modules', 'packages', 'categories'] as const;
 

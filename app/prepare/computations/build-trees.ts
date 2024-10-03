@@ -1,6 +1,6 @@
-import { TIMINGS } from './const';
+import { TIMINGS } from '../const';
 import { CallTree } from './call-tree.js';
-import { CpuProCategory, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from './types.js';
+import { CpuProCategory, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
 
 interface TreeSource<S> {
     dictionary: S[];

@@ -1,4 +1,4 @@
-import { CpuProModule, CpuProPackage } from './types';
+import { CpuProModule, CpuProPackage } from '../types';
 
 function getLongestCommonPath(longestCommonModulePath: string[] | null, modulePath: string) {
     let parts = modulePath.split(/\//);

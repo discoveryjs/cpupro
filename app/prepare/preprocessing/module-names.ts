@@ -1,4 +1,4 @@
-import { CpuProModule } from './types.js';
+import { CpuProModule } from '../types.js';
 
 function moduleDisplayName(module: CpuProModule) {
     if (module.name) {

@@ -1,17 +1,17 @@
 import { TIMINGS } from './prepare/const.js';
 import { convertToUint32Array, remapId } from './prepare/utils.js';
 import { extractAndValidate } from './prepare/index.js';
-import { processCallFrames } from './prepare/process-call-frames.js';
-import { processNodes } from './prepare/process-nodes.js';
-import { processPaths } from './prepare/process-paths.js';
-import { processDisplayNames } from './prepare/process-module-names.js';
-import { mergeSamples, processSamples, remapTreeSamples } from './prepare/process-samples.js';
-import { processTimeDeltas } from './prepare/process-time-deltas.js';
+import { processCallFrames } from './prepare/preprocessing/call-frames.js';
+import { processNodes } from './prepare/preprocessing/nodes.js';
+import { processPaths } from './prepare/preprocessing/paths.js';
+import { processDisplayNames } from './prepare/preprocessing/module-names.js';
+import { mergeSamples, processSamples, remapTreeSamples } from './prepare/preprocessing/samples.js';
+import { processTimeDeltas } from './prepare/preprocessing/time-deltas.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
-import { buildTrees } from './prepare/build-trees.js';
-import { processScripts } from './prepare/process-scripts.js';
+import { buildTrees } from './prepare/computations/build-trees.js';
+import { processScripts } from './prepare/preprocessing/scripts.js';
 import { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
-import { processFunctions } from './prepare/process-functions.js';
+import { processFunctions } from './prepare/preprocessing/functions.js';
 import { Dictionary } from './prepare/dictionary.js';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {

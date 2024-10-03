@@ -1,7 +1,7 @@
 import { typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
-import { CallTree } from './call-tree.js';
-import { TreeTiminigs } from './compute-timings.js';
+import { CallTree } from './computations/call-tree.js';
+import { TreeTiminigs } from './computations/timings.js';
 
 const abbr = {
     Ignition: 'Ig',

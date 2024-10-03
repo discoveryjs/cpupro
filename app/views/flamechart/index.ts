@@ -1,4 +1,4 @@
-import { CallTree } from '../../prepare/call-tree';
+import { CallTree } from '../../prepare/computations/call-tree';
 import { generateColorVector, calculateColor } from './color-utils';
 import { EventEmitter } from './event-emmiter';
 

@@ -1,4 +1,4 @@
-import { CpuProScript, CpuProScriptFunction, V8CpuProfileScript } from './types.js';
+import { CpuProScript, CpuProScriptFunction, V8CpuProfileScript } from '../types.js';
 
 export const scriptFunctionsSorting = (a: CpuProScriptFunction, b: CpuProScriptFunction) =>
     (a.start - b.start) || (b.end - a.end) || (a.id - b.id);

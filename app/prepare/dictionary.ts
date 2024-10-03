@@ -1,4 +1,4 @@
-import { locFromLineColumn } from './process-functions';
+import { locFromLineColumn } from './preprocessing/functions.js';
 import {
     engineNodeNames,
     knownChromeExtensions,
@@ -22,7 +22,7 @@ import {
     V8CpuProfileCallFrame,
     WellKnownName
 } from './types.js';
-import { createCpuProFrame } from './process-call-frames';
+import { createCpuProFrame } from './preprocessing/call-frames.js';
 
 type RegistryPackage = {
     type: PackageType;
