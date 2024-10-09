@@ -1,16 +1,16 @@
-import type { CpuProFunctionCodes, CpuProScriptFunction, V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../types.js';
+import type { CpuProCallFrame, CpuProFunctionCodes, V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../types.js';
 import { vmFunctionStateTierHotness, vmFunctionStateTiers } from '../const.js';
 
 export function processFunctionCodes(
     functionCodes: V8CpuProfileFunctionCodes[] = [],
-    functions: CpuProScriptFunction[],
+    callFrames: CpuProCallFrame[],
     startTime: number = 0
 ): CpuProFunctionCodes[] {
     return functionCodes.map(({ function: functionIndex, codes }) => {
         let topTier: V8FunctionCodeType = 'Unknown';
-        const fn = functions[functionIndex];
+        const callFrame = callFrames[functionIndex];
         const fnCodes: CpuProFunctionCodes = {
-            function: fn,
+            callFrame,
             topTier,
             hotness: 'cold',
             codes: new Array(codes.length)
@@ -21,7 +21,7 @@ export function processFunctionCodes(
         //     if (fn.start === 0 && fn.end === script.source.length) {
         //         script.compilation = fn;
         //     } else {
-        //         script.functions.push(fn);
+        //         script.callFrames.push(fn);
         //     }
         // }
 
@@ -31,13 +31,13 @@ export function processFunctionCodes(
             const tier = state.tier;
             const tierWeight = vmFunctionStateTiers.indexOf(tier);
 
-            fnCodes[i] = {
+            fnCodes.codes[i] = {
                 ...state,
                 tm: state.tm - startTime,
                 duration: i !== codes.length - 1
                     ? codes[i + 1].tm - state.tm
                     : 0,
-                scriptFunction: fn
+                callFrame
             };
 
             if (tierWeight > topTierWeight) {

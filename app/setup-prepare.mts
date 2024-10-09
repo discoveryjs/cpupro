@@ -1,7 +1,7 @@
+import type { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 import { TIMINGS } from './prepare/const.js';
-import { convertToUint32Array, remapId } from './prepare/utils.js';
+import { convertToUint32Array } from './prepare/utils.js';
 import { extractAndValidate } from './prepare/index.js';
-import { processCallFrames } from './prepare/preprocessing/call-frames.js';
 import { processNodes } from './prepare/preprocessing/nodes.js';
 import { processPaths } from './prepare/preprocessing/paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
@@ -9,10 +9,8 @@ import { mergeSamples, processSamples, remapTreeSamples } from './prepare/prepro
 import { processTimeDeltas } from './prepare/preprocessing/time-deltas.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/computations/build-trees.js';
-import { processScripts } from './prepare/preprocessing/scripts.js';
-import { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
-import { processFunctions } from './prepare/preprocessing/functions.js';
 import { Dictionary } from './prepare/dictionary.js';
+import { consumeInput } from './prepare/consume-input.js';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
     const work = async function<T>(name: string, fn: () => T): Promise<T> {
@@ -26,7 +24,9 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         }
     };
 
-    // extract & validate
+    //
+    // Extract & validate profile data
+    //
     const data = await work('extract profile data', () =>
         extractAndValidate(input, rejectData)
     );
@@ -35,9 +35,41 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
 
-    // create shared dictionary
+    //
+    // Populate shared dictionary
+    //
     const dict = new Dictionary();
+    const {
+        nodeIndexById: nodeIndexById_,
+        callFrameByNodeIndex: callFrameByNodeIndex_,
+        scriptFunctions
+    } = await work('consume dictionaries', () =>
+        consumeInput(
+            dict,
+            data.nodes,
+            data._callFrames,
+            data._scripts,
+            data._functions,
+            data._functionCodes,
+            data._executionContexts
+        )
+    );
 
+    // process paths
+    await work('process module paths', () =>
+        processPaths(dict.packages, dict.modules)
+    );
+
+    // process display names
+    await work('process display names', () =>
+        processDisplayNames(dict.modules)
+    );
+
+    //
+    // Process profile data
+    //
+
+    // preprocess timeDeltas, fix order if necessary
     const {
         startTime,
         startNoSamplesTime,
@@ -77,63 +109,24 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
     );
 
-    // preprocess scripts if any
-    const {
-        scripts,
-        scriptById
-    } = await work('process scripts', () =>
-        processScripts(data._scripts)
-    );
+    //
+    // Create profile's data derivatives
+    //
 
     const {
-        scriptFunctions
-    } = await work('process functions', () =>
-        processFunctions(data._functions, scriptById)
-    );
-
-    const {
-        callFramesTree,
-        callFrameByNodeIndex,
         nodeParent,
-        nodeIndexById
+        nodeIndexById,
+        callFrameByNodeIndex
     } = await work('process nodes', () =>
-        processNodes(dict, data.nodes, data._callFrames, samples)
-    );
-
-
-    // callFrames -> functions, modules, packages, categories
-    const {
-        categories,
-        packages,
-        modules,
-        functions
-    } = await work('process call frames', () =>
-        processCallFrames(
+        processNodes(
             dict,
-            scripts,
-            scriptById,
-            scriptFunctions,
-            data._executionContexts
+            data.nodes,
+            nodeIndexById_,
+            callFrameByNodeIndex_,
+            samples
         )
     );
 
-    // process dictionaries
-    await work('process module paths', () =>
-        processPaths(packages, modules)
-    );
-
-    // process display names
-    await work('process display names', () =>
-        processDisplayNames(modules)
-    );
-
-    // sort dictionaries and remap ids in ascending order
-    await work('sort dictionaries & remap ids', () => {
-        // functions.forEach(remapId);
-        // modules.sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : (a.path || '') < (b.path || '') ? -1 : 1).forEach(remapId);
-        // packages.sort((a, b) => a.name < b.name ? -1 : 1).forEach(remapId);
-        categories.sort((a, b) => a.id < b.id ? -1 : 1).forEach(remapId);
-    });
 
     // build trees should be performed after dictionaries are sorted and remaped
     const {
@@ -148,11 +141,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             nodeIndexById,
             callFrameByNodeIndex,
             dict.callFrames,
-            functions,
-            modules,
-            packages,
-            categories,
-            callFramesTree
+            // ---
+            dict.functions,
+            dict.modules,
+            dict.packages,
+            dict.categories
         )
     );
 
@@ -211,19 +204,17 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         dict.modules.forEach(markers.module);
         dict.packages.forEach(markers.package);
         dict.categories.forEach(markers.category);
-        scripts.forEach(markers.script);
+        dict.scripts.forEach(markers.script);
         scriptFunctions.forEach(markers['script-function']);
     });
 
-    const result = {
-        runtime: detectRuntime(categories, packages, data._runtime),
+    const profile = {
+        runtime: detectRuntime(dict.categories, dict.packages, data._runtime), // FIXME: categories/packages must be related to profile
         sourceInfo: {
             nodes: nodesCount,
             samples: samplesCount,
             samplesInterval
         },
-        scripts,
-        scriptFunctions,
         startTime,
         startNoSamplesTime,
         endTime,
@@ -235,30 +226,25 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
-        callFrames: dict.callFrames,
-        callFramesTree,
-        functions,
+        scriptFunctions,
         functionsTimings,
         functionsTimingsFiltered,
         functionsTree,
         functionsTreeTimings,
         functionsTreeTimingsFiltered,
         functionsTreeTimestamps,
-        modules,
         modulesTimings,
         modulesTimingsFiltered,
         modulesTree,
         modulesTreeTimings,
         modulesTreeTimingsFiltered,
         modulesTreeTimestamps,
-        packages,
         packagesTimings,
         packagesTimingsFiltered,
         packagesTree,
         packagesTreeTimings,
         packagesTreeTimingsFiltered,
         packagesTreeTimestamps,
-        categories,
         categoriesTimings,
         categoriesTimingsFiltered,
         categoriesTree,
@@ -266,6 +252,23 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         categoriesTreeTimingsFiltered,
         categoriesTreeTimestamps,
         heap: data._heap || null
+    };
+
+    const result = {
+        scripts: dict.scripts,
+        callFrames: dict.callFrames,
+        functions: dict.functions,
+        modules: dict.modules,
+        packages: dict.packages,
+        categories: dict.categories,
+
+        profiles: [
+            profile
+        ],
+
+        '--': '--legacy---',
+
+        ...profile
     };
 
     return result;

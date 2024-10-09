@@ -12,7 +12,7 @@ interface TreeSource<S> {
 export function createTreeSourceFromParent<S>(
     parent: Uint32Array,
     sourceIdToNode: Int32Array,
-    callFrameByNodeIndex: Uint32Array,
+    nodes: Uint32Array,
     dictionary: S[]
 ): TreeSource<S> {
     const nodeToSourceId = new Uint32Array(parent.length);
@@ -29,7 +29,7 @@ export function createTreeSourceFromParent<S>(
 
     for (let i = 0; i < parent.length; i++) {
         sourceIdToNode[nodeToSourceId[computedNodes[i]]] = i;
-        computedNodes[i] = callFrameByNodeIndex[computedNodes[i]];
+        computedNodes[i] = nodes[computedNodes[i]];
     }
 
     return {
@@ -376,10 +376,9 @@ export function buildTrees(
     functions: CpuProFunction[],
     modules: CpuProModule[],
     packages: CpuProPackage[],
-    categories: CpuProCategory[],
-    callFramesTree?: CallTree<CpuProCallFrame>
+    categories: CpuProCategory[]
 ) {
-    const treeSource = callFramesTree || buildTreeSource(
+    const treeSource = buildTreeSource(
         nodeParent,
         nodeIndexById,
         callFrameByNodeIndex,

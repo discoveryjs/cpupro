@@ -54,7 +54,7 @@ export type V8CpuProfileFunction = {
 export type V8CpuProfileFunctionCodes = {
     function: number;
     codes: V8CpuProfileFunctionCode[]
-};
+}
 export type V8CpuProfileFunctionCode = {
     tm: number;
     tier: V8FunctionCodeType;
@@ -120,26 +120,50 @@ export type CpuProNode = CpuProCallFrame | CpuProHierarchyNode;
 
 export type CpuProCallFrame = {
     id: number;
-    scriptId: number;
-    url: string | null;
-    functionName: string;
-    lineNumber: number;
-    columnNumber: number;
+    script: CpuProScript | null;
+    name: string;
+    kind: CpuProFunctionKind;
+    line: number;
+    column: number;
+    loc: string | null;
+    start: number;
+    end: number;
+    regexp: string | null;
     function: CpuProFunction;
     module: CpuProModule;
     package: CpuProPackage;
     category: CpuProCategory;
-    script: CpuProScript | null;
-};
+}
 
 export type CpuProScript = {
     id: number;
     url: string;
     module: CpuProModule | null;
-    source: string;
-    compilation: CpuProScriptFunction | null;
+    source: string | null;
+    callFrames: CpuProCallFrame[];
     functions: CpuProScriptFunction[];
 }
+export interface IScriptMapper {
+    get(scriptId: number | string): CpuProScript | undefined;
+    has(scriptId: number | string): boolean;
+    set(scriptId: number | string, script: CpuProScript): void;
+    getScriptIndexByUrl(scriptId: number, url: string): number;
+    resolveScript(scriptId: number, url?: string | null, source?: string | null): CpuProScript | null;
+    normalizeScriptId(scriptId: string | number): number;
+}
+
+export type CpuProProfileScript = {
+    script: CpuProScript;
+    compilation: CpuProProfileFunction | null; // FIXME: find better name
+    functions: CpuProProfileFunction[];
+}
+export type CpuProProfileFunction = {
+    callFrame: CpuProCallFrame;
+    topTier: V8FunctionCodeType;
+    hotness: 'cold' | 'warm' | 'hot';
+    codes: CpuProFunctionCode[];
+}
+
 export type CpuProScriptFunction = {
     id: number; // starts with 1
     name: string;
@@ -154,16 +178,16 @@ export type CpuProScriptCodes = {
     script: CpuProScript;
     compilation: CpuProFunctionCodes | null; // FIXME: find better name
     functionCodes: CpuProFunctionCodes[];
-};
+}
 export type CpuProFunctionCodes = {
-    function: CpuProScriptFunction;
+    callFrame: CpuProCallFrame;
     topTier: V8FunctionCodeType;
     hotness: 'cold' | 'warm' | 'hot';
     codes: CpuProFunctionCode[];
-};
+}
 export type CpuProFunctionCode = {
     tm: number;
-    function: CpuProScriptFunction;
+    callFrame: CpuProCallFrame;
     tier: string;
     duration: number;
     positions: string;
@@ -176,25 +200,29 @@ export type CpuProFunction = {
     id: number; // starts with 1
     name: string;
     kind: CpuProFunctionKind;
+    script: CpuProScript | null;
     category: CpuProCategory;
     package: CpuProPackage;
     module: CpuProModule;
     regexp: string | null;
     loc: string | null;
-};
+}
 
 export type ModuleType = // alphabetical order
-    | WellKnownType
+    | 'blocking'
     | 'bundle'
     | 'chrome-extension'
+    | 'compilation'
     | 'deno'
     | 'electron'
-    | 'compilation'
-    | 'blocking'
+    | 'gc'
     | 'internals'
+    | 'idle'
     | 'node'
+    | 'program'
     | `protocol-${string}`
     | 'regexp'
+    | 'root'
     | 'script'
     | 'unknown'
     | 'v8'
@@ -206,17 +234,18 @@ export type CpuProModule = {
     type: ModuleType;
     name: string | null;
     path: string | null;
+    script: CpuProScript | null;
     category: CpuProCategory;
     package: CpuProPackage;
     packageRelPath: string | null;
-};
+}
 
 export type PackageType = // alphabetical order
+    | 'blocking'
     | 'chrome-extension'
+    | 'compilation'
     | 'deno'
     | 'electron'
-    | 'compilation'
-    | 'blocking'
     | 'gc'
     | 'idle'
     | 'internals'
@@ -249,7 +278,7 @@ export type CDN = // alphabetical order
 export type PackageProviderEndpoint = {
     registry: PackageRegistry;
     pattern: RegExp;
-};
+}
 export type PackageProvider = {
     cdn: CDN;
     endpoints: PackageProviderEndpoint[];
@@ -263,9 +292,9 @@ export type CpuProPackage = {
     cdn: CDN | null;
     path: string | null;
     category: CpuProCategory;
-};
+}
 
 export type CpuProCategory = {
     id: number;
     name: string;
-};
+}

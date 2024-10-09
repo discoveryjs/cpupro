@@ -832,7 +832,7 @@ discovery.page.define('default', {
             {
                 view: 'timeline-profiles',
                 data: 'profiles',
-                whenData: true
+                whenData: 'size() > 1'
             },
 
             {

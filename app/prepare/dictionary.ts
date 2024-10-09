@@ -1,12 +1,10 @@
 import { locFromLineColumn } from './preprocessing/functions.js';
 import {
-    engineNodeNames,
+    moduleTypeByWellKnownName,
     knownChromeExtensions,
     knownRegistry,
     maxRegExpLength,
-    typeOrder,
-    vmStateNodeTypes,
-    wellKnownNodeName
+    categories
 } from './const.js';
 import {
     CDN,
@@ -16,13 +14,15 @@ import {
     CpuProFunctionKind,
     CpuProModule,
     CpuProPackage,
+    CpuProScript,
+    IScriptMapper,
     ModuleType,
     PackageRegistry,
     PackageType,
     V8CpuProfileCallFrame,
     WellKnownName
 } from './types.js';
-import { createCpuProFrame } from './preprocessing/call-frames.js';
+import { createScript, scriptFromScriptId } from './preprocessing/scripts.js';
 
 type RegistryPackage = {
     type: PackageType;
@@ -34,7 +34,7 @@ type RegistryPackage = {
 }
 
 type CallFrameMap = Map<
-    number, // scriptId
+    CpuProScript | null, // script
     Map<
         string, // function name
         Map<
@@ -48,41 +48,46 @@ type CallFrameMap = Map<
 >;
 
 export class Dictionary {
+    scripts: CpuProScript[];
     callFrames: CpuProCallFrame[];
     functions: CpuProFunction[];
     modules: CpuProModule[];
     packages: CpuProPackage[];
     categories: CpuProCategory[];
 
-    functionsMap: Map<string, CpuProFunction>;
-    modulesMap: Map<number | string, CpuProModule>;
-    packagesMap: Map<string, CpuProPackage>;
-    categoriesMap: Map<string, CpuProCategory>;
+    #modulesMap: Map<CpuProScript | string, CpuProModule>;
+    #packagesMap: Map<string, CpuProPackage>;
+    #categoriesMap: Map<string, CpuProCategory>;
 
-    #scriptIdFromString: Map<string, number>;
-    #byScriptIdMap: CallFrameMap;
+    #scriptByUrl: Map<string, CpuProScript[]>;
+    #callFramesByScript: CallFrameMap;
     #anonymousFunctionNameIndex: number = 1;
-    #unknownCategoryTypeOrder: number = typeOrder.unknown;
-    #anonymousModuleByScriptId: Map<number, string>;
+    #anonymousModuleByScriptId: Map<CpuProScript, string>;
     #packageNameByOriginMap: Map<string, string>;
 
     constructor() {
+        this.scripts = [];
         this.callFrames = [];
         this.functions = [];
         this.modules = [];
         this.packages = [];
         this.categories = [];
 
-        this.functionsMap = new Map();
-        this.modulesMap = new Map();
-        this.packagesMap = new Map();
-        this.categoriesMap = new Map();
+        this.#modulesMap = new Map();
+        this.#packagesMap = new Map();
+        this.#categoriesMap = new Map();
 
-        this.#byScriptIdMap = new Map();
+        this.#scriptByUrl = new Map();
+        this.#callFramesByScript = new Map();
         this.#anonymousModuleByScriptId = new Map();
         this.#packageNameByOriginMap = new Map([
             ...Object.entries(knownChromeExtensions)
         ]);
+
+        // fulfill the category by known list to preserve an order
+        for (const packageType of categories) {
+            this.resolveCategory(packageType);
+        }
     }
 
     reset() {}
@@ -97,38 +102,17 @@ export class Dictionary {
         }
     }
 
-    resolveCallFrameIndex(inputCallFrame: V8CpuProfileCallFrame) {
+    resolveCallFrameIndex(inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number }, mapper: IScriptMapper) {
         const functionName = inputCallFrame.functionName || '';
         const lineNumber = normalizeLoc(inputCallFrame.lineNumber);
         const columnNumber = normalizeLoc(inputCallFrame.columnNumber);
         const url = inputCallFrame.url || null;
-        let scriptId = inputCallFrame.scriptId;
-
-        // ensure scriptId is a number
-        // some tools are generating scriptId as a stringified number
-        if (typeof scriptId === 'string') {
-            if (/^\d+$/.test(scriptId)) {
-                // the simplest case: a stringified number, convert it to a number
-                scriptId = Number(scriptId);
-            } else {
-                // handle cases where scriptId is represented as an URL or a string in the format ":number"
-                let numericScriptId = this.#scriptIdFromString.get(scriptId);
-
-                if (numericScriptId === undefined) {
-                    this.#scriptIdFromString.set(scriptId, numericScriptId = /^:\d+$/.test(scriptId)
-                        ? Number(scriptId.slice(1))
-                        : -this.#scriptIdFromString.size - 1
-                    );
-                }
-
-                scriptId = numericScriptId;
-            }
-        }
+        const script = scriptFromScriptId(inputCallFrame.scriptId, url, mapper);
 
         // resolve a callFrame through a chain of maps
-        let byFunctionNameMap = this.#byScriptIdMap.get(scriptId);
+        let byFunctionNameMap = this.#callFramesByScript.get(script);
         if (byFunctionNameMap === undefined) {
-            this.#byScriptIdMap.set(scriptId, byFunctionNameMap = new Map());
+            this.#callFramesByScript.set(script, byFunctionNameMap = new Map());
         }
 
         let byLineNumberMap = byFunctionNameMap.get(functionName);
@@ -143,38 +127,91 @@ export class Dictionary {
 
         let callFrameIndex = resultMap.get(columnNumber);
         if (callFrameIndex === undefined) {
-            const callFrame = createCpuProFrame(
-                this.callFrames.length + 1,
-                scriptId,
-                url,
-                functionName,
-                lineNumber,
-                columnNumber
-            );
+            const start = normalizeLoc(inputCallFrame.start);
+            const end = normalizeLoc(inputCallFrame.end);
+            const fn = this.createFunction(script, functionName, lineNumber, columnNumber);
+            const callFrame: CpuProCallFrame = {
+                id: this.callFrames.length + 1,
+                script,
+                kind: fn.kind,
+                name: fn.name,
+                line: lineNumber,
+                column: columnNumber,
+                loc: locFromLineColumn(lineNumber, columnNumber),
+                start,
+                end,
+                regexp: fn.regexp,
+                category: fn.category,
+                package: fn.package,
+                module: fn.module,
+                function: fn
+            };
 
             callFrameIndex = this.callFrames.push(callFrame) - 1;
             resultMap.set(columnNumber, callFrameIndex);
+
+            script?.callFrames.push(callFrame);
+            this.functions.push(fn);
         }
 
         return callFrameIndex;
     }
-    resolveCallFrame(inputCallFrame: V8CpuProfileCallFrame) {
-        return this.callFrames[this.resolveCallFrameIndex(inputCallFrame)];
+    resolveCallFrame(inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number }, mapper: IScriptMapper) {
+        return this.callFrames[this.resolveCallFrameIndex(inputCallFrame, mapper)];
     }
 
-    resolveCategory(moduleType: ModuleType): CpuProCategory {
-        const name = moduleType === 'bundle' || moduleType === 'webpack/runtime'
+    resolveScript(
+        scriptId: number,
+        mapper: IScriptMapper,
+        url: string | null = null,
+        source: string | null = null
+    ): CpuProScript | null {
+        if (scriptId === 0) {
+            return null;
+        }
+
+        let script = mapper.get(scriptId);
+
+        url ||= '';
+
+        if (script === undefined) {
+            const scriptIndexByUrl = mapper.getScriptIndexByUrl(scriptId, url);
+
+            // FIXME: this is not fully a cross profile solution,
+            // must take into account the source if provided
+            let scriptByUrl = this.#scriptByUrl.get(url);
+            if (scriptByUrl === undefined) {
+                scriptByUrl = [];
+                this.#scriptByUrl.set(url, scriptByUrl);
+            }
+
+            if (scriptIndexByUrl < scriptByUrl.length) {
+                script = scriptByUrl[scriptIndexByUrl];
+            } else {
+                script = createScript(this.scripts.length + 1, url, source);
+                scriptByUrl.push(script);
+                this.scripts.push(script);
+            }
+
+            mapper.set(scriptId, script);
+        }
+
+        return script;
+    }
+
+    resolveCategory(packageType: PackageType): CpuProCategory {
+        const name = packageType === 'webpack/runtime'
             ? 'script'
-            : moduleType;
-        let category = this.categoriesMap.get(name);
+            : packageType;
+        let category = this.#categoriesMap.get(name);
 
         if (category === undefined) {
             category = {
-                id: typeOrder[name] || this.#unknownCategoryTypeOrder++,
+                id: this.#categoriesMap.size + 1,
                 name
             };
 
-            this.categoriesMap.set(name, category);
+            this.#categoriesMap.set(name, category);
             this.categories.push(category);
         }
 
@@ -186,7 +223,7 @@ export class Dictionary {
         modulePath: string | null
     ): CpuProPackage {
         const canonicalRef = `${moduleType}/${modulePath}`;
-        let pkg = this.packagesMap.get(canonicalRef);
+        let pkg = this.#packagesMap.get(canonicalRef);
 
         if (pkg !== undefined) {
             return pkg;
@@ -330,7 +367,7 @@ export class Dictionary {
                 break;
         }
 
-        pkg = this.packagesMap.get(ref);
+        pkg = this.#packagesMap.get(ref);
 
         if (pkg === undefined) {
             pkg = {
@@ -341,36 +378,36 @@ export class Dictionary {
                 version,
                 registry,
                 cdn,
-                category: this.resolveCategory(moduleType)
+                category: this.resolveCategory(type)
             };
 
-            this.packagesMap.set(canonicalRef, pkg);
-            this.packagesMap.set(ref, pkg);
+            this.#packagesMap.set(canonicalRef, pkg);
+            this.#packagesMap.set(ref, pkg);
             this.packages.push(pkg);
         }
 
         return pkg;
     }
 
-    #resolveModule(type: ModuleType, name: string | null, path: string | null = null, scriptId: number = 0) {
-        const moduleKey = scriptId === 0 ? name as string : scriptId;
-        let module = this.modulesMap.get(moduleKey);
+    #resolveModule(type: ModuleType, name: string | null, path: string | null = null, script: CpuProScript | null = null) {
+        const moduleKey = script ?? name as string;
+        let module = this.#modulesMap.get(moduleKey);
 
         if (module === undefined) {
             const pkg = this.resolvePackage(type, path);
-            const category = this.resolveCategory(type); // FIXME: use pkg.category
 
             module = {
-                id: this.modulesMap.size + 1, // starts with 1
+                id: this.#modulesMap.size + 1, // starts with 1
                 type,
                 name,
                 path,
-                category,
+                script,
+                category: pkg.category,
                 package: pkg,
                 packageRelPath: null
             };
 
-            this.modulesMap.set(moduleKey, module);
+            this.#modulesMap.set(moduleKey, module);
             this.modules.push(module);
         }
 
@@ -378,27 +415,20 @@ export class Dictionary {
     }
 
     resolveNoScriptModuleByFunctionName(functionName: string): CpuProModule {
-        const wellKnown = wellKnownNodeName.get(functionName as WellKnownName) || null;
+        const wellKnownModuleType = moduleTypeByWellKnownName.get(functionName as WellKnownName) || null;
         let type: ModuleType = 'unknown';
         let name: string = 'unknown';
 
-        if (wellKnown !== null) {
-            type = engineNodeNames.get(functionName as WellKnownName) || wellKnown;
+        if (wellKnownModuleType !== null) {
+            type = wellKnownModuleType;
             name = functionName;
         } else {
             if (functionName.startsWith('RegExp: ')) {
                 type = 'regexp';
                 name = '(regexp)';
             } else {
-                const engineType = engineNodeNames.get(functionName  as WellKnownName);
-
-                if (engineType !== undefined) {
-                    type = engineType;
-                    name = functionName;
-                } else {
-                    type = 'internals';
-                    name = '(internals)';
-                }
+                type = 'internals';
+                name = '(internals)';
             }
         }
 
@@ -406,9 +436,9 @@ export class Dictionary {
     }
 
     resolveModuleByScript(
-        scriptId: number,
-        url: string | null
+        script: CpuProScript
     ) {
+        let url = script.url;
         let type: ModuleType = 'unknown';
         let name: string | null = null;
         let path: string | null = null;
@@ -420,11 +450,11 @@ export class Dictionary {
         }
 
         if (!url || url.startsWith('evalmachine.')) {
-            let anonymousName = this.#anonymousModuleByScriptId.get(scriptId);
+            let anonymousName = this.#anonymousModuleByScriptId.get(script);
 
             if (anonymousName === undefined) {
                 this.#anonymousModuleByScriptId.set(
-                    scriptId,
+                    script,
                     anonymousName = `(anonymous module #${this.#anonymousModuleByScriptId.size + 1})`
                 );
             }
@@ -487,22 +517,22 @@ export class Dictionary {
             }
         }
 
-        return this.#resolveModule(type, name, path, scriptId);
+        return this.#resolveModule(type, name, path, script);
     }
 
-    resolveModule(scriptId: number, url: string | null = null, functionName: string | null = null) {
-        return scriptId === 0
+    resolveModule(script: CpuProScript | null, functionName: string | null = null) {
+        return script === null
             ? this.resolveNoScriptModuleByFunctionName(functionName || '')
-            : this.resolveModuleByScript(scriptId, url);
+            : this.resolveModuleByScript(script);
     }
 
     createFunction(
-        scriptId: number,
+        script: CpuProScript | null,
         functionName: string,
         lineNumber: number,
         columnNumber: number
     ) {
-        const module = this.resolveModule(scriptId, '' as error, functionName);
+        const module = this.resolveModule(script, functionName);
         const isRegExp = module.package.type === 'regexp';
         const regexp = isRegExp ? functionName.slice('RegExp: '.length) : null;
         const name = regexp
@@ -512,13 +542,14 @@ export class Dictionary {
                 : `(anonymous function #${this.#anonymousFunctionNameIndex++})`
             );
 
-        const fn = {
+        const fn: CpuProFunction = {
             id: this.functions.length + 1, // id starts with 1
             name,
+            script,
             category: module.category,
             package: module.package,
             module,
-            kind: resolveFunctionKind(scriptId, name, regexp),
+            kind: resolveFunctionKind(script, name, regexp),
             regexp,
             loc: locFromLineColumn(lineNumber, columnNumber)
         };
@@ -582,15 +613,15 @@ function normalizeLoc(value: unknown) {
     return typeof value === 'number' && value >= 0 ? value : -1;
 }
 
-function resolveFunctionKind(scriptId: number, name: string, regexp: string | null): CpuProFunctionKind {
-    const wellKnown = scriptId === 0 ? wellKnownNodeName.get(name as WellKnownName) || null : null;
+function resolveFunctionKind(script: CpuProScript | null, name: string, regexp: string | null): CpuProFunctionKind {
+    if (script === null) {
+        if (name === '(root)') {
+            return 'root';
+        }
 
-    if (wellKnown === 'root') {
-        return 'root';
-    }
-
-    if (wellKnown !== null && vmStateNodeTypes.has(wellKnown)) {
-        return 'vm-state';
+        if (Object.hasOwn(moduleTypeByWellKnownName, name)) {
+            return 'vm-state';
+        }
     }
 
     if (regexp !== null) {

@@ -1,4 +1,4 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionCodeType, CpuProFunctionCodes } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionCodeType, CpuProFunctionCodes, ModuleType } from './types';
 import { packageRegistryEndpoints } from './utils';
 
 export const TIMINGS = false;
@@ -6,7 +6,7 @@ export const USE_WASM = true;
 
 export const EMPTY_ARRAY = Object.freeze([]);
 export const maxRegExpLength = 65;
-export const wellKnownNodeName = new Map<WellKnownName, WellKnownType>([
+export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
     ['(root)', 'root'],
     ['(program)', 'program'],
     ['(garbage collector)', 'gc'],
@@ -16,21 +16,33 @@ export const wellKnownNodeName = new Map<WellKnownName, WellKnownType>([
     ['(compiler)', 'compiler'],
     ['(atomics wait)', 'atomics-wait']
 ]);
-export const engineNodeNames = new Map<WellKnownName, PackageType>([
+export const moduleTypeByWellKnownName = new Map<WellKnownName, ModuleType>([
+    ['(root)', 'root'],
+    ['(program)', 'program'],
+    ['(garbage collector)', 'gc'],
+    ['(idle)', 'idle'],
     ['(parser)', 'compilation'],
     ['(compiler bytecode)', 'compilation'],
     ['(compiler)', 'compilation'],
     ['(atomics wait)', 'blocking']
 ]);
-export const vmStateNodeTypes = new Set<WellKnownType>([
+export const categories: Exclude<PackageType, 'webpack/runtime'>[] = [
+    'script',
+    'wasm',
+    'regexp',
+    'electron',
+    'deno',
+    'node',
+    'internals',
     'program',
+    'chrome-extension',
     'gc',
+    'compilation',
+    'blocking',
+    'root',
     'idle',
-    'parser',
-    'compiler-bytecode',
-    'compiler',
-    'atomics-wait'
-]);
+    'unknown'
+] as const;
 export const vmFunctionStateTiers: V8FunctionCodeType[] = [
     'Unknown',
     'Ignition',
@@ -46,7 +58,7 @@ export const vmFunctionStateTierHotness: Record<V8FunctionCodeType, CpuProFuncti
     'Maglev': 'warm',
     'Turboprop': 'warm',
     'Turbofan': 'hot'
-};
+} as const;
 
 export const knownChromeExtensions = {
     'fmkadmapgofadopljbjfkapdkoienihi': 'React Developer Tools',

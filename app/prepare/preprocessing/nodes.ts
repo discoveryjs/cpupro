@@ -1,74 +1,31 @@
-import { CallTree } from '../computations/call-tree';
-import { Dictionary } from '../dictionary';
-import { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame } from '../types';
+import type { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame, IScriptMapper } from '../types';
+import type { Dictionary } from '../dictionary';
 import { findMaxId } from '../utils';
 
-function buildCallFrameTree(
-    nodeId: number,
-    nodeChildren: (number[] | null)[],
-    callFrameByNodeIndex: Uint32Array,
-    sourceIdToNode: Int32Array,
-    nodes: Uint32Array,
-    parent: Uint32Array,
-    subtreeSize: Uint32Array,
-    cursor = 0
+export function mapNodes(
+    dict: Dictionary,
+    nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
+    callFrameByIndex: Uint32Array,
+    scriptMapper: IScriptMapper
 ) {
-    function visitNode(nodeId: number) {
-        const idx = sourceIdToNode[nodeId];
-        const children = nodeChildren[idx];
-        const nodeIndex = cursor++;
-
-        nodes[nodeIndex] = callFrameByNodeIndex[idx];
-        sourceIdToNode[nodeId] = nodeIndex;
-
-        if (children !== null) {
-            for (const childId of children) {
-                parent[cursor] = nodeIndex;
-                visitNode(childId);
-            }
-
-            subtreeSize[nodeIndex] = cursor - nodeIndex - 1;
-        }
-    }
-
-    visitNode(nodeId);
-}
-
-function tempBuildCallFrameTree(
-    callFrames: CpuProCallFrame[],
-    nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    nodeIndexById: Int32Array,
-    callFrameByNodeIndex: Uint32Array,
-    nodeIdToGcNodeId: Uint32Array
-) {
-    const t = Date.now();
-    const callFramesTree = new CallTree(callFrames, nodeIndexById.slice(), new Uint32Array(nodeIndexById.length));
-
-    const nodeChildren: (number[] | null)[] = new Array(nodeIndexById.length).fill(null);
+    const maxNodeId: number = findMaxId(nodes);
+    const nodeIndexById = new Int32Array(maxNodeId + 1).fill(-1);
+    const callFrameByNodeIndex = new Uint32Array(nodes.length);
 
     for (let i = 0; i < nodes.length; i++) {
-        const { id, children } = nodes[i];
-        const gcNodeId = nodeIdToGcNodeId[id];
+        const { id, callFrame } = nodes[i];
+        const callFrameIndex = typeof callFrame === 'number'
+            ? callFrameByIndex[callFrame]
+            : dict.resolveCallFrameIndex(callFrame, scriptMapper);
 
-        if (Array.isArray(children) && children.length > 0) {
-            nodeChildren[i] = gcNodeId === 0 ? children : children.concat(gcNodeId);
-        } else if (gcNodeId !== 0) {
-            nodeChildren[i] = [gcNodeId];
-        }
+        nodeIndexById[id] = i;
+        callFrameByNodeIndex[i] = callFrameIndex;
     }
 
-    buildCallFrameTree(
-        nodes[0].id,
-        nodeChildren,
-        callFrameByNodeIndex,
-        callFramesTree.sourceIdToNode, // pass arrays as separate values to reduce property reads, good for performance
-        callFramesTree.nodes,
-        callFramesTree.parent,
-        callFramesTree.subtreeSize
-    );
-    console.log(Date.now() - t);
-
-    return callFramesTree;
+    return {
+        nodeIndexById,
+        callFrameByNodeIndex
+    };
 }
 
 function gcReparenting2(
@@ -79,9 +36,9 @@ function gcReparenting2(
     nodeIndexById: Int32Array,
     nodeParent: Uint32Array
 ) {
-    const gcCallFrameIndex = callFrames.findIndex(cf => cf.scriptId === 0 && cf.functionName === '(garbage collector)');
+    const gcCallFrameIndex = callFrames.findIndex(cf => cf.script === null && cf.name === '(garbage collector)');
     const rootGcNodeId = gcCallFrameIndex !== -1
-        ? nodes[0].children?.find(id => callFrameByNodeIndex[id - 1] === gcCallFrameIndex)
+        ? nodes[0].children?.find(id => callFrameByNodeIndex[nodeIndexById[id]] === gcCallFrameIndex)
         : -1;
 
     const maxNodeId = nodeIndexById.length - 1;
@@ -168,63 +125,26 @@ export function buildNodeParent(
 export function processNodes(
     dict: Dictionary,
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    inputCallFrames: V8CpuProfileCallFrame[] | null = null,
+    nodeIndexById: Int32Array,
+    callFrameByNodeIndex: Uint32Array,
     samples_: Uint32Array
 ) {
-    const samples = samples_.slice();
-    const callFrames = dict.callFrames;
-    const callFrameByNodeIndex = new Uint32Array(nodes.length);
-    const maxNodeId: number = findMaxId(nodes);
-    const nodeIndexById = new Int32Array(maxNodeId + 1).fill(-1);
-
-    // console.log(nodes[0].id === 1, nodes[nodes.length - 1].id === nodes.length);
-
-    const inputCallFramesMap = new Uint32Array(inputCallFrames?.length || 0);
-    if (inputCallFrames !== null) {
-        for (let i = 0; i < inputCallFrames.length; i++) {
-            inputCallFramesMap[i] = dict.resolveCallFrameIndex(inputCallFrames[i]);
-        }
-
-        // FIXME
-        if (inputCallFrames.length !== callFrames.length) {
-            console.warn('Merged call frames:', inputCallFrames.length - callFrames.length);
-        }
-    }
-
-    for (let i = 0; i < nodes.length; i++) {
-        const { id, callFrame } = nodes[i];
-        const callFrameIndex = typeof callFrame === 'number'
-            ? inputCallFramesMap[callFrame]
-            : dict.resolveCallFrameIndex(callFrame);
-
-        nodeIndexById[id] = i;
-        callFrameByNodeIndex[i] = callFrameIndex;
-    }
+    const samples = samples_;
 
     const nodeParent = buildNodeParent(nodes, nodeIndexById);
 
     const reparented = gcReparenting2(
         nodes,
-        callFrames,
+        dict.callFrames,
         samples,
         callFrameByNodeIndex,
         nodeIndexById,
         nodeParent
     );
 
-    const callFramesTree = false ? tempBuildCallFrameTree(
-        callFrames,
-        nodes,
-        reparented.nodeIndexById,
-        reparented.callFrameByNodeIndex,
-        reparented.nodeIdToGcNodeId
-    ) : undefined;
-
     return {
         nodeParent: reparented.nodeParent,
         nodeIndexById: reparented.nodeIndexById,
-        callFrameByNodeIndex: reparented.callFrameByNodeIndex,
-        callFrames,
-        callFramesTree
+        callFrameByNodeIndex: reparented.callFrameByNodeIndex
     };
 }
