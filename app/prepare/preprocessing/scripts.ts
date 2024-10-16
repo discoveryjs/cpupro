@@ -124,18 +124,6 @@ export function createScript(id: number, url: string, source: string | null): Cp
         url,
         source,
         module: null as unknown as CpuProModule,
-        callFrames: [],
-        functions: []
+        callFrames: []
     };
-}
-
-export const scriptFunctionsSorting = (a: CpuProScriptFunction, b: CpuProScriptFunction) =>
-    (a.start - b.start) || (b.end - a.end) || (a.id - b.id);
-
-export function sortScriptFunctions(scripts: CpuProScript[]) {
-    for (const script of scripts) {
-        if (script.functions.length > 1) {
-            script.functions.sort(scriptFunctionsSorting);
-        }
-    }
 }

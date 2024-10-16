@@ -6,13 +6,13 @@ const descendantTree = {
             view: 'tree',
             className: 'call-tree',
             data: `
-                #.data.functionsTreeTimingsFiltered
+                #.data.callFramesTreeTimingsFiltered
                     .select('nodes', @, true)
                     .[totalTime]
                     .sort(totalTime desc, selfTime desc)
             `,
             children: `
-                #.data.functionsTreeTimingsFiltered
+                #.data.callFramesTreeTimingsFiltered
                     .select('children', node.nodeIndex)
                     .[totalTime]
                     .sort(totalTime desc, selfTime desc, node.value.name ascN)
@@ -53,7 +53,7 @@ const descendantTree = {
                         when: 'node.value.id != +#.id',
                         content: [
                             'module-badge:node.value',
-                            'loc-badge:node.value'
+                            'call-frame-loc-badge:node.value'
                         ]
                     }
                 ]
@@ -71,13 +71,13 @@ const ancestorsTree = {
             className: 'call-tree',
             expanded: 3,
             data: `
-                #.data.functionsTreeTimingsFiltered
+                #.data.callFramesTreeTimingsFiltered
                     .select('nodes', $, true)
                     .[totalTime]
                     .sort(totalTime desc)
             `,
             children: `
-                node.parent ? #.data.functionsTreeTimingsFiltered
+                node.parent ? #.data.callFramesTreeTimingsFiltered
                     .select('parent', node.nodeIndex)
                     .[totalTime]
                     .sort(totalTime desc)
@@ -111,7 +111,7 @@ const ancestorsTree = {
                         when: 'node.value.id != +#.id',
                         content: [
                             'module-badge:node.value',
-                            'loc-badge:node.value'
+                            'call-frame-loc-badge:node.value'
                         ]
                     }
                 ]
@@ -125,11 +125,12 @@ const pageContent = {
         {
             view: 'page-header',
             prelude: [
-                'badge{ className: "type-badge", text: "Function" }',
+                'call-frame-kind-badge',
+                // 'badge{ className: "type-badge", text: "Call frame" }',
                 'badge{ className: "category-badge", text: module.category.name, href: module.category.marker().href, color: module.category.name.color() }',
                 'package-badge',
                 'badge{ text: module | packageRelPath or path or "module", href: module.marker().href }',
-                'loc-badge'
+                'call-frame-loc-badge'
             ],
             content: [
                 { view: 'h1', when: 'not regexp', data: 'name' },
@@ -144,17 +145,17 @@ const pageContent = {
 
         {
             view: 'subject-with-nested-timeline',
-            data: '{ subject: @, tree: #.data.functionsTree }'
+            data: '{ subject: @, tree: #.data.callFramesTree }'
         },
 
         {
             view: 'update-on-timings-change',
-            timings: '=#.data.functionsTimingsFiltered',
+            timings: '=#.data.callFramesTimingsFiltered',
             content: {
                 view: 'page-indicator-timings',
                 data: `{
-                    full: #.data.functionsTimings.entries[=>entry = @],
-                    filtered: #.data.functionsTimingsFiltered.entries[=>entry = @]
+                    full: #.data.callFramesTimings.entries[=>entry = @],
+                    filtered: #.data.callFramesTimingsFiltered.entries[=>entry = @]
                 }`
             }
         },
@@ -164,25 +165,25 @@ const pageContent = {
             when: false,
             className: 'trigger-outside script-source',
             data: `
-                #.data.scriptFunctions[=> function = @]
+                #.data.scriptFunctions[=> callFrame = @]
                 |? {
-                    $source: script.source;
-                    $start: $source.lastIndexOf('\\n', start) + 1;
-                    $end: $source.indexOf('\\n', end) | $ != -1 ?: $source.size();
+                    $source: callFrame.script.source or "";
+                    $start: $source.lastIndexOf('\\n', callFrame.start) + 1;
+                    $end: $source.indexOf('\\n', callFrame.end) | $ != -1 ?: $source.size();
 
                     scriptFunction: $,
                     source: $source[$start:$end],
                     $start,
                     $end
                 } : {
-                    function: @
+                    callFrame: @
                 }
             `,
             expanded: '=source is not undefined',
             header: [
                 'text:"Source"',
                 { view: 'switch', content: [
-                    { when: 'function.regexp', content: 'html:` \xa0<span style="color: #888">${function.regexp.size().bytes(true)}</html>`' },
+                    { when: 'callFrame.regexp', content: 'html:` \xa0<span style="color: #888">${callFrame.regexp.size().bytes(true)}</html>`' },
                     { when: 'source is not undefined', content: 'html:` \xa0<span style="color: #888">${source.size().bytes(true)}</html>`' },
                     { content: 'html:` <span style="color: #888">(unavailable)</span>`' }
                 ] }
@@ -191,29 +192,29 @@ const pageContent = {
                 {
                     view: 'source',
                     className: 'regexp',
-                    when: 'function.regexp',
-                    data: '{ content: function.regexp, syntax: "regexp", lineNum: false }'
+                    when: 'callFrame.regexp',
+                    data: '{ content: callFrame.regexp, syntax: "regexp", lineNum: false }'
                 },
                 {
                     view: 'source',
-                    when: 'not function.regexp',
+                    when: 'not callFrame.regexp',
                     data: `{
-                        $line: scriptFunction.line or 1;
+                        $line: scriptFunction.callFrame.line or 1;
                         $start: scriptFunction.start;
                         $end: scriptFunction.end;
-                        $inlinedRefs: scriptFunction.states[-1].inlined.match(/O\\d+(?=F|$)/g).matched |
+                        $inlinedRefs: scriptFunction.codes[-1].inlined.match(/O\\d+(?=F|$)/g).matched |
                             ? .($pos: +$[1:] - @.start; { className: 'inline', range: [$pos, $pos] })
                             : [];
-                        $codePoints: scriptFunction.states.[positions][-1].positions.match(/O\\d+(?=C|$)/g).matched |
+                        $codePoints: scriptFunction.codes.[positions][-1].positions.match(/O\\d+(?=C|$)/g).matched |
                             ? .($pos: +$[1:] - @.start; $pos ? { className: 'code-point', range: [$pos, $pos] })
                             : [];
-                        $samplePoints: scriptFunction.function._locations.entries() |
+                        $samplePoints: scriptFunction.callFrame.function._locations.entries() |
                             ? .($pos: +key - @.start; $pos ? { className: 'sample-point', range: [$pos, $pos], marker: value.ms() })
                             : [];
                         $tooltipView: {
                             className: 'hint-tooltip',
                             content: [
-                                'text:scriptFunction.name',
+                                'text:scriptFunction.callFrame.name',
                                 'html:"<br>"',
                                 // {
                                 //     view: 'context',
@@ -228,7 +229,7 @@ const pageContent = {
                                 // 'html:"<br>"',
                                 {
                                     view: 'inline-list',
-                                    data: 'scriptFunction.states',
+                                    data: 'scriptFunction.codes',
                                     item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
                                 }
                         ] };
@@ -240,7 +241,7 @@ const pageContent = {
                         $inlinedRefs,
                         $codePoints,
                         $samplePoints,
-                        refs: $codePoints + $inlinedRefs + $samplePoints + scriptFunction.script.functions.[start >= $start and end <= $end].({
+                        refs: $codePoints + $inlinedRefs + $samplePoints + scriptFunction.callFrame.script.callFrames.[callFrame | start >= $start and end <= $end].({
                             $href: @.scriptFunction != $ ? function.marker().href;
                             $marker: states | size() = 1
                                 ? tier[].abbr()
@@ -268,14 +269,14 @@ const pageContent = {
                     },
                     prelude: {
                         view: 'block',
-                        when: 'scriptFunction.script',
+                        when: 'scriptFunction.callFrame.script',
                         data: `
-                            scriptFunction | $start; $end; script.functions
+                            scriptFunction.callFrame | $start; $end; script.callFrames
                                 .[start <= $start and end >= $end]
                                 .sort(start asc)
                                 .({
-                                    target: @.scriptFunction,
-                                    scriptFunction: $
+                                    target: @.scriptFunction.callFrame,
+                                    callFrame: $
                                 })
                         `,
                         content: {
@@ -283,9 +284,9 @@ const pageContent = {
                             className: 'function-path',
                             whenData: true,
                             item: { view: 'switch', content: [
-                                { when: 'scriptFunction = target', content: 'block{ className: "target", content: `text:scriptFunction | function or $ | name or "(anonymous function)"` }' },
-                                { when: 'scriptFunction.function', content: 'auto-link:scriptFunction.function' },
-                                { content: 'text:scriptFunction | name or "(anonymous function)"' }
+                                { when: 'callFrame = target', content: 'block{ className: "target", content: `text:callFrame | function or $ | name or "(anonymous function)"` }' },
+                                { when: 'callFrame.function', content: 'auto-link:callFrame.function' },
+                                { content: 'text:callFrame | name or "(anonymous function)"' }
                             ] }
                         }
                     }
@@ -298,7 +299,7 @@ const pageContent = {
             expanded: true,
             className: 'trigger-outside',
             header: 'text:"Nested time distribution"',
-            content: 'nested-timings-tree:{ subject: @, tree: #.data.functionsTree, timings: #.data.functionsTimingsFiltered }'
+            content: 'nested-timings-tree:{ subject: @, tree: #.data.callFramesTree, timings: #.data.callFramesTimingsFiltered }'
         },
 
         {
@@ -318,7 +319,7 @@ const pageContent = {
                 header: 'text:"Call trees"',
                 content: {
                     view: 'update-on-timings-change',
-                    timings: '=#.data.functionsTimingsFiltered',
+                    timings: '=#.data.callFramesTimingsFiltered',
                     debounce: 150,
                     content: {
                         view: 'hstack',
@@ -334,20 +335,20 @@ const pageContent = {
 
         {
             view: 'flamechart-expand',
-            tree: '=#.data.functionsTree',
-            timings: '=#.data.functionsTreeTimingsFiltered',
+            tree: '=#.data.callFramesTree',
+            timings: '=#.data.callFramesTreeTimingsFiltered',
             value: '='
         }
     ]
 };
 
-discovery.page.define('function', {
+discovery.page.define('call-frame', {
     view: 'switch',
-    data: 'functions[=>id = +#.id]',
+    data: 'callFrames[=>id = +#.id]',
     content: [
         { when: 'no $', content: {
             view: 'alert-warning',
-            content: 'md:"No function with id \\"{{#.id}}\\" is found\\n\\n[Back to index page](#)"'
+            content: 'md:"No call frame with id \\"{{#.id}}\\" is found\\n\\n[Back to index page](#)"'
         } },
         pageContent
     ]

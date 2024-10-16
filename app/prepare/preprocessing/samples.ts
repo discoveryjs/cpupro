@@ -9,42 +9,42 @@ import {
     TreeTiminigs
 } from '../computations/timings.js';
 import {
-    CpuProFunction,
     CpuProModule,
     CpuProCategory,
     CpuProPackage,
     V8CpuProfileNode,
-    CpuProNode
+    CpuProNode,
+    CpuProCallFrame
 } from '../types.js';
 import { convertToUint32Array } from '../utils.js';
 
-const kinds = ['functions', 'modules', 'packages', 'categories'] as const;
+const kinds = ['callFrames', 'modules', 'packages', 'categories'] as const;
 
 type SamplesResult = {
     samplesTimings: SamplesTiminigs;
     samplesTimingsFiltered: SamplesTiminigsFiltered;
 
-    functionsTimings: DictionaryTiminigs<CpuProFunction>;
+    callFramesTimings: DictionaryTiminigs<CpuProCallFrame>;
     modulesTimings: DictionaryTiminigs<CpuProModule>;
     packagesTimings: DictionaryTiminigs<CpuProPackage>;
     categoriesTimings: DictionaryTiminigs<CpuProCategory>;
 
-    functionsTreeTimings: TreeTiminigs<CpuProFunction>;
+    callFramesTreeTimings: TreeTiminigs<CpuProCallFrame>;
     modulesTreeTimings: TreeTiminigs<CpuProModule>;
     packagesTreeTimings: TreeTiminigs<CpuProPackage>;
     categoriesTreeTimings: TreeTiminigs<CpuProCategory>;
 
-    functionsTimingsFiltered: DictionaryTiminigs<CpuProFunction>;
+    callFramesTimingsFiltered: DictionaryTiminigs<CpuProCallFrame>;
     modulesTimingsFiltered: DictionaryTiminigs<CpuProModule>;
     packagesTimingsFiltered: DictionaryTiminigs<CpuProPackage>;
     categoriesTimingsFiltered: DictionaryTiminigs<CpuProCategory>;
 
-    functionsTreeTimingsFiltered: TreeTiminigs<CpuProFunction>;
+    callFramesTreeTimingsFiltered: TreeTiminigs<CpuProCallFrame>;
     modulesTreeTimingsFiltered: TreeTiminigs<CpuProModule>;
     packagesTreeTimingsFiltered: TreeTiminigs<CpuProPackage>;
     categoriesTreeTimingsFiltered: TreeTiminigs<CpuProCategory>;
 
-    functionsTreeTimestamps: TreeTimestamps<CpuProFunction>;
+    callFramesTreeTimestamps: TreeTimestamps<CpuProCallFrame>;
     modulesTreeTimestamps: TreeTimestamps<CpuProModule>;
     packagesTreeTimestamps: TreeTimestamps<CpuProPackage>;
     categoriesTreeTimestamps: TreeTimestamps<CpuProCategory>;
@@ -139,7 +139,7 @@ export function remapTreeSamples(
 export function processSamples(
     samples: Uint32Array,
     timeDeltas: Uint32Array,
-    functionsTree: CallTree<CpuProFunction>,
+    callFramesTree: CallTree<CpuProCallFrame>,
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
     categoriesTree: CallTree<CpuProCategory>
@@ -155,7 +155,7 @@ export function processSamples(
         dictionaryTimings,
         dictionaryTimingsFiltered
     } = createTreeCompute(samples, timeDeltas, [
-        functionsTree,
+        callFramesTree,
         modulesTree,
         packagesTree,
         categoriesTree

@@ -1,6 +1,7 @@
 import { TIMINGS } from '../const';
 import { CallTree } from './call-tree.js';
-import { CpuProCategory, CpuProCallFrame, CpuProFunction, CpuProHierarchyNode, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
+import { CpuProCallFrame, CpuProNode } from '../types.js';
+import { Dictionary } from '../dictionary';
 
 interface TreeSource<S> {
     dictionary: S[];
@@ -281,7 +282,7 @@ function rollupTreeByCommonValues(
     return nodesCount;
 }
 
-export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNode>(
+export function buildCallTree<S extends CpuProNode, D extends CpuProNode>(
     source: TreeSource<S>,
     dictionary: D[],
     sourceNodeToDictionaryFn: (node: S) => number
@@ -339,7 +340,7 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProHierarchyNod
     return tree;
 }
 
-function buildCallTreeFor<S extends CpuProNode, D extends CpuProHierarchyNode>(
+function buildCallTreeFor<S extends CpuProNode, D extends CpuProNode>(
     name: string,
     source: TreeSource<S>,
     dictionary: D[],
@@ -372,27 +373,23 @@ export function buildTrees(
     nodeParent: Uint32Array,
     nodeIndexById: Int32Array,
     callFrameByNodeIndex: Uint32Array,
-    callFrames: CpuProCallFrame[],
-    functions: CpuProFunction[],
-    modules: CpuProModule[],
-    packages: CpuProPackage[],
-    categories: CpuProCategory[]
+    dict: Dictionary
 ) {
     const treeSource = buildTreeSource(
         nodeParent,
         nodeIndexById,
         callFrameByNodeIndex,
-        callFrames
+        dict.callFrames
     );
 
-    const functionsTree = buildCallTreeFor('functions', treeSource, functions, callFrame => callFrame.function.id - 1);
-    const modulesTree = buildCallTreeFor('modules', functionsTree, modules, callFrame => callFrame.module.id - 1);
-    const packagesTree = buildCallTreeFor('packages', modulesTree, packages, callFrame => callFrame.package.id - 1);
-    const categoriesTree = buildCallTreeFor('categories', packagesTree, categories, callFrame => callFrame.category.id - 1);
+    const callFramesTree = buildCallTreeFor('callFrames', treeSource, dict.callFrames, callFrame => callFrame.id - 1);
+    const modulesTree = buildCallTreeFor('modules', callFramesTree, dict.modules, callFrame => callFrame.module.id - 1);
+    const packagesTree = buildCallTreeFor('packages', modulesTree, dict.packages, callFrame => callFrame.package.id - 1);
+    const categoriesTree = buildCallTreeFor('categories', packagesTree, dict.categories, callFrame => callFrame.category.id - 1);
 
     return {
         treeSource,
-        functionsTree,
+        callFramesTree,
         modulesTree,
         packagesTree,
         categoriesTree

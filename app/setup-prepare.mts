@@ -140,7 +140,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // build trees should be performed after dictionaries are sorted and remaped
     const {
         treeSource,
-        functionsTree,
+        callFramesTree,
         modulesTree,
         packagesTree,
         categoriesTree
@@ -149,12 +149,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             nodeParent,
             nodeIndexById,
             callFrameByNodeIndex,
-            dict.callFrames,
-            // ---
-            dict.functions,
-            dict.modules,
-            dict.packages,
-            dict.categories
+            dict
         )
     );
 
@@ -164,7 +159,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         remapTreeSamples(
             samples,
             treeSource.sourceIdToNode,
-            functionsTree,
+            callFramesTree,
             modulesTree,
             packagesTree,
             categoriesTree
@@ -175,11 +170,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const {
         samplesTimings,
         samplesTimingsFiltered,
-        functionsTimings,
-        functionsTimingsFiltered,
-        functionsTreeTimings,
-        functionsTreeTimingsFiltered,
-        functionsTreeTimestamps,
+        callFramesTimings,
+        callFramesTimingsFiltered,
+        callFramesTreeTimings,
+        callFramesTreeTimingsFiltered,
+        callFramesTreeTimestamps,
         modulesTimings,
         modulesTimingsFiltered,
         modulesTreeTimings,
@@ -199,7 +194,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         processSamples(
             samples,
             timeDeltas,
-            functionsTree,
+            callFramesTree,
             modulesTree,
             packagesTree,
             categoriesTree
@@ -208,8 +203,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
     // apply object marker
     await work('mark objects', () => {
-        dict.callFrames.forEach(markers.callFrame);
-        dict.functions.forEach(markers.function);
+        dict.callFrames.forEach(markers['call-frame']);
         dict.modules.forEach(markers.module);
         dict.packages.forEach(markers.package);
         dict.categories.forEach(markers.category);
@@ -236,12 +230,12 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
         scriptFunctions,
-        functionsTimings,
-        functionsTimingsFiltered,
-        functionsTree,
-        functionsTreeTimings,
-        functionsTreeTimingsFiltered,
-        functionsTreeTimestamps,
+        callFramesTimings,
+        callFramesTimingsFiltered,
+        callFramesTree,
+        callFramesTreeTimings,
+        callFramesTreeTimingsFiltered,
+        callFramesTreeTimestamps,
         modulesTimings,
         modulesTimingsFiltered,
         modulesTree,
@@ -266,7 +260,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const result = {
         scripts: dict.scripts,
         callFrames: dict.callFrames,
-        functions: dict.functions,
         modules: dict.modules,
         packages: dict.packages,
         categories: dict.categories,

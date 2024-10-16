@@ -115,9 +115,9 @@ export type WellKnownType =
     | 'atomics-wait'
     ;
 
-export type CpuProHierarchyNode = CpuProCategory | CpuProPackage | CpuProModule | CpuProFunction;
-export type CpuProNode = CpuProCallFrame | CpuProHierarchyNode;
+export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory;
 
+export type CpuProFunctionKind = 'script' | 'function' | 'regexp' | 'vm-state' | 'root';
 export type CpuProCallFrame = {
     id: number;
     script: CpuProScript | null;
@@ -129,83 +129,9 @@ export type CpuProCallFrame = {
     start: number;
     end: number;
     regexp: string | null;
-    function: CpuProFunction;
     module: CpuProModule;
     package: CpuProPackage;
     category: CpuProCategory;
-}
-
-export type CpuProScript = {
-    id: number;
-    url: string;
-    module: CpuProModule;
-    source: string | null;
-    callFrames: CpuProCallFrame[];
-    functions: CpuProScriptFunction[];
-}
-export interface IScriptMapper {
-    get(scriptId: number | string): CpuProScript | undefined;
-    has(scriptId: number | string): boolean;
-    set(scriptId: number | string, script: CpuProScript): void;
-    getScriptIndexByUrl(scriptId: number, url: string): number;
-    resolveScript(scriptId: number, url?: string | null, source?: string | null): CpuProScript | null;
-    normalizeScriptId(scriptId: string | number): number;
-}
-
-export type CpuProProfileScript = {
-    script: CpuProScript;
-    compilation: CpuProProfileFunction | null; // FIXME: find better name
-    functions: CpuProProfileFunction[];
-}
-export type CpuProProfileFunction = {
-    callFrame: CpuProCallFrame;
-    topTier: V8FunctionCodeType;
-    hotness: 'cold' | 'warm' | 'hot';
-    codes: CpuProFunctionCode[];
-}
-
-export type CpuProScriptFunction = {
-    id: number; // starts with 1
-    name: string;
-    script: CpuProScript | null;
-    start: number;
-    end: number;
-    line: number;
-    column: number;
-    loc: string | null;
-}
-export type CpuProScriptCodes = {
-    script: CpuProScript;
-    compilation: CpuProFunctionCodes | null; // FIXME: find better name
-    functionCodes: CpuProFunctionCodes[];
-}
-export type CpuProFunctionCodes = {
-    callFrame: CpuProCallFrame;
-    topTier: V8FunctionCodeType;
-    hotness: 'cold' | 'warm' | 'hot';
-    codes: CpuProFunctionCode[];
-}
-export type CpuProFunctionCode = {
-    tm: number;
-    callFrame: CpuProCallFrame;
-    tier: string;
-    duration: number;
-    positions: string;
-    inlined: string;
-    fns: number[];
-}
-
-export type CpuProFunctionKind = 'script' | 'function' | 'regexp' | 'vm-state' | 'root';
-export type CpuProFunction = {
-    id: number; // starts with 1
-    name: string;
-    kind: CpuProFunctionKind;
-    script: CpuProScript | null;
-    category: CpuProCategory;
-    package: CpuProPackage;
-    module: CpuProModule;
-    regexp: string | null;
-    loc: string | null;
 }
 
 export type ModuleType = // alphabetical order
@@ -297,4 +223,63 @@ export type CpuProPackage = {
 export type CpuProCategory = {
     id: number;
     name: string;
+}
+
+export type CpuProScript = {
+    id: number;
+    url: string;
+    module: CpuProModule;
+    source: string | null;
+    callFrames: CpuProCallFrame[];
+}
+export interface IScriptMapper {
+    get(scriptId: number | string): CpuProScript | undefined;
+    has(scriptId: number | string): boolean;
+    set(scriptId: number | string, script: CpuProScript): void;
+    getScriptIndexByUrl(scriptId: number, url: string): number;
+    resolveScript(scriptId: number, url?: string | null, source?: string | null): CpuProScript | null;
+    normalizeScriptId(scriptId: string | number): number;
+}
+
+export type CpuProProfileScript = {
+    script: CpuProScript;
+    compilation: CpuProProfileFunction | null; // FIXME: find better name
+    functions: CpuProProfileFunction[];
+}
+export type CpuProProfileFunction = {
+    callFrame: CpuProCallFrame;
+    topTier: V8FunctionCodeType;
+    hotness: 'cold' | 'warm' | 'hot';
+    codes: CpuProFunctionCode[];
+}
+
+export type CpuProScriptFunction = {
+    id: number; // starts with 1
+    name: string;
+    script: CpuProScript | null;
+    start: number;
+    end: number;
+    line: number;
+    column: number;
+    loc: string | null;
+}
+export type CpuProScriptCodes = {
+    script: CpuProScript;
+    compilation: CpuProFunctionCodes | null; // FIXME: find better name
+    functionCodes: CpuProFunctionCodes[];
+}
+export type CpuProFunctionCodes = {
+    callFrame: CpuProCallFrame;
+    topTier: V8FunctionCodeType;
+    hotness: 'cold' | 'warm' | 'hot';
+    codes: CpuProFunctionCode[];
+}
+export type CpuProFunctionCode = {
+    tm: number;
+    callFrame: CpuProCallFrame;
+    tier: string;
+    duration: number;
+    positions: string;
+    inlined: string;
+    fns: number[];
 }

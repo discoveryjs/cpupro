@@ -100,11 +100,11 @@ const pageContent = {
                 'text:"Functions "',
                 {
                     view: 'pill-badge',
-                    data: '#.data.functionsTimingsFiltered.entries.[entry.module = @]',
+                    data: '#.data.callFramesTimingsFiltered.entries.[entry.module = @]',
                     content: [
                         {
                             view: 'update-on-timings-change',
-                            timings: '=#.data.functionsTimingsFiltered',
+                            timings: '=#.data.callFramesTimingsFiltered',
                             content: 'text-numeric:count(=> totalTime?)'
                         },
                         {
@@ -119,7 +119,7 @@ const pageContent = {
                 view: 'content-filter',
                 className: 'table-content-filter',
                 data: `
-                    #.data.functionsTimingsFiltered.entries.[entry.module = @]
+                    #.data.callFramesTimingsFiltered.entries.[entry.module = @]
                         .zip(=> entry, #.data.scriptFunctions, => function)
                         .({
                             $entry: left.entry;
@@ -133,7 +133,7 @@ const pageContent = {
                 `,
                 content: {
                     view: 'update-on-timings-change',
-                    timings: '=#.data.functionsTimingsFiltered',
+                    timings: '=#.data.callFramesTimingsFiltered',
                     content: {
                         view: 'table',
                         data: `
@@ -175,7 +175,7 @@ const pageContent = {
                             { header: 'Loc',
                                 sorting: 'loc ascN',
                                 data: 'entry',
-                                content: ['module-badge', 'loc-badge']
+                                content: ['module-badge', 'call-frame-loc-badge']
                             }
                         ]
                     }

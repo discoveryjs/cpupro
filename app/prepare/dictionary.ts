@@ -10,7 +10,6 @@ import {
     CDN,
     CpuProCallFrame,
     CpuProCategory,
-    CpuProFunction,
     CpuProFunctionKind,
     CpuProModule,
     CpuProPackage,
@@ -50,7 +49,6 @@ type CallFrameMap = Map<
 export class Dictionary {
     scripts: CpuProScript[];
     callFrames: CpuProCallFrame[];
-    functions: CpuProFunction[];
     modules: CpuProModule[];
     packages: CpuProPackage[];
     categories: CpuProCategory[];
@@ -68,7 +66,6 @@ export class Dictionary {
     constructor() {
         this.scripts = [];
         this.callFrames = [];
-        this.functions = [];
         this.modules = [];
         this.packages = [];
         this.categories = [];
@@ -129,29 +126,28 @@ export class Dictionary {
         if (callFrameIndex === undefined) {
             const start = normalizeLoc(inputCallFrame.start);
             const end = normalizeLoc(inputCallFrame.end);
-            const fn = this.createFunction(script, functionName, lineNumber, columnNumber);
+            const module = this.resolveModule(script, functionName);
+            const { name, regexp } = this.#resolveFunctionName(functionName, lineNumber, columnNumber);
             const callFrame: CpuProCallFrame = {
                 id: this.callFrames.length + 1,
                 script,
-                kind: fn.kind,
-                name: fn.name,
+                kind: resolveFunctionKind(script, name, regexp),
+                name,
                 line: lineNumber,
                 column: columnNumber,
                 loc: locFromLineColumn(lineNumber, columnNumber),
                 start,
                 end,
-                regexp: fn.regexp,
-                category: fn.category,
-                package: fn.package,
-                module: fn.module,
-                function: fn
+                regexp,
+                category: module.category,
+                package: module.package,
+                module
             };
 
             callFrameIndex = this.callFrames.push(callFrame) - 1;
             resultMap.set(columnNumber, callFrameIndex);
 
             script?.callFrames.push(callFrame);
-            this.functions.push(fn);
         }
 
         return callFrameIndex;
@@ -527,15 +523,15 @@ export class Dictionary {
             : this.resolveModuleByScript(script);
     }
 
-    createFunction(
-        script: CpuProScript | null,
+    // TODO: make a function once drop this.#anonymousFunctionNameIndex as a dependency
+    #resolveFunctionName(
         functionName: string,
         lineNumber: number,
         columnNumber: number
     ) {
-        const module = this.resolveModule(script, functionName);
-        const isRegExp = module.package.type === 'regexp';
-        const regexp = isRegExp ? functionName.slice('RegExp: '.length) : null;
+        const regexp = functionName.startsWith('RegExp: ')
+            ? functionName.slice('RegExp: '.length)
+            : null;
         const name = regexp
             ? (regexp.length <= maxRegExpLength ? regexp : `${regexp.slice(0, maxRegExpLength - 1)}…`)
             : functionName || (lineNumber === 0 && columnNumber === 0
@@ -543,19 +539,7 @@ export class Dictionary {
                 : `(anonymous function #${this.#anonymousFunctionNameIndex++})`
             );
 
-        const fn: CpuProFunction = {
-            id: this.functions.length + 1, // id starts with 1
-            name,
-            script,
-            category: module.category,
-            package: module.package,
-            module,
-            kind: resolveFunctionKind(script, name, regexp),
-            regexp,
-            loc: locFromLineColumn(lineNumber, columnNumber)
-        };
-
-        return fn;
+        return { name, regexp };
     }
 }
 
@@ -620,7 +604,7 @@ function resolveFunctionKind(script: CpuProScript | null, name: string, regexp: 
             return 'root';
         }
 
-        if (Object.hasOwn(moduleTypeByWellKnownName, name)) {
+        if (moduleTypeByWellKnownName.has(name as WellKnownName)) {
             return 'vm-state';
         }
     }

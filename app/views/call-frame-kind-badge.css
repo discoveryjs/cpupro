@@ -1,4 +1,4 @@
-.view-badge.function-kind {
+.view-badge.call-frame-kind {
     --discovery-view-badge-dark-color: color-mix(in oklab, currentColor 12%, var(--discovery-background-color));
 
     display: inline-block;
@@ -9,20 +9,20 @@
     font-size: 9px;
     text-align: center;
 }
-.view-table-cell > .view-badge.function-kind {
+.view-table-cell > .view-badge.call-frame-kind {
     vertical-align: top;
     margin: 0 -6px 0 -8px;
 }
 
-.view-badge.function-kind.vm-state {
+.view-badge.call-frame-kind.vm-state {
     --discovery-view-badge-dark-text-color: #e29c7f;
 }
-.view-badge.function-kind.script {
+.view-badge.call-frame-kind.script {
     --discovery-view-badge-dark-text-color: #cfb282;
 }
-.view-badge.function-kind.function {
+.view-badge.call-frame-kind.function {
     --discovery-view-badge-dark-text-color: #a3bb80;
 }
-.view-badge.function-kind.regexp {
+.view-badge.call-frame-kind.regexp {
     --discovery-view-badge-dark-text-color: #85b3ed;
 }

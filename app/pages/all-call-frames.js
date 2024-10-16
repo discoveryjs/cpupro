@@ -1,8 +1,8 @@
-discovery.page.define('functions', [
+discovery.page.define('call-frames', [
     {
         view: 'context',
         data: `
-            functionsTimings.entries.zip(=> entry, scriptFunctions, => function)
+            callFramesTimings.entries.zip(=> entry, scriptFunctions, => function)
                 .({
                     $entry: left.entry;
 
@@ -23,10 +23,10 @@ discovery.page.define('functions', [
                 prelude: [
                     'badge{ text: "Packages", className: #.page = "packages" ? "selected", href: #.page != "packages" ? "#packages" }',
                     'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
-                    'badge{ text: "Functions", className: #.page = "functions" ? "selected", href: #.page != "functions" ? "#functions" }'
+                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }'
                 ],
                 content: [
-                    'h1:"All functions"',
+                    'h1:"All call frames"',
                     {
                         view: 'input',
                         name: 'filter',
@@ -73,7 +73,7 @@ discovery.page.define('functions', [
                             content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                         },
                         { header: 'Kind',
-                            content: 'function-kind-badge:entry.kind'
+                            content: 'call-frame-kind-badge:entry.kind'
                         },
                         // { header: 'Function',
                         //     data: 'left.entry',
@@ -96,7 +96,7 @@ discovery.page.define('functions', [
                             data: 'entry',
                             content: [
                                 'module-badge:module',
-                                'loc-badge'
+                                'call-frame-loc-badge'
                             ]
                         },
                         { header: 'Source',
@@ -122,7 +122,7 @@ discovery.page.define('functions', [
                     view: 'block',
                     className: 'app-page-summary',
                     content: [
-                        { view: 'block', content: ['text:"Functions:"', 'text-numeric:size()'] },
+                        { view: 'block', content: ['text:"Call frames:"', 'text-numeric:size()'] },
                         { view: 'block', content: ['text:"Total time:"', 'duration:{ time: sum(=>selfTime), total: #.data.totalTime }'] }
                     ]
                 }

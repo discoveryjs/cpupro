@@ -9,17 +9,17 @@ discovery.view.define('nested-timings-tree', {
         data: `
             $tree;
             $subject;
-            $functions: #.data.functionsTreeTimingsFiltered.nestedTimings(subject, tree);
-            $totalTime: $functions.sum(=>selfTime);
+            $callFrames: #.data.callFramesTreeTimingsFiltered.nestedTimings(subject, tree);
+            $totalTime: $callFrames.sum(=> selfTime);
 
-            $functions
-                .({ function: entry, time: selfTime, total: $totalTime })
+            $callFrames
+                .({ callFrame: entry, time: selfTime, total: $totalTime })
                 .sort(time desc)
-                .group(=>function.module)
-                    .({ module: key, time: value.sum(=>time), total: $totalTime, functions: value })
+                .group(=> callFrame.module)
+                    .({ module: key, time: value.sum(=> time), total: $totalTime, callFrames: value })
                     .sort(time desc)
-                .group(=>module.package)
-                    .({ package: key, time: value.sum(=>time), total: $totalTime, modules: value })
+                .group(=> module.package)
+                    .({ package: key, time: value.sum(=> time), total: $totalTime, modules: value })
                     .sort(time desc)
         `,
         itemConfig: {
@@ -27,9 +27,9 @@ discovery.view.define('nested-timings-tree', {
             children: 'modules',
             itemConfig: {
                 content: ['module-badge:module', 'duration'],
-                children: 'functions',
+                children: 'callFrames',
                 itemConfig: {
-                    content: ['function-badge:function', 'duration']
+                    content: ['call-frame-badge:callFrame', 'duration']
                 }
             }
         }

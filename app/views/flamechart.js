@@ -38,9 +38,9 @@ const defaultTooltipContent = [
             { when: 'marker("module")', content: [
                 'module-badge'
             ] },
-            { when: 'marker("function")', content: [
+            { when: 'marker("call-frame")', content: [
                 'module-badge:module',
-                'loc-badge',
+                'call-frame-loc-badge',
                 { view: 'block', content: 'text:name' }
             ] },
             { content: [
@@ -73,10 +73,10 @@ const defaultDetailsContent = [
                 { when: 'marker("module")', content: [
                     'module-badge'
                 ] },
-                { when: 'marker("function")', content: [
+                { when: 'marker("call-frame")', content: [
                     'module-badge:module',
-                    'loc-badge',
-                    { view: 'block', content: 'link:{ text: name, href: marker("function").href }' }
+                    'call-frame-loc-badge',
+                    { view: 'block', content: 'link:{ text: name, href: marker("call-frame").href }' }
                 ] },
                 { content: [
                     'badge:{ text: name, href: marker("category").href }'

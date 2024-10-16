@@ -38,9 +38,13 @@ setTimeout(() => {
     discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
 
     // FIXME: temporary solution
-    discovery.annotations.push({
-        query: '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
-    });
+    try {
+        discovery.annotations.push({
+            query: '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
+        });
+    } catch (e) {
+        console.error(e);
+    }
 
     // FIXME: temporary solution, since context is cleaning up on data load/unload
     discovery.on('data', consumeDemos);
@@ -649,9 +653,9 @@ const modulesList = {
     }
 };
 
-const functionList = {
+const callFrameList = {
     view: 'section',
-    data: 'functionsTimingsFiltered',
+    data: 'callFramesTimingsFiltered',
     header: [],
     content: {
         view: 'content-filter',
@@ -665,7 +669,7 @@ const functionList = {
                 cols: [
                     { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
                     { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                    { header: 'Function', className: 'main', sorting: 'entry.name ascN', content: 'function-badge:entry' }
+                    { header: 'Function', className: 'main', sorting: 'entry.name ascN', content: 'call-frame-badge:entry' }
                 ]
             }
         }
@@ -685,7 +689,7 @@ const flamecharts = {
                     { text: 'Categories', value: 'categoriesTree' },
                     { text: 'Packages', value: 'packagesTree', active: true },
                     { text: 'Modules', value: 'modulesTree' },
-                    { text: 'Functions', value: 'functionsTree' }
+                    { text: 'Functions', value: 'callFramesTree' }
                 ]
             },
             {
@@ -871,20 +875,20 @@ discovery.page.define('default', {
                         { view: 'badge', href: '#modules', text: 'all modules →' }
                     ] },
                     { view: 'block', content: [
-                        'text:"Functions "',
+                        'text:"Call frames "',
                         {
                             view: 'update-on-timings-change',
-                            data: 'functionsTimingsFiltered',
+                            data: 'callFramesTimingsFiltered',
                             content: 'text-numeric:entries.[totalTime].size()'
                         },
-                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${functions.size()}`' },
-                        { view: 'badge', href: '#functions', text: 'all functions →' }
+                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${callFrames.size()}`' },
+                        { view: 'badge', href: '#call-frames', text: 'all call frames →' }
                     ] }
                 ],
                 content: [
                     packagesList,
                     modulesList,
-                    functionList
+                    callFrameList
                 ]
             },
 

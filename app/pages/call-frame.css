@@ -1,27 +1,27 @@
-.page-function .view-page-header__prelude .function-loc {
+.page-call-frame .view-page-header__prelude .call-frame-loc {
     padding: 3px 6px;
     color: #aaa;
 }
-.page-function .view-page-header__content .view-source {
+.page-call-frame .view-page-header__content .view-source {
     margin: 8px 0 1px;
 }
-.page-function .view-page-header__content .view-source__content {
+.page-call-frame .view-page-header__content .view-source__content {
     padding-top: 11px;
     padding-bottom: 12px;
 }
-.page-function .view-page-header__content .view-source__source {
+.page-call-frame .view-page-header__content .view-source__source {
     font-size: 16px;    
 }
-.page-function .view-page-header__content .view-source.too-long .view-source__source {
+.page-call-frame .view-page-header__content .view-source.too-long .view-source__source {
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.page-function .script-source .view-source.regexp .view-source__source {
+.page-call-frame .script-source .view-source.regexp .view-source__source {
     word-break: break-word;
     white-space: normal;
 }
-.page-function .view-source .view-source__source .inline {
+.page-call-frame .view-source .view-source__source .inline {
     font-size: 75%;
     font-family: tahoma;
     vertical-align: top;
@@ -32,10 +32,10 @@
     margin: 0 1px;
     padding: 1px 2px;
 }
-.page-function .view-source .view-source__source .inline::before {
+.page-call-frame .view-source .view-source__source .inline::before {
     content: 'inl';
 }
-.page-function .view-source .view-source__source .code-point {
+.page-call-frame .view-source .view-source__source .code-point {
     font-size: 0px;
     vertical-align: top;
     padding: 4px;
@@ -43,7 +43,7 @@
     background-color: #c4906f;
     margin: 0 3px 0 1px;
 }
-.page-function .view-source .view-source__source .sample-point {
+.page-call-frame .view-source .view-source__source .sample-point {
     font-size: 85%;
     font-family: tahoma;
     vertical-align: top;
@@ -54,6 +54,6 @@
     margin: 0 1px;
     padding: 1px 2px;
 }
-.page-function .view-source .view-source__source .sample-point::before {
+.page-call-frame .view-source .view-source__source .sample-point::before {
     content: attr(data-marker);
 }

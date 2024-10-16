@@ -23,7 +23,7 @@ discovery.page.define('modules', [
                 prelude: [
                     'badge{ text: "Packages", className: #.page = "packages" ? "selected", href: #.page != "packages" ? "#packages" }',
                     'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
-                    'badge{ text: "Functions", className: #.page = "functions" ? "selected", href: #.page != "functions" ? "#functions" }'
+                    'badge{ text: "Functions", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }'
                 ],
                 content: [
                     'h1:"All modules"',
