@@ -48,8 +48,8 @@
     "v8-profiler-next": "~1.5.1"
   },
   "devDependencies": {
-    "@discoveryjs/cli": "^2.9.1",
-    "@discoveryjs/discovery": "1.0.0-beta.86",
+    "@discoveryjs/cli": "^2.10.0",
+    "@discoveryjs/discovery": "1.0.0-beta.87",
     "@types/node": "^22.7.5",
     "@typescript-eslint/eslint-plugin": "^7.8.0",
     "@typescript-eslint/parser": "^7.8.0",
