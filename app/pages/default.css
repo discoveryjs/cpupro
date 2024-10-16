@@ -234,7 +234,8 @@
     margin-bottom: -1px;
 }
 .page-default .category-timelines-item[href]:hover > * {
-    background: rgba(165,165,165,.3);
+    background-color: rgba(165,165,165,.3);
+    background-clip: padding-box;
 }
 .page-default .category-timelines-item > .label {
     font-size: 12px;

@@ -52,7 +52,7 @@ function generateSquarePath(points, height, maxValue, presence) {
     const stepX = chartWidth / points.length;
     const pathData = [];
     const gap = 0.1;
-    const minNonZeroHeight = 1.5;
+    const minNonZeroHeight = .8;
 
     pathData.push('M', 0, height);
 
