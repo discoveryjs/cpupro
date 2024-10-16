@@ -5,7 +5,7 @@ const safeRequestIdleCallback = typeof requestIdleCallback === 'function'
 export function trackExecutionTime<T extends Record<string,(...args: unknown[]) => unknown>>(methods: T, trackMethodNames: (keyof T & string)[]) {
     let scheduleTimingsLoggingBuffer: [label: string, ...unknown[]][][] = [[]];
     let scheduleTimingsLoggingFrameTimer: number | null = null;
-    let scheduleTimingsLoggingTimer: number | null = null;
+    let scheduleTimingsLoggingTimer: ReturnType<typeof safeRequestIdleCallback> | null = null;
     let frameIdx = 0;
 
     for (const methodName of trackMethodNames) {

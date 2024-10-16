@@ -255,7 +255,7 @@ export async function decode(iterator) {
                     externalCallback,
                     tosOrExternalCallback_,
                     vmState,
-                    stack
+                    ...stack
                 ] = readAllArgs(parsers[op], line, argsStart);
                 let pc = pc_;
                 let tosOrExternalCallback = tosOrExternalCallback_;

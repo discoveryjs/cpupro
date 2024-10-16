@@ -12,7 +12,7 @@ export function readArgRaw(buffer: string, start: number, end?: number) {
 }
 
 export function readAllArgsRaw(buffer: string, start: number, end = buffer.length) {
-    const args = [];
+    const args: string[] = [];
 
     while (start <= end) {
         const arg = readArgRaw(buffer, start, end);
@@ -29,18 +29,19 @@ export function readAllArgs<T extends ArgParser[]>(
     buffer: string,
     start: number,
     end?: number
-): [...{ [K in keyof T]: ReturnType<T[K]> }, string[]] {
+): [...{ [K in keyof T]: ReturnType<T[K]> }, ...string[]] {
     const args = readAllArgsRaw(buffer, start, end);
+    const parsedArgs: (string | number)[] = [];
 
     for (let i = 0; i < parsers.length && i < args.length; i++) {
-        args[i] = parsers[i](args[i]);
+        parsedArgs.push(parsers[i](args[i]));
     }
 
     if (parsers.length < args.length) {
-        args.splice(parsers.length, args.length, args.slice(parsers.length));
+        parsedArgs.push(...args.slice(parsers.length));
     }
 
-    return args;
+    return parsedArgs as [...{ [K in keyof T]: ReturnType<T[K]> }, ...string[]];
 }
 
 // Helper function to ensure tuple type is preserved

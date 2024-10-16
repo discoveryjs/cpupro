@@ -77,7 +77,11 @@ export class CodeMap {
         const removedCode = this.dynamics_.get(from);
         this.dynamics_.delete(from);
         // this.deleteAllCoveredNodes_(this.dynamics_, to, to + removedCode.value.size);
-        this.dynamics_.set(to, removedCode);
+        if (removedCode !== undefined) {
+            this.dynamics_.set(to, removedCode);
+        } else {
+            console.warn('CodeMap#moveCode() from code doesn\'t found');
+        }
     }
     deleteCode(start: number) {
         this.dynamics_.delete(start);
