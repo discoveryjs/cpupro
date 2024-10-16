@@ -22,6 +22,16 @@ function isNode(value: unknown): value is V8CpuProfileNode {
     return true;
 }
 
+function isArrayOfIntegers(value: unknown): boolean {
+    if (!Array.isArray(value) || ArrayBuffer.isView(value)) {
+        return false;
+    }
+
+    return value.length > 0
+        ? Number.isInteger(value[0]) && (value.length === 1 || Number.isInteger(value[1]))
+        : true;
+}
+
 function isArrayLike(value: unknown, check: (value: unknown) => boolean): boolean {
     if (!Array.isArray(value)) {
         return false;
@@ -43,11 +53,11 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
         return false;
     }
 
-    if (!isArrayLike(maybe.samples, Number.isInteger)) {
+    if (!isArrayOfIntegers(maybe.samples)) {
         return false;
     }
 
-    if (!isArrayLike(maybe.timeDeltas, Number.isInteger)) {
+    if (!isArrayOfIntegers(maybe.timeDeltas)) {
         return false;
     }
 
