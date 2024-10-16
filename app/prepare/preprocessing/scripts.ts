@@ -1,5 +1,5 @@
 import type { Dictionary } from '../dictionary.js';
-import type { CpuProScript, CpuProScriptFunction, IScriptMapper, V8CpuProfileScript } from '../types.js';
+import type { CpuProModule, CpuProScript, CpuProScriptFunction, IScriptMapper, V8CpuProfileScript } from '../types.js';
 
 export function mapScripts(
     dict: Dictionary,
@@ -123,31 +123,9 @@ export function createScript(id: number, url: string, source: string | null): Cp
         id,
         url,
         source,
-        module: null,
+        module: null as unknown as CpuProModule,
         callFrames: [],
         functions: []
-    };
-}
-
-export function createProfileScript() {}
-
-export function processScripts(
-    inputScripts: V8CpuProfileScript[] = []
-) {
-    const scripts: CpuProScript[] = [];
-    const scriptById = new Map<number, CpuProScript>();
-
-    // process scripts
-    for (const { id, url, source } of inputScripts) {
-        const script = createScript(id, url, source);
-
-        scripts.push(script);
-        scriptById.set(script.id, script);
-    }
-
-    return {
-        scripts,
-        scriptById
     };
 }
 

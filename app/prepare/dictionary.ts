@@ -189,6 +189,7 @@ export class Dictionary {
                 script = scriptByUrl[scriptIndexByUrl];
             } else {
                 script = createScript(this.scripts.length + 1, url, source);
+                script.module = this.resolveModule(script); // ensure script has module
                 scriptByUrl.push(script);
                 this.scripts.push(script);
             }

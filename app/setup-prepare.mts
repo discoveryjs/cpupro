@@ -11,6 +11,7 @@ import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/computations/build-trees.js';
 import { Dictionary } from './prepare/dictionary.js';
 import { consumeInput } from './prepare/consume-input.js';
+import { Usage } from './prepare/usage.js';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
     const work = async function<T>(name: string, fn: () => T): Promise<T> {
@@ -63,6 +64,14 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // process display names
     await work('process display names', () =>
         processDisplayNames(dict.modules)
+    );
+
+    //
+    // Usage vectors
+    //
+
+    const usage = await work('usage', () =>
+        new Usage(dict, callFrameByNodeIndex_, scriptFunctions)
     );
 
     //
@@ -209,7 +218,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     });
 
     const profile = {
-        runtime: detectRuntime(dict.categories, dict.packages, data._runtime), // FIXME: categories/packages must be related to profile
+        runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
         sourceInfo: {
             nodes: nodesCount,
             samples: samplesCount,

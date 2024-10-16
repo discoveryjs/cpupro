@@ -138,7 +138,7 @@ export type CpuProCallFrame = {
 export type CpuProScript = {
     id: number;
     url: string;
-    module: CpuProModule | null;
+    module: CpuProModule;
     source: string | null;
     callFrames: CpuProCallFrame[];
     functions: CpuProScriptFunction[];
