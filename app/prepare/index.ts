@@ -56,16 +56,9 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
 
     if (!isCPUProfile(data)) {
         rejectData('Bad format', {
-            view: 'alert-warning',
-            content: [
-                { view: 'h3', content: [
-                    'badge:"Error"',
-                    'text:"Bad format"'
-                ] },
-                { view: 'md', source: [
-                    'CPU (pro)file supports the following formats:',
-                    ...supportedFormats
-                ] }
+            view: 'md', source: [
+                'CPUpro supports the following formats:',
+                ...supportedFormats
             ]
         });
 
