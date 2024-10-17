@@ -5,8 +5,8 @@ import { CpuProCallFrame, CpuProCategory, CpuProModule, CpuProPackage, CpuProScr
 
 export default (function({ defineObjectMarker, addQueryHelpers, setPrepare }) {
     defineObjectMarker<CpuProCallFrame>('call-frame', { ref: 'id', title: 'name', page: 'call-frame' });
-    defineObjectMarker<CpuProPackage>('package', { ref: 'id', title: 'name', page: 'package' });
     defineObjectMarker<CpuProModule>('module', { ref: 'id', title: (module) => module.name || module.path, page: 'module' });
+    defineObjectMarker<CpuProPackage>('package', { ref: 'id', title: 'name', page: 'package' });
     defineObjectMarker<CpuProCategory>('category', { ref: 'name', title: 'name', page: 'category' });
     defineObjectMarker<CpuProScript>('script', { ref: 'id', title: 'url' });
     defineObjectMarker<CpuProScriptFunction>('script-function', { ref: 'id', title: fn => fn.name || fn.function?.name || '(anonymous fn#' + fn.id + ')' });

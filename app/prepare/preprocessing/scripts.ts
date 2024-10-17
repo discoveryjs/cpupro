@@ -1,5 +1,5 @@
 import type { Dictionary } from '../dictionary.js';
-import type { CpuProModule, CpuProScript, CpuProScriptFunction, IScriptMapper, V8CpuProfileScript } from '../types.js';
+import type { CpuProModule, CpuProScript, IScriptMapper, V8CpuProfileScript } from '../types.js';
 
 export function mapScripts(
     dict: Dictionary,
