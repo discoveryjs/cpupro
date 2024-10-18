@@ -1,13 +1,6 @@
 import type { Dictionary } from '../dictionary.js';
 import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfileScript } from '../types.js';
 
-export function createProfileScriptsMap(
-    dict: Dictionary,
-    scripts?: V8CpuProfileScript[] | null
-) {
-    return new ProfileScriptsMap(dict, scripts);
-}
-
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
     scriptById: Map<number | string, CpuProScript>;

@@ -12,6 +12,7 @@ import { processPaths } from './prepare/preprocessing/paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/computations/build-trees.js';
+import { ProfileScriptsMap } from './prepare/preprocessing/scripts.js';
 import { Dictionary } from './prepare/dictionary.js';
 import { Usage } from './prepare/usage.js';
 
@@ -42,6 +43,13 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // Create shared dictionary
     //
     const dict = new Dictionary();
+
+    // execution context goes first sice it affects package name
+    // FIXME: following profiles could affect previously loaded profiles,
+    // it should perform together with path/name processing
+    for (const { origin, name } of data._executionContexts || []) {
+        dict.setPackageNameForOrigin(new URL(origin).host, name);
+    }
 
     //
     // Process profile samples & time stamps
@@ -108,11 +116,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         extractCallFrames(
             dict,
             data.nodes,
-            gcNodes,
             data._callFrames,
-            data._scripts,
             data._functions,
-            data._executionContexts
+            new ProfileScriptsMap(dict, data._scripts),
+            gcNodes
         )
     );
 

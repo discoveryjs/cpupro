@@ -3,7 +3,7 @@ import type { Dictionary } from '../dictionary.js';
 
 export function mapFunctions(
     dict: Dictionary,
-    scriptMapper: IProfileScriptsMap,
+    scriptsMap: IProfileScriptsMap,
     functions?: V8CpuProfileFunction[] | null
 ) {
     const functionCallFrames = new Uint32Array(functions?.length || 0);
@@ -20,7 +20,7 @@ export function mapFunctions(
                 columnNumber: column,
                 start,
                 end
-            }, scriptMapper);
+            }, scriptsMap);
         }
     }
 

@@ -7,7 +7,7 @@ export function mapNodes(
     dict: Dictionary,
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
     callFrameByIndex: Uint32Array,
-    scriptMapper: IProfileScriptsMap,
+    scriptsMap: IProfileScriptsMap,
     gcNodes?: ReparentGcNodesResult | null
 ) {
     const gcNodesCount: number = gcNodes?.nodeParent.length || 0;
@@ -19,7 +19,7 @@ export function mapNodes(
         const { callFrame } = nodes[i];
         const callFrameIndex = typeof callFrame === 'number'
             ? callFrameByIndex[callFrame]
-            : dict.resolveCallFrameIndex(callFrame, scriptMapper);
+            : dict.resolveCallFrameIndex(callFrame, scriptsMap);
 
         callFrameByNodeIndex[i] = callFrameIndex;
     }
