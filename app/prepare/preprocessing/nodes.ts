@@ -1,4 +1,4 @@
-import type { V8CpuProfileNode, V8CpuProfileCallFrame, IScriptMapper } from '../types';
+import type { V8CpuProfileNode, V8CpuProfileCallFrame, IProfileScriptsMap } from '../types';
 import type { ReparentGcNodesResult } from './gc-samples';
 import type { Dictionary } from '../dictionary';
 import { findMaxId } from '../utils';
@@ -7,7 +7,7 @@ export function mapNodes(
     dict: Dictionary,
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
     callFrameByIndex: Uint32Array,
-    scriptMapper: IScriptMapper,
+    scriptMapper: IProfileScriptsMap,
     gcNodes?: ReparentGcNodesResult | null
 ) {
     const gcNodesCount: number = gcNodes?.nodeParent.length || 0;

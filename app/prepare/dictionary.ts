@@ -15,7 +15,7 @@ import {
     CpuProModule,
     CpuProPackage,
     CpuProScript,
-    IScriptMapper,
+    IProfileScriptsMap,
     ModuleType,
     PackageRegistry,
     PackageType,
@@ -23,7 +23,7 @@ import {
     WellKnownName,
     WellKnownType
 } from './types.js';
-import { createScript, scriptFromScriptId } from './preprocessing/scripts.js';
+import { scriptFromScriptId } from './preprocessing/scripts.js';
 
 type RegistryPackage = {
     type: PackageType;
@@ -96,7 +96,7 @@ export class Dictionary {
                 functionName: name,
                 lineNumber: -1,
                 columnNumber: -1
-            }, null as unknown as IScriptMapper);
+            }, null as unknown as IProfileScriptsMap);
         }
     }
 
@@ -110,12 +110,15 @@ export class Dictionary {
         }
     }
 
-    resolveCallFrameIndex(inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number }, mapper: IScriptMapper) {
+    resolveCallFrameIndex(
+        inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number },
+        scriptsMap: IProfileScriptsMap
+    ) {
         const functionName = inputCallFrame.functionName || '';
         const lineNumber = normalizeLoc(inputCallFrame.lineNumber);
         const columnNumber = normalizeLoc(inputCallFrame.columnNumber);
         const url = inputCallFrame.url || null;
-        const script = scriptFromScriptId(inputCallFrame.scriptId, url, mapper);
+        const script = scriptFromScriptId(inputCallFrame.scriptId, url, scriptsMap);
 
         // resolve a callFrame through a chain of maps
         let byFunctionNameMap = this.#callFramesByScript.get(script);
@@ -163,48 +166,17 @@ export class Dictionary {
 
         return callFrameIndex;
     }
-    resolveCallFrame(inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number }, mapper: IScriptMapper) {
-        return this.callFrames[this.resolveCallFrameIndex(inputCallFrame, mapper)];
+    resolveCallFrame(inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number }, scriptsMap: IProfileScriptsMap) {
+        return this.callFrames[this.resolveCallFrameIndex(inputCallFrame, scriptsMap)];
     }
 
     resolveScript(
+        scriptsMap: IProfileScriptsMap,
         scriptId: number,
-        mapper: IScriptMapper,
         url: string | null = null,
         source: string | null = null
     ): CpuProScript | null {
-        if (scriptId === 0) {
-            return null;
-        }
-
-        let script = mapper.get(scriptId);
-
-        url ||= '';
-
-        if (script === undefined) {
-            const scriptIndexByUrl = mapper.getScriptIndexByUrl(scriptId, url);
-
-            // FIXME: this is not fully a cross profile solution,
-            // must take into account the source if provided
-            let scriptByUrl = this.#scriptByUrl.get(url);
-            if (scriptByUrl === undefined) {
-                scriptByUrl = [];
-                this.#scriptByUrl.set(url, scriptByUrl);
-            }
-
-            if (scriptIndexByUrl < scriptByUrl.length) {
-                script = scriptByUrl[scriptIndexByUrl];
-            } else {
-                script = createScript(this.scripts.length + 1, url, source);
-                script.module = this.resolveModule(script); // ensure script has module
-                scriptByUrl.push(script);
-                this.scripts.push(script);
-            }
-
-            mapper.set(scriptId, script);
-        }
-
-        return script;
+        return scriptsMap.resolveScript(scriptId, url, source);
     }
 
     resolveCategory(packageType: PackageType): CpuProCategory {

@@ -1,9 +1,9 @@
-import type { IScriptMapper, V8CpuProfileFunction } from '../types.js';
+import type { IProfileScriptsMap, V8CpuProfileFunction } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 
 export function mapFunctions(
     dict: Dictionary,
-    scriptMapper: IScriptMapper,
+    scriptMapper: IProfileScriptsMap,
     functions?: V8CpuProfileFunction[] | null
 ) {
     const functionCallFrames = new Uint32Array(functions?.length || 0);

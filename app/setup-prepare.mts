@@ -5,7 +5,7 @@ import { extractAndValidate } from './prepare/index.js';
 import { mergeSamples, processSamples, remapTreeSamples } from './prepare/preprocessing/samples.js';
 import { processTimeDeltas } from './prepare/preprocessing/time-deltas.js';
 import { reparentGcNodes } from './prepare/preprocessing/gc-samples.js';
-import { consumeCallFrames } from './prepare/consume-input.js';
+import { extractCallFrames } from './prepare/preprocessing/call-frames.js';
 import { processNodes } from './prepare/preprocessing/nodes.js';
 import { processFunctionCodes } from './prepare/preprocessing/function-codes.js';
 import { processPaths } from './prepare/preprocessing/paths.js';
@@ -105,7 +105,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         callFrameByNodeIndex,
         callFrameByFunctionIndex
     } = await work('consume dictionaries', () =>
-        consumeCallFrames(
+        extractCallFrames(
             dict,
             data.nodes,
             gcNodes,

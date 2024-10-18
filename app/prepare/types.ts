@@ -232,11 +232,10 @@ export type CpuProScript = {
     source: string | null;
     callFrames: CpuProCallFrame[];
 }
-export interface IScriptMapper {
+export interface IProfileScriptsMap {
     get(scriptId: number | string): CpuProScript | undefined;
     has(scriptId: number | string): boolean;
     set(scriptId: number | string, script: CpuProScript): void;
-    getScriptIndexByUrl(scriptId: number, url: string): number;
     resolveScript(scriptId: number, url?: string | null, source?: string | null): CpuProScript | null;
     normalizeScriptId(scriptId: string | number): number;
 }
