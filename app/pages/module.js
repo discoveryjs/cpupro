@@ -97,7 +97,7 @@ const pageContent = {
             expanded: true,
             className: 'trigger-outside',
             header: [
-                'text:"Functions "',
+                'text:"Call frames "',
                 {
                     view: 'pill-badge',
                     data: '#.data.callFramesTimingsFiltered.entries.[entry.module = @]',
@@ -168,7 +168,7 @@ const pageContent = {
                                 when: 'totalTime',
                                 content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                             },
-                            { header: 'Function',
+                            { header: 'Call frame',
                                 sorting: 'name ascN',
                                 content: 'auto-link{ data: entry, content: "text-match:{ ..., match: #.filter }" }'
                             },

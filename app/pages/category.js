@@ -63,7 +63,7 @@ const pageContent = {
                                 { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
                                 { header: 'Package', sorting: 'entry.name asc', content: 'package-badge:entry' },
                                 { header: 'Modules', data: 'entry.modules' },
-                                { header: 'Functions', data: 'entry.modules.functions' }
+                                { header: 'Call frames', data: 'entry.modules.functions' }
                             ]
                         }
                     }
@@ -97,7 +97,7 @@ const pageContent = {
                             { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
                             { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
                             { header: 'Module', sorting: 'entry.name ascN',content: 'module-badge:entry' },
-                            { header: 'Functions', data: 'entry.functions' }
+                            { header: 'Call frames', data: 'entry.functions' }
                         ]
                     }
                 }

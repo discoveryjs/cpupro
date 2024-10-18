@@ -22,7 +22,7 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
                             { text: 'Categories', value: 'categoriesTree', active: tree === context.data.categoriesTree },
                             { text: 'Packages', value: 'packagesTree', active: tree === context.data.packagesTree },
                             { text: 'Modules', value: 'modulesTree', active: tree === context.data.modulesTree },
-                            { text: 'Functions', value: 'functionsTree', active: tree === context.data.functionsTree }
+                            { text: 'Call frames', value: 'callFramesTree', active: tree === context.data.callFramesTree }
                         ]
                     }
                 ]

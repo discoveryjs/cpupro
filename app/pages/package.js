@@ -119,7 +119,7 @@ const pageContent = {
                                 sorting: 'name ascN',
                                 content: 'module-badge:entry'
                             },
-                            { header: 'Functions',
+                            { header: 'Call frames',
                                 className: 'number',
                                 data: 'functions',
                                 content: [

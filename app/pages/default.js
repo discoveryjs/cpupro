@@ -561,7 +561,7 @@ const categoriesTimeline = {
             view: 'expand',
             data: 'functionStates',
             header: [
-                'text:"Function states"',
+                'text:"Function tiers"',
                 {
                     view: 'switch',
                     content: [
@@ -669,7 +669,7 @@ const callFrameList = {
                 cols: [
                     { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
                     { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                    { header: 'Function', className: 'main', sorting: 'entry.name ascN', content: 'call-frame-badge:entry' }
+                    { header: 'Call frame', className: 'main', sorting: 'entry.name ascN', content: 'call-frame-badge:entry' }
                 ]
             }
         }
@@ -689,7 +689,7 @@ const flamecharts = {
                     { text: 'Categories', value: 'categoriesTree' },
                     { text: 'Packages', value: 'packagesTree', active: true },
                     { text: 'Modules', value: 'modulesTree' },
-                    { text: 'Functions', value: 'callFramesTree' }
+                    { text: 'Call frames', value: 'callFramesTree' }
                 ]
             },
             {

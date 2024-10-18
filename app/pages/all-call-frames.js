@@ -83,7 +83,7 @@ discovery.page.define('call-frames', [
                         //         content: 'text-match:{ text, match: #.filter }'
                         //     }
                         // },
-                        { header: 'Function',
+                        { header: 'Call frame',
                             sorting: 'name ascN',
                             content: {
                                 view: 'badge',
