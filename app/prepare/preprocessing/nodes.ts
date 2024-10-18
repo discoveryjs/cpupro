@@ -1,4 +1,5 @@
-import type { V8CpuProfileNode, V8CpuProfileCallFrame, CpuProCallFrame, IScriptMapper } from '../types';
+import type { V8CpuProfileNode, V8CpuProfileCallFrame, IScriptMapper } from '../types';
+import type { ReparentGcNodesResult } from './gc-samples';
 import type { Dictionary } from '../dictionary';
 import { findMaxId } from '../utils';
 
@@ -6,108 +7,56 @@ export function mapNodes(
     dict: Dictionary,
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
     callFrameByIndex: Uint32Array,
-    scriptMapper: IScriptMapper
+    scriptMapper: IScriptMapper,
+    gcNodes?: ReparentGcNodesResult | null
 ) {
-    const maxNodeId: number = findMaxId(nodes);
-    const nodeIndexById = new Int32Array(maxNodeId + 1).fill(-1);
-    const callFrameByNodeIndex = new Uint32Array(nodes.length);
+    const gcNodesCount: number = gcNodes?.nodeParent.length || 0;
+    const callFrameByNodeIndex = new Uint32Array(nodes.length + gcNodesCount);
+
+    callFrameByNodeIndex.fill(dict.callFrames.wellKnownIndex.gc, nodes.length);
 
     for (let i = 0; i < nodes.length; i++) {
-        const { id, callFrame } = nodes[i];
+        const { callFrame } = nodes[i];
         const callFrameIndex = typeof callFrame === 'number'
             ? callFrameByIndex[callFrame]
             : dict.resolveCallFrameIndex(callFrame, scriptMapper);
 
-        nodeIndexById[id] = i;
         callFrameByNodeIndex[i] = callFrameIndex;
     }
 
-    return {
-        nodeIndexById,
-        callFrameByNodeIndex
-    };
+    return callFrameByNodeIndex;
 }
 
-function gcReparenting2(
+export function createNodeIndexById(
+    nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
+    gcNodes?: ReparentGcNodesResult | null
+) {
+    const maxNodeId: number = findMaxId(nodes);
+    const gcNodesCount: number = gcNodes?.nodeParent.length || 0;
+    const nodeIndexById = new Int32Array(maxNodeId + 1 + gcNodesCount).fill(-1);
+
+    for (let i = 0; i < nodes.length; i++) {
+        nodeIndexById[nodes[i].id] = i;
+    }
+
+    if (gcNodesCount > 0) {
+        for (let id = nodes.length; id <= nodeIndexById.length; id++) {
+            nodeIndexById[id] = id - 1;
+        }
+    }
+
+    return nodeIndexById;
+}
+
+export function createNodeParent(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    callFrames: CpuProCallFrame[],
-    samples: Uint32Array,
-    callFrameByNodeIndex: Uint32Array,
     nodeIndexById: Int32Array,
-    nodeParent: Uint32Array
+    gcNodes?: ReparentGcNodesResult | null
 ) {
-    const gcCallFrameIndex = callFrames.findIndex(cf => cf.script === null && cf.name === '(garbage collector)');
-    const rootGcNodeId = gcCallFrameIndex !== -1
-        ? nodes[0].children?.find(id => callFrameByNodeIndex[nodeIndexById[id]] === gcCallFrameIndex)
-        : -1;
+    const gcNodesParent = gcNodes?.nodeParent || [];
+    const nodeParent = new Uint32Array(nodes.length + gcNodesParent.length);
 
-    const maxNodeId = nodeIndexById.length - 1;
-    const nodeIdToGcNodeId = new Uint32Array(maxNodeId + 1);
-    let addedGcNodeId = maxNodeId;
-    for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
-        const nodeId = samples[i];
-
-        if (nodeId === rootGcNodeId) {
-            if (prevNodeId === rootGcNodeId) {
-                samples[i] = samples[i - 1];
-            } else {
-                let newGcNodeId = nodeIdToGcNodeId[prevNodeId];
-
-                if (newGcNodeId === 0) {
-                    newGcNodeId = ++addedGcNodeId;
-                    nodeIdToGcNodeId[prevNodeId] = newGcNodeId;
-                }
-
-                samples[i] = newGcNodeId;
-            }
-        }
-
-        prevNodeId = nodeId;
-    }
-
-    if (addedGcNodeId !== maxNodeId) {
-        const addedGcNodeCount = addedGcNodeId - maxNodeId;
-        const newCallFrameByNodeIndex = new Uint32Array(callFrameByNodeIndex.length + addedGcNodeCount);
-        const newNodeIndexById = new Int32Array(nodeIndexById.length + addedGcNodeCount);
-        const newNodeParent = new Uint32Array(nodeParent.length + addedGcNodeCount);
-
-        newCallFrameByNodeIndex.set(callFrameByNodeIndex);
-        newCallFrameByNodeIndex.fill(gcCallFrameIndex, -addedGcNodeCount);
-
-        newNodeIndexById.set(nodeIndexById);
-        for (let id = addedGcNodeId - addedGcNodeCount; id <= addedGcNodeId; id++) {
-            newNodeIndexById[id] = id - 1;
-        }
-
-        const gcNodeParent = new Uint32Array(addedGcNodeId - maxNodeId);
-        for (let i = 0, k = 0; i < nodeIdToGcNodeId.length; i++) {
-            if (nodeIdToGcNodeId[i] > 0) {
-                gcNodeParent[k++] = nodeIndexById[i];
-            }
-        }
-
-        newNodeParent.set(nodeParent);
-        newNodeParent.set(gcNodeParent, nodeParent.length);
-
-        // replace arrays
-        callFrameByNodeIndex = newCallFrameByNodeIndex;
-        nodeIndexById = newNodeIndexById;
-        nodeParent = newNodeParent;
-    }
-
-    return {
-        nodeIdToGcNodeId,
-        callFrameByNodeIndex,
-        nodeIndexById,
-        nodeParent
-    };
-}
-
-export function buildNodeParent(
-    nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    nodeIndexById: Int32Array
-) {
-    const nodeParent = new Uint32Array(nodes.length);
+    nodeParent.set(gcNodesParent, nodes.length);
 
     for (let i = 0; i < nodes.length; i++) {
         const { children } = nodes[i];
@@ -123,28 +72,14 @@ export function buildNodeParent(
 }
 
 export function processNodes(
-    dict: Dictionary,
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    nodeIndexById: Int32Array,
-    callFrameByNodeIndex: Uint32Array,
-    samples_: Uint32Array
+    gcNodes?: ReparentGcNodesResult | null
 ) {
-    const samples = samples_;
-
-    const nodeParent = buildNodeParent(nodes, nodeIndexById);
-
-    const reparented = gcReparenting2(
-        nodes,
-        dict.callFrames,
-        samples,
-        callFrameByNodeIndex,
-        nodeIndexById,
-        nodeParent
-    );
+    const nodeIndexById = createNodeIndexById(nodes, gcNodes);
+    const nodeParent = createNodeParent(nodes, nodeIndexById, gcNodes);
 
     return {
-        nodeParent: reparented.nodeParent,
-        nodeIndexById: reparented.nodeIndexById,
-        callFrameByNodeIndex: reparented.callFrameByNodeIndex
+        nodeIndexById,
+        nodeParent
     };
 }

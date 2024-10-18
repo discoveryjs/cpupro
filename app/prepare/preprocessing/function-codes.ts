@@ -3,12 +3,13 @@ import { vmFunctionStateTierHotness, vmFunctionStateTiers } from '../const.js';
 
 export function processFunctionCodes(
     functionCodes: V8CpuProfileFunctionCodes[] = [],
+    callFrameByFunctionIndex: Uint32Array,
     callFrames: CpuProCallFrame[],
     startTime: number = 0
 ): CpuProFunctionCodes[] {
     return functionCodes.map(({ function: functionIndex, codes }) => {
         let topTier: V8FunctionCodeType = 'Unknown';
-        const callFrame = callFrames[functionIndex];
+        const callFrame = callFrames[callFrameByFunctionIndex[functionIndex]];
         const fnCodes: CpuProFunctionCodes = {
             callFrame,
             topTier,

@@ -1,5 +1,5 @@
+import type { CpuProCallFrame, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript } from './types.js';
 import type { Dictionary } from './dictionary.js';
-import type { CpuProCallFrame, CpuProCategory, CpuProModule, CpuProPackage, CpuProProfileFunction, CpuProScript } from './types.js';
 
 export class Usage {
     callFrames: CpuProCallFrame[];
@@ -11,7 +11,7 @@ export class Usage {
     constructor(
         dict: Dictionary,
         callFrameByNodeIndex: Uint32Array,
-        scriptFunctions: CpuProProfileFunction[]
+        callFrameByFunctionIndex: Uint32Array
     ) {
         const usedCallFrame = new Uint8Array(dict.callFrames.length);
 
@@ -19,11 +19,16 @@ export class Usage {
             usedCallFrame[callFrameByNodeIndex[i]] = 1;
         }
 
-        for (let i = 0; i < scriptFunctions.length; i++) {
-            usedCallFrame[scriptFunctions[i].callFrame.id - 1] = 1;
+        for (let i = 0; i < callFrameByFunctionIndex.length; i++) {
+            usedCallFrame[callFrameByFunctionIndex[i]] = 1;
         }
 
         this.callFrames = dict.callFrames.filter((_, idx) => usedCallFrame[idx]);
+        console.log({
+            a: this.callFrames,
+            b: dict.callFrames,
+            c: dict.callFrames.filter((_, idx) => !usedCallFrame[idx])
+        });
         this.scripts = getUsed(dict.scripts, this.callFrames, callFrame => callFrame.script).usedDict;
         this.modules = getUsed(dict.modules, this.callFrames, callFrame => callFrame.module).usedDict;
         this.packages = getUsed(dict.packages, this.callFrames, callFrame => callFrame.package).usedDict;

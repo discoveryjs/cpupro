@@ -8,7 +8,7 @@ export function mapCallFrames(
 ) {
     const map = new Uint32Array(callFrames?.length || 0);
 
-    if (callFrames) {
+    if (Array.isArray(callFrames)) {
         for (let i = 0; i < callFrames.length; i++) {
             map[i] = dict.resolveCallFrameIndex(callFrames[i], mapper);
         }

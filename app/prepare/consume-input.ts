@@ -1,54 +1,52 @@
-import { mapCallFrames } from './preprocessing/call-frames.js';
-import { mapScripts } from './preprocessing/scripts.js';
 import type { Dictionary } from './dictionary.js';
+import type { ReparentGcNodesResult } from './preprocessing/gc-samples.js';
 import type {
     V8CpuProfileCallFrame,
     V8CpuProfileExecutionContext,
     V8CpuProfileFunction,
-    V8CpuProfileFunctionCodes,
     V8CpuProfileNode,
     V8CpuProfileScript
 } from './types.js';
-import { mapNodes } from './preprocessing/nodes.js';
+import { mapScripts } from './preprocessing/scripts.js';
 import { mapFunctions } from './preprocessing/functions.js';
-import { processFunctionCodes } from './preprocessing/function-codes.js';
+import { mapCallFrames } from './preprocessing/call-frames.js';
+import { mapNodes } from './preprocessing/nodes.js';
 
-export function consumeInput(
+export function consumeCallFrames(
     dict: Dictionary,
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
+    gcNodes?: ReparentGcNodesResult | null,
     callFrames?: V8CpuProfileCallFrame[] | null,
     scripts?: V8CpuProfileScript[] | null,
     functions?: V8CpuProfileFunction[] | null,
-    functionCodes?: V8CpuProfileFunctionCodes[] | null,
     executionContexts?: V8CpuProfileExecutionContext[] | null
 ) {
     // execution context goes first sice it affects package name
-    // FIXME: next profiles may affect previously loaded profiles
+    // FIXME: next profiles could affect previously loaded profiles
     for (const { origin, name } of executionContexts || []) {
         dict.setPackageNameForOrigin(new URL(origin).host, name);
     }
 
-    // scripts
+    // scripts: scriptId -> script mapper
     const scriptMapper = mapScripts(dict, scripts);
 
     // functions
-    const profileFunctions = mapFunctions(dict, scriptMapper, functions);
-    const scriptFunctions = processFunctionCodes(functionCodes || [], profileFunctions);
+    const callFrameByFunctionIndex = mapFunctions(dict, scriptMapper, functions);
 
     // callFrames
     const callFrameByIndex = mapCallFrames(dict, scriptMapper, callFrames);
 
     // nodes
-    const { nodeIndexById, callFrameByNodeIndex } = mapNodes(dict, nodes, callFrameByIndex, scriptMapper);
-
-    // console.log({ scripts: [...scriptMapper.entries()].sort((a, b) => a[0] - b[0]) });
-    // const profile = {
-    //     scripts: scriptMapper
-    // };
+    const callFrameByNodeIndex = mapNodes(
+        dict,
+        nodes,
+        callFrameByIndex,
+        scriptMapper,
+        gcNodes
+    );
 
     return {
-        scriptFunctions,
-        nodeIndexById,
-        callFrameByNodeIndex
+        callFrameByNodeIndex,
+        callFrameByFunctionIndex
     };
 }

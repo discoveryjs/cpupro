@@ -2,15 +2,17 @@ import type { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery'
 import { TIMINGS } from './prepare/const.js';
 import { convertToUint32Array } from './prepare/utils.js';
 import { extractAndValidate } from './prepare/index.js';
-import { processNodes } from './prepare/preprocessing/nodes.js';
-import { processPaths } from './prepare/preprocessing/paths.js';
-import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { mergeSamples, processSamples, remapTreeSamples } from './prepare/preprocessing/samples.js';
 import { processTimeDeltas } from './prepare/preprocessing/time-deltas.js';
+import { reparentGcNodes } from './prepare/preprocessing/gc-samples.js';
+import { consumeCallFrames } from './prepare/consume-input.js';
+import { processNodes } from './prepare/preprocessing/nodes.js';
+import { processFunctionCodes } from './prepare/preprocessing/function-codes.js';
+import { processPaths } from './prepare/preprocessing/paths.js';
+import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/computations/build-trees.js';
 import { Dictionary } from './prepare/dictionary.js';
-import { consumeInput } from './prepare/consume-input.js';
 import { Usage } from './prepare/usage.js';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
@@ -37,23 +39,86 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const samplesCount = data.samples.length;
 
     //
-    // Populate shared dictionary
+    // Create shared dictionary
     //
     const dict = new Dictionary();
+
+    //
+    // Process profile samples & time stamps
+    //
+
+    // preprocess timeDeltas, fix order if necessary
+    // FIXME: mutate samples/timeDeltas
     const {
-        nodeIndexById: nodeIndexById_,
-        callFrameByNodeIndex: callFrameByNodeIndex_,
-        scriptFunctions
+        startTime,
+        startNoSamplesTime,
+        endTime,
+        endNoSamplesTime,
+        totalTime,
+        samplesInterval
+    } = await work('process time deltas', () =>
+        processTimeDeltas(
+            data.timeDeltas,
+            data.samples,
+            data.startTime,
+            data.endTime,
+            data._samplePositions,
+            data._samplesInterval // could be computed on V8 log convertation into cpuprofile
+        )
+    );
+
+    // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
+    // are correcting within processTimeDeltas()
+    const {
+        rawSamples,
+        rawTimeDeltas,
+        rawSamplePositions
+    } = await work('convert samples and timeDeltas into TypeArrays', () => ({
+        rawSamples: convertToUint32Array(data.samples),
+        rawTimeDeltas: convertToUint32Array(data.timeDeltas),
+        rawSamplePositions: Array.isArray(data._samplePositions)
+            ? convertToUint32Array(data._samplePositions)
+            : null
+    }));
+
+    // process samples
+    const {
+        samples,
+        sampleCounts,
+        samplePositions,
+        timeDeltas
+    } = await work('process samples', () =>
+        mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
+    );
+
+    // attach root GC node samples to previous call stack;
+    // this operation produces new nodes
+    const gcNodes = await work('reparent GC samples', () =>
+        reparentGcNodes(data.nodes, data._callFrames || null, samples, samplePositions)
+    );
+
+    //
+    // Consume dictionaries
+    //
+
+    const {
+        callFrameByNodeIndex,
+        callFrameByFunctionIndex
     } = await work('consume dictionaries', () =>
-        consumeInput(
+        consumeCallFrames(
             dict,
             data.nodes,
+            gcNodes,
             data._callFrames,
             data._scripts,
             data._functions,
-            data._functionCodes,
             data._executionContexts
         )
+    );
+
+    // preprocess function codes
+    const scriptFunctions = await work('process function codes', () =>
+        processFunctionCodes(data._functionCodes, callFrameByFunctionIndex, dict.callFrames)
     );
 
     // process paths
@@ -71,71 +136,20 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     //
 
     const usage = await work('usage', () =>
-        new Usage(dict, callFrameByNodeIndex_, scriptFunctions)
-    );
-
-    //
-    // Process profile data
-    //
-
-    // preprocess timeDeltas, fix order if necessary
-    const {
-        startTime,
-        startNoSamplesTime,
-        endTime,
-        endNoSamplesTime,
-        totalTime,
-        samplesInterval
-    } = await work('process time deltas', () =>
-        processTimeDeltas(
-            data.timeDeltas,
-            data.samples,
-            data.startTime,
-            data.endTime,
-            data._samplesInterval // could be computed on V8 log convertation into cpuprofile
-        )
-    );
-
-    // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
-    // are correcting within processTimeDeltas()
-    const {
-        rawSamples,
-        rawTimeDeltas,
-        rawSamplePositions
-    } = await work('convert samples and timeDeltas into TypeArrays', () => ({
-        rawSamples: convertToUint32Array(data.samples),
-        rawTimeDeltas: convertToUint32Array(data.timeDeltas),
-        rawSamplePositions: Array.isArray(data._samplePositions) ? convertToUint32Array(data._samplePositions) : null
-    }));
-
-    // process samples
-    const {
-        samples,
-        sampleCounts,
-        samplePositions,
-        timeDeltas
-    } = await work('process samples', () =>
-        mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
+        new Usage(dict, callFrameByNodeIndex, callFrameByFunctionIndex)
     );
 
     //
     // Create profile's data derivatives
     //
 
-    const {
-        nodeParent,
-        nodeIndexById,
-        callFrameByNodeIndex
-    } = await work('process nodes', () =>
-        processNodes(
-            dict,
-            data.nodes,
-            nodeIndexById_,
-            callFrameByNodeIndex_,
-            samples
-        )
+    const { nodeIndexById, nodeParent } = await work('process nodes', () =>
+        processNodes(data.nodes, gcNodes)
     );
 
+    //
+    // Create profile's data derivatives
+    //
 
     // build trees should be performed after dictionaries are sorted and remaped
     const {

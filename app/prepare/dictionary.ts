@@ -4,7 +4,8 @@ import {
     knownChromeExtensions,
     knownRegistry,
     maxRegExpLength,
-    categories
+    categories,
+    wellKnownCallFrameName
 } from './const.js';
 import {
     CDN,
@@ -19,7 +20,8 @@ import {
     PackageRegistry,
     PackageType,
     V8CpuProfileCallFrame,
-    WellKnownName
+    WellKnownName,
+    WellKnownType
 } from './types.js';
 import { createScript, scriptFromScriptId } from './preprocessing/scripts.js';
 
@@ -47,8 +49,8 @@ type CallFrameMap = Map<
 >;
 
 export class Dictionary {
+    callFrames: CpuProCallFrame[] & { wellKnownIndex: Record<WellKnownType, number> };
     scripts: CpuProScript[];
-    callFrames: CpuProCallFrame[];
     modules: CpuProModule[];
     packages: CpuProPackage[];
     categories: CpuProCategory[];
@@ -65,7 +67,7 @@ export class Dictionary {
 
     constructor() {
         this.scripts = [];
-        this.callFrames = [];
+        this.callFrames = Object.assign([], { wellKnownIndex: Object.create(null) });
         this.modules = [];
         this.packages = [];
         this.categories = [];
@@ -81,13 +83,22 @@ export class Dictionary {
             ...Object.entries(knownChromeExtensions)
         ]);
 
-        // fulfill the category by known list to preserve an order
+        // fulfill the category by a known list to preserve an order
         for (const packageType of categories) {
             this.resolveCategory(packageType);
         }
-    }
 
-    reset() {}
+        // fulfill the well known call frames map for fast access
+        for (const [name, id] of wellKnownCallFrameName) {
+            this.callFrames.wellKnownIndex[id] = this.resolveCallFrameIndex({
+                scriptId: 0,
+                url: '',
+                functionName: name,
+                lineNumber: -1,
+                columnNumber: -1
+            }, null as unknown as IScriptMapper);
+        }
+    }
 
     setPackageNameForOrigin(origin: string, packageName: string) {
         const existingPackageName = this.#packageNameByOriginMap.get(origin);
@@ -131,7 +142,7 @@ export class Dictionary {
             const callFrame: CpuProCallFrame = {
                 id: this.callFrames.length + 1,
                 script,
-                kind: resolveFunctionKind(script, name, regexp),
+                kind: resolveCallFrameKind(script, name, regexp),
                 name,
                 line: lineNumber,
                 column: columnNumber,
@@ -598,7 +609,7 @@ function normalizeLoc(value: unknown) {
     return typeof value === 'number' && value >= 0 ? value : -1;
 }
 
-function resolveFunctionKind(script: CpuProScript | null, name: string, regexp: string | null): CpuProFunctionKind {
+function resolveCallFrameKind(script: CpuProScript | null, name: string, regexp: string | null): CpuProFunctionKind {
     if (script === null) {
         if (name === '(root)') {
             return 'root';

@@ -1,17 +1,18 @@
+import type { IScriptMapper, V8CpuProfileFunction } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
-import type { CpuProCallFrame, IScriptMapper, V8CpuProfileFunction } from '../types.js';
 
 export function mapFunctions(
     dict: Dictionary,
     scriptMapper: IScriptMapper,
     functions?: V8CpuProfileFunction[] | null
 ) {
-    const profileFunctions: CpuProCallFrame[] = [];
+    const functionCallFrames = new Uint32Array(functions?.length || 0);
 
     if (Array.isArray(functions)) {
-        for (const fn of functions) {
-            const { scriptId, name, start, end, line, column } = fn;
-            const callFrame = dict.resolveCallFrame({
+        for (let i = 0; i < functions.length; i++) {
+            const { scriptId, name, start, end, line, column } = functions[i];
+
+            functionCallFrames[i] = dict.resolveCallFrameIndex({
                 scriptId,
                 url: '',
                 functionName: name,
@@ -20,12 +21,10 @@ export function mapFunctions(
                 start,
                 end
             }, scriptMapper);
-
-            profileFunctions.push(callFrame);
         }
     }
 
-    return profileFunctions;
+    return functionCallFrames;
 }
 
 export function locFromLineColumn(line: number, column: number) {
