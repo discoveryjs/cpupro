@@ -15,6 +15,19 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         this.byUrl = new Map();
         this.#scriptByUrl = new Map();
 
+        // FIXME: use source
+        for (const script of dict.scripts) {
+            const { url, source } = script;
+            let scriptByUrl = this.#scriptByUrl.get(url || '');
+
+            if (scriptByUrl === undefined) {
+                scriptByUrl = [script];
+                this.#scriptByUrl.set(url || '', scriptByUrl);
+            } else {
+                scriptByUrl.push(script);
+            }
+        }
+
         this.#addScripts(scripts);
     }
 
@@ -63,16 +76,15 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
 
     resolveScript(scriptId: number, url?: string | null, source?: string | null) {
         // return this.dict.resolveScript(scriptId, this, url, source);
-
         if (scriptId === 0) {
             return null;
         }
 
         let script = this.get(scriptId);
 
-        url ||= '';
-
         if (script === undefined) {
+            url ||= '';
+
             const scriptIndexByUrl = this.#getScriptIndexByUrl(scriptId, url);
 
             // FIXME: must take into account the source if provided

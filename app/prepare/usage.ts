@@ -24,11 +24,6 @@ export class Usage {
         }
 
         this.callFrames = dict.callFrames.filter((_, idx) => usedCallFrame[idx]);
-        console.log({
-            a: this.callFrames,
-            b: dict.callFrames,
-            c: dict.callFrames.filter((_, idx) => !usedCallFrame[idx])
-        });
         this.scripts = getUsed(dict.scripts, this.callFrames, callFrame => callFrame.script).usedDict;
         this.modules = getUsed(dict.modules, this.callFrames, callFrame => callFrame.module).usedDict;
         this.packages = getUsed(dict.packages, this.callFrames, callFrame => callFrame.package).usedDict;

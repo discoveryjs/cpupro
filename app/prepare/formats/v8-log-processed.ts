@@ -23,7 +23,7 @@ import { processCodePositions } from './v8-log-processed/positions.js';
 import { processScripts } from './v8-log-processed/scripts.js';
 import { processFunctionCodes } from './v8-log-processed/codes.js';
 
-export function isV8Log(data: unknown): data is V8LogProfile {
+export function isV8LogProfile(data: unknown): data is V8LogProfile {
     const maybe = data as Partial<V8LogProfile>;
 
     return (
@@ -110,7 +110,7 @@ function collectCallFramesFromNodes(nodes: CallNode<number>[], callFrames: CallF
     return nodeCallFrames;
 }
 
-export function convertV8LogIntoCpuprofile(v8log: V8LogProfile): V8CpuProfile {
+export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
     const scripts = processScripts(v8log.scripts);
     const functions = processScriptFunctions(v8log.functions, v8log.code, scripts);
     const functionCodes = processFunctionCodes(v8log.functions, v8log.code);

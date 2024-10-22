@@ -1,3 +1,7 @@
+export type V8CpuProfileSet = {
+    indexToView?: number;
+    profiles: V8CpuProfile[];
+}
 export type V8CpuProfile = {
     startTime: number;
     endTime: number;
@@ -7,6 +11,7 @@ export type V8CpuProfile = {
 } & V8CpuProfileCpuproExtensions;
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
+    _name?: string; // some profiles has a name
     _runtime?: RuntimeCode;
     _samplesInterval?: number;
     _samplePositions?: number[];

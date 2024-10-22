@@ -12,7 +12,7 @@ type Script = {
 type TraceEvent = {
     [k: string]: unknown;
 };
-type DevToolsEnchandedTraces = {
+export type DevToolsEnchandedTraceEventsProfile = {
     meta: {
         version: number;
         fileDocumentType: string;
@@ -26,8 +26,8 @@ type DevToolsEnchandedTraces = {
     }
 };
 
-export function isDevToolsEnhancedTraces(data: unknown): data is DevToolsEnchandedTraces {
-    const { meta } = data as Partial<DevToolsEnchandedTraces>;
+export function isDevToolsEnhancedTraces(data: unknown): data is DevToolsEnchandedTraceEventsProfile {
+    const { meta } = data as Partial<DevToolsEnchandedTraceEventsProfile>;
 
     if (meta && meta.fileDocumentType === 'x-msedge-session-log' && meta.type === 'performance') {
         return true;
@@ -36,7 +36,7 @@ export function isDevToolsEnhancedTraces(data: unknown): data is DevToolsEnchand
     return false;
 }
 
-export function extractFromDevToolsEnhancedTraces(data: DevToolsEnchandedTraces) {
+export function extractFromDevToolsEnhancedTraces(data: DevToolsEnchandedTraceEventsProfile) {
     const scripts: V8CpuProfileScript[] = [];
     const executionContexts: V8CpuProfileExecutionContext[] = [];
 

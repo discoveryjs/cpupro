@@ -15,6 +15,14 @@ discovery.view.define('timeline-profiles', function(el, config, data, context) {
 
         if (context.data.samples === profile.samples) {
             barEl.classList.add('selected');
+        } else {
+            barEl.addEventListener('click', () => {
+                discovery.data = {
+                    ...discovery.data,
+                    ...profile
+                };
+                discovery.scheduleRender();
+            });
         }
 
         el.append(barEl);

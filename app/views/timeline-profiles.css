@@ -7,11 +7,15 @@
 .view-timeline-profiles > .profile {
     margin-left: calc(100% * var(--x1));
     width: calc(100% * (var(--x2) - var(--x1)));
-    height: 5px;
+    height: 8px;
     background-color: #54a6eea6;
     border: .5px solid black;
 }
 
 .view-timeline-profiles > .selected {
     background-color: orange;
+}
+.view-timeline-profiles > .profile:not(.selected):hover {
+    background-color: #6d9ec9;
+    cursor: pointer;
 }
