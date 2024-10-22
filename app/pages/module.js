@@ -31,12 +31,12 @@ const pageContent = {
             view: 'expand',
             when: false,
             className: 'trigger-outside script-source',
-            data: '#.data.scripts[=> module = @]',
-            expanded: '=source is not undefined',
+            data: '#.data.scriptCodes[=> script = @.script]',
+            expanded: '=script.source is not undefined',
             header: [
                 'text:"Source"',
                 { view: 'switch', content: [
-                    { when: 'source is not undefined', content: 'html:` \xa0<span style="color: #888">${source.size().bytes(true)}</html>`' },
+                    { when: 'script.source is not undefined', content: 'html:` \xa0<span style="color: #888">${source.size().bytes(true)}</html>`' },
                     { content: 'html:` <span style="color: #888">(unavailable)</span>`' }
                 ] }
             ],
@@ -44,27 +44,27 @@ const pageContent = {
                 view: 'source',
                 data: `{
                     $tooltipView: [
-                        'text:scriptFunction.name',
+                        'text:scriptFunction.callFrame.name',
                         'html:"<br>"',
                         {
                             view: 'inline-list',
-                            data: 'scriptFunction.states',
+                            data: 'scriptFunction.codes',
                             item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
                         }
                     ];
 
                     syntax: "js",
-                    content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
-                    refs: functions.({
-                        $href: function.marker().href;
-                        $marker: states | size() = 1
+                    content: script.source | is string ? replace(/\\n$/, "") : "// source is unavailable",
+                    refs: scriptFunctions.({
+                        $href: callFrame.marker('call-frame').href;
+                        $marker: codes | size() = 1
                             ? tier[].abbr()
                             : size() <= 3
                                 ? tier.(abbr()).join(' ')
                                 : tier[].abbr() + ' … ' + tier[-1].abbr();
 
                         className: 'function',
-                        range: [start, end],
+                        range: [callFrame.start, callFrame.end],
                         marker: $href ? $marker + '" data-href="' + $href : $marker,
                         scriptFunction: $,
                         tooltip: $tooltipView
