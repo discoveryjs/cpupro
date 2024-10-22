@@ -1,5 +1,4 @@
-import type { V8CpuProfileNode, V8CpuProfileCallFrame, IProfileScriptsMap } from '../types';
-import type { ReparentGcNodesResult } from './gc-samples';
+import type { V8CpuProfileNode, V8CpuProfileCallFrame, IProfileScriptsMap, GeneratedNodes } from '../types';
 import type { Dictionary } from '../dictionary';
 import { findMaxId } from '../utils';
 
@@ -8,13 +7,12 @@ export function mapNodes(
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
     callFrameByIndex: Uint32Array,
     scriptsMap: IProfileScriptsMap,
-    gcNodes?: ReparentGcNodesResult | null
+    generatedNodes: GeneratedNodes | null = null
 ) {
-    const gcNodesCount: number = gcNodes?.nodeParent.length || 0;
-    const callFrameByNodeIndex = new Uint32Array(nodes.length + gcNodesCount);
+    const generatedNodesCount: number = generatedNodes?.count || 0;
+    const callFrameByNodeIndex = new Uint32Array(nodes.length + generatedNodesCount);
 
-    callFrameByNodeIndex.fill(dict.callFrames.wellKnownIndex.gc, nodes.length);
-
+    // nodes
     for (let i = 0; i < nodes.length; i++) {
         const { callFrame } = nodes[i];
         const callFrameIndex = typeof callFrame === 'number'
@@ -24,40 +22,65 @@ export function mapNodes(
         callFrameByNodeIndex[i] = callFrameIndex;
     }
 
+    // generatedNodes
+    // FIXME: refactor when generated nodes will be different types
+    callFrameByNodeIndex.fill(dict.callFrames.wellKnownIndex.gc, nodes.length);
+
     return callFrameByNodeIndex;
 }
 
 export function createNodeIndexById(
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
-    gcNodes?: ReparentGcNodesResult | null
+    generatedNodes: GeneratedNodes | null = null
 ) {
     const maxNodeId: number = findMaxId(nodes);
-    const gcNodesCount: number = gcNodes?.nodeParent.length || 0;
-    const nodeIndexById = new Int32Array(maxNodeId + 1 + gcNodesCount).fill(-1);
+    const generatedNodesCount: number = generatedNodes?.count || 0;
+    const nodeIndexById = new Int32Array(maxNodeId + 1 + generatedNodesCount).fill(-1);
 
+    // nodes
     for (let i = 0; i < nodes.length; i++) {
         nodeIndexById[nodes[i].id] = i;
     }
 
-    if (gcNodesCount > 0) {
-        for (let id = nodes.length; id <= nodeIndexById.length; id++) {
-            nodeIndexById[id] = id - 1;
-        }
+    // generatedNodes
+    for (let i = nodes.length, id = maxNodeId + 1; i < nodeIndexById.length; i++, id++) {
+        nodeIndexById[id] = i;
     }
 
     return nodeIndexById;
 }
 
+export function createNodePositions(
+    nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
+    generatedNodes: GeneratedNodes | null = null
+) {
+    const generatedNodePositions: number[] = generatedNodes?.parentScriptOffsets || [];
+    const nodePositions = new Int32Array(nodes.length + generatedNodePositions.length).fill(-1);
+
+    // nodes
+    for (let i = 0; i < nodes.length; i++) {
+        const { parentScriptOffset } = nodes[i];
+
+        if (typeof parentScriptOffset === 'number') {
+            nodePositions[i] = parentScriptOffset;
+        }
+    }
+
+    // generated nodes
+    nodePositions.set(generatedNodePositions, nodes.length);
+
+    return nodePositions;
+}
+
 export function createNodeParent(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     nodeIndexById: Int32Array,
-    gcNodes?: ReparentGcNodesResult | null
+    generatedNodes: GeneratedNodes | null = null
 ) {
-    const gcNodesParent = gcNodes?.nodeParent || [];
-    const nodeParent = new Uint32Array(nodes.length + gcNodesParent.length);
+    const generatedNodesParentId = generatedNodes?.nodeParentId || [];
+    const nodeParent = new Uint32Array(nodes.length + generatedNodesParentId.length);
 
-    nodeParent.set(gcNodesParent, nodes.length);
-
+    // nodes
     for (let i = 0; i < nodes.length; i++) {
         const { children } = nodes[i];
 
@@ -68,18 +91,25 @@ export function createNodeParent(
         }
     }
 
+    // generatedNodes
+    for (let i = 0, k = nodes.length; i < generatedNodesParentId.length; i++, k++) {
+        nodeParent[k] = nodeIndexById[generatedNodesParentId[i]];
+    }
+
     return nodeParent;
 }
 
 export function processNodes(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    gcNodes?: ReparentGcNodesResult | null
+    generatedNodes: GeneratedNodes | null = null
 ) {
-    const nodeIndexById = createNodeIndexById(nodes, gcNodes);
-    const nodeParent = createNodeParent(nodes, nodeIndexById, gcNodes);
+    const nodeIndexById = createNodeIndexById(nodes, generatedNodes);
+    const nodeParent = createNodeParent(nodes, nodeIndexById, generatedNodes);
+    const nodePositions = createNodePositions(nodes, generatedNodes);
 
     return {
         nodeIndexById,
-        nodeParent
+        nodeParent,
+        nodePositions
     };
 }

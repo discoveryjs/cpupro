@@ -1,4 +1,4 @@
-import { CpuProNode, PackageProviderEndpoint, PackageRegistry, V8CpuProfileNode } from './types.js';
+import { PackageProviderEndpoint, PackageRegistry, V8CpuProfileNode } from './types.js';
 
 // As of March 6th, 2024, V8 and JavaScriptCore do not seem to optimize for `new Uint32Array(array)` construction,
 // showing no notable performance difference in SpiderMonkey.
@@ -7,6 +7,15 @@ import { CpuProNode, PackageProviderEndpoint, PackageRegistry, V8CpuProfileNode 
 // construction vs. 3ms for manual population on a Mac M1 using V8.
 export function convertToUint32Array(source: number[]) {
     const result = new Uint32Array(source.length);
+
+    for (let i = 0; i < result.length; i++) {
+        result[i] = source[i];
+    }
+
+    return result;
+}
+export function convertToInt32Array(source: number[]) {
+    const result = new Int32Array(source.length);
 
     for (let i = 0; i < result.length; i++) {
         result[i] = source[i];
@@ -79,10 +88,6 @@ export function findMaxId(nodes: V8CpuProfileNode<unknown>[]) {
     }
 
     return maxId;
-}
-
-export function remapId(node: CpuProNode, index: number) {
-    node.id = index + 1;
 }
 
 export const createRegistryRx = (function() {

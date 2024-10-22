@@ -1,16 +1,11 @@
-import type { V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
-
-export type ReparentGcNodesResult = {
-    nodeParent: number[];
-    parentScriptOffsets: number[] | null;
-};
+import type { GeneratedNodes, V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
 
 export function reparentGcNodes(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     callFrames: V8CpuProfileCallFrame[] | null,
     samples: Uint32Array,
-    samplePositions: Uint32Array | null
-): ReparentGcNodesResult | null {
+    samplePositions: Int32Array | null
+): GeneratedNodes | null {
     const maxNodeId = nodes.length - 1;
     const rootGcNodeId = callFrames !== null
         ? findRootGcNodeIdWithCallFrames(nodes, callFrames)
@@ -53,8 +48,11 @@ function remapGcSamples(
         prevNodeId = nodeId;
     }
 
+    const nodeParentId = [...nodeIdToGcNodeId.keys()];
+
     return {
-        nodeParent: [...nodeIdToGcNodeId.keys()],
+        count: nodeParentId.length,
+        nodeParentId,
         parentScriptOffsets: null
     };
 }
@@ -63,11 +61,11 @@ function remapGcSamplesWithPositions(
     nodeIdSeed: number,
     gcNodeId: number,
     samples: Uint32Array,
-    samplePositions: Uint32Array
+    samplePositions: Int32Array
 ) {
     const maxNodeId = nodeIdSeed + 1;
     const nodeIdToGcNodeId = new Map<number, number>();
-    const nodeParent: number[] = [];
+    const nodeParentId: number[] = [];
     const parentScriptOffsets: number[] = [];
 
     for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
@@ -84,7 +82,7 @@ function remapGcSamplesWithPositions(
                 if (newGcNodeId === undefined) {
                     newGcNodeId = ++nodeIdSeed;
                     nodeIdToGcNodeId.set(prevNodeRef, newGcNodeId);
-                    nodeParent.push(prevNodeId);
+                    nodeParentId.push(prevNodeId);
                     parentScriptOffsets.push(prevNodeScriptOffset);
                 }
 
@@ -96,7 +94,8 @@ function remapGcSamplesWithPositions(
     }
 
     return {
-        nodeParent,
+        count: nodeParentId.length,
+        nodeParentId,
         parentScriptOffsets
     };
 }

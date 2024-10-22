@@ -1,6 +1,6 @@
 import type { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 import { TIMINGS } from './prepare/const.js';
-import { convertToUint32Array } from './prepare/utils.js';
+import { convertToInt32Array, convertToUint32Array } from './prepare/utils.js';
 import { extractAndValidate } from './prepare/index.js';
 import { mergeSamples, processSamples, remapTreeSamples } from './prepare/preprocessing/samples.js';
 import { processTimeDeltas } from './prepare/preprocessing/time-deltas.js';
@@ -10,6 +10,7 @@ import { processNodes } from './prepare/preprocessing/nodes.js';
 import { processFunctionCodes } from './prepare/preprocessing/function-codes.js';
 import { processPaths } from './prepare/preprocessing/paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
+import { processCallFramePositions } from './prepare/preprocessing/call-frame-positions.js';
 import { detectRuntime } from './prepare/detect-runtime.js';
 import { buildTrees } from './prepare/computations/build-trees.js';
 import { ProfileScriptsMap } from './prepare/preprocessing/scripts.js';
@@ -85,7 +86,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         rawSamples: convertToUint32Array(data.samples),
         rawTimeDeltas: convertToUint32Array(data.timeDeltas),
         rawSamplePositions: Array.isArray(data._samplePositions)
-            ? convertToUint32Array(data._samplePositions)
+            ? convertToInt32Array(data._samplePositions)
             : null
     }));
 
@@ -112,7 +113,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const {
         callFrameByNodeIndex,
         callFrameByFunctionIndex
-    } = await work('consume dictionaries', () =>
+    } = await work('extract call frames', () =>
         extractCallFrames(
             dict,
             data.nodes,
@@ -123,7 +124,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         )
     );
 
-    // preprocess function codes
+    // process function codes
     const scriptFunctions = await work('process function codes', () =>
         processFunctionCodes(data._functionCodes, callFrameByFunctionIndex, dict.callFrames)
     );
@@ -150,8 +151,24 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // Create profile's data derivatives
     //
 
-    const { nodeIndexById, nodeParent } = await work('process nodes', () =>
+    const { nodeIndexById, nodeParent, nodePositions } = await work('process nodes', () =>
         processNodes(data.nodes, gcNodes)
+    );
+
+    // call frame positions
+    const {
+        // samplePositions,
+        positionsTreeSource
+    } = await work('process call frame positions', () =>
+        processCallFramePositions(
+            nodeIndexById,
+            nodeParent,
+            nodePositions,
+            dict.callFrames,
+            callFrameByNodeIndex,
+            samples,
+            samplePositions
+        )
     );
 
     //
@@ -161,29 +178,35 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // build trees should be performed after dictionaries are sorted and remaped
     const {
         treeSource,
+        callFramePositionsTree,
         callFramesTree,
         modulesTree,
         packagesTree,
         categoriesTree
     } = await work('build trees', () =>
         buildTrees(
+            dict,
             nodeParent,
             nodeIndexById,
             callFrameByNodeIndex,
-            dict
+            positionsTreeSource
         )
     );
+    const callTrees = [
+        callFramePositionsTree,
+        callFramesTree,
+        modulesTree,
+        packagesTree,
+        categoriesTree
+    ].filter(tree => tree !== null);
 
     // re-map samples
     // FIXME: remap callFramesTree only, before buildTrees()?
-    await work('remap tree samples', () =>
+    await work('remap samples', () =>
         remapTreeSamples(
             samples,
-            treeSource.sourceIdToNode,
-            callFramesTree,
-            modulesTree,
-            packagesTree,
-            categoriesTree
+            positionsTreeSource?.sourceIdToNode || treeSource.sourceIdToNode,
+            ...callTrees
         )
     );
 
@@ -191,6 +214,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const {
         samplesTimings,
         samplesTimingsFiltered,
+        callFramePositionsTimings,
+        callFramePositionsTimingsFiltered,
+        callFramePositionsTreeTimings,
+        callFramePositionsTreeTimingsFiltered,
+        callFramePositionsTreeTimestamps,
         callFramesTimings,
         callFramesTimingsFiltered,
         callFramesTreeTimings,
@@ -218,13 +246,15 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             callFramesTree,
             modulesTree,
             packagesTree,
-            categoriesTree
+            categoriesTree,
+            callFramePositionsTree
         )
     );
 
     // apply object marker
     await work('mark objects', () => {
         dict.callFrames.forEach(markers['call-frame']);
+        callFramePositionsTree?.dictionary.forEach(markers['call-frame-position']);
         dict.modules.forEach(markers.module);
         dict.packages.forEach(markers.package);
         dict.categories.forEach(markers.category);
@@ -251,6 +281,13 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
         scriptFunctions,
+        positionsTreeSource,
+        callFramePositionsTimings,
+        callFramePositionsTimingsFiltered,
+        callFramePositionsTree,
+        callFramePositionsTreeTimings,
+        callFramePositionsTreeTimingsFiltered,
+        callFramePositionsTreeTimestamps,
         callFramesTimings,
         callFramesTimingsFiltered,
         callFramesTree,

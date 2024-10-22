@@ -14,36 +14,40 @@ import {
     CpuProPackage,
     V8CpuProfileNode,
     CpuProNode,
-    CpuProCallFrame
+    CpuProCallFrame,
+    CpuProCallFramePosition
 } from '../types.js';
 import { convertToUint32Array } from '../utils.js';
-
-const kinds = ['callFrames', 'modules', 'packages', 'categories'] as const;
 
 type SamplesResult = {
     samplesTimings: SamplesTiminigs;
     samplesTimingsFiltered: SamplesTiminigsFiltered;
 
+    callFramePositionsTimings: DictionaryTiminigs<CpuProCallFramePosition> | null;
     callFramesTimings: DictionaryTiminigs<CpuProCallFrame>;
     modulesTimings: DictionaryTiminigs<CpuProModule>;
     packagesTimings: DictionaryTiminigs<CpuProPackage>;
     categoriesTimings: DictionaryTiminigs<CpuProCategory>;
 
+    callFramePositionsTreeTimings: TreeTiminigs<CpuProCallFramePosition> | null;
     callFramesTreeTimings: TreeTiminigs<CpuProCallFrame>;
     modulesTreeTimings: TreeTiminigs<CpuProModule>;
     packagesTreeTimings: TreeTiminigs<CpuProPackage>;
     categoriesTreeTimings: TreeTiminigs<CpuProCategory>;
 
+    callFramePositionsTimingsFiltered: DictionaryTiminigs<CpuProCallFramePosition> | null;
     callFramesTimingsFiltered: DictionaryTiminigs<CpuProCallFrame>;
     modulesTimingsFiltered: DictionaryTiminigs<CpuProModule>;
     packagesTimingsFiltered: DictionaryTiminigs<CpuProPackage>;
     categoriesTimingsFiltered: DictionaryTiminigs<CpuProCategory>;
 
+    callFramePositionsTreeTimingsFiltered: TreeTiminigs<CpuProCallFramePosition> | null;
     callFramesTreeTimingsFiltered: TreeTiminigs<CpuProCallFrame>;
     modulesTreeTimingsFiltered: TreeTiminigs<CpuProModule>;
     packagesTreeTimingsFiltered: TreeTiminigs<CpuProPackage>;
     categoriesTreeTimingsFiltered: TreeTiminigs<CpuProCategory>;
 
+    callFramePositionsTreeTimestamps: TreeTimestamps<CpuProCallFrame> | null;
     callFramesTreeTimestamps: TreeTimestamps<CpuProCallFrame>;
     modulesTreeTimestamps: TreeTimestamps<CpuProModule>;
     packagesTreeTimestamps: TreeTimestamps<CpuProPackage>;
@@ -52,7 +56,7 @@ type SamplesResult = {
 
 // Merging sequentially identical samples and coresponsing timeDeltas.
 // Usually it allows to reduce number of samples for further processing at least by x2
-export function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array, samplePositions: Uint32Array | null) {
+export function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array, samplePositions: Int32Array | null) {
     const sampleCounts = new Uint32Array(samples.length).fill(1);
     let k = 1;
 
@@ -84,7 +88,7 @@ export function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array, samp
     return k !== samples.length
         ? {
             samples: samples.slice(0, k),
-            sampleCounts,
+            sampleCounts: sampleCounts.slice(0, k),
             samplePositions: samplePositions !== null ? samplePositions.slice(0, k) : samplePositions,
             timeDeltas: timeDeltas.slice(0, k)
         }
@@ -123,10 +127,10 @@ export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
 
 export function remapTreeSamples(
     samples: Uint32Array,
-    sampleIdMap: Int32Array,
+    sampleIdToEntryTreeNode: Int32Array,
     ...trees: CallTree<CpuProNode>[]
 ) {
-    let sampleIdToNode = remapSamples(samples, sampleIdMap);
+    let sampleIdToNode = remapSamples(samples, sampleIdToEntryTreeNode);
 
     // entryTree.sampleIdToNode = sampleIdToNode;
 
@@ -142,10 +146,14 @@ export function processSamples(
     callFramesTree: CallTree<CpuProCallFrame>,
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
-    categoriesTree: CallTree<CpuProCategory>
+    categoriesTree: CallTree<CpuProCategory>,
+    callFramePositionsTree: CallTree<CpuProCallFramePosition> | null
 ): SamplesResult {
     // create timings
     const computeTimingsStart = Date.now();
+    const kinds = callFramePositionsTree
+        ? ['callFramePositions', 'callFrames', 'modules', 'packages', 'categories'] as const
+        : ['callFrames', 'modules', 'packages', 'categories'] as const;
     const {
         samplesTimings,
         samplesTimingsFiltered,
@@ -155,15 +163,22 @@ export function processSamples(
         dictionaryTimings,
         dictionaryTimingsFiltered
     } = createTreeCompute(samples, timeDeltas, [
+        callFramePositionsTree,
         callFramesTree,
         modulesTree,
         packagesTree,
         categoriesTree
-    ]);
+    ].filter(tree => tree !== null));
 
     const result = {
         samplesTimings,
-        samplesTimingsFiltered
+        samplesTimingsFiltered,
+
+        callFramePositionsTimings: null,
+        callFramePositionsTreeTimings: null,
+        callFramePositionsTimingsFiltered: null,
+        callFramePositionsTreeTimingsFiltered: null,
+        callFramePositionsTreeTimestamps: null
     };
 
     dictionaryTimings.forEach((timings, i) => result[`${kinds[i]}Timings`] = timings);

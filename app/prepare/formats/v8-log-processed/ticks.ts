@@ -28,9 +28,9 @@ export function processTicks(
     const rootNode = createNode(1, 0);
     const nodes: CallNode<number>[] = [rootNode];
     const nodeTransitionMaps = new Map<CallNode<number>, CallNodeMap>();
-    const samples = new Array(ticks.length);
-    const timeDeltas = new Array(ticks.length);
-    const samplePositions = new Array(ticks.length);
+    const samples: number[] = new Array(ticks.length);
+    const timeDeltas: number[] = new Array(ticks.length);
+    const samplePositions: number[] = new Array(ticks.length);
     const sortedTicks = ticks.slice().sort((a, b) => a.tm - b.tm); // sort a copy of ticks by a timestamp
     let lastTm = 0;
 
@@ -80,8 +80,8 @@ export function processTicks(
                         }
                     }
                 } else {
-                    // when positions are not available for the code, store the script offset as zero as a fallback
-                    prevSourceOffset = 0;
+                    // when positions are not available for the code, store the script offset as -1 as a fallback
+                    prevSourceOffset = -1;
                 }
             }
         }
@@ -94,7 +94,7 @@ export function processTicks(
 
         if (vmStateCallFrameIndex !== 0) {
             currentNode = getNextNode(currentNode, vmStateCallFrameIndex, prevSourceOffset);
-            prevSourceOffset = 0;
+            prevSourceOffset = -1;
         }
 
         samples[tickIndex] = currentNode.id;

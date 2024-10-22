@@ -1,6 +1,6 @@
 import { TIMINGS } from '../const';
 import { CallTree } from './call-tree.js';
-import { CpuProCallFrame, CpuProNode } from '../types.js';
+import { CpuProCallFrame, CpuProCallFramePosition, CpuProNode } from '../types.js';
 import { Dictionary } from '../dictionary';
 
 interface TreeSource<S> {
@@ -16,7 +16,7 @@ export function createTreeSourceFromParent<S>(
     nodes: Uint32Array,
     dictionary: S[]
 ): TreeSource<S> {
-    const nodeToSourceId = new Uint32Array(parent.length);
+    const nodeToSourceId = new Int32Array(parent.length).fill(-1);
     const { firstChild, nextSibling } = firstNextFromParent(parent);
     const { nodes: computedNodes, parent: computedParent } = nodesParentFromFirstNext(firstChild, nextSibling);
 
@@ -29,7 +29,12 @@ export function createTreeSourceFromParent<S>(
     }
 
     for (let i = 0; i < parent.length; i++) {
-        sourceIdToNode[nodeToSourceId[computedNodes[i]]] = i;
+        const sourceId = nodeToSourceId[computedNodes[i]];
+
+        if (sourceId !== -1) {
+            sourceIdToNode[sourceId] = i;
+        }
+
         computedNodes[i] = nodes[computedNodes[i]];
     }
 
@@ -282,21 +287,21 @@ function rollupTreeByCommonValues(
     return nodesCount;
 }
 
-export function buildCallTree<S extends CpuProNode, D extends CpuProNode>(
+export function buildCallTreeArrays<S extends CpuProNode, D extends CpuProNode>(
     source: TreeSource<S>,
     dictionary: D[],
-    sourceNodeToDictionaryFn: (node: S) => number
+    sourceEntryToTreeDictionaryEntryFn: (node: S, idx: number) => number
 ) {
     const initTimeStart = Date.now();
     const sourceNodes = source.nodes;
-    const sourceDictionary = source.dictionary;
     const sourceIdToNode = new Int32Array(sourceNodes.length);
-    const sourceToDictionary = new Uint32Array(sourceDictionary.length);
     const { firstChild, nextSibling } = firstNextFromParent(source.parent);
 
     const sourceToDictStart = Date.now();
+    const sourceDictionary = source.dictionary;
+    const sourceToDictionary = new Uint32Array(sourceDictionary.length);
     for (let i = 0; i < sourceDictionary.length; i++) {
-        sourceToDictionary[i] = sourceNodeToDictionaryFn(sourceDictionary[i]);
+        sourceToDictionary[i] = sourceEntryToTreeDictionaryEntryFn(sourceDictionary[i], i);
     }
 
     const rollupTreeStart = Date.now();
@@ -320,38 +325,59 @@ export function buildCallTree<S extends CpuProNode, D extends CpuProNode>(
         nextSibling
     );
 
+    return {
+        sourceIdToNode,
+        nodes,
+        parent,
+        subtreeSize,
+        nested,
+        timings: {
+            fcns: sourceToDictStart - initTimeStart,
+            dict: rollupTreeStart - sourceToDictStart,
+            rollup: finalizeStart - rollupTreeStart,
+            finalize: Date.now() - finalizeStart
+        }
+    };
+}
+
+function buildCallTree<S extends CpuProNode, D extends CpuProNode>(
+    name: string,
+    source: TreeSource<S>,
+    dictionary: D[],
+    sourceEntryToTreeDictionaryEntryFn: (node: S, idx: number) => number
+) {
+    const initTimeStart = Date.now();
+    const {
+        sourceIdToNode,
+        nodes,
+        parent,
+        subtreeSize,
+        nested,
+        timings
+    } = buildCallTreeArrays(
+        source,
+        dictionary,
+        sourceEntryToTreeDictionaryEntryFn
+    );
+
     const createTreeStart = Date.now();
     const tree = new CallTree(dictionary, sourceIdToNode, nodes, parent, subtreeSize, nested)
         .computeEntryNodes();
 
     if (TIMINGS) {
         console.info(
-            '---> buildTree()',
-            sourceToDictStart - initTimeStart, '(fc/ns) +',
-            rollupTreeStart - sourceToDictStart, '(dict) +',
-            finalizeStart - rollupTreeStart, '(rollup) +',
-            createTreeStart - finalizeStart, '(finalize) +',
+            `---> buildTree(${name || ''})`,
+            timings.fcns, '(fc/ns) +',
+            timings.dict, '(dict) +',
+            timings.rollup, '(rollup) +',
+            timings.finalize, '(finalize) +',
             Date.now() - createTreeStart,
-            '(compute) =',
+            '(create tree) =',
             Date.now() - initTimeStart, 'ms'
         );
     }
 
     return tree;
-}
-
-function buildCallTreeFor<S extends CpuProNode, D extends CpuProNode>(
-    name: string,
-    source: TreeSource<S>,
-    dictionary: D[],
-    sourceNodeToDictionaryFn: (node: S) => number
-) {
-    TIMINGS && console.group(`Build ${name} tree`);
-    try {
-        return buildCallTree(source, dictionary, sourceNodeToDictionaryFn);
-    } finally {
-        TIMINGS && console.groupEnd();
-    }
 }
 
 function buildTreeSource(
@@ -370,10 +396,11 @@ function buildTreeSource(
 }
 
 export function buildTrees(
+    dict: Dictionary,
     nodeParent: Uint32Array,
     nodeIndexById: Int32Array,
     callFrameByNodeIndex: Uint32Array,
-    dict: Dictionary
+    callFramePositionsTreeSource: TreeSource<CpuProCallFramePosition> | null = null
 ) {
     const treeSource = buildTreeSource(
         nodeParent,
@@ -382,13 +409,19 @@ export function buildTrees(
         dict.callFrames
     );
 
-    const callFramesTree = buildCallTreeFor('callFrames', treeSource, dict.callFrames, callFrame => callFrame.id - 1);
-    const modulesTree = buildCallTreeFor('modules', callFramesTree, dict.modules, callFrame => callFrame.module.id - 1);
-    const packagesTree = buildCallTreeFor('packages', modulesTree, dict.packages, callFrame => callFrame.package.id - 1);
-    const categoriesTree = buildCallTreeFor('categories', packagesTree, dict.categories, callFrame => callFrame.category.id - 1);
+    const callFramePositionsTree = callFramePositionsTreeSource
+        ? buildCallTree('callFramePositions', callFramePositionsTreeSource, callFramePositionsTreeSource.dictionary, (_, idx) => idx)
+        : null;
+    const callFramesTree = callFramePositionsTree !== null
+        ? buildCallTree('callFrames', callFramePositionsTree, dict.callFrames, pos => pos.callFrame.id - 1)
+        : buildCallTree('callFrames', treeSource, dict.callFrames, callFrame => callFrame.id - 1);
+    const modulesTree = buildCallTree('modules', callFramesTree, dict.modules, callFrame => callFrame.module.id - 1);
+    const packagesTree = buildCallTree('packages', modulesTree, dict.packages, module => module.package.id - 1);
+    const categoriesTree = buildCallTree('categories', packagesTree, dict.categories, pkg => pkg.category.id - 1);
 
     return {
         treeSource,
+        callFramePositionsTree,
         callFramesTree,
         modulesTree,
         packagesTree,

@@ -115,7 +115,13 @@ export type WellKnownType =
     | 'atomics-wait'
     ;
 
-export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory;
+export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory | CpuProCallFramePosition;
+
+export type GeneratedNodes = {
+    count: number;
+    nodeParentId: number[];
+    parentScriptOffsets: number[] | null;
+}
 
 export type CpuProFunctionKind = 'script' | 'function' | 'regexp' | 'vm-state' | 'root';
 export type CpuProCallFrame = {
@@ -132,6 +138,11 @@ export type CpuProCallFrame = {
     module: CpuProModule;
     package: CpuProPackage;
     category: CpuProCategory;
+}
+
+export type CpuProCallFramePosition = {
+    callFrame: CpuProCallFrame;
+    scriptOffset: number;
 }
 
 export type ModuleType = // alphabetical order
