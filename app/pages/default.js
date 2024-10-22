@@ -664,21 +664,33 @@ const modulesList = {
 
 const callFrameList = {
     view: 'section',
-    data: 'callFramesTimingsFiltered',
+    data: 'callFramesTimingsFiltered.entries.zip(=> entry, #.data.scriptFunctions, => callFrame)',
     header: [],
     content: {
         view: 'content-filter',
         content: {
             view: 'update-on-timings-change',
+            timings: '=#.data.callFramesTimingsFiltered',
             debounce: true,
             content: {
                 view: 'table',
-                data: 'entries.[totalTime and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                data: `
+                    .[left | totalTime and entry.name ~= #.filter]
+                    .sort(left.selfTime desc, left.totalTime desc)
+                `,
                 limit: 15,
                 cols: [
-                    { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                    { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                    { header: 'Call frame', className: 'main', sorting: 'entry.name ascN', content: 'call-frame-badge:entry' }
+                    { header: 'Self time', sorting: 'left.selfTime desc, left.totalTime desc', content: 'duration:{ time: left.selfTime, total: #.data.totalTime }' },
+                    { header: 'Total time', sorting: 'left.totalTime desc, left.selfTime desc', content: 'duration:{ time: left.totalTime, total: #.data.totalTime }' },
+                    {
+                        header: '',
+                        colWhen: '$[=>right]',
+                        sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
+                        data: 'right',
+                        contentWhen: 'hotness = "hot" or hotness = "warm"',
+                        content: 'hotness-icon{ hotness, topTier }'
+                    },
+                    { header: 'Call frame', className: 'main', sorting: 'left.entry.name ascN', content: 'call-frame-badge:left.entry' }
                 ]
             }
         }

@@ -91,6 +91,9 @@
 .discovery-root-darkmode .view-badge {
     box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12);
 }
+.view-table > thead th:empty {
+    padding: 0 9px;
+}
 .view-table-cell.details > * {
     pointer-events: none;
 }

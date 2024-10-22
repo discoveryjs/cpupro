@@ -55,8 +55,8 @@ export const vmFunctionStateTierHotness: Record<V8FunctionCodeType, CpuProFuncti
     'Unknown': 'cold',
     'Ignition': 'cold',
     'Sparkplug': 'warm',
-    'Maglev': 'warm',
-    'Turboprop': 'warm',
+    'Maglev': 'hot',
+    'Turboprop': 'hot',
     'Turbofan': 'hot'
 } as const;
 

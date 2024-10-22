@@ -2,7 +2,7 @@ discovery.page.define('call-frames', [
     {
         view: 'context',
         data: `
-            callFramesTimings.entries.zip(=> entry, scriptFunctions, => function)
+            callFramesTimings.entries.zip(=> entry, scriptFunctions, => callFrame)
                 .({
                     $entry: left.entry;
 
@@ -72,17 +72,17 @@ discovery.page.define('call-frames', [
                             when: 'totalTime',
                             content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                         },
+                        {
+                            header: '',
+                            colWhen: '$[=>right]',
+                            sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
+                            data: 'right',
+                            contentWhen: 'hotness = "hot" or hotness = "warm"',
+                            content: 'hotness-icon{ hotness, topTier }'
+                        },
                         { header: 'Kind',
                             content: 'call-frame-kind-badge:entry.kind'
                         },
-                        // { header: 'Function',
-                        //     data: 'left.entry',
-                        //     sorting: 'name ascN',
-                        //     content: {
-                        //         view: 'auto-link',
-                        //         content: 'text-match:{ text, match: #.filter }'
-                        //     }
-                        // },
                         { header: 'Call frame',
                             sorting: 'name ascN',
                             content: {
@@ -100,18 +100,20 @@ discovery.page.define('call-frames', [
                             ]
                         },
                         { header: 'Source',
+                            colWhen: '$[=>right]',
                             className: 'number',
-                            sorting: '(right.end - right.start) desc',
-                            data: 'right',
+                            sorting: '(right.callFrame.end - right.callFrame.start) desc',
+                            data: 'right.callFrame',
                             content: 'text:end - start | $ > 0?: ""',
                             details: '=end-start > 0 ? `source:{ syntax: "js", content: script.source[start:end] }`'
                         },
-                        { header: 'States',
-                            sorting: 'right.states.size() desc',
+                        { header: 'Tiers',
+                            colWhen: '$[=>right]',
+                            sorting: 'right.codes.size() desc',
                             data: 'right',
                             content: {
                                 view: 'inline-list',
-                                data: 'states.([[tier.abbr() + "\xa0"]])',
+                                data: 'codes.([[tier.abbr() + "\xa0"]])',
                                 whenData: true
                             }
                         }
