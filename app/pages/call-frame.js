@@ -245,16 +245,16 @@ const pageContent = {
                         $inlinedRefs,
                         $codePoints,
                         $samplePoints,
-                        refs: $codePoints + $inlinedRefs + $samplePoints + #.data.scriptFunctions.[callFrame | script = $script and start >= $start and end <= $end].({
-                            $href: @.scriptFunction != $ ? function.marker().href;
-                            $marker: states | size() = 1
+                        refs: $codePoints + $inlinedRefs + $samplePoints + #.data.scriptFunctions.[$ != @.scriptFunction and (callFrame | script = $script and start >= $start and end <= $end)].({
+                            $href: @.scriptFunction != $ ? callFrame.marker('call-frame').href;
+                            $marker: codes | size() = 1
                                 ? tier[].abbr()
                                 : size() <= 3
                                     ? tier.(abbr()).join(' ')
                                     : tier[].abbr() + ' … ' + tier[-1].abbr();
 
                             className: 'function',
-                            range: [start - @.start, end - @.start],
+                            range: [callFrame.start - @.start, callFrame.end - @.start],
                             marker: $href ? $marker + '" data-href="' + $href : $marker,
                             scriptFunction: $,
                             tooltip: $tooltipView
