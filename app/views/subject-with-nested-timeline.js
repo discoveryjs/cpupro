@@ -93,10 +93,10 @@ discovery.view.define('subject-with-nested-timeline', {
             limit: false,
             data: `
                 $type: subject.marker().type;
-                $type = "module" ? (#.data.scripts[=> module = @.subject] | is object ?|
-                    $module; compilation.states.({ $module, state: $, color: tier.color(true) })) :
-                $type = "function" ? (#.data.scriptFunctions[=> function = @.subject] |
-                    $function; states.({ $function, state: $, color: tier.color(true) })) :
+                $type = "module" ? (#.data.scriptCodes[=> script.module = @.subject] | is object ?|
+                    $module: script.module; compilation.codes.({ $module, code: $, color: tier.color(true) })) :
+                $type = "call-frame" ? (#.data.scriptFunctions[=> callFrame = @.subject] |
+                    codes.({ ..., code: $, color: tier.color(true) })) :
                 undefined
             `,
             whenData: true,
@@ -104,17 +104,17 @@ discovery.view.define('subject-with-nested-timeline', {
                 view: 'block',
                 className: 'tick',
                 postRender(el, _, data, ctx) {
-                    const state = data.state;
-                    const timestamps = data.function
-                        ? ctx.data.functionsTreeTimestamps.entriesMap.get(data.function)
+                    const code = data.code;
+                    const timestamps = data.callFrame
+                        ? ctx.data.callFramesTreeTimestamps.entriesMap.get(data.callFrame)
                         : ctx.data.modulesTreeTimestamps.entriesMap.get(data.module);
                     const totalTime = ctx.data.totalTime;
                     const step = totalTime / 500;
-                    const duration = state.duration ||
-                        (timestamps.lastSeen > state.tm && Math.ceil(timestamps.lastSeen / step) * step - state.tm) ||
-                        (totalTime - state.tm);
+                    const duration = code.duration ||
+                        (timestamps.lastSeen > code.tm && Math.ceil(timestamps.lastSeen / step) * step - code.tm) ||
+                        (totalTime - code.tm);
 
-                    el.style.setProperty('--pos', state.tm / totalTime);
+                    el.style.setProperty('--pos', code.tm / totalTime);
                     el.style.setProperty('--duration', duration / totalTime);
                     el.style.setProperty('--tier-color', 'rgb(' + data.color + ', .68)');
                 }

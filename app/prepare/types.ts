@@ -287,6 +287,7 @@ export type CpuProFunctionCodes = {
 export type CpuProFunctionCode = {
     tm: number;
     callFrame: CpuProCallFrame;
+    scriptFunction: CpuProFunctionCodes;
     tier: string;
     duration: number;
     positions: string;

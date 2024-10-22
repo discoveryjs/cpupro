@@ -151,7 +151,7 @@ const pageIndicators = {
     ]
 };
 
-const functionStatesView = [
+const functionCodesView = [
     {
         view: 'link',
         className: 'category-timelines-item',
@@ -171,28 +171,6 @@ const functionStatesView = [
                 view: 'timeline-segments-bin',
                 bins: '=transitions',
                 color: '="compilation".color()'
-            }
-        ]
-    },
-    {
-        view: 'link',
-        className: 'category-timelines-item',
-        content: [
-            {
-                view: 'block',
-                className: 'label',
-                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                content: 'text:"Functions"'
-            },
-            {
-                view: 'block',
-                className: 'total-percent',
-                content: 'text:""'
-            },
-            {
-                view: 'timeline-segments-bin',
-                bins: '=totalBins',
-                color: '=totalColor'
             }
         ]
     },
@@ -224,6 +202,28 @@ const functionStatesView = [
                 }
             ]
         }
+    },
+    {
+        view: 'link',
+        className: 'category-timelines-item',
+        content: [
+            {
+                view: 'block',
+                className: 'label',
+                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                content: 'text:"Functions"'
+            },
+            {
+                view: 'block',
+                className: 'total-percent',
+                content: 'text:""'
+            },
+            {
+                view: 'timeline-segments-bin',
+                bins: '=totalBins',
+                color: '=totalColor'
+            }
+        ]
     }
 ];
 
@@ -339,10 +339,10 @@ const categoriesTimeline = {
                 color: $category.name.color(),
                 href: $category.marker("category").href
             }),
-            functionStates: scriptFunctions.states |? {
+            functionCodes: scriptFunctionCodes |? {
                 $countByTopTier: @.scriptFunctions.group(=> topTier).({ tier: key, count: value.size() });
-                $states: sort(tm asc);
-                $totalBins: $states.binFunctionStatesTotal();
+                $codes: sort(tm asc);
+                $totalBins: $codes.binScriptFunctionCodesTotal();
                 $maxTotal: $totalBins.fnCount.max();
                 $byTierBins: $totalBins.byTier.({
                     $tier: $[0];
@@ -357,7 +357,7 @@ const categoriesTimeline = {
                 }).[max];
                 
                 $countByTopTier,
-                transitions: $states.binFunctionStates(),
+                transitions: $codes.binScriptFunctionCodes(),
                 totalBins: $totalBins.fnCount,
                 totalColor: '#7fb2f7a0',
                 byTier: $byTierBins,
@@ -440,11 +440,11 @@ const categoriesTimeline = {
                         {
                             view: 'block',
                             className: 'details-section',
-                            when: 'functionStates or heap',
+                            when: 'functionCodes or heap',
                             content: [
                                 {
                                     view: 'context',
-                                    data: 'functionStates',
+                                    data: 'functionCodes',
                                     whenData: true,
                                     content: [
                                         {
@@ -559,7 +559,7 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
-            data: 'functionStates',
+            data: 'functionCodes',
             header: [
                 'text:"Function tiers"',
                 {
@@ -574,14 +574,19 @@ const categoriesTimeline = {
             content: {
                 view: 'switch',
                 content: [
-                    { when: '$', content: functionStatesView },
-                    { content: 'text:"TODO: Add notes"' }
+                    { when: '$', content: functionCodesView },
+                    { content: {
+                        view: 'block',
+                        className: 'data-unavailable',
+                        content: 'md:"The profile does not contain the necessary data. Use [V8 log](https://v8.dev/docs/profile) preprocessed with [--preprocess](https://v8.dev/docs/profile#web-ui-for---prof) format to enable the feature."'
+                    } }
                 ]
             }
         },
         {
             view: 'expand',
             data: 'heap',
+            whenData: true,
             header: [
                 'text:"Heap size"',
                 {
@@ -597,7 +602,11 @@ const categoriesTimeline = {
                 view: 'switch',
                 content: [
                     { when: '$', content: heapTotalView },
-                    { content: 'text:"TODO: Add notes"' }
+                    { content: {
+                        view: 'block',
+                        className: 'data-unavailable',
+                        content: 'md:"The profile does not contain the necessary data."'
+                    } }
                 ]
             }
         }

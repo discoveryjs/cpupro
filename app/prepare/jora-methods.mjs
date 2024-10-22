@@ -414,15 +414,15 @@ const methods = {
 
         return bins;
     },
-    binFunctionStates(functionStates, n = 500) {
+    binScriptFunctionCodes(functionCodes, n = 500) {
         const { totalTime } = this.context.data;
         const bins = new Uint32Array(n);
         const step = totalTime / n;
         let end = step;
         let binIdx = 0;
 
-        for (let i = 0; i < functionStates.length; i++) {
-            const { tm } = functionStates[i];
+        for (let i = 0; i < functionCodes.length; i++) {
+            const { tm } = functionCodes[i];
 
             while (tm > end) {
                 binIdx++;
@@ -438,7 +438,7 @@ const methods = {
 
         return bins;
     },
-    binFunctionStatesTotal(functionStates, n = 500) {
+    binScriptFunctionCodesTotal(functionCodes, n = 500) {
         const { totalTime } = this.context.data;
         const step = totalTime / n;
         const binByTier = new Map();
@@ -451,8 +451,8 @@ const methods = {
             binByTier.set(tier, new Uint32Array(n));
         }
 
-        for (let i = 0; i < functionStates.length; i++) {
-            const { tm, tier, scriptFunction } = functionStates[i];
+        for (let i = 0; i < functionCodes.length; i++) {
+            const { tm, tier, scriptFunction } = functionCodes[i];
 
             while (tm > end) {
                 binIdx++;

@@ -200,16 +200,21 @@ const pageContent = {
                     when: 'not callFrame.regexp',
                     data: `{
                         $line: scriptFunction.callFrame.line or 1;
-                        $start: scriptFunction.start;
-                        $end: scriptFunction.end;
+                        $start: scriptFunction.callFrame.start;
+                        $end: scriptFunction.callFrame.end;
+                        $script: scriptFunction.callFrame.script;
                         $inlinedRefs: scriptFunction.codes[-1].inlined.match(/O\\d+(?=F|$)/g).matched |
                             ? .($pos: +$[1:] - @.start; { className: 'inline', range: [$pos, $pos] })
                             : [];
                         $codePoints: scriptFunction.codes.[positions][-1].positions.match(/O\\d+(?=C|$)/g).matched |
                             ? .($pos: +$[1:] - @.start; $pos ? { className: 'code-point', range: [$pos, $pos] })
                             : [];
-                        $samplePoints: scriptFunction.callFrame.function._locations.entries() |
-                            ? .($pos: +key - @.start; $pos ? { className: 'sample-point', range: [$pos, $pos], marker: value.ms() })
+                        $samplePoints: #.data.callFramePositionsTimings.entries.[entry.callFrame=@.scriptFunction.callFrame] |
+                            ? .($pos: entry.scriptOffset | $ != -1 ? $ - @.start : $start - @.start; [
+                                // { className: 'sample-point', range: [$pos, $pos], marker: totalTime.ms() }
+                                { className: 'sample-point', oo: entry.scriptOffset, range: [$pos, $pos], marker: selfTime.ms() },
+                                { className: 'sample-point', oo: entry.scriptOffset, range: [$pos, $pos], marker: nestedTime.ms() }
+                               ])
                             : [];
                         $tooltipView: {
                             className: 'hint-tooltip',
@@ -241,7 +246,7 @@ const pageContent = {
                         $inlinedRefs,
                         $codePoints,
                         $samplePoints,
-                        refs: $codePoints + $inlinedRefs + $samplePoints + scriptFunction.callFrame.script.callFrames.[callFrame | start >= $start and end <= $end].({
+                        refs: $codePoints + $inlinedRefs + $samplePoints + #.data.scriptFunctions.[callFrame | script = $script and start >= $start and end <= $end].({
                             $href: @.scriptFunction != $ ? function.marker().href;
                             $marker: states | size() = 1
                                 ? tier[].abbr()

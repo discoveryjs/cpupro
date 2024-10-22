@@ -1,4 +1,4 @@
-import type { CpuProCallFrame, CpuProFunctionCodes, V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../types.js';
+import type { CpuProCallFrame, CpuProFunctionCode, CpuProFunctionCodes, CpuProScript, V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../types.js';
 import { vmFunctionStateTierHotness, vmFunctionStateTiers } from '../const.js';
 
 export function processFunctionCodes(
@@ -6,11 +6,17 @@ export function processFunctionCodes(
     callFrameByFunctionIndex: Uint32Array,
     callFrames: CpuProCallFrame[],
     startTime: number = 0
-): CpuProFunctionCodes[] {
-    return functionCodes.map(({ function: functionIndex, codes }) => {
+) {
+    const scriptFunctionCodes: CpuProFunctionCode[] = [];
+    const scriptCodes = new Map<CpuProScript, {
+        script: CpuProScript,
+        compilation: CpuProFunctionCodes | null,
+        scriptFunctions: CpuProFunctionCodes[]
+    }>();
+    const scriptFunctions = functionCodes.map(({ function: functionIndex, codes }) => {
         let topTier: V8FunctionCodeType = 'Unknown';
         const callFrame = callFrames[callFrameByFunctionIndex[functionIndex]];
-        const fnCodes: CpuProFunctionCodes = {
+        const scriptFunction: CpuProFunctionCodes = {
             callFrame,
             topTier,
             hotness: 'cold',
@@ -26,20 +32,47 @@ export function processFunctionCodes(
         //     }
         // }
 
+        // group by a script, attach codes to a script
+        const script = callFrame.script;
+
+        if (script !== null) {
+            let scriptFunctions = scriptCodes.get(script);
+
+            if (scriptFunctions === undefined) {
+                scriptCodes.set(script, scriptFunctions = {
+                    script,
+                    compilation: null,
+                    scriptFunctions: []
+                });
+            }
+
+            if (callFrame.start === 0 && callFrame.end === script.source?.length) {
+                scriptFunctions.compilation = scriptFunction;
+            } else {
+                scriptFunctions.scriptFunctions.push(scriptFunction);
+            }
+        } else {
+            // scriptFunction callFrames always has a script, if not that's probably an error
+            console.warn('Script function has no script', scriptFunction);
+        }
+
         // process function's states
         for (let i = 0, topTierWeight = 0; i < codes.length; i++) {
             const state = codes[i];
             const tier = state.tier;
             const tierWeight = vmFunctionStateTiers.indexOf(tier);
-
-            fnCodes.codes[i] = {
+            const code: CpuProFunctionCode = {
                 ...state,
                 tm: state.tm - startTime,
                 duration: i !== codes.length - 1
                     ? codes[i + 1].tm - state.tm
                     : 0,
+                scriptFunction: scriptFunction,
                 callFrame
             };
+
+            scriptFunction.codes[i] = code;
+            scriptFunctionCodes.push(code);
 
             if (tierWeight > topTierWeight) {
                 topTierWeight = tierWeight;
@@ -47,11 +80,19 @@ export function processFunctionCodes(
             }
         }
 
-        fnCodes.topTier = topTier;
-        fnCodes.hotness = vmFunctionStateTierHotness[topTier];
+        scriptFunction.topTier = topTier;
+        scriptFunction.hotness = vmFunctionStateTierHotness[topTier];
 
-        return fnCodes;
+        return scriptFunction;
     });
+
+    scriptFunctionCodes.sort((a, b) => a.tm - b.tm);
+
+    return {
+        scriptFunctionCodes,
+        scriptFunctions,
+        scriptCodes: [...scriptCodes.values()]
+    };
 
     // process script function states
     // for (const fn of scriptFunctions) {

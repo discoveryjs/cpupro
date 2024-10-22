@@ -125,7 +125,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     );
 
     // process function codes
-    const scriptFunctions = await work('process function codes', () =>
+    const {
+        scriptFunctions,
+        scriptCodes,
+        scriptFunctionCodes
+    } = await work('process function codes', () =>
         processFunctionCodes(data._functionCodes, callFrameByFunctionIndex, dict.callFrames)
     );
 
@@ -269,18 +273,24 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             samples: samplesCount,
             samplesInterval
         },
+
         startTime,
         startNoSamplesTime,
         endTime,
         endNoSamplesTime,
         totalTime,
+
         samples: samplesTimings.samples,
         sampleCounts,
         samplePositions,
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
+
         scriptFunctions,
+        scriptFunctionCodes,
+        scriptCodes,
+
         positionsTreeSource,
         callFramePositionsTimings,
         callFramePositionsTimingsFiltered,
@@ -288,30 +298,35 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         callFramePositionsTreeTimings,
         callFramePositionsTreeTimingsFiltered,
         callFramePositionsTreeTimestamps,
+
         callFramesTimings,
         callFramesTimingsFiltered,
         callFramesTree,
         callFramesTreeTimings,
         callFramesTreeTimingsFiltered,
         callFramesTreeTimestamps,
+
         modulesTimings,
         modulesTimingsFiltered,
         modulesTree,
         modulesTreeTimings,
         modulesTreeTimingsFiltered,
         modulesTreeTimestamps,
+
         packagesTimings,
         packagesTimingsFiltered,
         packagesTree,
         packagesTreeTimings,
         packagesTreeTimingsFiltered,
         packagesTreeTimestamps,
+
         categoriesTimings,
         categoriesTimingsFiltered,
         categoriesTree,
         categoriesTreeTimings,
         categoriesTreeTimingsFiltered,
         categoriesTreeTimestamps,
+
         heap: data._heap || null
     };
 

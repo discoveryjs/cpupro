@@ -218,6 +218,14 @@
 .page-default .category-timelines > .view-expand > .content > .category-timelines-item:first-child > * {
     margin-top: 1px;
 }
+.page-default .category-timelines .data-unavailable {
+    grid-column: 1 / 4;
+    pointer-events: all;
+    padding: 4px 8px;
+    margin-left: 22px;
+    font-size: 12px;
+    opacity: .85;
+}
 
 .page-default .category-timelines-list,
 .page-default .category-timelines-list > .view-list-item {
