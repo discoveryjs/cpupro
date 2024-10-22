@@ -15,7 +15,14 @@ function isNode(value: unknown): value is V8CpuProfileNode {
         return false;
     }
 
-    if (!isObject(maybeNode.callFrame) || !Number.isInteger(Number(maybeNode.callFrame.scriptId))) {
+    if (!isObject(maybeNode.callFrame)) {
+        return false;
+    }
+
+    const scriptId = maybeNode.callFrame.scriptId;
+
+    // allow scriptId as a string since some profiles contain scriptId in the form ":number" or a URL
+    if (typeof scriptId !== 'string' && (typeof scriptId !== 'number' || !Number.isInteger(scriptId))) {
         return false;
     }
 
