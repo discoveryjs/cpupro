@@ -211,10 +211,9 @@ const pageContent = {
                             : [];
                         $samplePoints: #.data.callFramePositionsTimings.entries.[entry.callFrame=@.scriptFunction.callFrame] |
                             ? .($pos: entry.scriptOffset | $ != -1 ? $ - @.start : $start - @.start; [
-                                // { className: 'sample-point', range: [$pos, $pos], marker: totalTime.ms() }
-                                { className: 'sample-point', oo: entry.scriptOffset, range: [$pos, $pos], marker: selfTime.ms() },
-                                { className: 'sample-point', oo: entry.scriptOffset, range: [$pos, $pos], marker: nestedTime.ms() }
-                               ])
+                                selfTime   ? { className: 'sample-point self',   range: [$pos, $pos], marker: selfTime.ms() },
+                                nestedTime ? { className: 'sample-point nested', range: [$pos, $pos], marker: nestedTime.ms() }
+                               ].[])
                             : [];
                         $tooltipView: {
                             className: 'hint-tooltip',
@@ -290,7 +289,7 @@ const pageContent = {
                             whenData: true,
                             item: { view: 'switch', content: [
                                 { when: 'callFrame = target', content: 'block{ className: "target", content: `text:callFrame | function or $ | name or "(anonymous function)"` }' },
-                                { when: 'callFrame.function', content: 'auto-link:callFrame.function' },
+                                { when: 'callFrame.marker("call-frame")', content: 'auto-link:callFrame' },
                                 { content: 'text:callFrame | name or "(anonymous function)"' }
                             ] }
                         }
