@@ -41,7 +41,7 @@ export function processTicks(
         const tickVmState = tick.vm;
         let vmStateCallFrameIndex = callFrameIndexByVmState[tickVmState];
         let currentNode = rootNode;
-        let prevSourceOffset = 0;
+        let prevSourceOffset = -1;
 
         if (tickVmState !== VM_STATE_GC && tickVmState !== VM_STATE_IDLE) {
             for (let i = tickStack.length - 2; i >= 0; i -= 2) {
