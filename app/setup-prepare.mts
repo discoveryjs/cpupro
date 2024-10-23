@@ -45,9 +45,12 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         }
 
         const profile = await createProfile(data, dict, { work });
+
+        // FIXME: callFramePositions should be shared
+        profile.callFramePositionsTree?.dictionary.forEach(markers['call-frame-position']);
+        profile.scriptFunctions.forEach(markers['script-function']);
+
         profiles.push(profile);
-        console.log({ scripts: dict.scripts.length, callFrames: dict.callFrames.length });
-        console.log('call frames with time:', profile.callFramesTimings.entries.filter(x => x.totalTime).length);
     }
 
     const profile = profiles[profileSet.indexToView || 0];
@@ -65,12 +68,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // apply object marker
     await work('mark objects', () => {
         dict.callFrames.forEach(markers['call-frame']);
-        profile.callFramePositionsTree?.dictionary.forEach(markers['call-frame-position']);
         dict.modules.forEach(markers.module);
         dict.packages.forEach(markers.package);
         dict.categories.forEach(markers.category);
         dict.scripts.forEach(markers.script);
-        profile.scriptFunctions.forEach(markers['script-function']);
     });
 
     const result = {
