@@ -12,7 +12,6 @@ import {
     CpuProModule,
     CpuProCategory,
     CpuProPackage,
-    V8CpuProfileNode,
     CpuProNode,
     CpuProCallFrame,
     CpuProCallFramePosition
@@ -132,15 +131,13 @@ export function remapTreeSamples(
 ) {
     let sampleIdToNode = remapSamples(samples, sampleIdToEntryTreeNode);
 
-    // entryTree.sampleIdToNode = sampleIdToNode;
-
     for (const tree of trees) {
         tree.sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
         sampleIdToNode = tree.sampleIdToNode;
     }
 }
 
-export function processSamples(
+export function computeTimings(
     samples: Uint32Array,
     timeDeltas: Uint32Array,
     callFramesTree: CallTree<CpuProCallFrame>,
@@ -190,60 +187,4 @@ export function processSamples(
     TIMINGS && console.log('Compute timings:', Date.now() - computeTimingsStart);
 
     return result as SamplesResult;
-}
-
-
-export function gcReparenting(samples: Uint32Array | number[], nodes: V8CpuProfileNode[], maxNodeId: number) {
-    const gcNode = nodes.find(node =>
-        node.callFrame.functionName === '(garbage collector)'
-    );
-
-    if (gcNode === undefined) {
-        return maxNodeId;
-    }
-
-    const gcNodeIdByPrevNodeId = new Map<number, number>();
-    const gcNodeId = gcNode.id;
-    const nodeIdToIndex = new Uint32Array(maxNodeId + 1);
-
-    for (let i = 0; i < nodes.length; i++) {
-        nodeIdToIndex[nodes[i].id] = i;
-    }
-
-    for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
-        const nodeId = samples[i];
-
-        if (nodeId === gcNodeId) {
-            if (prevNodeId === gcNodeId) {
-                samples[i] = samples[i - 1];
-            } else {
-                let sampleGcNodeId = gcNodeIdByPrevNodeId.get(prevNodeId);
-
-                if (sampleGcNodeId === undefined) {
-                    // create new GC node
-                    sampleGcNodeId = ++maxNodeId;
-
-                    const parentNode = nodes[nodeIdToIndex[prevNodeId]];
-
-                    if (Array.isArray(parentNode.children)) {
-                        parentNode.children.push(sampleGcNodeId);
-                    } else {
-                        parentNode.children = [sampleGcNodeId];
-                    }
-
-                    gcNodeIdByPrevNodeId.set(prevNodeId, sampleGcNodeId);
-                    nodes.push({
-                        id: sampleGcNodeId,
-                        callFrame: gcNode.callFrame
-                    });
-                }
-
-                samples[i] = sampleGcNodeId;
-            }
-        }
-
-        prevNodeId = nodeId;
-    }
-
-    return maxNodeId;
 }

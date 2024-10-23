@@ -1,6 +1,6 @@
 import { convertToInt32Array, convertToUint32Array } from './utils.js';
-import { mergeSamples, processSamples, remapTreeSamples } from './preprocessing/samples.js';
-import { processTimeDeltas } from './preprocessing/time-deltas.js';
+import { mergeSamples, computeTimings, remapTreeSamples } from './preprocessing/samples.js';
+import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { extractCallFrames } from './preprocessing/call-frames.js';
 import { processNodes } from './preprocessing/nodes.js';
@@ -11,7 +11,7 @@ import { buildTrees } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { V8CpuProfile } from './types.js';
+import { GeneratedNodes, V8CpuProfile } from './types.js';
 
 type CreateProfileApi = {
     work<T>(name: string, fn: () => T): Promise<T>;
@@ -21,6 +21,17 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     // store source's initial metrics
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
+
+    const generateNodes: GeneratedNodes = {
+        dict,
+        nodeIdSeed: data.nodes.length + 1,
+        callFrames: [],
+        nodeParentId: [],
+        parentScriptOffsets: [],
+        get count() {
+            return this.nodeParentId.length;
+        }
+    };
 
     //
     // Process profile samples & time stamps
@@ -37,12 +48,23 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         samplesInterval
     } = await work('process time deltas', () =>
         processTimeDeltas(
-            data.timeDeltas,
-            data.samples,
             data.startTime,
             data.endTime,
+            data.timeDeltas,
+            data.samples,
             data._samplePositions,
             data._samplesInterval // could be computed on V8 log convertation into cpuprofile
+        )
+    );
+
+    // fix long time deltas
+    await work('process time deltas', () =>
+        processLongTimeDeltas(
+            samplesInterval,
+            data.timeDeltas,
+            data.samples,
+            data._samplePositions,
+            generateNodes
         )
     );
 
@@ -72,8 +94,14 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
 
     // attach root GC node samples to previous call stack;
     // this operation produces new nodes
-    const gcNodes = await work('reparent GC samples', () =>
-        reparentGcNodes(data.nodes, data._callFrames || null, samples, samplePositions)
+    await work('reparent GC samples', () =>
+        reparentGcNodes(
+            data.nodes,
+            generateNodes,
+            data._callFrames || null,
+            samples,
+            samplePositions
+        )
     );
 
     //
@@ -90,7 +118,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
             data._callFrames,
             data._functions,
             new ProfileScriptsMap(dict, data._scripts),
-            gcNodes
+            generateNodes
         )
     );
 
@@ -116,7 +144,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     //
 
     const { nodeIndexById, nodeParent, nodePositions } = await work('process nodes', () =>
-        processNodes(data.nodes, gcNodes)
+        processNodes(data.nodes, generateNodes)
     );
 
     // call frame positions
@@ -203,7 +231,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         categoriesTreeTimingsFiltered,
         categoriesTreeTimestamps
     } = await work('process samples', () =>
-        processSamples(
+        computeTimings(
             samples,
             timeDeltas,
             callFramesTree,

@@ -1,8 +1,10 @@
+import { GeneratedNodes } from '../types.js';
+
 export function processTimeDeltas(
-    timeDeltas: number[],
-    samples: number[],
     startTime: number,
     endTime: number,
+    timeDeltas: number[],
+    samples: number[],
     samplePositions?: number[],
     samplesInterval?: number
 ) {
@@ -86,4 +88,78 @@ function swap(array: number[], i: number, j: number) {
     const sample = array[i];
     array[i] = array[j];
     array[j] = sample;
+}
+
+// Sometimes, profilers do not capture samples for extended periods for various reasons.
+// Modern profilers also typically do not record idle samples. Therefore, we truncate
+// long time deltas (greater than a sampleInterval * factor) to prevent distortions in the sample data.
+// Other tools assign truncated time to an "(idle)" call frame. CPUpro assigns this time
+// to a special "(unknown)" call frame, which is categorized similarly to the "(idle)" call frame
+// but is kept separate since the exact activity during this period is unknown.
+// It might be beneficial to add additional new samples in "(unknown)" periods, such as "(compiler)"
+// or "(garbage collector)", based on data from events, code compilation records, etc.
+export function processLongTimeDeltas(
+    samplesInterval: number,
+    timeDeltas: number[],
+    samples: number[],
+    samplePositions: number[] | null = null,
+    generatedNodes: GeneratedNodes
+) {
+    const longSampleFactor = 1.5;
+    const longSampleCutFactor = 1.2; // should be equal or less than longSampleFactor
+    const thresholdLongSampleDuration = samplesInterval * longSampleFactor;
+    const allowedSampleDuration = samplesInterval * longSampleCutFactor;
+    let longTimeDeltasCount = 0;
+
+    // find the number of long time deltas to determine how many new samples will be added
+    for (let i = 0; i < timeDeltas.length; i++) {
+        if (timeDeltas[i] > thresholdLongSampleDuration) {
+            longTimeDeltasCount++;
+        }
+    }
+
+    if (longTimeDeltasCount > 0) {
+        const noSamplesNodeId = generatedNodes.nodeIdSeed++;
+        const originalSize = timeDeltas.length;
+
+        // create no-samples node
+        generatedNodes.callFrames.push(generatedNodes.dict.callFrames.wellKnownIndex['no-samples']);
+        generatedNodes.nodeParentId.push(1);
+        generatedNodes.parentScriptOffsets.push(-1);
+
+        // extend arrays to prevent
+        timeDeltas.length += longTimeDeltasCount;
+        samples.length += longTimeDeltasCount;
+
+        if (samplePositions !== null) {
+            samplePositions.length += longTimeDeltasCount;
+        }
+
+        // enrich arrays with new elements
+        for (let i = originalSize + longTimeDeltasCount - 1, j = originalSize - 1; i >= 0; i--, j--) {
+            const delta = timeDeltas[j];
+
+            if (delta > thresholdLongSampleDuration) {
+                timeDeltas[i] = allowedSampleDuration;
+                timeDeltas[i - 1] = delta - allowedSampleDuration;
+                samples[i] = samples[j];
+                samples[i - 1] = noSamplesNodeId;
+
+                if (samplePositions !== null) {
+                    samplePositions[i] = samplePositions[j];
+                    samplePositions[i - 1] = -1;
+                }
+
+                // additional decrement since we write 2 elements
+                i--;
+            } else {
+                timeDeltas[i] = delta;
+                samples[i] = samples[j];
+
+                if (samplePositions !== null) {
+                    samplePositions[i] = samplePositions[j];
+                }
+            }
+        }
+    }
 }

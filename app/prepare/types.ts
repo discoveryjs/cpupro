@@ -1,3 +1,5 @@
+import { Dictionary } from './dictionary.js';
+
 export type V8CpuProfileSet = {
     indexToView?: number;
     profiles: V8CpuProfile[];
@@ -104,6 +106,7 @@ export type WellKnownName =
     | '(program)'
     | '(garbage collector)'
     | '(idle)'
+    | '(no samples)'
     | '(parser)'
     | '(compiler bytecode)'
     | '(compiler)'
@@ -114,6 +117,7 @@ export type WellKnownType =
     | 'program'
     | 'gc'
     | 'idle'
+    | 'no-samples'
     | 'parser'
     | 'compiler-bytecode'
     | 'compiler'
@@ -124,8 +128,11 @@ export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuPro
 
 export type GeneratedNodes = {
     count: number;
+    dict: Dictionary;
+    nodeIdSeed: number;
+    callFrames: number[];
     nodeParentId: number[];
-    parentScriptOffsets: number[] | null;
+    parentScriptOffsets: number[];
 }
 
 export type CpuProFunctionKind = 'script' | 'function' | 'regexp' | 'vm-state' | 'root';

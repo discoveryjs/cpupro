@@ -23,8 +23,7 @@ export function mapNodes(
     }
 
     // generatedNodes
-    // FIXME: refactor when generated nodes will be different types
-    callFrameByNodeIndex.fill(dict.callFrames.wellKnownIndex.gc, nodes.length);
+    callFrameByNodeIndex.set(generatedNodes?.callFrames || [], nodes.length);
 
     return callFrameByNodeIndex;
 }

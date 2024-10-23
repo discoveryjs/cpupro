@@ -2,30 +2,34 @@ import type { GeneratedNodes, V8CpuProfileCallFrame, V8CpuProfileNode } from '..
 
 export function reparentGcNodes(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
+    generatedNodes: GeneratedNodes,
     callFrames: V8CpuProfileCallFrame[] | null,
     samples: Uint32Array,
     samplePositions: Int32Array | null
-): GeneratedNodes | null {
-    const maxNodeId = nodes.length - 1;
+) {
     const rootGcNodeId = callFrames !== null
         ? findRootGcNodeIdWithCallFrames(nodes, callFrames)
         : findRootGcNodeId(nodes as V8CpuProfileNode[]);
 
-    if (rootGcNodeId !== -1) {
-        return samplePositions !== null
-            ? remapGcSamplesWithPositions(maxNodeId, rootGcNodeId, samples, samplePositions)
-            : remapGcSamples(maxNodeId, rootGcNodeId, samples);
+    if (rootGcNodeId === -1) {
+        return;
     }
 
-    return null;
+    if (samplePositions !== null) {
+        remapGcSamplesWithPositions(rootGcNodeId, generatedNodes, samples, samplePositions);
+    } else {
+        remapGcSamples(rootGcNodeId, generatedNodes, samples);
+    }
 }
 
 function remapGcSamples(
-    nodeIdSeed: number,
     gcNodeId: number,
+    generatedNodes: GeneratedNodes,
     samples: Uint32Array
 ) {
     const nodeIdToGcNodeId = new Map<number, number>();
+    const { nodeParentId, parentScriptOffsets, callFrames, dict } = generatedNodes;
+    const gcCallFrameIndex = dict.callFrames.wellKnownIndex.gc;
 
     for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
         const nodeId = samples[i];
@@ -37,8 +41,12 @@ function remapGcSamples(
                 let newGcNodeId = nodeIdToGcNodeId.get(prevNodeId);
 
                 if (newGcNodeId === undefined) {
-                    newGcNodeId = ++nodeIdSeed;
+                    newGcNodeId = generatedNodes.nodeIdSeed++;
                     nodeIdToGcNodeId.set(prevNodeId, newGcNodeId);
+
+                    callFrames.push(gcCallFrameIndex);
+                    nodeParentId.push(prevNodeId);
+                    parentScriptOffsets.push(-1);
                 }
 
                 samples[i] = newGcNodeId;
@@ -47,26 +55,18 @@ function remapGcSamples(
 
         prevNodeId = nodeId;
     }
-
-    const nodeParentId = [...nodeIdToGcNodeId.keys()];
-
-    return {
-        count: nodeParentId.length,
-        nodeParentId,
-        parentScriptOffsets: null
-    };
 }
 
 function remapGcSamplesWithPositions(
-    nodeIdSeed: number,
     gcNodeId: number,
+    generatedNodes: GeneratedNodes,
     samples: Uint32Array,
     samplePositions: Int32Array
 ) {
-    const maxNodeId = nodeIdSeed + 1;
+    const maxNodeId = generatedNodes.nodeIdSeed;
     const nodeIdToGcNodeId = new Map<number, number>();
-    const nodeParentId: number[] = [];
-    const parentScriptOffsets: number[] = [];
+    const { nodeParentId, parentScriptOffsets, callFrames, dict } = generatedNodes;
+    const gcCallFrameIndex = dict.callFrames.wellKnownIndex.gc;
 
     for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
         const nodeId = samples[i];
@@ -80,8 +80,10 @@ function remapGcSamplesWithPositions(
                 let newGcNodeId = nodeIdToGcNodeId.get(prevNodeRef);
 
                 if (newGcNodeId === undefined) {
-                    newGcNodeId = ++nodeIdSeed;
+                    newGcNodeId = generatedNodes.nodeIdSeed++;
                     nodeIdToGcNodeId.set(prevNodeRef, newGcNodeId);
+
+                    callFrames.push(gcCallFrameIndex);
                     nodeParentId.push(prevNodeId);
                     parentScriptOffsets.push(prevNodeScriptOffset);
                 }
@@ -92,12 +94,6 @@ function remapGcSamplesWithPositions(
 
         prevNodeId = nodeId;
     }
-
-    return {
-        count: nodeParentId.length,
-        nodeParentId,
-        parentScriptOffsets
-    };
 }
 
 function findRootGcNodeIdWithCallFrames(
