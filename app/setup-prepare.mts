@@ -75,17 +75,17 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     });
 
     const result = {
-        scripts: dict.scripts,
-        callFrames: dict.callFrames,
-        modules: dict.modules,
-        packages: dict.packages,
-        categories: dict.categories,
+        totalTime: profiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
+        shared: {
+            scripts: dict.scripts,
+            callFrames: dict.callFrames,
+            modules: dict.modules,
+            packages: dict.packages,
+            categories: dict.categories
+        },
 
-        profiles,
-
-        '--': '--legacy---',
-
-        ...profile
+        currentProfile: profile,
+        profiles
     };
 
     return result;

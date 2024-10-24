@@ -1,55 +1,12 @@
 /* eslint-env node */
 const { supportedFormats } = require('../prepare/index.js');
 
-function consumeDemos() {
-    const demos = discovery.context?.model?.meta?.demos;
-
-    if (demos) {
-        discovery.action.define('demos', () => demos);
-
-        if (discovery.data) {
-            discovery.cancelScheduledRender();
-        }
-    }
-}
-
-setTimeout(() => {
-    discovery.nav.primary.append({
-        className: 'github',
-        content: 'text:"GitHub"',
-        data: { href: 'https://github.com/discoveryjs/cpupro' }
-    });
-    discovery.nav.primary.append({
-        className: 'full-page-mode',
-        content: 'text:"Exit full page"',
-        when: '#.params.flamechartFullpage',
-        onClick: () => toggleFullPageFlamechart(false)
-    });
-    discovery.nav.menu.append({
-        when: '#.actions.unloadData',
-        content: 'text:"Unload cpuprofile"',
-        onClick(_, ctx) {
-            ctx.hide();
-            ctx.widget.unloadData();
-            ctx.widget.setPageHash('');
-        }
-    });
-
-    discovery.nav.render(discovery.dom.nav, discovery.data, discovery.getRenderContext());
-
-    // FIXME: temporary solution
-    try {
-        discovery.annotations.push({
-            query: '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
-        });
-    } catch (e) {
-        console.error(e);
-    }
-
-    // FIXME: temporary solution, since context is cleaning up on data load/unload
-    discovery.on('data', consumeDemos);
-    consumeDemos();
-}, 1);
+discovery.nav.primary.append({
+    className: 'full-page-mode',
+    content: 'text:"Exit full page"',
+    when: '#.page = "default" and #.params.flamechartFullpage',
+    onClick: () => toggleFullPageFlamechart(false)
+});
 
 function toggleFullPageFlamechart(fullpageMode) {
     const params = { ...discovery.pageParams };
@@ -94,7 +51,7 @@ const pageIndicators = {
                 },
                 {
                     title: 'Samples',
-                    hint: 'md{ source: "#### Samples\\n\\nThe total number of samples captured during the profiling session.\\n\\nEach sample represents the CPU\'s state, including the call stack, at\xa0a\xa0specific time interval, revealing which functions are executing at each point.\\n\\nFor efficiency, CPUpro merges sequentially identical samples, reducing the workload of processing samples.\\n\\n- Captured samples: `{{#.data.sourceInfo.samples}}`\\n- Deduplicated samples: `{{#.data.samples.size()}}`" }',
+                    hint: 'md{ source: "#### Samples\\n\\nThe total number of samples captured during the profiling session.\\n\\nEach sample represents the CPU\'s state, including the call stack, at\xa0a\xa0specific time interval, revealing which functions are executing at each point.\\n\\nFor efficiency, CPUpro merges sequentially identical samples, reducing the workload of processing samples.\\n\\n- Captured samples: `{{#.currentProfile.sourceInfo.samples}}`\\n- Deduplicated samples: `{{#.currentProfile.samples.size()}}`" }',
                     value: '=sourceInfo.samples'
                 },
                 {
@@ -335,7 +292,7 @@ const categoriesTimeline = {
                 $binCount,
                 binTime: $totalTime / $binCount,
                 $binSamples,
-                bins: #.data.categoriesTree.binCalls($category, $binCount),
+                bins: #.currentProfile.categoriesTree.binCalls($category, $binCount),
                 color: $category.name.color(),
                 href: $category.marker("category").href
             }),
@@ -383,12 +340,12 @@ const categoriesTimeline = {
             view: 'time-ruler',
             duration: '=samples[].totalTime',
             segments: '=samples[].binCount',
-            selectionStart: '=#.data.samplesTimingsFiltered.rangeStart',
-            selectionEnd: '=#.data.samplesTimingsFiltered.rangeEnd',
-            onChange: (state, name, el, data, context) => {
+            selectionStart: '=#.currentProfile.samplesTimingsFiltered.rangeStart',
+            selectionEnd: '=#.currentProfile.samplesTimingsFiltered.rangeEnd',
+            onChange(state, name, el, data, context) {
                 // console.log('change', state);
                 // const t = Date.now();
-                const timings = context.data.samplesTimingsFiltered;
+                const timings = context.currentProfile.samplesTimingsFiltered;
 
                 if (state.timeStart !== null) {
                     timings.setRange(state.timeStart, state.timeEnd);
@@ -664,13 +621,13 @@ const modulesList = {
 
 const callFrameList = {
     view: 'section',
-    data: 'callFramesTimingsFiltered.entries.zip(=> entry, #.data.scriptFunctions, => callFrame)',
+    data: 'callFramesTimingsFiltered.entries.zip(=> entry, #.currentProfile.scriptFunctions, => callFrame)',
     header: [],
     content: {
         view: 'content-filter',
         content: {
             view: 'update-on-timings-change',
-            timings: '=#.data.callFramesTimingsFiltered',
+            timings: '=#.currentProfile.callFramesTimingsFiltered',
             debounce: true,
             content: {
                 view: 'table',
@@ -831,96 +788,103 @@ const noDataPageContent = {
     ]
 };
 
+const pageContent = [
+    {
+        view: 'page-header',
+        content: [
+            {
+                view: 'h2',
+                content: [
+                    { view: 'block', className: 'logo' },
+                    'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
+                ]
+            }
+        ]
+    },
+
+    pageIndicators,
+
+    {
+        view: 'timeline-profiles',
+        data: '#.data.profiles',
+        whenData: 'size() > 1'
+    },
+
+    {
+        view: 'expand',
+        expanded: true,
+        className: 'timelines trigger-outside',
+        header: categoriesTimeBars,
+        content: categoriesTimeline
+    },
+
+    {
+        view: 'expand',
+        expanded: true,
+        className: 'hierarchical-components trigger-outside',
+        postRender: (el, config, data, context) =>
+            el.style.setProperty('--total-time-digits', String(context.data.totalTime).replace(/\D/g, '').length - 2),
+        header: [
+            { view: 'block', content: [
+                'text:"Packages "',
+                {
+                    view: 'update-on-timings-change',
+                    data: 'packagesTimingsFiltered',
+                    content: 'text-numeric:entries.[totalTime].size()'
+                },
+                { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${packages.size()}`' },
+                { view: 'badge', href: '#packages', text: 'all packages →' }
+            ] },
+            { view: 'block', content: [
+                'text:"Modules "',
+                {
+                    view: 'update-on-timings-change',
+                    data: 'modulesTimingsFiltered',
+                    content: 'text-numeric:entries.[totalTime].size()'
+                },
+                { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${modules.size()}`' },
+                { view: 'badge', href: '#modules', text: 'all modules →' }
+            ] },
+            { view: 'block', content: [
+                'text:"Call frames "',
+                {
+                    view: 'update-on-timings-change',
+                    data: 'callFramesTimingsFiltered',
+                    content: 'text-numeric:entries.[totalTime].size()'
+                },
+                { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${callFrames.size()}`' },
+                { view: 'badge', href: '#call-frames', text: 'all call frames →' }
+            ] }
+        ],
+        content: [
+            packagesList,
+            modulesList,
+            callFrameList
+        ]
+    },
+
+    {
+        view: 'expand',
+        expanded: true,
+        className: 'flamecharts trigger-outside',
+        header: 'text:"Flame charts"',
+        content: flamecharts
+    }
+];
+
 discovery.page.define('default', {
     view: 'switch',
     content: [
         {
-            when: 'no #.datasets',
+            when: 'no profiles',
             content: noDataPageContent
         },
-        { content: [
-            {
-                view: 'page-header',
-                content: [
-                    {
-                        view: 'h2',
-                        content: [
-                            { view: 'block', className: 'logo' },
-                            'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
-                        ]
-                    }
-                ]
-            },
-
-            pageIndicators,
-
-            {
-                view: 'timeline-profiles',
-                data: 'profiles',
-                whenData: 'size() > 1'
-            },
-
-            {
-                view: 'expand',
-                expanded: true,
-                className: 'timelines trigger-outside',
-                header: categoriesTimeBars,
-                content: categoriesTimeline
-            },
-
-            {
-                view: 'expand',
-                expanded: true,
-                className: 'hierarchical-components trigger-outside',
-                postRender: (el, config, data, context) =>
-                    el.style.setProperty('--total-time-digits', String(context.data.totalTime).replace(/\D/g, '').length - 2),
-                header: [
-                    { view: 'block', content: [
-                        'text:"Packages "',
-                        {
-                            view: 'update-on-timings-change',
-                            data: 'packagesTimingsFiltered',
-                            content: 'text-numeric:entries.[totalTime].size()'
-                        },
-                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${packages.size()}`' },
-                        { view: 'badge', href: '#packages', text: 'all packages →' }
-                    ] },
-                    { view: 'block', content: [
-                        'text:"Modules "',
-                        {
-                            view: 'update-on-timings-change',
-                            data: 'modulesTimingsFiltered',
-                            content: 'text-numeric:entries.[totalTime].size()'
-                        },
-                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${modules.size()}`' },
-                        { view: 'badge', href: '#modules', text: 'all modules →' }
-                    ] },
-                    { view: 'block', content: [
-                        'text:"Call frames "',
-                        {
-                            view: 'update-on-timings-change',
-                            data: 'callFramesTimingsFiltered',
-                            content: 'text-numeric:entries.[totalTime].size()'
-                        },
-                        { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${callFrames.size()}`' },
-                        { view: 'badge', href: '#call-frames', text: 'all call frames →' }
-                    ] }
-                ],
-                content: [
-                    packagesList,
-                    modulesList,
-                    callFrameList
-                ]
-            },
-
-            {
-                view: 'expand',
-                expanded: true,
-                className: 'flamecharts trigger-outside',
-                header: 'text:"Flame charts"',
-                content: flamecharts
-            }
-        ] }
+        { content: {
+            view: 'context',
+            context: '{ ...#, currentProfile }',
+            data: 'currentProfile',
+            content: pageContent
+        } }
     ]
 }, {
     init(pageEl) {

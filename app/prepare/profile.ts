@@ -263,6 +263,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
 
+        ...usage,
         scriptFunctions,
         scriptFunctionCodes,
         scriptCodes,

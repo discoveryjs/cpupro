@@ -275,8 +275,8 @@ const methods = {
             sampleSelector: (_, sampleIndex) => selectedSamples.has(sampleIndex)
         };
     },
-    binCallsFromMask(mask, n = 500) {
-        const { samples, timeDeltas, totalTime } = this.context.data;
+    binCallsFromMask(mask, n = 500, profile = this.context.currentProfile) {
+        const { samples, timeDeltas, totalTime } = profile;
         const bins = makeSampleBins(n, mask, samples, timeDeltas, totalTime);
 
         return Array.from(bins);
@@ -342,13 +342,13 @@ const methods = {
 
         return result;
     },
-    countSamples(n = 500) {
-        const { samples, timeDeltas, totalTime } = this.context.data;
+    countSamples(n = 500, profile = this.context.currentProfile) {
+        const { samples, timeDeltas, totalTime } = profile;
 
         return countSamples(n, samples, timeDeltas, totalTime);
     },
-    binCalls(tree, test, n = 500) {
-        const { samples, timeDeltas, totalTime } = this.context.data;
+    binCalls(tree, test, n = 500, profile = this.context.currentProfile) {
+        const { samples, timeDeltas, totalTime } = profile;
         const mask = makeSamplesMask(tree, test);
         const bins = makeSampleBins(n, mask, samples, timeDeltas, totalTime);
 
@@ -361,8 +361,8 @@ const methods = {
 
         return Array.from(bins); // TODO: remove when jora has support for TypedArrays
     },
-    binMemory(heapEvents, eventFilter = 'new', n = 500) {
-        const { totalTime } = this.context.data;
+    binMemory(heapEvents, eventFilter = 'new', n = 500, profile = this.context.currentProfile) {
+        const { totalTime } = profile;
         const bins = new Float64Array(n);
         const step = totalTime / n;
         let end = step;
@@ -385,8 +385,8 @@ const methods = {
 
         return bins;
     },
-    binMemoryTotal(heapEvents, n = 500) {
-        const { totalTime } = this.context.data;
+    binMemoryTotal(heapEvents, n = 500, profile = this.context.currentProfile) {
+        const { totalTime } = profile;
         const bins = new Float64Array(n);
         const step = totalTime / n;
         let end = step;
@@ -414,8 +414,8 @@ const methods = {
 
         return bins;
     },
-    binScriptFunctionCodes(functionCodes, n = 500) {
-        const { totalTime } = this.context.data;
+    binScriptFunctionCodes(functionCodes, n = 500, profile = this.context.currentProfile) {
+        const { totalTime } = profile;
         const bins = new Uint32Array(n);
         const step = totalTime / n;
         let end = step;
@@ -438,8 +438,8 @@ const methods = {
 
         return bins;
     },
-    binScriptFunctionCodesTotal(functionCodes, n = 500) {
-        const { totalTime } = this.context.data;
+    binScriptFunctionCodesTotal(functionCodes, n = 500, profile = this.context.currentProfile) {
+        const { totalTime } = profile;
         const step = totalTime / n;
         const binByTier = new Map();
         const fnTier = new Map();

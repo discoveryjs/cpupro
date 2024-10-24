@@ -1,7 +1,7 @@
 discovery.page.define('packages', [
     {
         view: 'context',
-        data: 'packagesTimings.entries',
+        data: 'currentProfile.packagesTimings.entries',
         modifiers: [
             {
                 view: 'page-header',

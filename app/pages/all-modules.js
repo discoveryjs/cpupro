@@ -2,7 +2,8 @@ discovery.page.define('modules', [
     {
         view: 'context',
         data: `
-            modulesTimings.entries.zip(=> entry, scripts, => module)
+            currentProfile
+            | modulesTimings.entries.zip(=> entry, scripts, => module)
                 .({
                     $entry: left.entry;
 
