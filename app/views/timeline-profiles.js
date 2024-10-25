@@ -13,13 +13,13 @@ discovery.view.define('timeline-profiles', function(el, config, data, context) {
         barEl.style.setProperty('--x1', (profile.startTime - min) / range);
         barEl.style.setProperty('--x2', (profile.endTime - min) / range);
 
-        if (context.data.samples === profile.samples) {
+        if (context.data.currentProfile?.samples === profile.samples) {
             barEl.classList.add('selected');
         } else {
             barEl.addEventListener('click', () => {
                 discovery.data = {
                     ...discovery.data,
-                    ...profile
+                    currentProfile: profile
                 };
                 discovery.scheduleRender();
             });

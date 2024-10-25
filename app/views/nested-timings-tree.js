@@ -9,7 +9,7 @@ discovery.view.define('nested-timings-tree', {
         data: `
             $tree;
             $subject;
-            $callFrames: #.data.callFramesTreeTimingsFiltered.nestedTimings(subject, tree);
+            $callFrames: #.currentProfile.callFramesTreeTimingsFiltered.nestedTimings(subject, tree);
             $totalTime: $callFrames.sum(=> selfTime);
 
             $callFrames

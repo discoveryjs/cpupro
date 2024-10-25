@@ -28,7 +28,7 @@ discovery.view.define('subject-with-nested-timeline', {
                     $category,
                     color: name.color(),
                     $binTime,
-                    bins: #.data.categoriesTree.binCalls(=>($=$category and $selector($$)), $binCount),
+                    bins: #.currentProfile.categoriesTree.binCalls(=>($=$category and $selector($$)), $binCount),
                     $totalTimeBins
                 })
             )
@@ -40,16 +40,16 @@ discovery.view.define('subject-with-nested-timeline', {
             labels: 'top',
             duration: '=totalTime',
             segments: '=binCount',
-            selectionStart: '=#.data.samplesTimingsFiltered.rangeStart',
-            selectionEnd: '=#.data.samplesTimingsFiltered.rangeEnd',
+            selectionStart: '=#.currentProfile.samplesTimingsFiltered.rangeStart',
+            selectionEnd: '=#.currentProfile.samplesTimingsFiltered.rangeEnd',
             onChange: (state, name, el, data, context) => {
                 // console.log('change', state);
                 // const t = Date.now();
 
                 if (state.timeStart !== null) {
-                    context.data.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
+                    context.currentProfile.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    context.data.samplesTimingsFiltered.resetRange();
+                    context.currentProfile.samplesTimingsFiltered.resetRange();
                 }
 
                 // console.log('compute timings', Date.now() - t);
@@ -93,9 +93,9 @@ discovery.view.define('subject-with-nested-timeline', {
             limit: false,
             data: `
                 $type: subject.marker().type;
-                $type = "module" ? (#.data.scriptCodes[=> script.module = @.subject] | is object ?|
+                $type = "module" ? (#.currentProfile.scriptCodes[=> script.module = @.subject] | is object ?|
                     $module: script.module; compilation.codes.({ $module, code: $, color: tier.color(true) })) :
-                $type = "call-frame" ? (#.data.scriptFunctions[=> callFrame = @.subject] |
+                $type = "call-frame" ? (#.currentProfile.scriptFunctions[=> callFrame = @.subject] |
                     codes.({ ..., code: $, color: tier.color(true) })) :
                 undefined
             `,
@@ -106,8 +106,8 @@ discovery.view.define('subject-with-nested-timeline', {
                 postRender(el, _, data, ctx) {
                     const code = data.code;
                     const timestamps = data.callFrame
-                        ? ctx.data.callFramesTreeTimestamps.entriesMap.get(data.callFrame)
-                        : ctx.data.modulesTreeTimestamps.entriesMap.get(data.module);
+                        ? ctx.currentProfile.callFramesTreeTimestamps.entriesMap.get(data.callFrame)
+                        : ctx.currentProfile.modulesTreeTimestamps.entriesMap.get(data.module);
                     const totalTime = ctx.data.totalTime;
                     const step = totalTime / 500;
                     const duration = code.duration ||
