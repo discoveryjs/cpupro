@@ -1,7 +1,7 @@
 import { ModelOptions } from '@discoveryjs/discovery';
 import joraQueryHelpers from './prepare/jora-methods.mjs';
 import prepare from './setup-prepare.mjs';
-import { CpuProCallFrame, CpuProCallFramePosition, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript, CpuProScriptFunction } from './prepare/types.js';
+import { CpuProCallFrame, CpuProCallFramePosition, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript, CpuProFunctionCodes } from './prepare/types.js';
 
 export default (function({ defineObjectMarker, addQueryHelpers, setPrepare }) {
     defineObjectMarker<CpuProCallFrame>('call-frame', { ref: 'id', title: 'name', page: 'call-frame' });
@@ -10,7 +10,7 @@ export default (function({ defineObjectMarker, addQueryHelpers, setPrepare }) {
     defineObjectMarker<CpuProPackage>('package', { ref: 'id', title: 'name', page: 'package' });
     defineObjectMarker<CpuProCategory>('category', { ref: 'name', title: 'name', page: 'category' });
     defineObjectMarker<CpuProScript>('script', { ref: 'id', title: 'url' });
-    defineObjectMarker<CpuProScriptFunction>('script-function', { ref: 'id', title: fn => fn.name || fn.function?.name || '(anonymous fn#' + fn.id + ')' });
+    defineObjectMarker<CpuProFunctionCodes>('script-function', { ref: 'id', title: fn => fn.callFrame.name });
 
     // extend jora's queries with custom methods
     addQueryHelpers(joraQueryHelpers);

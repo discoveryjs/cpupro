@@ -263,33 +263,6 @@ export interface IProfileScriptsMap {
     normalizeScriptId(scriptId: string | number): number;
 }
 
-export type CpuProProfileScript = {
-    script: CpuProScript;
-    compilation: CpuProProfileFunction | null; // FIXME: find better name
-    functions: CpuProProfileFunction[];
-}
-export type CpuProProfileFunction = {
-    callFrame: CpuProCallFrame;
-    topTier: V8FunctionCodeType;
-    hotness: 'cold' | 'warm' | 'hot';
-    codes: CpuProFunctionCode[];
-}
-
-export type CpuProScriptFunction = {
-    id: number; // starts with 1
-    name: string;
-    script: CpuProScript | null;
-    start: number;
-    end: number;
-    line: number;
-    column: number;
-    loc: string | null;
-}
-export type CpuProScriptCodes = {
-    script: CpuProScript;
-    compilation: CpuProFunctionCodes | null; // FIXME: find better name
-    functionCodes: CpuProFunctionCodes[];
-}
 export type CpuProFunctionCodes = {
     callFrame: CpuProCallFrame;
     topTier: V8FunctionCodeType;
