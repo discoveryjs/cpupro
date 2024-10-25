@@ -30,7 +30,7 @@ function binarySearch(array: Uint32Array, value: number): number {
         }
     }
 
-    return right;
+    return right === -1 ? 0 : right;
 }
 
 function computeTimestamps(timestamps: Uint32Array, timeDeltas: Uint32Array) {

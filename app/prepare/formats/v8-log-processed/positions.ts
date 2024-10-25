@@ -50,8 +50,7 @@ export function parsePositions(positions: string) {
 
 export function findPositionsCodeIndex(parsedPositions: number[], target: number) {
     let low = 0;
-    let high = (parsedPositions.length / 3) | 0;
-    let ans = -1;
+    let high = ((parsedPositions.length / 3) | 0) - 1;
 
     while (low <= high) {
         const mid = (low + high) >> 1;
@@ -63,14 +62,13 @@ export function findPositionsCodeIndex(parsedPositions: number[], target: number
         }
 
         if (midValue < target) {
-            ans = idx;
             low = mid + 1;
         } else {
             high = mid - 1;
         }
     }
 
-    return ans !== -1 ? ans : 0;
+    return high === -1 ? 0 : high * 3;
 }
 
 export function processCodePositions(codes: V8LogCode[]) {
@@ -94,9 +92,19 @@ export function processCodePositions(codes: V8LogCode[]) {
             ? parsePositions(source.inlined)
             : null;
 
+        // if (code.name.startsWith('visitNodes ')) {
+        //     console.log(code);
+        //     positions.x = 1;
+        // }
+
         if (inlined !== null) {
             for (let i = 0; i < inlined.length; i += 3) {
-                inlined[i] = source.fns[inlined[i]];
+                const x = source.fns[inlined[i]];
+                if (x === null) {
+                    console.error('Broken positions', code, { positions, inlined });
+                    return null;
+                }
+                inlined[i] = x;
             }
         }
 
