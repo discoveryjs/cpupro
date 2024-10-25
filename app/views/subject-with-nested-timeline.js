@@ -5,7 +5,7 @@ discovery.view.define('subject-with-nested-timeline', {
         $tree;
         $subtree: $tree.subtreeSamples($subject);
         $getCategory: $subject.marker('category') ? =>$ : =>category;
-        $totalTime: #.data.totalTime;
+        $totalTime: #.currentProfile.totalTime;
         $binCount: 500;
         $binTime: $totalTime / $binCount;
         $binSamples: $binCount.countSamples();
@@ -93,9 +93,9 @@ discovery.view.define('subject-with-nested-timeline', {
             limit: false,
             data: `
                 $type: subject.marker().type;
-                $type = "module" ? (#.currentProfile.scriptCodes[=> script.module = @.subject] | is object ?|
+                $type = "module" ? (#.currentProfile.codesByScript[=> script.module = @.subject] | is object ?|
                     $module: script.module; compilation.codes.({ $module, code: $, color: tier.color(true) })) :
-                $type = "call-frame" ? (#.currentProfile.scriptFunctions[=> callFrame = @.subject] |
+                $type = "call-frame" ? (#.currentProfile.codesByCallFrame[=> callFrame = @.subject] |
                     codes.({ ..., code: $, color: tier.color(true) })) :
                 undefined
             `,
@@ -108,7 +108,7 @@ discovery.view.define('subject-with-nested-timeline', {
                     const timestamps = data.callFrame
                         ? ctx.currentProfile.callFramesTreeTimestamps.entriesMap.get(data.callFrame)
                         : ctx.currentProfile.modulesTreeTimestamps.entriesMap.get(data.module);
-                    const totalTime = ctx.data.totalTime;
+                    const totalTime = ctx.currentProfile.totalTime;
                     const step = totalTime / 500;
                     const duration = code.duration ||
                         (timestamps.lastSeen > code.tm && Math.ceil(timestamps.lastSeen / step) * step - code.tm) ||

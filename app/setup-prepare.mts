@@ -48,7 +48,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
         // FIXME: callFramePositions should be shared
         profile.callFramePositionsTree?.dictionary.forEach(markers['call-frame-position']);
-        profile.scriptFunctions.forEach(markers['script-function']);
+        profile.codesByCallFrame.forEach(markers['call-frame-codes']);
 
         profiles.push(profile);
     }

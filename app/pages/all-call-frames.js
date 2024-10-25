@@ -3,7 +3,7 @@ discovery.page.define('call-frames', [
         view: 'context',
         data: `
             currentProfile
-            | callFramesTimings.entries.zip(=> entry, scriptFunctions, => callFrame)
+            | callFramesTimings.entries.zip(=> entry, codesByCallFrame, => callFrame)
                 .({
                     $entry: left.entry;
 

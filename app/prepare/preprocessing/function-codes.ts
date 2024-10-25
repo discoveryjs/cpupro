@@ -7,16 +7,16 @@ export function processFunctionCodes(
     callFrames: CpuProCallFrame[],
     startTime: number = 0
 ) {
-    const scriptFunctionCodes: CpuProFunctionCode[] = [];
-    const scriptCodes = new Map<CpuProScript, {
+    const allCodes: CpuProFunctionCode[] = [];
+    const codesByScript = new Map<CpuProScript, {
         script: CpuProScript,
         compilation: CpuProFunctionCodes | null,
-        scriptFunctions: CpuProFunctionCodes[]
+        callFrameCodes: CpuProFunctionCodes[]
     }>();
-    const scriptFunctions = functionCodes.map(({ function: functionIndex, codes }) => {
+    const codesByCallFrame = functionCodes.map(({ function: functionIndex, codes }) => {
         let topTier: V8FunctionCodeType = 'Unknown';
         const callFrame = callFrames[callFrameByFunctionIndex[functionIndex]];
-        const scriptFunction: CpuProFunctionCodes = {
+        const callFrameCodes: CpuProFunctionCodes = {
             callFrame,
             topTier,
             hotness: 'cold',
@@ -36,24 +36,24 @@ export function processFunctionCodes(
         const script = callFrame.script;
 
         if (script !== null) {
-            let scriptFunctions = scriptCodes.get(script);
+            let scriptCodes = codesByScript.get(script);
 
-            if (scriptFunctions === undefined) {
-                scriptCodes.set(script, scriptFunctions = {
+            if (scriptCodes === undefined) {
+                codesByScript.set(script, scriptCodes = {
                     script,
                     compilation: null,
-                    scriptFunctions: []
+                    callFrameCodes: []
                 });
             }
 
             if (callFrame.start === 0 && callFrame.end === script.source?.length) {
-                scriptFunctions.compilation = scriptFunction;
+                scriptCodes.compilation = callFrameCodes;
             } else {
-                scriptFunctions.scriptFunctions.push(scriptFunction);
+                scriptCodes.callFrameCodes.push(callFrameCodes);
             }
         } else {
             // scriptFunction callFrames always has a script, if not that's probably an error
-            console.warn('Script function has no script', scriptFunction);
+            console.warn('Script function has no script', callFrameCodes);
         }
 
         // process function's states
@@ -67,12 +67,12 @@ export function processFunctionCodes(
                 duration: i !== codes.length - 1
                     ? codes[i + 1].tm - state.tm
                     : 0,
-                scriptFunction: scriptFunction,
+                callFrameCodes,
                 callFrame
             };
 
-            scriptFunction.codes[i] = code;
-            scriptFunctionCodes.push(code);
+            callFrameCodes.codes[i] = code;
+            allCodes.push(code);
 
             if (tierWeight > topTierWeight) {
                 topTierWeight = tierWeight;
@@ -80,18 +80,18 @@ export function processFunctionCodes(
             }
         }
 
-        scriptFunction.topTier = topTier;
-        scriptFunction.hotness = vmFunctionStateTierHotness[topTier];
+        callFrameCodes.topTier = topTier;
+        callFrameCodes.hotness = vmFunctionStateTierHotness[topTier];
 
-        return scriptFunction;
+        return callFrameCodes;
     });
 
-    scriptFunctionCodes.sort((a, b) => a.tm - b.tm);
+    allCodes.sort((a, b) => a.tm - b.tm);
 
     return {
-        scriptFunctionCodes,
-        scriptFunctions,
-        scriptCodes: [...scriptCodes.values()]
+        codes: allCodes,
+        codesByCallFrame,
+        codesByScript: [...codesByScript.values()]
     };
 
     // process script function states

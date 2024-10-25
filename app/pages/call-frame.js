@@ -164,7 +164,7 @@ const pageContent = [
         when: false,
         className: 'trigger-outside script-source',
         data: `
-            #.currentProfile.scriptFunctions[=> callFrame = @]
+            #.currentProfile.codesByCallFrame[=> callFrame = @]
             |? {
                 $source: callFrame.script.source or "";
                 $start: $source.lastIndexOf('\\n', callFrame.start) + 1;
@@ -244,7 +244,7 @@ const pageContent = [
                     $inlinedRefs,
                     $codePoints,
                     $samplePoints,
-                    refs: $codePoints + $inlinedRefs + $samplePoints + #.currentProfile.scriptFunctions.[$ != @.scriptFunction and (callFrame | script = $script and start >= $start and end <= $end)].({
+                    refs: $codePoints + $inlinedRefs + $samplePoints + #.currentProfile.codesByCallFrame.[$ != @.scriptFunction and (callFrame | script = $script and start >= $start and end <= $end)].({
                         $href: @.scriptFunction != $ ? callFrame.marker('call-frame').href;
                         $marker: codes | size() = 1
                             ? tier[].abbr()

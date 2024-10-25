@@ -10,7 +10,7 @@ export default (function({ defineObjectMarker, addQueryHelpers, setPrepare }) {
     defineObjectMarker<CpuProPackage>('package', { ref: 'id', title: 'name', page: 'package' });
     defineObjectMarker<CpuProCategory>('category', { ref: 'name', title: 'name', page: 'category' });
     defineObjectMarker<CpuProScript>('script', { ref: 'id', title: 'url' });
-    defineObjectMarker<CpuProFunctionCodes>('script-function', { ref: 'id', title: fn => fn.callFrame.name });
+    defineObjectMarker<CpuProFunctionCodes>('call-frame-codes', { ref: 'id', title: fn => fn.callFrame.name });
 
     // extend jora's queries with custom methods
     addQueryHelpers(joraQueryHelpers);

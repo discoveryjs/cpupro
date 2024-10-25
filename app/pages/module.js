@@ -30,7 +30,7 @@ const pageContent = [
         view: 'expand',
         when: false,
         className: 'trigger-outside script-source',
-        data: '#.currentProfile.scriptCodes[=> script = @.script]',
+        data: '#.currentProfile.codesByScript[=> script = @.script]',
         expanded: '=script.source is not undefined',
         header: [
             'text:"Source"',
@@ -54,7 +54,7 @@ const pageContent = [
 
                 syntax: "js",
                 content: script.source | is string ? replace(/\\n$/, "") : "// source is unavailable",
-                refs: scriptFunctions.({
+                refs: callFrameCodes.({
                     $href: callFrame.marker('call-frame').href;
                     $marker: codes | size() = 1
                         ? tier[].abbr()
@@ -119,7 +119,7 @@ const pageContent = [
             className: 'table-content-filter',
             data: `
                 #.currentProfile.callFramesTimingsFiltered.entries.[entry.module = @]
-                    .zip(=> entry, #.currentProfile.scriptFunctions, => function)
+                    .zip(=> entry, #.currentProfile.codesByCallFrame, => function)
                     .({
                         $entry: left.entry;
 

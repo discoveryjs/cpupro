@@ -124,9 +124,9 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
 
     // process function codes
     const {
-        scriptFunctions,
-        scriptCodes,
-        scriptFunctionCodes
+        codes,
+        codesByCallFrame,
+        codesByScript
     } = await work('process function codes', () =>
         processFunctionCodes(data._functionCodes, callFrameByFunctionIndex, dict.callFrames)
     );
@@ -264,9 +264,9 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         timeDeltas: samplesTimings.timeDeltas,
 
         ...usage,
-        scriptFunctions,
-        scriptFunctionCodes,
-        scriptCodes,
+        codes,
+        codesByCallFrame,
+        codesByScript,
 
         positionsTreeSource,
         callFramePositionsTimings,

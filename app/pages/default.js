@@ -297,7 +297,7 @@ const categoriesTimeline = {
                 href: $category.marker("category").href
             }),
             functionCodes: scriptFunctionCodes |? {
-                $countByTopTier: @.scriptFunctions.group(=> topTier).({ tier: key, count: value.size() });
+                $countByTopTier: @.codesByCallFrame.group(=> topTier).({ tier: key, count: value.size() });
                 $codes: sort(tm asc);
                 $totalBins: $codes.binScriptFunctionCodesTotal();
                 $maxTotal: $totalBins.fnCount.max();
@@ -621,7 +621,7 @@ const modulesList = {
 
 const callFrameList = {
     view: 'section',
-    data: 'callFramesTimingsFiltered.entries.zip(=> entry, #.currentProfile.scriptFunctions, => callFrame)',
+    data: 'callFramesTimingsFiltered.entries.zip(=> entry, #.currentProfile.codesByCallFrame, => callFrame)',
     header: [],
     content: {
         view: 'content-filter',
