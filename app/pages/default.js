@@ -279,7 +279,7 @@ const categoriesTimeline = {
     className: 'category-timelines',
     data: `
         $binCount: 500;
-        $totalTime: #.data.totalTime;
+        $totalTime: #.currentProfile.totalTime;
         $binSamples: $binCount.countSamples();
 
         {
@@ -296,7 +296,7 @@ const categoriesTimeline = {
                 color: $category.name.color(),
                 href: $category.marker("category").href
             }),
-            functionCodes: scriptFunctionCodes |? {
+            functionCodes: codes |? {
                 $countByTopTier: @.codesByCallFrame.group(=> topTier).({ tier: key, count: value.size() });
                 $codes: sort(tm asc);
                 $totalBins: $codes.binScriptFunctionCodesTotal();
@@ -307,7 +307,7 @@ const categoriesTimeline = {
 
                     name: $tier,
                     color: $tier.color(),
-                    bins: $bins,
+                    $bins,
                     max: $bins.max(),
                     $maxTotal,
                     maxTier: $countByTopTier[=> tier = $tier].count or 0
