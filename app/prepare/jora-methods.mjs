@@ -150,6 +150,9 @@ const methods = {
     toFixed(value, prec = 2) {
         return Number(value).toFixed(prec);
     },
+    percent(value, prec = 2) {
+        return (100 * value).toFixed(prec) + '%';
+    },
     totalPercent(value, prec = 2) {
         const totalTime = (this.context.context || this.context)?.data?.totalTime; // the method can be invoked in struct annotation context
         const percent = 100 * value / totalTime;
@@ -452,7 +455,7 @@ const methods = {
         }
 
         for (let i = 0; i < functionCodes.length; i++) {
-            const { tm, tier, scriptFunction } = functionCodes[i];
+            const { tm, tier, callFrameCodes } = functionCodes[i];
 
             while (tm > end) {
                 binIdx++;
@@ -463,7 +466,7 @@ const methods = {
                 end += step;
             }
 
-            const currentTier = fnTier.get(scriptFunction);
+            const currentTier = fnTier.get(callFrameCodes);
             if (currentTier === undefined) {
                 // new function
                 binByTier.get(tier)[binIdx]++;
@@ -474,7 +477,7 @@ const methods = {
                 binByTier.get(tier)[binIdx]++;
             }
 
-            fnTier.set(scriptFunction, tier);
+            fnTier.set(callFrameCodes, tier);
         }
 
         if (binIdx < n - 1) {
