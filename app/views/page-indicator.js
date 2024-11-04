@@ -1,4 +1,4 @@
-const { utils: { createElement } } = require('@discoveryjs/discovery');
+const { createElement } = require('@discoveryjs/discovery/utils');
 
 function ensureArray(value) {
     return Array.isArray(value) ? value : value ? [value] : [];

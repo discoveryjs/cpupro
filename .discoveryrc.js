@@ -1,8 +1,7 @@
 const v8logSupport = false;
 
 module.exports = {
-    name: 'CPUpro',
-    basedir: __dirname + '/app',
+    name: 'cpupro',
     darkmode: 'only',
     embed: true,
     upload: {

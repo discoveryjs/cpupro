@@ -130,22 +130,6 @@
 .discovery-nav {
     position: fixed;
 }
-.discovery-nav > .github::before {
-    --size: 15px;
-    content: "";
-    display: inline-block;
-    vertical-align: text-top;
-    height: var(--size);
-    aspect-ratio: 1/1;
-    margin-right: 5px;
-    margin-left: -3px;
-    background: url("../img/github.svg") no-repeat center;
-    background-size: calc(var(--size) - 0px);
-    opacity: .85;
-}
-.discovery-root-darkmode .discovery-nav > .github::before {
-    background-image: url("../img/github-white.svg");
-}
 
 .discovery-nav > .full-page-mode {
     background-color: rgba(78, 187, 255, .3);

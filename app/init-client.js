@@ -11,9 +11,10 @@ function consumeDemos() {
 }
 
 discovery.nav.primary.append({
-    className: 'github',
-    content: 'text:"GitHub"',
-    data: { href: 'https://github.com/discoveryjs/cpupro' }
+    name: 'github',
+    text: 'GitHub',
+    href: 'https://github.com/discoveryjs/cpupro',
+    external: true
 });
 discovery.nav.menu.append({
     when: '#.datasets and #.actions.unloadData',
@@ -34,6 +35,5 @@ try {
     console.error(e);
 }
 
-// FIXME: temporary solution, since context is cleaning up on data load/unload
-discovery.on('data', () => setTimeout(consumeDemos, 1));
+// FIXME: temporary solution, since context is not set on App's init
 setTimeout(consumeDemos, 1);
