@@ -1,5 +1,15 @@
 import { GeneratedNodes } from '../types.js';
 
+function sum(array: number[]) {
+    let sum = 0;
+
+    for (let i = 0; i < array.length; i++) {
+        sum += array[i];
+    }
+
+    return sum;
+}
+
 export function processTimeDeltas(
     startTime: number,
     endTime: number,
@@ -10,23 +20,31 @@ export function processTimeDeltas(
 ) {
     fixDeltasOrder(timeDeltas, samples, samplePositions);
 
-    const startNoSamplesTime = timeDeltas[0]; // time before first sample
-    const maybeTotalTime = (endTime - startTime) - startNoSamplesTime; // compute potential total time excluding start no samples period
-
-    let deltasSum = 0;
-
-    // shift deltas 1 index left and compute sum of deltas to compute last delta
-    for (let i = 1; i < timeDeltas.length; i++) {
-        deltasSum += timeDeltas[i - 1] = timeDeltas[i];
-    }
+    let deltasSum = sum(timeDeltas);
 
     // compute samples interval as a median of deltas if needed (it might be computed on steps before time deltas processing)
     if (typeof samplesInterval !== 'number') {
         samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1]; // TODO: speedup?
     }
 
+    if (!startTime) {
+        startTime = 0;
+    }
+
+    if (!endTime) {
+        endTime = startTime + deltasSum + samplesInterval;
+    }
+
+    const startNoSamplesTime = timeDeltas[0]; // time before first sample
+    const maybeTotalTime = (endTime - startTime) - startNoSamplesTime; // compute potential total time excluding start no samples period
+
+    // shift deltas 1 index left and compute sum of deltas to compute last delta
+    for (let i = 1; i < timeDeltas.length; i++) {
+        timeDeltas[i - 1] = timeDeltas[i];
+    }
+
     // compute last delta
-    const maybeLastDelta = maybeTotalTime - deltasSum;
+    const maybeLastDelta = Math.max(0, maybeTotalTime - deltasSum);
     const lastDelta = maybeLastDelta > 2.5 * samplesInterval
         ? samplesInterval
         : maybeLastDelta;

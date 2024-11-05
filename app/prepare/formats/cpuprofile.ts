@@ -1,5 +1,7 @@
 import type { V8CpuProfile, V8CpuProfileNode } from '../types.js';
 
+type SizeSample = { size: number, nodeId: number, ordinal: number };
+
 function isObject(value: unknown): value is object {
     return typeof value === 'object' && value !== null;
 }
@@ -29,7 +31,7 @@ function isNode(value: unknown): value is V8CpuProfileNode {
     return true;
 }
 
-function isArrayOfIntegers(value: unknown): boolean {
+function isArrayOfIntegers(value: unknown): value is number[] {
     if (!Array.isArray(value) || ArrayBuffer.isView(value)) {
         return false;
     }
@@ -49,6 +51,15 @@ function isArrayLike(value: unknown, check: (value: unknown) => boolean): boolea
         : true;
 }
 
+function isSizeSamples(value: unknown): value is SizeSample[] {
+    return isArrayLike(value, (item) =>
+        typeof item === 'object' &&
+        item !== null &&
+        'size' in item &&
+        typeof item.size === 'number'
+    );
+}
+
 export function isCPUProfile(data: unknown): data is V8CpuProfile {
     const maybe = data as Partial<V8CpuProfile>;
 
@@ -56,16 +67,18 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
         return false;
     }
 
-    if (!isArrayLike(maybe.nodes, isNode)) {
+    if (!isArrayLike(maybe.nodes, isNode) && !('head' in maybe && isNode(maybe.head))) {
         return false;
     }
 
-    if (!isArrayOfIntegers(maybe.samples)) {
-        return false;
-    }
+    if (!isSizeSamples(maybe.samples)) {
+        if (!isArrayOfIntegers(maybe.samples)) {
+            return false;
+        }
 
-    if (!isArrayOfIntegers(maybe.timeDeltas)) {
-        return false;
+        if (!isArrayOfIntegers(maybe.timeDeltas)) {
+            return false;
+        }
     }
 
     return true;
@@ -106,4 +119,50 @@ export function convertParentIntoChildrenIfNeeded(data: V8CpuProfile) {
             }
         }
     }
+}
+
+function linearCallTree(node: V8CpuProfileNode, nodes: V8CpuProfileNode[] = []) {
+    const children = node.children as (V8CpuProfileNode[] | undefined);
+
+    if (Array.isArray(children)) {
+        nodes.push({
+            ...node,
+            children: children.map(child => child.id)
+        });
+
+        for (const child of children) {
+            linearCallTree(child, nodes);
+        }
+    }
+
+    return nodes;
+}
+
+export function unrollHeadToNodesIfNeeded(profile: V8CpuProfile & { head?: V8CpuProfileNode }) {
+    const head = profile.head;
+
+    if (!head) {
+        return profile;
+    }
+
+    return {
+        ...profile,
+        nodes: linearCallTree(head)
+    };
+}
+
+export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[] | SizeSample[] }) {
+    if (isArrayOfIntegers(profile.samples)) {
+        return profile;
+    }
+
+    const source = profile.samples as SizeSample[];
+
+    source.sort((a, b) => a.ordinal - b.ordinal);
+
+    return {
+        ...profile,
+        samples: source.map(sample => sample.nodeId),
+        timeDeltas: source.map(sample => sample.size)
+    };
 }
