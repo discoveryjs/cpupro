@@ -36,15 +36,21 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
     const profiles: Awaited<ReturnType<typeof createProfile>>[] = [];
 
-    for (const data of profileSet.profiles) {
+    for (let i = 0; i < profileSet.profiles.length; i++) {
+        const profileData = profileSet.profiles[i];
+
         // execution context goes first sice it affects package name
         // FIXME: following profiles could affect previously loaded profiles,
         // it should perform together with path/name processing
-        for (const { origin, name } of data._executionContexts || []) {
+        for (const { origin, name } of profileData._executionContexts || []) {
             dict.setPackageNameForOrigin(new URL(origin).host, name);
         }
 
-        const profile = await createProfile(data, dict, { work });
+        const profile = await createProfile(profileData, dict, {
+            work: profileSet.profiles.length > 1
+                ? (name, fn) => work(`Profile ${i + 1}/${profileSet.profiles.length} — ${name}`, fn)
+                : work
+        });
 
         // FIXME: callFramePositions should be shared
         profile.callFramePositionsTree?.dictionary.forEach(markers['call-frame-position']);
