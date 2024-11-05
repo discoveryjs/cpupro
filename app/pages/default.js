@@ -732,14 +732,7 @@ const noDataPageContent = {
     view: 'block',
     className: 'welcome-page',
     content: [
-        {
-            view: 'page-header',
-            content: [
-                { view: 'block', className: 'logo' },
-                'h1:"cpupro"',
-                { view: 'block', className: 'description', content: 'text:"A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers"' }
-            ]
-        },
+        'app-header:#.model',
 
         {
             view: 'block',

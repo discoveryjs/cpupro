@@ -20,6 +20,18 @@
     margin-bottom: 1px;
 }
 
+.view-app-header h1 {
+    line-height: 27px;
+}
+.view-app-header .icon {
+    padding: 0;
+    margin-right: 2px;
+    background-size: 50px;
+}
+.view-app-header .description {
+    line-height: 23px;
+}
+
 .page .view-page-header :is(.view-h1, .view-h2) {
     font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
     font-weight: 200;

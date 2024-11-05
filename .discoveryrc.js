@@ -2,6 +2,9 @@ const v8logSupport = false;
 
 module.exports = {
     name: 'cpupro',
+    version: require('./package.json').version,
+    description: 'A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers',
+    icon: './img/logo.svg',
     darkmode: 'only',
     embed: true,
     upload: {
@@ -9,10 +12,11 @@ module.exports = {
             ? ['.cpuprofile', '.devtools', '.log', '.json', '.jsonxl']
             : ['.cpuprofile', '.devtools', '.json', '.jsonxl']
     },
+    basedir: __dirname + '/app',
     ...v8logSupport ? { encodings: './encodings' } : null,
     setup: './setup.mts',
     data: './data',
-    favicon: __dirname + '/app/img/favicon.png',
+    favicon: './img/favicon.png',
     routers: ['./demo/router.js'],
     meta: {
         demos: require('./app/demo/index.json')

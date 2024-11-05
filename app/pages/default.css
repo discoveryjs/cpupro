@@ -406,7 +406,7 @@
     margin-top: 2px;
 }
 .page-default .welcome-page .upload-data {
-    margin: -8px -15px 15px;
+    margin: -8px 0 15px -13px;
     background-color: #00000014;
     border: 1px dashed #555;
     padding: 12px;
