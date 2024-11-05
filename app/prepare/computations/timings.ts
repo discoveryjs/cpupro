@@ -77,20 +77,23 @@ export class SamplesTiminigs extends TimingsObserver {
     samples: Uint32Array;
     timeDeltas: Uint32Array;
     timestamps: Uint32Array;
-    selfTimes: Uint32Array;
+    samplesCount: Uint32Array;
+    samplesTimes: Uint32Array;
 
     constructor(
         samples: Uint32Array,
         timeDeltas: Uint32Array,
         timestamps: Uint32Array,
-        selfTimes: Uint32Array
+        samplesCount: Uint32Array,
+        samplesTimes: Uint32Array
     ) {
         super();
 
         this.samples = samples;
         this.timeDeltas = timeDeltas;
         this.timestamps = timestamps;
-        this.selfTimes = selfTimes;
+        this.samplesCount = samplesCount;
+        this.samplesTimes = samplesTimes;
     }
 }
 
@@ -106,13 +109,15 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
         samplesMask: Uint32Array,
         timeDeltas: Uint32Array,
         timestamps: Uint32Array,
-        selfTimes: Uint32Array
+        samplesCount: Uint32Array,
+        samplesTimes: Uint32Array
     ) {
         super(
             samples,
             timeDeltas,
             timestamps,
-            selfTimes
+            samplesCount,
+            samplesTimes
         );
 
         this.samplesMask = samplesMask;
@@ -167,23 +172,32 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
 
 export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
     tree: CallTree<T>;
+    samplesCount: Uint32Array;
     selfTimes: Uint32Array;
     nestedTimes: Uint32Array;
 
-    constructor(tree: CallTree<T>, selfTimes: Uint32Array, nestedTimes: Uint32Array) {
+    constructor(
+        tree: CallTree<T>,
+        samplesCount: Uint32Array,
+        selfTimes: Uint32Array,
+        nestedTimes: Uint32Array
+    ) {
         super();
 
         this.tree = tree;
+        this.samplesCount = samplesCount;
         this.selfTimes = selfTimes;
         this.nestedTimes = nestedTimes;
     }
 
     getTimings(index: number) {
+        const samples = this.samplesCount[index];
         const selfTime = this.selfTimes[index];
         const nestedTime = this.nestedTimes[index];
 
         return {
             node: this.tree.getEntry(index),
+            samples,
             selfTime,
             nestedTime,
             totalTime: selfTime + nestedTime
@@ -191,12 +205,14 @@ export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
     }
 
     getValueTimings(valueIndex: number) {
-        const { tree, selfTimes, nestedTimes } = this;
+        const { tree, samplesCount, selfTimes, nestedTimes } = this;
         const { nested } = tree;
+        let samples = 0;
         let selfTime = 0;
         let nestedTime = 0;
 
         for (const index of tree.selectNodes(valueIndex, true)) {
+            samples += samplesCount[index];
             selfTime += selfTimes[index];
             if (nested[index] === 0) {
                 nestedTime += nestedTimes[index];
@@ -205,6 +221,7 @@ export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
 
         return {
             value: tree.dictionary[valueIndex],
+            samples,
             selfTime,
             nestedTime,
             totalTime: selfTime + nestedTime
@@ -215,6 +232,7 @@ export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
 export type DictionaryTiminig<T> = {
     entryIndex: number;
     entry: T;
+    samples: number;
     selfTime: number;
     nestedTime: number;
     totalTime: number;
@@ -223,17 +241,25 @@ export type DictionaryTiminig<T> = {
 export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
     entries: DictionaryTiminig<T>[];
     entriesMap: Map<T, DictionaryTiminig<T>>;
+    samplesCount: Uint32Array;
     selfTimes: Uint32Array;
     totalTimes: Uint32Array;
 
-    constructor(dictionary: T[], selfTimes: Uint32Array, totalTimes: Uint32Array) {
+    constructor(
+        dictionary: T[],
+        samplesCount: Uint32Array,
+        selfTimes: Uint32Array,
+        totalTimes: Uint32Array
+    ) {
         super();
 
+        this.samplesCount = samplesCount;
         this.selfTimes = selfTimes;
         this.totalTimes = totalTimes;
         this.entries = dictionary.map((entry, entryIndex) => ({
             entryIndex,
             entry,
+            samples: samplesCount[entryIndex],
             selfTime: selfTimes[entryIndex],
             nestedTime: totalTimes[entryIndex] - selfTimes[entryIndex],
             totalTime: totalTimes[entryIndex]
@@ -249,13 +275,14 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
     }
 
     sync() {
-        const { entries, selfTimes, totalTimes } = this;
+        const { entries, samplesCount, selfTimes, totalTimes } = this;
 
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i];
             const selfTime = selfTimes[i];
             const totalTime = totalTimes[i];
 
+            entry.samples = samplesCount[i];
             entry.selfTime = selfTime;
             entry.nestedTime = totalTime - selfTime;
             entry.totalTime = totalTime;
@@ -368,14 +395,15 @@ export function createTreeComputeBuffer<T>(
     // estimate buffer size
     const samplesMapSize = trees[0].sampleIdToNode.length;
     let bufferSize =
-        // samples
-        samples.length +
         // timeDeltas
         // timestamps
         2 * timeDeltas.length +
+        // samples
+        samples.length +
         // samplesMask
+        // samplesCount
         // samplesTime
-        2 * samplesMapSize;
+        3 * samplesMapSize;
 
     for (const { tree, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         // tree timings
@@ -384,18 +412,20 @@ export function createTreeComputeBuffer<T>(
             tree.sampleIdToNode.length +
             // parent
             tree.parent.length +
+            // samplesCount
             // selfTime
             // nestTime
-            2 * tree.nodes.length;
+            3 * tree.nodes.length;
 
         // dict timings
         bufferSize +=
             sampleIdToDict.length +
             totalNodes.length +
             totalNodeToDict.length +
+            // samplesCount
             // selfTime
             // totalTime
-            2 * tree.dictionary.length;
+            3 * tree.dictionary.length;
     }
 
     const memory = useWasm
@@ -405,10 +435,11 @@ export function createTreeComputeBuffer<T>(
     let offset = 0;
     const samplesMap: BufferSamplesTimingsMap = {
         buffer,
-        samples: alloc(samples),
-        samplesMask: alloc(samplesMapSize),
         timeDeltas: alloc(timeDeltas),
         timestamps: alloc(timeDeltas.length),
+        samples: alloc(samples),
+        samplesMask: alloc(samplesMapSize),
+        samplesCount: alloc(samplesMapSize),
         samplesTimes: alloc(samplesMapSize)
     };
     const bufferMap: BufferMap<T> = {
@@ -424,21 +455,25 @@ export function createTreeComputeBuffer<T>(
         const treeMap: BufferTreeTimingsMap<T> = {
             buffer,
             tree,
-            sourceSelfTimes: samplesMap.samplesTimes,
+            sourceSamplesCount: samplesMap.samplesCount,
+            sourceSamplesTimes: samplesMap.samplesTimes,
             sampleIdToNode: alloc(tree.sampleIdToNode),
             parent: alloc(tree.parent),
+            samplesCount: alloc(tree.nodes.length),
             selfTimes: alloc(tree.nodes.length),
             nestedTimes: alloc(tree.nodes.length)
         };
         const dictMap: BufferDictionaryTimingsMap<T> = {
             buffer,
             dictionary: tree.dictionary,
-            samplesSelfTimes: samplesMap.samplesTimes,
+            sourceSamplesCount: samplesMap.samplesCount,
+            sourceSamplesTimes: samplesMap.samplesTimes,
             nodeSelfTimes: treeMap.selfTimes,
             nodeNestedTimes: treeMap.nestedTimes,
             sampleIdToDict: alloc(sampleIdToDict),
             totalNodes: alloc(totalNodes),
             totalNodeToDict: alloc(totalNodeToDict),
+            samplesCount: alloc(tree.dictionary.length),
             selfTimes: alloc(tree.dictionary.length),
             totalTimes: alloc(tree.dictionary.length)
         };
@@ -490,6 +525,7 @@ export function createTreeCompute(
         samples,
         timeDeltas,
         samplesMap.timestamps.array,
+        samplesMap.samplesCount.array.slice(),
         samplesMap.samplesTimes.array.slice()
     );
     const samplesTimingsFiltered = new SamplesTiminigsFiltered(
@@ -497,29 +533,34 @@ export function createTreeCompute(
         samplesMap.samplesMask.array,
         samplesMap.timeDeltas.array,
         samplesMap.timestamps.array,
+        samplesMap.samplesCount.array,
         samplesMap.samplesTimes.array
     );
     const treeTimings = treeMaps.map((treeMap) =>
         new TreeTiminigs(
             treeMap.tree,
+            treeMap.samplesCount.array.slice(),
             treeMap.selfTimes.array.slice(),
             treeMap.nestedTimes.array.slice()
         ));
     const treeTimingsFiltered = treeMaps.map((treeMap) =>
         new TreeTiminigs(
             treeMap.tree,
+            treeMap.samplesCount.array,
             treeMap.selfTimes.array,
             treeMap.nestedTimes.array
         ));
     const dictionaryTimings = dictMaps.map((dictMap) =>
         new DictionaryTiminigs(
             dictMap.dictionary,
+            dictMap.samplesCount.array.slice(),
             dictMap.selfTimes.array.slice(),
             dictMap.totalTimes.array.slice()
         ));
     const dictionaryTimingsFiltered = dictMaps.map((dictMap) =>
         new DictionaryTiminigs(
             dictMap.dictionary,
+            dictMap.samplesCount.array,
             dictMap.selfTimes.array,
             dictMap.totalTimes.array
         ));

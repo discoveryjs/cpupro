@@ -24,31 +24,42 @@ export type BufferSamplesTimingsMap = {
     samplesMask: BufferMapRecord;
     timeDeltas: BufferMapRecord;
     timestamps: BufferMapRecord;
+    samplesCount: BufferMapRecord;
     samplesTimes: BufferMapRecord;
 };
 export type BufferTreeTimingsMap<T> = {
     buffer: Uint32Array;
     tree: CallTree<T>;
-    sourceSelfTimes: BufferMapRecord;
+    sourceSamplesCount: BufferMapRecord;
+    sourceSamplesTimes: BufferMapRecord;
     sampleIdToNode: BufferMapRecord;
     parent: BufferMapRecord;
+    samplesCount: BufferMapRecord;
     selfTimes: BufferMapRecord;
     nestedTimes: BufferMapRecord;
 };
 export type BufferDictionaryTimingsMap<T> = {
     buffer: Uint32Array;
     dictionary: T[];
-    samplesSelfTimes: BufferMapRecord;
+    sourceSamplesCount: BufferMapRecord;
+    sourceSamplesTimes: BufferMapRecord;
     nodeSelfTimes: BufferMapRecord;
     nodeNestedTimes: BufferMapRecord;
     sampleIdToDict: BufferMapRecord;
     totalNodes: BufferMapRecord;
     totalNodeToDict: BufferMapRecord;
+    samplesCount: BufferMapRecord;
     selfTimes: BufferMapRecord;
     totalTimes: BufferMapRecord;
 };
 type ComputeTimingsWasmModuleInstance = {
     exports: {
+        accumulateSampleCount(
+            srcSize: number,
+            src: number,
+            dest: number,
+            map: number
+        ): void;
         accumulateTimings(
             srcSize: number,
             src: number,
@@ -112,6 +123,7 @@ function createWasmModule(source: string, imports = {}) {
 export function createWasmApi(memory: WebAssembly.Memory): ComputeTimingsApi {
     const wasmModule = createWasmModule(computeTimingsWasmSourceBase64, { memory }) as ComputeTimingsWasmModuleInstance;
     const {
+        accumulateSampleCount,
         accumulateTimings,
         rollupTreeTimings,
         rollupDictionaryTimings
@@ -120,8 +132,16 @@ export function createWasmApi(memory: WebAssembly.Memory): ComputeTimingsApi {
     return {
         computeTimings(map, clear = true) {
             if (clear) {
+                map.samplesCount.array.fill(0);
                 map.samplesTimes.array.fill(0);
             }
+
+            accumulateSampleCount(
+                map.timeDeltas.array.length,
+                map.timeDeltas.offset,
+                map.samples.offset,
+                map.samplesCount.offset
+            );
 
             accumulateTimings(
                 map.timeDeltas.array.length,
@@ -133,13 +153,21 @@ export function createWasmApi(memory: WebAssembly.Memory): ComputeTimingsApi {
 
         computeTreeTimings(map, clear = true) {
             if (clear) {
+                map.samplesCount.array.fill(0);
                 map.selfTimes.array.fill(0);
                 map.nestedTimes.array.fill(0);
             }
 
             accumulateTimings(
-                map.sourceSelfTimes.array.length,
-                map.sourceSelfTimes.offset,
+                map.sourceSamplesCount.array.length,
+                map.sourceSamplesCount.offset,
+                map.sampleIdToNode.offset,
+                map.samplesCount.offset
+            );
+
+            accumulateTimings(
+                map.sourceSamplesTimes.array.length,
+                map.sourceSamplesTimes.offset,
                 map.sampleIdToNode.offset,
                 map.selfTimes.offset
             );
@@ -154,13 +182,21 @@ export function createWasmApi(memory: WebAssembly.Memory): ComputeTimingsApi {
 
         computeDictionaryTimings(map, clear = true) {
             if (clear) {
+                map.samplesCount.array.fill(0);
                 map.selfTimes.array.fill(0);
                 map.totalTimes.array.fill(0);
             }
 
             accumulateTimings(
-                map.samplesSelfTimes.array.length,
-                map.samplesSelfTimes.offset,
+                map.sourceSamplesCount.array.length,
+                map.sourceSamplesCount.offset,
+                map.sampleIdToDict.offset,
+                map.samplesCount.offset
+            );
+
+            accumulateTimings(
+                map.sourceSamplesTimes.array.length,
+                map.sourceSamplesTimes.offset,
                 map.sampleIdToDict.offset,
                 map.selfTimes.offset
             );
@@ -178,43 +214,56 @@ export function createWasmApi(memory: WebAssembly.Memory): ComputeTimingsApi {
 }
 
 export function createJavaScriptApi(): ComputeTimingsApi {
+    function accumulate(dest: Uint32Array, source: Uint32Array, map: Uint32Array) {
+        for (let i = source.length - 1; i >= 0; i--) {
+            dest[map[i]] += source[i];
+        }
+    }
+
     return {
         computeTimings(map, clear = true) {
             const {
                 samples,
                 timeDeltas,
+                samplesCount,
                 samplesTimes
             } = extractArrayFromMap(map);
-            const samplesCount = samples.length;
+            const samplesLength = samples.length;
 
             if (clear) {
+                samplesCount.fill(0);
                 samplesTimes.fill(0);
             }
 
-            for (let i = samplesCount - 1; i >= 0; i--) {
-                samplesTimes[samples[i]] += timeDeltas[i];
+            accumulate(samplesTimes, timeDeltas, samples);
+
+            for (let i = samplesLength - 1; i >= 0; i--) {
+                if (timeDeltas[i] !== 0) {
+                    samplesCount[samples[i]]++;
+                }
             }
         },
 
         computeTreeTimings(map, clear = true) {
             const {
-                sourceSelfTimes,
+                sourceSamplesCount,
+                sourceSamplesTimes,
                 sampleIdToNode,
                 parent,
+                samplesCount,
                 selfTimes,
                 nestedTimes
             } = extractArrayFromMap(map);
-            const sourceSelfTimesSize = sourceSelfTimes.length;
             const nodesCount = selfTimes.length;
 
             if (clear) {
+                samplesCount.fill(0);
                 selfTimes.fill(0);
                 nestedTimes.fill(0);
             }
 
-            for (let i = sourceSelfTimesSize - 1; i >= 0; i--) {
-                selfTimes[sampleIdToNode[i]] += sourceSelfTimes[i];
-            }
+            accumulate(samplesCount, sourceSamplesCount, sampleIdToNode);
+            accumulate(selfTimes, sourceSamplesTimes, sampleIdToNode);
 
             for (let i = nodesCount - 1; i > 0; i--) {
                 nestedTimes[parent[i]] += selfTimes[i] + nestedTimes[i];
@@ -223,26 +272,27 @@ export function createJavaScriptApi(): ComputeTimingsApi {
 
         computeDictionaryTimings(map, clear = true) {
             const {
-                samplesSelfTimes,
+                sourceSamplesCount,
+                sourceSamplesTimes,
                 nodeSelfTimes,
                 nodeNestedTimes,
                 sampleIdToDict,
                 totalNodes,
                 totalNodeToDict,
+                samplesCount,
                 selfTimes,
                 totalTimes
             } = extractArrayFromMap(map);
-            const samplesSelfTimesSize = samplesSelfTimes.length;
             const nodesCount = totalNodes.length;
 
             if (clear) {
+                samplesCount.fill(0);
                 selfTimes.fill(0);
                 totalTimes.fill(0);
             }
 
-            for (let i = samplesSelfTimesSize - 1; i >= 0; i--) {
-                selfTimes[sampleIdToDict[i]] += samplesSelfTimes[i];
-            }
+            accumulate(samplesCount, sourceSamplesCount, sampleIdToDict);
+            accumulate(selfTimes, sourceSamplesTimes, sampleIdToDict);
 
             for (let i = nodesCount - 1; i >= 0; i--) {
                 const nodeId = totalNodes[i];

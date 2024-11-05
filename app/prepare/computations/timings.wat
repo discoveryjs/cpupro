@@ -1,10 +1,86 @@
 (import "imports" "memory" (memory 0))
 
+(func $accumulateSampleCount (export "accumulateSampleCount")
+  (param $srcSize i32)
+  (param $src i32)
+  (param $map i32)
+  (param $dest i32)
+  (local $offset i32) ;; Byte offset for iteration through the arrays.
+  (local $resultAddr i32) ;; Address in $dest array.
+
+  ;; for (let i = srcSize - 1; i >= 0; i--) {
+  ;;   dest[map[i]] += src[i];
+  ;; }
+
+  ;; Initialize $offset to the byte position of the last element
+  (local.set $offset
+    (i32.shl (local.get $srcSize) (i32.const 2))
+  )
+
+  (block $exit ;; Block for loop exit condition.
+    (loop $loop ;; Start of loop.
+      (br_if $exit
+        (i32.eqz (local.get $offset))
+      ) ;; Exit loop if offset === 0
+
+      ;; Decrement 'offset' by 4 for the next iteration.
+      ;; offset -= 4;
+      (local.set $offset
+        (i32.sub
+          (local.get $offset)
+          (i32.const 4)
+        )
+      )
+
+      ;; Continue if value equals zero
+      (br_if $loop
+        (i32.eqz
+          (i32.load
+            (i32.add
+              (local.get $src)
+              (local.get $offset)
+            )
+          )
+        )
+      )
+
+      ;; Calculate address in $dest array and store in $resultAddr.
+      ;; resultAddr = dest + map[i] * 4  // dest[map[i]]
+      (local.set $resultAddr
+        (i32.add
+          (local.get $dest)
+          (i32.shl
+            (i32.load
+              (i32.add
+                (local.get $map)
+                (local.get $offset)
+              )
+            )
+            (i32.const 2)
+          )
+        )
+      )
+
+      ;; Load the existing value at $resultAddr, add the time delta, then store the result back.
+      ;; dest[$addr] += 1
+      (i32.store
+        (local.get $resultAddr)
+        (i32.add
+          (i32.load (local.get $resultAddr))
+          (i32.const 1)
+        )
+      )
+
+      (br $loop) ;; Repeat the loop.
+    )
+  )
+)
+
 (func $accumulateTimings (export "accumulateTimings")
   (param $srcSize i32)
-  (param $src i32) 
-  (param $map i32) 
-  (param $dest i32) 
+  (param $src i32)
+  (param $map i32)
+  (param $dest i32)
   (local $offset i32) ;; Byte offset for iteration through the arrays.
   (local $value i32)
   (local $resultAddr i32) ;; Address in $dest array.
@@ -37,9 +113,9 @@
       (br_if $loop
         (i32.eqz
           (local.tee $value
-            (i32.load 
-              (i32.add 
-                (local.get $src) 
+            (i32.load
+              (i32.add
+                (local.get $src)
                 (local.get $offset)
               )
             )
@@ -68,7 +144,7 @@
       ;; dest[$addr] += src[i]
       (i32.store
         (local.get $resultAddr)
-        (i32.add 
+        (i32.add
           (i32.load (local.get $resultAddr))
           (local.get $value)
         )
