@@ -15,6 +15,16 @@ type NumericArray =
 type TestFunction<T> = (entry: T) => boolean;
 type TestFunctionOrEntry<T> = T | TestFunction<T>;
 
+type SampleConvolutionRule<T> = (
+    self: SampleConvolutionNode<T>,
+    parent: SampleConvolutionNode<T>,
+    root: SampleConvolutionNode<T>
+) => boolean;
+type SampleConvolutionNode<T> = {
+    entry: T;
+    samples: number;
+};
+
 const NULL_ARRAY = new Uint32Array();
 
 function makeDictMask<T>(tree: CallTree<T>, test: TestFunctionOrEntry<T>) {
@@ -37,6 +47,7 @@ export class CallTree<T> {
     dictionary: T[];              // entries
     sourceIdToNode: Int32Array;   // sourceNodeId -> index of nodes
     sampleIdToNode: NumericArray; // sampleId  -> index of nodes
+    #sampleIdToNode: NumericArray;
     nodes: NumericArray;          // nodeIndex -> index of dictionary
     parent: NumericArray;         // nodeIndex -> index of nodes
     subtreeSize: NumericArray;    // nodeIndex -> number of nodes in subtree, 0 when no children
@@ -69,6 +80,7 @@ export class CallTree<T> {
         this.dictionary = dictionary;
         this.sourceIdToNode = sourceIdToNode;
         this.sampleIdToNode = NULL_ARRAY; // setting up later
+        this.#sampleIdToNode = NULL_ARRAY;
 
         this.nodes = nodes;
         this.parent = parent || new Uint32Array(nodes.length);
@@ -201,6 +213,32 @@ export class CallTree<T> {
         }
 
         return includeSelf ? result + count : result;
+    }
+
+    setSamplesConvolutionRule(fn: SampleConvolutionRule<T>, sampleCount: Uint32Array) {
+        const { parent, nodes, sampleIdToNode } = this;
+        const nodesRemap = nodes.slice();
+        let origSampleIdToNode = this.#sampleIdToNode;
+
+        for (let i = 1; i < nodesRemap.length; i++) {
+            const parentNode = parent[i];
+            const rootNode = nodesRemap[parentNode];
+            const rootEntry = { entry: this.dictionary[nodes[rootNode]], samples: sampleCount[rootNode] };
+            const parentEntry = parentNode === rootNode
+                ? rootEntry
+                : { entry: this.dictionary[nodes[parentNode]], samples: sampleCount[parentNode] };
+            const selfEntry = { entry: this.dictionary[nodes[i]], samples: sampleCount[i] };
+
+            nodesRemap[i] = fn(selfEntry, parentEntry, rootEntry) === true ? rootNode : i;
+        }
+
+        if (origSampleIdToNode === NULL_ARRAY) {
+            this.#sampleIdToNode = origSampleIdToNode = sampleIdToNode.slice();
+        }
+
+        for (let i = 0; i < sampleIdToNode.length; i++) {
+            sampleIdToNode[i] = nodesRemap[origSampleIdToNode[i]];
+        }
     }
 
     *map(nodeIndexes: Iterable<number>) {
