@@ -36,6 +36,8 @@ module.exports = {
             './pages/module.js',
             './pages/category.js',
             './pages/package.js',
+            './pages/profiles-matrix.css',
+            './pages/profiles-matrix.js',
             './views/misc/mode-regexp.css',
             './views/misc/mode-regexp.js',
             './views/call-frame-kind-badge.css',

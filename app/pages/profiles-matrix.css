@@ -1,0 +1,54 @@
+.page-profiles-matrix .total-time-info {
+    display: inline-block;
+    margin-left: 2ex;
+}
+.page-profiles-matrix .total-time-info .view-text-numeric {
+    color: #b7af1c;
+}
+
+.page-profiles-matrix .pipelines-timeline {
+    position: relative;
+    padding: 14px 0 4px;
+    margin: 8px 0;
+}
+.page-profiles-matrix .pipelines-timeline .time-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--x) * 100%);
+    border-left: 1px solid currentColor;
+    box-shadow: 0 0 0 .3px var(--discovery-background-color);
+    z-index: 1;
+}
+.page-profiles-matrix .time-line.avg-line {
+    margin: -5px 0 -5px;
+    border-left-style: dashed;
+    color: yellow;
+}
+.page-profiles-matrix .time-line.avg-line::before {
+    content: 'AVG';
+    background-color: #e5d800;
+    font-size: 9px;
+    padding: 0 3px;
+    color: black;
+    margin-top: -10px;
+    display: block;
+    line-height: 1.2;
+    margin-left: -1px;
+}
+.page-profiles-matrix .red-line {
+    color: #eb5b5b;
+}
+.page-profiles-matrix .orange-line {
+    color: #c68f2b;
+}
+.page-profiles-matrix .green-line {
+    color: #2c9c2c;
+}
+
+.page-profiles-matrix .view-table .metric {
+    background-color: #00000033;
+}
+.page-profiles-matrix .view-table .mid-metric {
+    background-color: #ffffff0a;
+}
