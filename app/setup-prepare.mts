@@ -63,7 +63,38 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         profiles.push(profile);
     }
 
-    const currentProfile = profiles[profileSet.indexToView || 0] || profiles[0];
+    // cross-profiles usage
+    const callFramesProfilePresence = await work('cross-profile usage', () => {
+        const callFramesProfilePresence = new Uint8Array(dict.callFrames.length);
+
+        for (const profile of profiles) {
+            const samplesCount = profile.callFramesTimings.samplesCount;
+
+            for (let i = 0; i < samplesCount.length; i++) {
+                if (samplesCount[i] > 0) {
+                    callFramesProfilePresence[i]++;
+                }
+            }
+        }
+
+        for (const profile of profiles) {
+            const { samplesCount, selfTimes } = profile.callFramesTimings;
+            const timeDeltasByProfile = new Uint32Array(profiles.length);
+            const sampleCountsByProfile = new Uint32Array(profiles.length);
+
+            for (let i = 0; i < samplesCount.length; i++) {
+                const profilesCount = callFramesProfilePresence[i] - 1;
+
+                timeDeltasByProfile[profilesCount] += selfTimes[i];
+                sampleCountsByProfile[profilesCount] += samplesCount[i];
+            }
+
+            profile.timeDeltasByProfile = timeDeltasByProfile;
+            profile.sampleCountsByProfile = sampleCountsByProfile;
+        }
+
+        return callFramesProfilePresence;
+    });
 
     // process paths
     await work('process module paths', () =>
@@ -84,8 +115,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         dict.scripts.forEach(markers.script);
     });
 
+    const currentProfile = profiles[profileSet.indexToView || 0] || profiles[0];
     const result = {
         totalTime: profiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
+        callFramesProfilePresence,
         shared: {
             scripts: dict.scripts,
             callFrames: dict.callFrames,
