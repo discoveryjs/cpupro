@@ -26,5 +26,16 @@ discovery.view.define('timeline-profiles', function(el, config, data, context) {
         }
 
         el.append(barEl);
+        this.tooltip(barEl, [
+            'text:name',
+            { view: 'block', content: 'text:"Runtime: " + runtime.name' },
+            'html:"<hr>"',
+            { view: 'block', content: 'text:"Profile time: " + totalTime.ms()' },
+            { view: 'block', content: 'text:"Samples: " + sourceInfo.samples' },
+            { view: 'block', content: 'text:"Sampling interval: " + sourceInfo.samplesInterval' },
+            'html:"<hr>"',
+            { view: 'block', content: 'text:"Call tree nodes: " + sourceInfo.nodes' },
+            { view: 'block', content: 'text:"Call frames: " + callFrames.size()' }
+        ], profile, context);
     }
 });
