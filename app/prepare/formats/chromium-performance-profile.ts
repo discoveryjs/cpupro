@@ -53,6 +53,7 @@ export function extractFromChromiumPerformanceProfile(
 
     // Maps pid/tid pairs to thread names
     const processNameId = new Map<number, string>();
+    const threadNameId = new Map<number, string>();
 
     // JSON Object Format
     if ('traceEvents' in events) {
@@ -66,7 +67,8 @@ export function extractFromChromiumPerformanceProfile(
             e.name === 'CpuProfile' ||
             e.name === 'Profile' ||
             e.name === 'ProfileChunk' ||
-            e.name === 'process_name'
+            e.name === 'process_name' ||
+            e.name === 'thread_name'
         )
         .sort((a, b) => a.ts - b.ts);
 
@@ -83,7 +85,7 @@ export function extractFromChromiumPerformanceProfile(
         if (event.name === 'Profile') {
             const profileId = `${event.pid}:${event.id}`;
             const profile = {
-                name: null,
+                _name: threadNameId.get(event.tid) || null,
                 startTime: 0,
                 endTime: 0,
                 nodes: [],
@@ -94,6 +96,10 @@ export function extractFromChromiumPerformanceProfile(
             // profile.threadId = event.tid;
 
             cpuProfileById.set(profileId, profile);
+        }
+
+        if (event.name === 'thread_name') {
+            threadNameId.set(event.tid, event.args.name);
         }
 
         if (event.name === 'process_name') {
@@ -146,17 +152,8 @@ export function extractFromChromiumPerformanceProfile(
     for (const [profileId, profile] of cpuProfileById) {
         const processName: string | null = processNameId.get(parseInt(profileId)) || 'Unknown';
 
-        profile._name = processName;
-
         if (processName === 'CrRendererMain') {
             indexToView = profiles.length;
-        }
-
-        if (!profile.endTime && profile.timeDeltas) {
-            profile.endTime = profile.timeDeltas.reduce(
-                (x, y) => x + y,
-                profile.startTime
-            );
         }
 
         profiles.push(profile);

@@ -243,6 +243,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     );
 
     const profile = {
+        name: data._name,
         runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
         sourceInfo: {
             nodes: nodesCount,

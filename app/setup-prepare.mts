@@ -52,6 +52,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 : work
         });
 
+        if (profile.name === undefined) {
+            profile.name = 'Profile #' + (i + 1);
+        }
+
         // FIXME: callFramePositions should be shared
         profile.callFramePositionsTree?.dictionary.forEach(markers['call-frame-position']);
         profile.codesByCallFrame.forEach(markers['call-frame-codes']);
