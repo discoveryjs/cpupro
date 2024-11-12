@@ -19,6 +19,7 @@ import {
 import { convertToUint32Array } from '../utils.js';
 
 type SamplesResult = {
+    recomputeTimings(): void;
     samplesTimings: SamplesTiminigs;
     samplesTimingsFiltered: SamplesTiminigsFiltered;
 
@@ -152,6 +153,7 @@ export function computeTimings(
         ? ['callFramePositions', 'callFrames', 'modules', 'packages', 'categories'] as const
         : ['callFrames', 'modules', 'packages', 'categories'] as const;
     const {
+        recomputeTimings,
         samplesTimings,
         samplesTimingsFiltered,
         treeTimings,
@@ -168,6 +170,7 @@ export function computeTimings(
     ].filter(tree => tree !== null));
 
     const result = {
+        recomputeTimings,
         samplesTimings,
         samplesTimingsFiltered,
 

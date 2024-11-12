@@ -205,6 +205,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
 
     // build samples lists & trees
     const {
+        recomputeTimings,
         samplesTimings,
         samplesTimingsFiltered,
         callFramePositionsTimings,
@@ -265,6 +266,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
+        recomputeTimings,
 
         ...usage,
         codes,

@@ -48,6 +48,7 @@ export class CallTree<T> {
     sourceIdToNode: Int32Array;   // sourceNodeId -> index of nodes
     sampleIdToNode: NumericArray; // sampleId  -> index of nodes
     #sampleIdToNode: NumericArray;
+    sampleIdToNodeChanged: boolean; // FIXME: temporary solution to avoid unnecessary dict recalculations
     nodes: NumericArray;          // nodeIndex -> index of dictionary
     parent: NumericArray;         // nodeIndex -> index of nodes
     subtreeSize: NumericArray;    // nodeIndex -> number of nodes in subtree, 0 when no children
@@ -81,6 +82,7 @@ export class CallTree<T> {
         this.sourceIdToNode = sourceIdToNode;
         this.sampleIdToNode = NULL_ARRAY; // setting up later
         this.#sampleIdToNode = NULL_ARRAY;
+        this.sampleIdToNodeChanged = false;
 
         this.nodes = nodes;
         this.parent = parent || new Uint32Array(nodes.length);
@@ -239,6 +241,9 @@ export class CallTree<T> {
         for (let i = 0; i < sampleIdToNode.length; i++) {
             sampleIdToNode[i] = nodesRemap[origSampleIdToNode[i]];
         }
+
+        // FIXME: temporary solution to avoid unnecessary dict recalculations
+        this.sampleIdToNodeChanged = true;
     }
 
     *map(nodeIndexes: Iterable<number>) {

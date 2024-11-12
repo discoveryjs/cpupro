@@ -463,6 +463,7 @@ export function createTreeComputeBuffer<T>(
             selfTimes: alloc(tree.nodes.length),
             nestedTimes: alloc(tree.nodes.length)
         };
+        tree.sampleIdToNode = treeMap.sampleIdToNode.array;
         const dictMap: BufferDictionaryTimingsMap<T> = {
             buffer,
             dictionary: tree.dictionary,
@@ -578,20 +579,36 @@ export function createTreeCompute(
     // temporary solution
     const { setRange, resetRange } = samplesTimingsFiltered;
     const notifySubjects = [samplesTimingsFiltered, ...treeTimingsFiltered, ...dictionaryTimingsFiltered];
-    samplesTimingsFiltered.setRange = function(...args) {
-        setRange.call(this, ...args);
+    const recomputeTimings = () => {
+        for (let i = 0; i < dictMaps.length; i++) {
+            const { sampleIdToNode: { array: sampleIdToNode }, tree: { nodes, sampleIdToNodeChanged } } = treeMaps[i];
+            const { sampleIdToDict: { array: sampleIdToDict } } = dictMaps[i];
+
+            if (sampleIdToNodeChanged) {
+                for (let j = 0; j < sampleIdToNode.length; j++) {
+                    sampleIdToDict[j] = nodes[sampleIdToNode[j]];
+                }
+
+                // FIXME: temporary solution to avoid unnecessary dict recalculations
+                treeMaps[i].tree.sampleIdToNodeChanged = false;
+            }
+        }
+
         computeAll(computeTimingsApi, bufferMap);
         dictionaryTimingsFiltered.forEach(timings => timings.sync());
         notifySubjects.forEach(timings => timings.notify());
+    };
+    samplesTimingsFiltered.setRange = function(...args) {
+        setRange.call(this, ...args);
+        recomputeTimings();
     };
     samplesTimingsFiltered.resetRange = function(...args) {
         resetRange.call(this, ...args);
-        computeAll(computeTimingsApi, bufferMap);
-        dictionaryTimingsFiltered.forEach(timings => timings.sync());
-        notifySubjects.forEach(timings => timings.notify());
+        recomputeTimings();
     };
 
     return {
+        recomputeTimings,
         samplesTimings,
         samplesTimingsFiltered,
         treeTimings,
