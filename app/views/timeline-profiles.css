@@ -5,11 +5,22 @@
 }
 
 .view-timeline-profiles > .profile {
+    position: relative;
     margin-left: calc(100% * var(--x1));
     width: calc(100% * (var(--x2) - var(--x1)));
     height: 8px;
     background-color: #54a6eea6;
     border: .5px solid black;
+}
+
+.view-timeline-profiles > .profile > * {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(100% * var(--x2) - .5px);
+    right: 0;
+    border-left: .5px solid color-mix(in srgb, var(--discovery-background-color) 50%, transparent);
+    background-color: #00000020;
 }
 
 .view-timeline-profiles > .selected {
