@@ -151,7 +151,7 @@ export function unrollHeadToNodesIfNeeded(profile: V8CpuProfile & { head?: V8Cpu
     };
 }
 
-export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[] | SizeSample[] }) {
+export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[] | SizeSample[] }): V8CpuProfile {
     if (isArrayOfIntegers(profile.samples)) {
         return profile;
     }
@@ -162,6 +162,7 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[
 
     return {
         ...profile,
+        _memorySamples: true,
         samples: source.map(sample => sample.nodeId),
         timeDeltas: source.map(sample => sample.size)
     };

@@ -58,15 +58,17 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     );
 
     // fix long time deltas
-    await work('process time deltas', () =>
-        processLongTimeDeltas(
-            samplesInterval,
-            data.timeDeltas,
-            data.samples,
-            data._samplePositions,
-            generateNodes
-        )
-    );
+    if (!data._memorySamples) {
+        await work('process time deltas', () =>
+            processLongTimeDeltas(
+                samplesInterval,
+                data.timeDeltas,
+                data.samples,
+                data._samplePositions,
+                generateNodes
+            )
+        );
+    }
 
     // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
     // are correcting within processTimeDeltas()
