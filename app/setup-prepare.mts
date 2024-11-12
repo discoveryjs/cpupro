@@ -63,7 +63,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         profiles.push(profile);
     }
 
-    const profile = profiles[profileSet.indexToView || 0];
+    const currentProfile = profiles[profileSet.indexToView || 0] || profiles[0];
 
     // process paths
     await work('process module paths', () =>
@@ -94,7 +94,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             categories: dict.categories
         },
 
-        currentProfile: profile,
+        currentProfile,
         profiles
     };
 
