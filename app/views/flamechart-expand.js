@@ -1,7 +1,13 @@
 const { FocusCallTree } = require('../prepare/computations/call-tree.js');
 
 discovery.view.define('flamechart-expand', function(el, config, data, context) {
-    const { header, tree, timings, value } = config;
+    const {
+        header,
+        tree,
+        profile = context.data.currentProfile,
+        timings,
+        value
+    } = config;
     const focusTree = new FocusCallTree(tree, value);
 
     return this.render(el, {
@@ -19,10 +25,10 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
                         view: 'toggle-group',
                         name: 'dataset',
                         data: [
-                            { text: 'Categories', value: 'categoriesTree', active: tree === context.data.categoriesTree },
-                            { text: 'Packages', value: 'packagesTree', active: tree === context.data.packagesTree },
-                            { text: 'Modules', value: 'modulesTree', active: tree === context.data.modulesTree },
-                            { text: 'Call frames', value: 'callFramesTree', active: tree === context.data.callFramesTree }
+                            { text: 'Categories', value: 'categoriesTree', active: tree === profile.categoriesTree },
+                            { text: 'Packages', value: 'packagesTree', active: tree === profile.packagesTree },
+                            { text: 'Modules', value: 'modulesTree', active: tree === profile.modulesTree },
+                            { text: 'Call frames', value: 'callFramesTree', active: tree === profile.callFramesTree }
                         ]
                     }
                 ]
