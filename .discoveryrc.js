@@ -23,7 +23,7 @@ module.exports = {
     },
     view: {
         assets: [
-            './init-client.js',
+            './init-client.mjs',
             './pages/all-call-frames.js',
             './pages/all-modules.js',
             './pages/all-packages.js',

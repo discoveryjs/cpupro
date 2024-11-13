@@ -15,14 +15,16 @@ type NumericArray =
 type TestFunction<T> = (entry: T) => boolean;
 type TestFunctionOrEntry<T> = T | TestFunction<T>;
 
-type SampleConvolutionRule<T> = (
+export type SampleConvolutionRule<T> = (
     self: SampleConvolutionNode<T>,
     parent: SampleConvolutionNode<T>,
     root: SampleConvolutionNode<T>
 ) => boolean;
 type SampleConvolutionNode<T> = {
     entry: T;
-    samples: number;
+    treeSamplesCount: number;
+    dictSamplesCount: number;
+    profilePresence: number;
 };
 
 const NULL_ARRAY = new Uint32Array();
@@ -217,21 +219,35 @@ export class CallTree<T> {
         return includeSelf ? result + count : result;
     }
 
-    setSamplesConvolutionRule(fn: SampleConvolutionRule<T>, sampleCount: Uint32Array) {
+    setSamplesConvolutionRule(rule: SampleConvolutionRule<T>, {
+        treeSamplesCount,
+        dictSamplesCount,
+        profilePresence
+    }:{
+        treeSamplesCount: Uint32Array,
+        dictSamplesCount: Uint32Array,
+        profilePresence: Float32Array
+    }) {
         const { parent, nodes, sampleIdToNode } = this;
         const nodesRemap = nodes.slice();
         let origSampleIdToNode = this.#sampleIdToNode;
+        const createEntry = (index: number) => ({
+            entry: this.dictionary[nodes[index]],
+            treeSamplesCount: treeSamplesCount[index],
+            dictSamplesCount: dictSamplesCount[index],
+            profilePresence: profilePresence[nodes[index]]
+        });
 
         for (let i = 1; i < nodesRemap.length; i++) {
             const parentNode = parent[i];
             const rootNode = nodesRemap[parentNode];
-            const rootEntry = { entry: this.dictionary[nodes[rootNode]], samples: sampleCount[rootNode] };
-            const parentEntry = parentNode === rootNode
-                ? rootEntry
-                : { entry: this.dictionary[nodes[parentNode]], samples: sampleCount[parentNode] };
-            const selfEntry = { entry: this.dictionary[nodes[i]], samples: sampleCount[i] };
+            const selfEntry = createEntry(i);
+            const parentEntry = createEntry(parentNode);
+            const rootEntry = rootNode === parentNode
+                ? parentEntry
+                : createEntry(rootNode);
 
-            nodesRemap[i] = fn(selfEntry, parentEntry, rootEntry) === true ? rootNode : i;
+            nodesRemap[i] = rule(selfEntry, parentEntry, rootEntry) === true ? rootNode : i;
         }
 
         if (origSampleIdToNode === NULL_ARRAY) {

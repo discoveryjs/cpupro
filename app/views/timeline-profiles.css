@@ -4,6 +4,20 @@
     margin: 1px 0;
 }
 
+.view-timeline-profiles .toggle-disabled-button {
+    position: absolute;
+    left: -21px;
+    width: 20px;
+    height: 8px;
+    box-sizing: border-box;
+    padding: 0;
+    margin: .5px 0;
+    font-size: 1px;
+}
+.view-timeline-profiles .toggle-disabled-button:has(+ .profile.disabled):not(:hover) {
+    opacity: .5;
+}
+
 .view-timeline-profiles > .profile {
     position: relative;
     margin-left: calc(100% * var(--x1));
@@ -23,9 +37,14 @@
     background-color: #00000020;
 }
 
-.view-timeline-profiles > .selected {
+.view-timeline-profiles > .profile.selected {
     background-color: orange;
 }
+.view-timeline-profiles > .profile.disabled {
+    background-color: #888;
+    opacity: .25;
+}
+.view-timeline-profiles .toggle-disabled-button:hover + .profile:not(.selected),
 .view-timeline-profiles > .profile:not(.selected):hover {
     background-color: #6d9ec9;
     cursor: pointer;

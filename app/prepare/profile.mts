@@ -1,3 +1,4 @@
+import type { Model } from '@discoveryjs/discovery';
 import { convertToInt32Array, convertToUint32Array } from './utils.js';
 import { mergeSamples, computeTimings, remapTreeSamples } from './preprocessing/samples.js';
 import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
@@ -12,9 +13,47 @@ import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
 import { GeneratedNodes, V8CpuProfile } from './types.js';
+import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
+import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
 
-type CreateProfileApi = {
+export type Profile = Awaited<ReturnType<typeof createProfile>>;
+export type CreateProfileApi = {
     work<T>(name: string, fn: () => T): Promise<T>;
+}
+
+export function selectProfile(discovery: Model, profile: Profile) {
+    discovery.data = {
+        ...discovery.data,
+        currentProfile: profile
+    };
+}
+
+export function toggleProfile(discovery: Model, profile: Profile) {
+    const {
+        currentProfile,
+        profiles,
+        allProfiles,
+        callFramesProfilePresence,
+        currentSamplesConvolutionRule
+    } = discovery.data;
+    const disable = !profile.disabled;
+
+    if ((disable && profiles.length <= 2) || !allProfiles.includes(profile)) {
+        return;
+    }
+
+    profile.disabled = !profile.disabled;
+    const newProfiles = allProfiles.filter(p => !p.disabled);
+    discovery.data = {
+        ...discovery.data,
+        currentProfile: disable && profile === currentProfile
+            ? newProfiles[0] || null
+            : currentProfile,
+        profiles: newProfiles
+    };
+
+    computeCrossProfileUsage(newProfiles, callFramesProfilePresence);
+    setSamplesConvolutionRule(newProfiles, callFramesProfilePresence, currentSamplesConvolutionRule);
 }
 
 export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work }: CreateProfileApi) {
@@ -248,6 +287,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
 
     const profile = {
         name: data._name,
+        disabled: false,
         runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
         sourceInfo: {
             nodes: nodesCount,
@@ -263,10 +303,12 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
 
         samples: samplesTimings.samples,
         sampleCounts,
+        sampleCountsByProfile: new Uint32Array(),
         samplePositions,
         samplesTimings,
         samplesTimingsFiltered,
         timeDeltas: samplesTimings.timeDeltas,
+        timeDeltasByProfile: new Uint32Array(),
         recomputeTimings,
 
         ...usage,

@@ -4,7 +4,8 @@ import { extractAndValidate } from './prepare/index.js';
 import { processPaths } from './prepare/preprocessing/paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { Dictionary } from './prepare/dictionary.js';
-import { createProfile } from './prepare/profile.js';
+import { createProfile, Profile } from './prepare/profile.mjs';
+import { computeCrossProfileUsage } from './prepare/computations/cross-profile-usage.mjs';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
     const work = async function<T>(name: string, fn: () => T): Promise<T> {
@@ -33,8 +34,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     //
     // Process profiles
     //
-
-    const profiles: Awaited<ReturnType<typeof createProfile>>[] = [];
+    const profiles: Profile[] = [];
 
     for (let i = 0; i < profileSet.profiles.length; i++) {
         const profileData = profileSet.profiles[i];
@@ -63,37 +63,18 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         profiles.push(profile);
     }
 
+    // init aggregation by profile count here since we need to know the total number of profiles,
+    // that can be filtered out on preprocessing
+    for (const profile of profiles) {
+        profile.timeDeltasByProfile = new Uint32Array(profiles.length);
+        profile.sampleCountsByProfile = new Uint32Array(profiles.length);
+    }
+
     // cross-profiles usage
-    const callFramesProfilePresence = await work('cross-profile usage', () => {
-        const callFramesProfilePresence = new Uint8Array(dict.callFrames.length);
-
-        for (const profile of profiles) {
-            const samplesCount = profile.callFramesTimings.samplesCount;
-
-            for (let i = 0; i < samplesCount.length; i++) {
-                if (samplesCount[i] > 0) {
-                    callFramesProfilePresence[i]++;
-                }
-            }
-        }
-
-        for (const profile of profiles) {
-            const { samplesCount, selfTimes } = profile.callFramesTimings;
-            const timeDeltasByProfile = new Uint32Array(profiles.length);
-            const sampleCountsByProfile = new Uint32Array(profiles.length);
-
-            for (let i = 0; i < samplesCount.length; i++) {
-                const profilesCount = callFramesProfilePresence[i] - 1;
-
-                timeDeltasByProfile[profilesCount] += selfTimes[i];
-                sampleCountsByProfile[profilesCount] += samplesCount[i];
-            }
-
-            profile.timeDeltasByProfile = timeDeltasByProfile;
-            profile.sampleCountsByProfile = sampleCountsByProfile;
-        }
-
-        return callFramesProfilePresence;
+    const callFramesProfilePresence = new Float32Array(dict.callFrames.length);
+    callFramesProfilePresence.rule = null;
+    await work('cross-profile usage', () => {
+        computeCrossProfileUsage(profiles, callFramesProfilePresence);
     });
 
     // process paths
@@ -118,7 +99,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const currentProfile = profiles[profileSet.indexToView || 0] || profiles[0];
     const result = {
         totalTime: profiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
-        callFramesProfilePresence,
         shared: {
             scripts: dict.scripts,
             callFrames: dict.callFrames,
@@ -127,8 +107,12 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             categories: dict.categories
         },
 
+        callFramesProfilePresence,
+        currentSamplesConvolutionRule: null,
+
         currentProfile,
-        profiles
+        profiles,
+        allProfiles: profiles.slice()
     };
 
     return result;

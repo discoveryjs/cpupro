@@ -64,19 +64,6 @@ const intersectionTable = {
     }
 };
 
-function setSamplesConvolutionRule(profiles, rule) {
-    for (let i = 0; i < profiles.length; i++) {
-        const profile = profiles[i];
-        profile.callFramesTree.setSamplesConvolutionRule(
-            rule,
-            profile.callFramesTreeTimings.samplesCount,
-            profile.callFramesTimings.samplesCount
-        );
-        profile.recomputeTimings();
-    }
-    discovery.scheduleRender();
-}
-
 const pageContent = [
     {
         view: 'page-header',
@@ -86,23 +73,39 @@ const pageContent = [
     {
         view: 'block',
         content: [
-            { view: 'button', text: 'Apply samples convolution', onClick(el, data, context) {
-                const { callFramesProfilePresence, profiles } = data;
+            'text:"Samples convolution: "',
 
-                const t = Date.now();
-                setSamplesConvolutionRule(context.data.profiles, (self, parent/* , root*/) => {
-                    return (
-                        self.samples <= 3 &&
-                        callFramesProfilePresence[self.entry.id - 1] !== profiles.length &&
-                        parent.entry.id !== 1
-                    );
-                });
-                console.log('setSamplesConvolutionRule', Date.now() - t);
-            } },
+            {
+                view: 'button',
+                text: 'All (demo)',
+                data: '#.samplesConvolutionRules.all',
+                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
+            },
 
-            { view: 'button', text: 'Reset', onClick(el, data, context) {
-                setSamplesConvolutionRule(context.data.profiles, () => false);
-            } },
+            {
+                view: 'button',
+                text: 'Module',
+                data: '#.samplesConvolutionRules.module',
+                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
+            },
+
+            {
+                view: 'button',
+                text: 'Profile presence',
+                data: '#.samplesConvolutionRules.profilePresence',
+                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
+            },
+
+            {
+                view: 'button',
+                text: 'Reset',
+                data: null,
+                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
+            },
 
             {
                 view: 'block',
@@ -255,7 +258,7 @@ const pageContent = [
                         view: 'block',
                         className: 'pipelines-timeline',
                         context: `{
-                            $totalTime: [#.data.totalTime, avgTotalTime, avgTotalTime2, avgTotalTimeAll].max();
+                            $totalTime: [profiles.totalTime.max(), avgTotalTime, avgTotalTime2, avgTotalTimeAll].max();
                             $startTime: profiles.startTime.min();
 
                             ...#,
@@ -301,7 +304,7 @@ const pageContent = [
                                 view: 'timeline-profiles',
                                 startTime: '=#.startTime',
                                 endTime: '=#.endTime',
-                                data: '#.data.profiles',
+                                data: '#.data.allProfiles',
                                 whenData: 'size() > 1'
                             }
                         ]
