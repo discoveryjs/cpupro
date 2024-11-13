@@ -141,6 +141,7 @@ export function processLongTimeDeltas(
         const originalSize = timeDeltas.length;
 
         // create no-samples node
+        generatedNodes.noSamplesNodeId = noSamplesNodeId;
         generatedNodes.callFrames.push(generatedNodes.dict.callFrames.wellKnownIndex['no-samples']);
         generatedNodes.nodeParentId.push(1);
         generatedNodes.parentScriptOffsets.push(-1);

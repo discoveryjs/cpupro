@@ -25,6 +25,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const generateNodes: GeneratedNodes = {
         dict,
         nodeIdSeed: data.nodes.length + 1,
+        noSamplesNodeId: -1,
         callFrames: [],
         nodeParentId: [],
         parentScriptOffsets: [],

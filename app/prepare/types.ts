@@ -131,6 +131,7 @@ export type GeneratedNodes = {
     count: number;
     dict: Dictionary;
     nodeIdSeed: number;
+    noSamplesNodeId: number;
     callFrames: number[];
     nodeParentId: number[];
     parentScriptOffsets: number[];

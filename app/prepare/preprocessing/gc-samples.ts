@@ -28,7 +28,7 @@ function remapGcSamples(
     samples: Uint32Array
 ) {
     const nodeIdToGcNodeId = new Map<number, number>();
-    const { nodeParentId, parentScriptOffsets, callFrames, dict } = generatedNodes;
+    const { nodeParentId, noSamplesNodeId, parentScriptOffsets, callFrames, dict } = generatedNodes;
     const gcCallFrameIndex = dict.callFrames.wellKnownIndex.gc;
 
     for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
@@ -37,7 +37,7 @@ function remapGcSamples(
         if (nodeId === gcNodeId) {
             if (prevNodeId === gcNodeId) {
                 samples[i] = samples[i - 1];
-            } else {
+            } else if (prevNodeId !== noSamplesNodeId) {
                 let newGcNodeId = nodeIdToGcNodeId.get(prevNodeId);
 
                 if (newGcNodeId === undefined) {
@@ -65,7 +65,7 @@ function remapGcSamplesWithPositions(
 ) {
     const maxNodeId = generatedNodes.nodeIdSeed;
     const nodeIdToGcNodeId = new Map<number, number>();
-    const { nodeParentId, parentScriptOffsets, callFrames, dict } = generatedNodes;
+    const { nodeParentId, noSamplesNodeId, parentScriptOffsets, callFrames, dict } = generatedNodes;
     const gcCallFrameIndex = dict.callFrames.wellKnownIndex.gc;
 
     for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
@@ -74,7 +74,7 @@ function remapGcSamplesWithPositions(
         if (nodeId === gcNodeId) {
             if (prevNodeId === gcNodeId) {
                 samples[i] = samples[i - 1];
-            } else {
+            } else if (prevNodeId !== noSamplesNodeId) {
                 const prevNodeScriptOffset = samplePositions[i - 1];
                 const prevNodeRef = prevNodeScriptOffset * maxNodeId + prevNodeId;
                 let newGcNodeId = nodeIdToGcNodeId.get(prevNodeRef);
