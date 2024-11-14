@@ -110,11 +110,16 @@ function swap(array: number[], i: number, j: number) {
 
 // Sometimes, profilers do not capture samples for extended periods for various reasons.
 // Modern profilers also typically do not record idle samples. Therefore, we truncate
-// long time deltas (greater than a sampleInterval * factor) to prevent distortions in the sample data.
+// long time deltas (greater than sampleInterval * factor) to prevent distortions in the sample data.
 // Other tools assign truncated time to an "(idle)" call frame. CPUpro assigns this time
-// to a special "(unknown)" call frame, which is categorized similarly to the "(idle)" call frame
-// but is kept separate since the exact activity during this period is unknown.
-// It might be beneficial to add additional new samples in "(unknown)" periods, such as "(compiler)"
+// to a special "(no-samples)" call frame, which is categorized similarly to the "(idle)" call frame
+// but is kept separate since the exact activity during this period is unknown. In fact, the engine
+// can be quite busy during those time intervals and therefore doesn't record samples. So, it's unclear
+// how to treat these time intervals in a universal way. Moreover, the "factor" should become configurable
+// in the near future, allowing users to adjust the allowed sample duration overshoot relative to sampleInterval,
+// which will affect the size of the cut-off time delta (the duration of the "(no-samples)" sample).
+// This is one more reason to separate "(no-samples)" from true "(idle)" samples (if any).
+// It might be beneficial to add additional new samples in "(no-samples)" periods, such as "(compiler)"
 // or "(garbage collector)", based on data from events, code compilation records, etc.
 export function processLongTimeDeltas(
     samplesInterval: number,
@@ -123,6 +128,18 @@ export function processLongTimeDeltas(
     samplePositions: number[] | null = null,
     generatedNodes: GeneratedNodes
 ) {
+    // CPUpro uses two factors to truncate long samples.
+    // The first factor, `longSampleFactor` (currently 1.5), is used to check if a sample has overshot
+    // the duration limit.
+    // The second factor, `longSampleCutFactor` (currently 1.2), is used as a baseline to cut the sample
+    // into two parts. The lower part becomes the duration of the sample, and the upper part becomes
+    // the duration of a "(no-samples)" sample.
+    // Two factors are used to avoid splitting samples that have only slightly exceeded the `sampleInterval`.
+    // In other words, splitting a sample into two parts just because it is slightly longer than
+    // the `sampleInterval` is impractical. Despite setting an exact `samplingInterval` for the profile,
+    // it usually adds approximately 25% to it. For example, if we set the sampling interval to 1ms,
+    // the median will be 1.25ms; for 0.5ms — 0.625ms; for 0.1ms — 0.125ms.
+    // Having factors over 1.0 helps reduce gaps between samples and smooths results.
     const longSampleFactor = 1.5;
     const longSampleCutFactor = 1.2; // should be equal or less than longSampleFactor
     const thresholdLongSampleDuration = samplesInterval * longSampleFactor;
