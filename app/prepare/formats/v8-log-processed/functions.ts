@@ -97,8 +97,11 @@ export function processScriptFunctions(
     };
 
     const processedFunctions: V8CpuProfileFunction[] = [];
+    const functionsIndexMap = new Uint32Array(functions.length);
+    const scriptFunctionIndexByScript = new Map<V8LogScript, number>();
 
-    for (const fn of functions) {
+    for (let i = 0; i < functions.length; i++) {
+        const fn = functions[i];
         const source = codes[fn.codes[0]].source; // all the function codes have the same reference to script source
         const v8logScript = source && scripts[source.script];
         const { functionName, scriptUrl, line, column } = parseJsName(fn.name, v8logScript?.url);
@@ -107,15 +110,37 @@ export function processScriptFunctions(
         // create a script by scriptUrl in that case
         const script = v8logScript || getScriptByUrl(scriptUrl);
 
-        processedFunctions.push({
-            scriptId: script.id,
-            name: functionName,
-            start: source?.start ?? -1,
-            end: source?.end ?? -1,
-            line,
-            column
-        });
+        // V8 creates two functions for a script: one with no source parsed (likely a preparse state),
+        // and a second with the source parsed (regular Ignition codes).
+        // It's unclear why there are two functions instead of a single one with two codes (further research needed),
+        // possibly due to initial design choices. However, from a user perspective, there is no need to differentiate
+        // these functions and codes, so CPUpro combines them.
+        // TODO: Merge more functions, as it is typical for long-running scripts that V8 flushes functions (codes)
+        // not called for a while (across several GC cycles), and recreates them once they are called again.
+        const isScriptFunction = line === 0 && column === 0;
+        const scriptFunctionIndex = isScriptFunction ? scriptFunctionIndexByScript.get(script) || -1 : -1;
+        let functionIndex = scriptFunctionIndex;
+
+        if (scriptFunctionIndex === -1) {
+            functionIndex = processedFunctions.push({
+                scriptId: script.id,
+                name: functionName,
+                start: source?.start ?? -1,
+                end: source?.end ?? -1,
+                line,
+                column
+            }) - 1;
+
+            if (isScriptFunction) {
+                scriptFunctionIndexByScript.set(script, functionIndex);
+            }
+        }
+
+        functionsIndexMap[i] = functionIndex;
     }
 
-    return processedFunctions;
+    return {
+        functions: processedFunctions,
+        functionsIndexMap
+    };
 }

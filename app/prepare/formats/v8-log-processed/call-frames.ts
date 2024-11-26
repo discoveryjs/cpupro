@@ -1,4 +1,4 @@
-import type { CallFrame, V8LogCode } from './types.js';
+import type { CallFrame, NumericArray, V8LogCode } from './types.js';
 import type { V8CpuProfileFunction } from '../../types.js';
 import { VM_STATES } from './const.js';
 
@@ -181,12 +181,14 @@ export function createFunctionCallFrames(
 function createCodeCallFrames(
     callFrames: CallFrame[],
     codes: V8LogCode[],
-    callFrameIndexByFunction: Uint32Array
+    callFrameIndexByFunction: Uint32Array,
+    functionsIndexMap: NumericArray | null = null
 ) {
     const callFrameIndexByCode = new Uint32Array(codes.length);
 
     for (let i = 0; i < codes.length; i++) {
         const code = codes[i];
+        const func = code.func;
 
         // FIXME: ignore Abort.Wide/ExtraWide for now since it too noisy;
         // not sure what it stands for, but looks like an execution pause
@@ -196,8 +198,12 @@ function createCodeCallFrames(
             }
         }
 
-        if (code.func !== undefined) {
-            callFrameIndexByCode[i] = callFrameIndexByFunction[code.func];
+        if (func !== undefined) {
+            const functionIndex = functionsIndexMap !== null
+                ? functionsIndexMap[func]
+                : func;
+
+            callFrameIndexByCode[i] = callFrameIndexByFunction[functionIndex];
         } else {
             const name = callFrameInfoFromNonJsCode(code);
 
@@ -212,12 +218,13 @@ function createCodeCallFrames(
 
 export function createCallFrames(
     functions: V8CpuProfileFunction[],
-    codes: V8LogCode[]
+    codes: V8LogCode[],
+    functionsIndexMap: NumericArray | null = null
 ) {
     const callFrames: CallFrame[] = [createCallFrame('(root)')];
     const callFrameIndexByVmState = createVmStateCallFrames(callFrames);
     const callFrameIndexByFunction = createFunctionCallFrames(callFrames, functions);
-    const callFrameIndexByCode = createCodeCallFrames(callFrames, codes, callFrameIndexByFunction);
+    const callFrameIndexByCode = createCodeCallFrames(callFrames, codes, callFrameIndexByFunction, functionsIndexMap);
 
     return {
         callFrames,

@@ -1,5 +1,5 @@
 import type { V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../../types.js';
-import type { V8LogCode, V8LogProfile } from './types.js';
+import type { NumericArray, V8LogCode, V8LogProfile } from './types.js';
 
 export function functionTier(kind: V8LogCode['kind']): V8FunctionCodeType {
     switch (kind) {
@@ -30,26 +30,33 @@ export function functionTier(kind: V8LogCode['kind']): V8FunctionCodeType {
 
 export function processFunctionCodes(
     functions: V8LogProfile['functions'],
-    codes: V8LogProfile['code']
+    codes: V8LogProfile['code'],
+    functionsIndexMap: NumericArray | null = null
 ): V8CpuProfileFunctionCodes[] {
-    const processedCodes: V8CpuProfileFunctionCodes[] = [];
-
-    return functions.map((fn, index) => ({
+    const processedCodes: V8CpuProfileFunctionCodes[] = Array.from(new Set(functionsIndexMap), (_, index) => ({
         function: index,
-        codes: fn.codes.map(codeIndex => {
-            const code = codes[codeIndex];
-            const codeSource = code.source || null;
+        codes: []
+    }));
 
-            return {
+    for (const code of codes) {
+        const func = code.func;
+
+        if (typeof func === 'number') {
+            const codeSource = code.source || null;
+            const functionIndex = functionsIndexMap !== null
+                ? functionsIndexMap[func]
+                : func;
+
+            processedCodes[functionIndex].codes.push({
                 tm: code.tm || 0,
                 tier: functionTier(code.kind),
                 positions: codeSource?.positions || '',
                 inlined: codeSource?.inlined || '',
                 fns: codeSource?.fns || [],
                 deopt: code.deopt
-            };
-        })
-    }));
+            });
+        }
+    }
 
     return processedCodes;
 }

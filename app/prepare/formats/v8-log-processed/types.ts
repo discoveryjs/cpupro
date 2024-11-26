@@ -1,3 +1,5 @@
+export type NumericArray = Uint32Array | Int32Array | Uint16Array | Int16Array | number[];
+
 export type V8LogProfile = {
     code: V8LogCode[];
     ticks: V8LogTick[];
