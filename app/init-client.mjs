@@ -1,24 +1,10 @@
 import { selectProfile, toggleProfile } from './prepare/profile.mts';
 import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule } from './prepare/computations/samples-convolution.mjs';
 
-function consumeDemos() {
-    const demos = discovery.context?.model?.meta?.demos;
+const demos = discovery.context?.model?.meta?.demos;
 
-    if (demos) {
-        discovery.action.define('demos', () => demos);
-
-        if (discovery.data) {
-            discovery.cancelScheduledRender();
-        }
-    }
-
-    if (discovery.context) {
-        discovery.context.samplesConvolutionRules = {
-            all: allConvolutionRule,
-            module: moduleConvolutionRule,
-            profilePresence: profilePresenceConvolutionRule
-        };
-    }
+if (demos) {
+    discovery.action.define('demos', () => demos);
 }
 
 discovery.nav.primary.append({
@@ -66,15 +52,14 @@ discovery.action.define('setSamplesConvolutionRule', (rule) => {
     }
 });
 
-// FIXME: temporary solution
-try {
-    discovery.annotations.push({
-        query: '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
-    });
-} catch (e) {
-    console.error(e);
-}
+discovery.action.call('setStructViewAnnotations', [
+    '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
+]);
 
-// FIXME: temporary solution, since context is not set on App's init
-setTimeout(consumeDemos, 1);
-discovery.once('data', () => setTimeout(consumeDemos, 1));
+discovery.setContext({
+    samplesConvolutionRules: {
+        all: allConvolutionRule,
+        module: moduleConvolutionRule,
+        profilePresence: profilePresenceConvolutionRule
+    }
+});
