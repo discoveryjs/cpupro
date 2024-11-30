@@ -37,6 +37,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     const profiles: Profile[] = [];
 
     for (let i = 0; i < profileSet.profiles.length; i++) {
+        // if (i === 0) continue;
         const profileData = profileSet.profiles[i];
 
         // execution context goes first sice it affects package name
@@ -72,7 +73,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
     // cross-profiles usage
     const callFramesProfilePresence = new Float32Array(dict.callFrames.length);
-    callFramesProfilePresence.rule = null;
     await work('cross-profile usage', () => {
         computeCrossProfileUsage(profiles, callFramesProfilePresence);
     });

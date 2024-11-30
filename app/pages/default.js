@@ -795,13 +795,13 @@ const pageContent = [
         ]
     },
 
-    pageIndicators,
-
     {
         view: 'timeline-profiles',
-        data: '#.data.profiles',
+        data: '#.data.allProfiles',
         whenData: 'size() > 1'
     },
+
+    pageIndicators,
 
     {
         view: 'expand',
