@@ -5,7 +5,7 @@ module.exports = {
     version: require('./package.json').version,
     description: 'A viewer for CPU profiles captured in V8 runtimes like Node.js, Deno or Chromium browsers',
     icon: './img/logo.svg',
-    darkmode: 'only',
+    colorScheme: 'dark-only',
     embed: true,
     upload: {
         accept: v8logSupport
