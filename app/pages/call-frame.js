@@ -150,13 +150,10 @@ const pageContent = [
     {
         view: 'update-on-timings-change',
         timings: '=#.currentProfile.callFramesTimingsFiltered',
-        content: {
-            view: 'page-indicator-timings',
-            data: `{
-                full: #.currentProfile.callFramesTimings.entries[=>entry = @],
-                filtered: #.currentProfile.callFramesTimingsFiltered.entries[=>entry = @]
-            }`
-        }
+        content: `page-indicator-timings:{
+            full: #.currentProfile.callFramesTimings.entries[=>entry = @],
+            filtered: #.currentProfile.callFramesTimingsFiltered.entries[=>entry = @]
+        }`
     },
 
     {
@@ -181,10 +178,11 @@ const pageContent = [
         expanded: '=source is not undefined',
         header: [
             'text:"Source"',
+            { view: 'block', className: 'text-divider' },
             { view: 'switch', content: [
-                { when: 'callFrame.regexp', content: 'html:` \xa0<span style="color: #888">${callFrame.regexp.size().bytes(true)}</html>`' },
-                { when: 'source is not undefined', content: 'html:` \xa0<span style="color: #888">${source.size().bytes(true)}</html>`' },
-                { content: 'html:` <span style="color: #888">(unavailable)</span>`' }
+                { when: 'callFrame.regexp', content: 'html:`<span style="color: #888">${callFrame.regexp.size().bytes(true)}</html>`' },
+                { when: 'source is not undefined', content: 'html:`<span style="color: #888">${source.size().bytes(true)}</html>`' },
+                { content: 'html:`<span style="color: #888">(unavailable)</span>`' }
             ] }
         ],
         content: [
@@ -301,7 +299,15 @@ const pageContent = [
         view: 'expand',
         expanded: true,
         className: 'trigger-outside',
-        header: 'text:"Nested time distribution"',
+        header: [
+            'text:"Nested time distribution"',
+            { view: 'block', className: 'text-divider' },
+            {
+                view: 'update-on-timings-change',
+                timings: '=#.currentProfile.callFramesTimingsFiltered',
+                content: 'duration:#.currentProfile.callFramesTimingsFiltered.entries[=>entry=@].nestedTime'
+            }
+        ],
         content: 'nested-timings-tree:{ subject: @, tree: #.currentProfile.callFramesTree, timings: #.currentProfile.callFramesTimingsFiltered }'
     },
 

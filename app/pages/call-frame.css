@@ -36,12 +36,13 @@
     content: 'inl';
 }
 .page-call-frame .view-source .view-source__source .code-point {
-    font-size: 0px;
-    vertical-align: top;
+    display: inline-block;
+    vertical-align: middle;
     padding: 4px;
+    margin: -2px 3px 0 1px;
+    font-size: 0px;
     border-radius: 4px;
     background-color: #c4906f;
-    margin: 0 3px 0 1px;
 }
 .page-call-frame .view-source .view-source__source .sample-point {
     font-size: 85%;

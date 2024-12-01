@@ -1,7 +1,7 @@
 .view-duration {
     max-width: 18ex;
     height: 19.5px;
-    display: flex;
+    display: inline-flex;
     text-align: right;
     align-items: baseline;
     gap: .65ex;

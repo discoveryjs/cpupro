@@ -1,3 +1,5 @@
+import { timingCols } from './common.js';
+
 const pageContent = [
     {
         view: 'page-header',
@@ -16,21 +18,30 @@ const pageContent = [
     {
         view: 'update-on-timings-change',
         timings: '=#.currentProfile.packagesTimingsFiltered',
-        content: {
-            view: 'page-indicator-timings',
-            data: `{
-                full: #.currentProfile.packagesTimings.entries[=>entry = @],
-                filtered: #.currentProfile.packagesTimingsFiltered.entries[=>entry = @]
-            }`
-        }
+        content: `page-indicator-timings:{
+            full: #.currentProfile.packagesTimings.entries[=>entry = @],
+            filtered: #.currentProfile.packagesTimingsFiltered.entries[=>entry = @]
+        }`
     },
 
     {
         view: 'expand',
         expanded: true,
         className: 'trigger-outside',
-        header: 'text:"Nested time distribution"',
-        content: 'nested-timings-tree:{ subject: @, tree: #.currentProfile.packagesTree, timings: #.currentProfile.packagesTimingsFiltered }'
+        header: [
+            'text:"Nested time distribution"',
+            { view: 'block', className: 'text-divider' },
+            {
+                view: 'update-on-timings-change',
+                timings: '=#.currentProfile.packagesTimingsFiltered',
+                content: 'duration:#.currentProfile.packagesTimingsFiltered.entries[=>entry=@].nestedTime'
+            }
+        ],
+        content: `nested-timings-tree:{
+            subject: @,
+            tree: #.currentProfile.packagesTree,
+            timings: #.currentProfile.packagesTimingsFiltered
+        }`
     },
 
     {
@@ -40,92 +51,49 @@ const pageContent = [
         header: [
             'text:"Modules "',
             {
-                view: 'pill-badge',
+                view: 'update-on-timings-change',
                 data: '#.currentProfile.modulesTimingsFiltered.entries.[entry.package = @]',
-                content: [
-                    {
-                        view: 'update-on-timings-change',
-                        timings: '=#.currentProfile.modulesTimingsFiltered',
-                        content: 'text-numeric:count(=> totalTime?)'
-                    },
-                    {
-                        view: 'text-numeric',
-                        className: 'total-number',
-                        data: '` ⁄ ${size()}`'
-                    }
-                ]
+                timings: '=#.currentProfile.modulesTimingsFiltered',
+                content: 'sampled-count-total{ count(=> totalTime?), total: size() }'
             }
         ],
         content: {
             view: 'content-filter',
             data: `
-                #.currentProfile.modulesTimingsFiltered.entries.[entry.package = @]
-                    .zip(=> entry, #.currentProfile.functionsTimingsFiltered.entries.group(=> entry.module), => key)
-                    .({ timings: left, functions: right.value })
-                    .zip(=> timings.entry, #.currentProfile.scripts, => module)
-                    .({
-                        $timings: left.timings;
-                        $entry: $timings.entry;
-
-                        ...,
-                        left: $timings,
-                        functions: left.functions,
-                        $entry,
-                        name: $entry | packageRelPath or name,
-                        packageName: $entry.package.name,
-                        categoryName: $entry.category.name
-                    })
+                #.currentProfile.callFramesTimingsFiltered.entries
+                    .[entry.package = @]
+                    .group(=> entry.module)
+                    .zip(=> key, #.currentProfile.modulesTimingsFiltered.entries, => entry)
+                    .({ module: right, name: right.entry | packageRelPath or name, callFrames: left.value })
             `,
             className: 'table-content-filter',
             content: {
                 view: 'update-on-timings-change',
+                data: '.[name ~= #.filter]',
                 timings: '=#.currentProfile.modulesTimingsFiltered',
                 content: {
                     view: 'table',
                     data: `
-                        .[name ~= #.filter]
                         .({
                             ...,
-                            selfTime: left.selfTime,
-                            nestedTime: left.nestedTime,
-                            totalTime: left.totalTime
+                            selfTime: module.selfTime,
+                            nestedTime: module.nestedTime,
+                            totalTime: module.totalTime
                         })
                         .sort(selfTime desc, totalTime desc)
                     `,
                     cols: [
-                        { header: 'Self time',
-                            sorting: 'selfTime desc, totalTime desc',
-                            colSpan: '=totalTime ? 1 : 3',
-                            content: {
-                                view: 'switch',
-                                content: [
-                                    { when: 'totalTime', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                                    { content: 'no-samples' }
-                                ]
-                            }
-                        },
-                        { header: 'Nested time',
-                            sorting: 'nestedTime desc, totalTime desc',
-                            when: 'totalTime',
-                            content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
-                        },
-                        { header: 'Total time',
-                            sorting: 'totalTime desc, selfTime desc',
-                            when: 'totalTime',
-                            content: 'duration:{ time: totalTime, total: #.data.totalTime }'
-                        },
+                        ...timingCols,
                         { header: 'Module',
                             sorting: 'name ascN',
-                            content: 'module-badge:entry'
+                            content: 'module-badge:module.entry'
                         },
-                        { header: 'Call frames',
+                        {
+                            header: 'Call frames',
                             className: 'number',
-                            data: 'functions',
-                            content: [
-                                { view: 'text-numeric', className: 'sampled-count', data: 'count(=> totalTime?)' },
-                                'text-numeric:` ⁄ ${size()}`'
-                            ],
-                            details: 'struct'
+                            data: 'callFrames',
+                            content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
+                            details: 'struct{ expanded: 1 }'
                         }
                         // { header: 'Histogram', content: {
                         //     view: 'timeline-segments-bin',

@@ -1,0 +1,13 @@
+.view-sampled-count-total > .count:not(.no-sampled) {
+    color: #9ea867;
+}
+.view-sampled-count-total > .divider::before {
+    content: ' ⁄ ';
+    color: #666;
+}
+.view-sampled-count-total > .total {
+    color: #888;
+}
+.view-sampled-count-total.no-sampled > :is(.count, .divider) {
+    display: none;
+}

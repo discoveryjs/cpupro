@@ -192,6 +192,17 @@ h2 .logo {
     --discovery-view-expand-trigger-size: calc(var(--discovery-page-padding-left) - 2px);
     margin-right: calc(-1 * var(--discovery-page-padding-right) + 1px);
 }
+.page > .view-expand > .header .view-sampled-count-total {
+    margin-left: .75ex;
+}
+.page > .view-expand > .header .text-divider {
+    display: inline;
+}
+.page > .view-expand > .header .text-divider::before {
+    content: '—';
+    padding: 0 1ex;
+    color: #888;
+}
 
 .table-content-filter > .view-input {
     margin: 1px 0;
@@ -404,8 +415,10 @@ h2 .logo {
     opacity: 1;
 }
 
-.view-table-cell.timings:empty {
+.view-table-cell.timings {
     text-align: right;
+}
+.view-table-cell.timings:empty {
     color: #555;
 }
 .view-table-cell.timings:empty::before {

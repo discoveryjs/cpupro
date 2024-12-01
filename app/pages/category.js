@@ -1,3 +1,5 @@
+import { timingCols } from './common.js';
+
 const pageContent = [
     {
         view: 'page-header',
@@ -15,21 +17,30 @@ const pageContent = [
     {
         view: 'update-on-timings-change',
         timings: '=#.currentProfile.categoriesTimingsFiltered',
-        content: {
-            view: 'page-indicator-timings',
-            data: `{
-                full: #.currentProfile.categoriesTimings.entries[=>entry = @],
-                filtered: #.currentProfile.categoriesTimingsFiltered.entries[=>entry = @]
-            }`
-        }
+        content: `page-indicator-timings:{
+            full: #.currentProfile.categoriesTimings.entries[=>entry = @],
+            filtered: #.currentProfile.categoriesTimingsFiltered.entries[=>entry = @]
+        }`
     },
 
     {
         view: 'expand',
         expanded: false,
         className: 'trigger-outside',
-        header: 'text:"Nested time distribution"',
-        content: 'nested-timings-tree:{ subject: @, tree: #.currentProfile.categoriesTree, timings: #.currentProfile.functionsTimingsFiltered }'
+        header: [
+            'text:"Nested time distribution"',
+            { view: 'block', className: 'text-divider' },
+            {
+                view: 'update-on-timings-change',
+                timings: '=#.currentProfile.categoriesTimingsFiltered',
+                content: 'duration:#.currentProfile.categoriesTimingsFiltered.entries[=>entry=@].nestedTime'
+            }
+        ],
+        content: `nested-timings-tree:{
+            subject: @,
+            tree: #.currentProfile.categoriesTree,
+            timings: #.currentProfile.callFramesTimingsFiltered
+        }`
     },
 
     {
@@ -43,26 +54,56 @@ const pageContent = [
                 'text:"Packages "',
                 {
                     view: 'update-on-timings-change',
+                    data: '#.currentProfile.packagesTimingsFiltered.entries.[entry.category = @]',
                     timings: '=#.currentProfile.packagesTimingsFiltered',
-                    content: { view: 'pill-badge', content: 'text-numeric:#.currentProfile.packagesTimingsFiltered.entries.[totalTime and entry.category = @].size()' }
+                    content: 'sampled-count-total{ count(=> totalTime?), total: size() }'
                 }
             ],
             content: {
                 view: 'content-filter',
                 className: 'table-content-filter',
+                data: `
+                    #.currentProfile.callFramesTimingsFiltered.entries
+                        .[entry.category = @]
+                        .group(=> entry.module)
+                        .zip(=> key, #.currentProfile.modulesTimingsFiltered.entries, => entry)
+                        .({ module: right, callFrames: left.value })
+                        .group(=> module.entry.package)
+                        .zip(=> key, #.currentProfile.packagesTimingsFiltered.entries, => entry)
+                        .({ package: right, modules: left.value })
+                `,
                 content: {
                     view: 'update-on-timings-change',
+                    data: '.[package.entry.name ~= #.filter]',
                     timings: '=#.currentProfile.packagesTimingsFiltered',
                     content: {
                         view: 'table',
-                        data: '#.currentProfile.packagesTimingsFiltered.entries.[totalTime and entry.category = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                        data: `.({
+                                ...,
+                                name: module.entry.name,
+                                selfTime: package.selfTime,
+                                totalTime: package.totalTime,
+                                nestedTime: package.nestedTime
+                            })
+                            .sort(selfTime desc, totalTime desc)
+                        `,
                         cols: [
-                            { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                            { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
-                            { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                            { header: 'Package', sorting: 'entry.name asc', content: 'package-badge:entry' },
-                            { header: 'Modules', data: 'entry.modules' },
-                            { header: 'Call frames', data: 'entry.modules.functions' }
+                            ...timingCols,
+                            { header: 'Package', sorting: 'name asc', content: 'package-badge:package.entry' },
+                            {
+                                header: 'Modules',
+                                className: 'number',
+                                data: 'modules.module',
+                                content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
+                                details: 'struct{ expanded: 1 }'
+                            },
+                            {
+                                header: 'Call frames',
+                                className: 'number',
+                                data: 'modules.callFrames',
+                                content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
+                                details: 'struct{ expanded: 1 }'
+                            }
                         ]
                     }
                 }
@@ -78,25 +119,46 @@ const pageContent = [
             'text:"Modules "',
             {
                 view: 'update-on-timings-change',
+                data: '#.currentProfile.modulesTimingsFiltered.entries.[entry.category = @]',
                 timings: '=#.currentProfile.modulesTimingsFiltered',
-                content: { view: 'pill-badge', content: 'text-numeric:#.currentProfile.modulesTimingsFiltered.entries.[totalTime and entry.category = @].size()' }
+                content: 'sampled-count-total{ count(=> totalTime?), total: size() }'
             }
         ],
         content: {
             view: 'content-filter',
             className: 'table-content-filter',
+            data: `
+                #.currentProfile.callFramesTimingsFiltered.entries
+                    .[entry.category = @]
+                    .group(=> entry.module)
+                    .zip(=> key, #.currentProfile.modulesTimingsFiltered.entries, => entry)
+                    .({ module: right, name: right.entry.name, callFrames: left.value })
+            `,
             content: {
                 view: 'update-on-timings-change',
+                data: '.[name ~= #.filter]',
                 timings: '=#.currentProfile.modulesTimingsFiltered',
                 content: {
                     view: 'table',
-                    data: '#.currentProfile.modulesTimingsFiltered.entries.[totalTime and entry.category = @ and entry.name ~= #.filter].sort(selfTime desc, totalTime desc)',
+                    data: `
+                        .({
+                            ...,
+                            selfTime: module.selfTime,
+                            totalTime: module.totalTime,
+                            nestedTime: module.nestedTime
+                        })
+                        .sort(selfTime desc, totalTime desc)
+                    `,
                     cols: [
-                        { header: 'Self time', sorting: 'selfTime desc, totalTime desc', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
-                        { header: 'Nested time', sorting: 'nestedTime desc, totalTime desc', content: 'duration:{ time: nestedTime, total: #.data.totalTime }' },
-                        { header: 'Total time', sorting: 'totalTime desc, selfTime desc', content: 'duration:{ time: totalTime, total: #.data.totalTime }' },
-                        { header: 'Module', sorting: 'entry.name ascN',content: 'module-badge:entry' },
-                        { header: 'Call frames', data: 'entry.functions' }
+                        ...timingCols,
+                        { header: 'Module', sorting: 'name ascN',content: 'module-badge:module.entry' },
+                        {
+                            header: 'Call frames',
+                            className: 'number',
+                            data: 'callFrames',
+                            content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
+                            details: 'struct{ expanded: 1 }'
+                        }
                     ]
                 }
             }
