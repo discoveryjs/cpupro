@@ -5,7 +5,7 @@ import { CallTree } from './call-tree';
 import { CpuProNode } from '../types';
 
 export type BufferMap<T> = {
-    memory: Uint32Array | WebAssembly.Memory;
+    memory: WebAssembly.Memory | Uint8Array | null;
     samples: BufferSamplesTimingsMap;
     tree: BufferTreeTimingsMap<T>[];
     dict: BufferDictionaryTimingsMap<T>[];
@@ -18,7 +18,6 @@ export type BufferMap<T> = {
 //     dict: { [K in keyof T]: BufferDictionaryTimingsMap<T[K] extends CallTree<infer V> ? V : never> };
 // };
 export type BufferSamplesTimingsMap = {
-    buffer: Uint32Array;
     samples: Uint32Array;
     samplesMask: Uint32Array;
     timeDeltas: Uint32Array;
@@ -27,7 +26,6 @@ export type BufferSamplesTimingsMap = {
     samplesTimes: Uint32Array;
 };
 export type BufferTreeTimingsMap<T> = {
-    buffer: Uint32Array;
     tree: CallTree<T>;
     sourceSamplesCount: Uint32Array;
     sourceSamplesTimes: Uint32Array;
@@ -38,7 +36,6 @@ export type BufferTreeTimingsMap<T> = {
     nestedTimes: Uint32Array;
 };
 export type BufferDictionaryTimingsMap<T> = {
-    buffer: Uint32Array;
     dictionary: T[];
     sourceSamplesCount: Uint32Array;
     sourceSamplesTimes: Uint32Array;
@@ -104,7 +101,7 @@ function createWasmModule(source: string, imports = {}) {
     return new WebAssembly.Instance(module, importObject);
 }
 
-export function createWasmApi(memory: WebAssembly.Memory): ComputeTimingsApi {
+export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeTimingsApi {
     const wasmModule = createWasmModule(computeTimingsWasmSourceBase64, { memory }) as ComputeTimingsWasmModuleInstance;
     const {
         accumulateSampleCount,

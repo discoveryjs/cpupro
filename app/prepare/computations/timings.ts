@@ -430,14 +430,13 @@ export function createTreeComputeBuffer<T>(
 
     const memory = useWasm
         ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
-        : new Uint32Array(4 * bufferSize);
-    const buffer = new Uint32Array(memory.buffer);
-    let offset = 0;
+        : new Uint8Array(4 * bufferSize); // TODO: remove the allocation
+    const buffer = memory ? new Uint32Array(memory.buffer) : null;
+    let bufferOffset = 0;
     const samplesMap: BufferSamplesTimingsMap = {
-        buffer,
-        timeDeltas: alloc(timeDeltas),
+        timeDeltas: adopt(timeDeltas),
         timestamps: alloc(timeDeltas.length),
-        samples: alloc(samples),
+        samples: adopt(samples),
         samplesMask: alloc(samplesMapSize),
         samplesCount: alloc(samplesMapSize),
         samplesTimes: alloc(samplesMapSize)
@@ -453,27 +452,25 @@ export function createTreeComputeBuffer<T>(
 
     for (const { tree, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         const treeMap: BufferTreeTimingsMap<T> = {
-            buffer,
             tree,
             sourceSamplesCount: samplesMap.samplesCount,
             sourceSamplesTimes: samplesMap.samplesTimes,
-            sampleIdToNode: alloc(tree.sampleIdToNode),
-            parent: alloc(tree.parent),
+            sampleIdToNode: adopt(tree.sampleIdToNode),
+            parent: adopt(tree.parent),
             samplesCount: alloc(tree.nodes.length),
             selfTimes: alloc(tree.nodes.length),
             nestedTimes: alloc(tree.nodes.length)
         };
         tree.sampleIdToNode = treeMap.sampleIdToNode;
         const dictMap: BufferDictionaryTimingsMap<T> = {
-            buffer,
             dictionary: tree.dictionary,
             sourceSamplesCount: samplesMap.samplesCount,
             sourceSamplesTimes: samplesMap.samplesTimes,
             nodeSelfTimes: treeMap.selfTimes,
             nodeNestedTimes: treeMap.nestedTimes,
-            sampleIdToDict: alloc(sampleIdToDict),
-            totalNodes: alloc(totalNodes),
-            totalNodeToDict: alloc(totalNodeToDict),
+            sampleIdToDict: adopt(sampleIdToDict),
+            totalNodes: adopt(totalNodes),
+            totalNodeToDict: adopt(totalNodeToDict),
             samplesCount: alloc(tree.dictionary.length),
             selfTimes: alloc(tree.dictionary.length),
             totalTimes: alloc(tree.dictionary.length)
@@ -485,17 +482,22 @@ export function createTreeComputeBuffer<T>(
 
     return bufferMap;
 
-    function alloc(array: number | Uint32Array) {
-        const arrayOffset = offset;
-
-        if (typeof array === 'number') {
-            offset += array << 2;
-        } else {
-            buffer.set(array, offset >> 2);
-            offset += array.length << 2;
+    function adopt(array: Uint32Array) {
+        if (buffer === null) {
+            return array;
         }
 
-        return buffer.subarray(arrayOffset >> 2, offset >> 2);
+        buffer.set(array, bufferOffset);
+
+        return buffer.subarray(bufferOffset, bufferOffset += array.length);
+    }
+
+    function alloc(size: number) {
+        if (buffer === null) {
+            return new Uint32Array(size);
+        }
+
+        return buffer.subarray(bufferOffset, bufferOffset += size);
     }
 }
 
@@ -512,8 +514,8 @@ export function createTreeCompute(
         tree: treeMaps,
         dict: dictMaps
     } = bufferMap;
-    const computeTimingsApi = useWasm
-        ? createWasmApi(memory as WebAssembly.Memory)
+    const computeTimingsApi = useWasm && memory
+        ? createWasmApi(memory)
         : createJavaScriptApi();
 
     computeAll(computeTimingsApi, bufferMap, false);
