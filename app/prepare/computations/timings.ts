@@ -449,7 +449,7 @@ export function createTreeComputeBuffer<T>(
         dict: []
     };
 
-    computeTimestamps(samplesMap.timestamps.array, samplesMap.timeDeltas.array);
+    computeTimestamps(samplesMap.timestamps, samplesMap.timeDeltas);
 
     for (const { tree, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         const treeMap: BufferTreeTimingsMap<T> = {
@@ -463,7 +463,7 @@ export function createTreeComputeBuffer<T>(
             selfTimes: alloc(tree.nodes.length),
             nestedTimes: alloc(tree.nodes.length)
         };
-        tree.sampleIdToNode = treeMap.sampleIdToNode.array;
+        tree.sampleIdToNode = treeMap.sampleIdToNode;
         const dictMap: BufferDictionaryTimingsMap<T> = {
             buffer,
             dictionary: tree.dictionary,
@@ -487,7 +487,6 @@ export function createTreeComputeBuffer<T>(
 
     function alloc(array: number | Uint32Array) {
         const arrayOffset = offset;
-        const record = { offset, array: null };
 
         if (typeof array === 'number') {
             offset += array << 2;
@@ -496,10 +495,7 @@ export function createTreeComputeBuffer<T>(
             offset += array.length << 2;
         }
 
-        return {
-            offset: arrayOffset,
-            array: buffer.subarray(record.offset >> 2, offset >> 2)
-        };
+        return buffer.subarray(arrayOffset >> 2, offset >> 2);
     }
 }
 
@@ -525,53 +521,53 @@ export function createTreeCompute(
     const samplesTimings = new SamplesTiminigs(
         samples,
         timeDeltas,
-        samplesMap.timestamps.array,
-        samplesMap.samplesCount.array.slice(),
-        samplesMap.samplesTimes.array.slice()
+        samplesMap.timestamps,
+        samplesMap.samplesCount.slice(),
+        samplesMap.samplesTimes.slice()
     );
     const samplesTimingsFiltered = new SamplesTiminigsFiltered(
-        samplesMap.samples.array,
-        samplesMap.samplesMask.array,
-        samplesMap.timeDeltas.array,
-        samplesMap.timestamps.array,
-        samplesMap.samplesCount.array,
-        samplesMap.samplesTimes.array
+        samplesMap.samples,
+        samplesMap.samplesMask,
+        samplesMap.timeDeltas,
+        samplesMap.timestamps,
+        samplesMap.samplesCount,
+        samplesMap.samplesTimes
     );
     const treeTimings = treeMaps.map((treeMap) =>
         new TreeTiminigs(
             treeMap.tree,
-            treeMap.samplesCount.array.slice(),
-            treeMap.selfTimes.array.slice(),
-            treeMap.nestedTimes.array.slice()
+            treeMap.samplesCount.slice(),
+            treeMap.selfTimes.slice(),
+            treeMap.nestedTimes.slice()
         ));
     const treeTimingsFiltered = treeMaps.map((treeMap) =>
         new TreeTiminigs(
             treeMap.tree,
-            treeMap.samplesCount.array,
-            treeMap.selfTimes.array,
-            treeMap.nestedTimes.array
+            treeMap.samplesCount,
+            treeMap.selfTimes,
+            treeMap.nestedTimes
         ));
     const dictionaryTimings = dictMaps.map((dictMap) =>
         new DictionaryTiminigs(
             dictMap.dictionary,
-            dictMap.samplesCount.array.slice(),
-            dictMap.selfTimes.array.slice(),
-            dictMap.totalTimes.array.slice()
+            dictMap.samplesCount.slice(),
+            dictMap.selfTimes.slice(),
+            dictMap.totalTimes.slice()
         ));
     const dictionaryTimingsFiltered = dictMaps.map((dictMap) =>
         new DictionaryTiminigs(
             dictMap.dictionary,
-            dictMap.samplesCount.array,
-            dictMap.selfTimes.array,
-            dictMap.totalTimes.array
+            dictMap.samplesCount,
+            dictMap.selfTimes,
+            dictMap.totalTimes
         ));
 
     // const t = Date.now();
     const treeTimestamps = treeMaps.map((treeMap) =>
         new TreeTimestamps(
             treeMap.tree,
-            samplesMap.timestamps.array,
-            samplesMap.samples.array
+            samplesMap.timestamps,
+            samplesMap.samples
         )
     );
     // console.log(Date.now() - t, treeTimestamps);
@@ -581,8 +577,8 @@ export function createTreeCompute(
     const notifySubjects = [samplesTimingsFiltered, ...treeTimingsFiltered, ...dictionaryTimingsFiltered];
     const recomputeTimings = () => {
         for (let i = 0; i < dictMaps.length; i++) {
-            const { sampleIdToNode: { array: sampleIdToNode }, tree: { nodes, sampleIdToNodeChanged } } = treeMaps[i];
-            const { sampleIdToDict: { array: sampleIdToDict } } = dictMaps[i];
+            const { sampleIdToNode: sampleIdToNode, tree: { nodes, sampleIdToNodeChanged } } = treeMaps[i];
+            const { sampleIdToDict: sampleIdToDict } = dictMaps[i];
 
             if (sampleIdToNodeChanged) {
                 for (let j = 0; j < sampleIdToNode.length; j++) {

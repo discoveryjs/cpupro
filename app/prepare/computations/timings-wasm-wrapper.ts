@@ -4,7 +4,6 @@ import computeTimingsWasmSourceBase64 from './timings.wasm';
 import { CallTree } from './call-tree';
 import { CpuProNode } from '../types';
 
-export type BufferMapRecord = { offset: number, array: Uint32Array };
 export type BufferMap<T> = {
     memory: Uint32Array | WebAssembly.Memory;
     samples: BufferSamplesTimingsMap;
@@ -20,37 +19,37 @@ export type BufferMap<T> = {
 // };
 export type BufferSamplesTimingsMap = {
     buffer: Uint32Array;
-    samples: BufferMapRecord;
-    samplesMask: BufferMapRecord;
-    timeDeltas: BufferMapRecord;
-    timestamps: BufferMapRecord;
-    samplesCount: BufferMapRecord;
-    samplesTimes: BufferMapRecord;
+    samples: Uint32Array;
+    samplesMask: Uint32Array;
+    timeDeltas: Uint32Array;
+    timestamps: Uint32Array;
+    samplesCount: Uint32Array;
+    samplesTimes: Uint32Array;
 };
 export type BufferTreeTimingsMap<T> = {
     buffer: Uint32Array;
     tree: CallTree<T>;
-    sourceSamplesCount: BufferMapRecord;
-    sourceSamplesTimes: BufferMapRecord;
-    sampleIdToNode: BufferMapRecord;
-    parent: BufferMapRecord;
-    samplesCount: BufferMapRecord;
-    selfTimes: BufferMapRecord;
-    nestedTimes: BufferMapRecord;
+    sourceSamplesCount: Uint32Array;
+    sourceSamplesTimes: Uint32Array;
+    sampleIdToNode: Uint32Array;
+    parent: Uint32Array;
+    samplesCount: Uint32Array;
+    selfTimes: Uint32Array;
+    nestedTimes: Uint32Array;
 };
 export type BufferDictionaryTimingsMap<T> = {
     buffer: Uint32Array;
     dictionary: T[];
-    sourceSamplesCount: BufferMapRecord;
-    sourceSamplesTimes: BufferMapRecord;
-    nodeSelfTimes: BufferMapRecord;
-    nodeNestedTimes: BufferMapRecord;
-    sampleIdToDict: BufferMapRecord;
-    totalNodes: BufferMapRecord;
-    totalNodeToDict: BufferMapRecord;
-    samplesCount: BufferMapRecord;
-    selfTimes: BufferMapRecord;
-    totalTimes: BufferMapRecord;
+    sourceSamplesCount: Uint32Array;
+    sourceSamplesTimes: Uint32Array;
+    nodeSelfTimes: Uint32Array;
+    nodeNestedTimes: Uint32Array;
+    sampleIdToDict: Uint32Array;
+    totalNodes: Uint32Array;
+    totalNodeToDict: Uint32Array;
+    samplesCount: Uint32Array;
+    selfTimes: Uint32Array;
+    totalTimes: Uint32Array;
 };
 type ComputeTimingsWasmModuleInstance = {
     exports: {
@@ -97,21 +96,6 @@ export type ComputeTimingsApi = {
     ): void;
 };
 
-function extractArrayFromMap<
-    T extends BufferSamplesTimingsMap | BufferTreeTimingsMap<U> | BufferDictionaryTimingsMap<U>,
-    U extends CpuProNode
->(map: T): Record<Exclude<keyof T, 'buffer'>, Uint32Array> {
-    const result: Record<keyof T, Uint32Array> = Object.create(null);
-
-    for (const [key, value] of Object.entries(map)) {
-        if ('array' in value) {
-            result[key] = value.array;
-        }
-    }
-
-    return result;
-}
-
 function createWasmModule(source: string, imports = {}) {
     const sourceBytes = decodeBase64(source);
     const importObject = { imports };
@@ -132,82 +116,82 @@ export function createWasmApi(memory: WebAssembly.Memory): ComputeTimingsApi {
     return {
         computeTimings(map, clear = true) {
             if (clear) {
-                map.samplesCount.array.fill(0);
-                map.samplesTimes.array.fill(0);
+                map.samplesCount.fill(0);
+                map.samplesTimes.fill(0);
             }
 
             accumulateSampleCount(
-                map.timeDeltas.array.length,
-                map.timeDeltas.offset,
-                map.samples.offset,
-                map.samplesCount.offset
+                map.timeDeltas.length,
+                map.timeDeltas.byteOffset,
+                map.samples.byteOffset,
+                map.samplesCount.byteOffset
             );
 
             accumulateTimings(
-                map.timeDeltas.array.length,
-                map.timeDeltas.offset,
-                map.samples.offset,
-                map.samplesTimes.offset
+                map.timeDeltas.length,
+                map.timeDeltas.byteOffset,
+                map.samples.byteOffset,
+                map.samplesTimes.byteOffset
             );
         },
 
         computeTreeTimings(map, clear = true) {
             if (clear) {
-                map.samplesCount.array.fill(0);
-                map.selfTimes.array.fill(0);
-                map.nestedTimes.array.fill(0);
+                map.samplesCount.fill(0);
+                map.selfTimes.fill(0);
+                map.nestedTimes.fill(0);
             }
 
             accumulateTimings(
-                map.sourceSamplesCount.array.length,
-                map.sourceSamplesCount.offset,
-                map.sampleIdToNode.offset,
-                map.samplesCount.offset
+                map.sourceSamplesCount.length,
+                map.sourceSamplesCount.byteOffset,
+                map.sampleIdToNode.byteOffset,
+                map.samplesCount.byteOffset
             );
 
             accumulateTimings(
-                map.sourceSamplesTimes.array.length,
-                map.sourceSamplesTimes.offset,
-                map.sampleIdToNode.offset,
-                map.selfTimes.offset
+                map.sourceSamplesTimes.length,
+                map.sourceSamplesTimes.byteOffset,
+                map.sampleIdToNode.byteOffset,
+                map.selfTimes.byteOffset
             );
 
             rollupTreeTimings(
-                map.parent.offset,
-                map.selfTimes.array.length,
-                map.selfTimes.offset,
-                map.nestedTimes.offset
+                map.parent.byteOffset,
+                map.selfTimes.length,
+                map.selfTimes.byteOffset,
+                map.nestedTimes.byteOffset
             );
         },
 
         computeDictionaryTimings(map, clear = true) {
             if (clear) {
-                map.samplesCount.array.fill(0);
-                map.selfTimes.array.fill(0);
-                map.totalTimes.array.fill(0);
+                map.samplesCount.fill(0);
+                map.selfTimes.fill(0);
+                map.totalTimes.fill(0);
             }
 
             accumulateTimings(
-                map.sourceSamplesCount.array.length,
-                map.sourceSamplesCount.offset,
-                map.sampleIdToDict.offset,
-                map.samplesCount.offset
+                map.sourceSamplesCount.length,
+                map.sourceSamplesCount.byteOffset,
+                map.sampleIdToDict.byteOffset,
+                map.samplesCount.byteOffset
             );
 
             accumulateTimings(
-                map.sourceSamplesTimes.array.length,
-                map.sourceSamplesTimes.offset,
-                map.sampleIdToDict.offset,
-                map.selfTimes.offset
+                map.sourceSamplesTimes.length,
+                map.sourceSamplesTimes.byteOffset,
+                map.sampleIdToDict.byteOffset,
+                map.selfTimes.byteOffset
             );
 
             rollupDictionaryTimings(
-                map.totalNodes.array.length,
-                map.totalNodes.offset,
-                map.nodeSelfTimes.offset,
-                map.nodeNestedTimes.offset,
-                map.totalNodeToDict.offset,
-                map.totalTimes.offset
+                map.totalNodes.length,
+                map.totalNodes.byteOffset,
+                map.nodeSelfTimes.byteOffset,
+                map.nodeNestedTimes.byteOffset,
+                map.totalNodeToDict.byteOffset,
+                map.totalTimes.byteOffset
             );
         }
     };
@@ -227,7 +211,7 @@ export function createJavaScriptApi(): ComputeTimingsApi {
                 timeDeltas,
                 samplesCount,
                 samplesTimes
-            } = extractArrayFromMap(map);
+            } = map;
             const samplesLength = samples.length;
 
             if (clear) {
@@ -253,7 +237,7 @@ export function createJavaScriptApi(): ComputeTimingsApi {
                 samplesCount,
                 selfTimes,
                 nestedTimes
-            } = extractArrayFromMap(map);
+            } = map;
             const nodesCount = selfTimes.length;
 
             if (clear) {
@@ -282,7 +266,7 @@ export function createJavaScriptApi(): ComputeTimingsApi {
                 samplesCount,
                 selfTimes,
                 totalTimes
-            } = extractArrayFromMap(map);
+            } = map;
             const nodesCount = totalNodes.length;
 
             if (clear) {
