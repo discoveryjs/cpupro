@@ -100,3 +100,10 @@ export type CallNode<TCallFrame = CallFrame> = {
     children: number[];
     parentScriptOffset: number;
 }
+
+export type CodePositions = {
+    fistCode: number;
+    lastCode: number;
+    positions: number[];
+    inlined: number[] | null;
+}

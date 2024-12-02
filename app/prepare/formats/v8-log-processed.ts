@@ -13,13 +13,13 @@
 //   > node --prof --log-deopt --prof-sampling-interval=250 ...
 //
 
-import type { CallFrame, CallNode, V8LogCode, V8LogFunction, V8LogProfile } from './v8-log-processed/types.js';
+import type { CallFrame, CallNode, V8LogProfile } from './v8-log-processed/types.js';
 import type { V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import jora from 'jora'; // FIXME: temporary? to calc a median only
 import { processTicks } from './v8-log-processed/ticks.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
 import { createCallFrames } from './v8-log-processed/call-frames.js';
-import { processCodePositions } from './v8-log-processed/positions.js';
+import { processCallFramePositions } from './v8-log-processed/positions.js';
 import { processScripts } from './v8-log-processed/scripts.js';
 import { processFunctionCodes } from './v8-log-processed/codes.js';
 
@@ -31,33 +31,6 @@ export function isV8LogProfile(data: unknown): data is V8LogProfile {
         Array.isArray(maybe.functions) &&
         Array.isArray(maybe.ticks)
     );
-}
-
-function processPositions(
-    codes: V8LogCode[],
-    functions: V8LogFunction[],
-    callFrameIndexByCode: Uint32Array
-) {
-    const positionsByCode = processCodePositions(codes);
-
-    // replace function index in inline info for a call frame index (first code in function's codes)
-    for (const positions of positionsByCode) {
-        if (positions === null || !positions.inlined) {
-            continue;
-        }
-
-        for (let i = 0; i < positions.inlined.length; i += 3) {
-            const callFrameIndex = callFrameIndexByCode[functions[positions.inlined[i]].codes[0]];
-
-            if (typeof callFrameIndex !== 'number') {
-                throw new Error('Can\'t resolve call frame for an inlined function');
-            }
-
-            positions.inlined[i] = callFrameIndex;
-        }
-    }
-
-    return positionsByCode;
 }
 
 function normalizeUrl(url: string) {
@@ -115,7 +88,7 @@ export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
     const { functions, functionsIndexMap } = processScriptFunctions(v8log.functions, v8log.code, scripts);
     const functionCodes = processFunctionCodes(v8log.functions, v8log.code, functionsIndexMap);
     const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(functions, v8log.code, functionsIndexMap);
-    const positionsByCode = processPositions(v8log.code, v8log.functions, callFrameIndexByCode);
+    const positionsByCode = processCallFramePositions(v8log.code, v8log.functions, callFrameIndexByCode);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
         v8log.ticks,
         callFrames,

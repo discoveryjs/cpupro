@@ -1,4 +1,4 @@
-import type { CallFrame, CallNode, V8LogTick } from './types.js';
+import type { CallFrame, CallNode, CodePositions, V8LogTick } from './types.js';
 import { findPositionsCodeIndex } from './positions.js';
 import { VM_STATE_GC, VM_STATE_IDLE, VM_STATE_OTHER } from './const.js';
 
@@ -21,7 +21,7 @@ export function processTicks(
     callFrames: CallFrame[],
     callFrameIndexByVmState: number[] | Uint32Array,
     callFrameIndexByCode: number[] | Uint32Array,
-    positionsByCode
+    positionsByCode: (CodePositions | null)[]
 ) {
     const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_OTHER];
     const maxCodeCallFrameIndex = callFrameIndexByCode.length - 1;
