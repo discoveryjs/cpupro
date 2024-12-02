@@ -1,5 +1,6 @@
 /* eslint-env node */
 const { supportedFormats } = require('../prepare/index.js');
+const futureReleases = false;
 
 discovery.nav.primary.append({
     className: 'full-page-mode',
@@ -516,6 +517,7 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
+            when: futureReleases,
             data: 'functionCodes',
             header: [
                 'text:"Function tiers"',
@@ -641,7 +643,7 @@ const callFrameList = {
                     { header: 'Total time', sorting: 'left.totalTime desc, left.selfTime desc', content: 'duration:{ time: left.totalTime, total: #.data.totalTime }' },
                     {
                         header: '',
-                        colWhen: '$[=>right]',
+                        colWhen: futureReleases && '$[=>right]',
                         sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
                         data: 'right',
                         contentWhen: 'hotness = "hot" or hotness = "warm"',
@@ -797,6 +799,7 @@ const pageContent = [
 
     {
         view: 'timeline-profiles',
+        when: futureReleases,
         data: '#.data.allProfiles',
         whenData: 'size() > 1'
     },

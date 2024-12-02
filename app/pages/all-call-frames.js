@@ -1,3 +1,4 @@
+const futureReleases = false;
 const table = {
     view: 'table',
     className: 'all-page-table',
@@ -33,7 +34,7 @@ const table = {
         },
 
         // hotness
-        { header: '', colWhen: '$[=>right]',
+        { header: '', colWhen: futureReleases && '$[=>right]',
             sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
             data: 'right',
             contentWhen: 'hotness = "hot" or hotness = "warm"',
@@ -62,14 +63,14 @@ const table = {
         },
 
         // source & tiers
-        { header: 'Source', colWhen: '$[=>right]',
+        { header: 'Source', colWhen: futureReleases && '$[=>right]',
             className: 'number',
             sorting: '(right.callFrame.end - right.callFrame.start) desc',
             data: 'right.callFrame',
             content: 'text:end - start | $ > 0?: ""',
             details: '=end-start > 0 ? `source:{ syntax: "js", content: script.source[start:end] }`'
         },
-        { header: 'Tiers', colWhen: '$[=>right]',
+        { header: 'Tiers', colWhen: futureReleases && '$[=>right]',
             sorting: 'right.codes.size() desc',
             data: 'right',
             content: {

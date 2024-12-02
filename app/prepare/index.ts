@@ -14,6 +14,8 @@ export const supportedFormats = [
 export const supportedFormatsText = supportedFormats
     .map(line => line.replace(/\[(.+?)\]\(.*?\)/g, '$1'));
 
+const futureReleases = false;
+
 // function isCPUProfileMerge(data) {
 //     return data && Array.isArray(data.nodes) && Array.isArray(data.profiles);
 // }
@@ -96,6 +98,14 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
 
     if (result.profiles.length === 0) {
         rejectData('CPU profiles not found');
+    }
+
+    if (!futureReleases) {
+        // return only the first profile until multi-profile mode is fully implemented
+        return {
+            ...result,
+            profiles: result.profiles.slice(0, 1)
+        };
     }
 
     return result;
