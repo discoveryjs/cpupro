@@ -449,11 +449,12 @@ function buildTreeSource(
 }
 
 export function buildTrees(
-    dict: Dictionary | Usage,
+    dict: Dictionary,
     nodeParent: Uint32Array,
     nodeIndexById: Int32Array,
     callFrameByNodeIndex: Uint32Array,
-    callFramePositionsTreeSource: TreeSource<CpuProCallFramePosition> | null = null
+    callFramePositionsTreeSource: TreeSource<CpuProCallFramePosition> | null = null,
+    usage: Usage | Dictionary = dict
 ) {
     const treeSource = buildTreeSource(
         nodeParent,
@@ -462,15 +463,15 @@ export function buildTrees(
         dict.callFrames
     );
 
-    const callFramePositionsTree = callFramePositionsTreeSource
+    const callFramePositionsTree = callFramePositionsTreeSource !== null
         ? buildCallTree('callFramePositions', callFramePositionsTreeSource)
         : null;
     const callFramesTree = callFramePositionsTree !== null
-        ? buildCallTree('callFrames', callFramePositionsTree, pos => pos.callFrame, dict.callFrames)
+        ? buildCallTree('callFrames', callFramePositionsTree, pos => pos.callFrame, usage.callFrames)
         : buildCallTree('callFrames', treeSource);
-    const modulesTree = buildCallTree('modules', callFramesTree, dict.callFrameToModule, dict.modules);
-    const packagesTree = buildCallTree('packages', modulesTree, dict.moduleToPackage, dict.packages);
-    const categoriesTree = buildCallTree('categories', packagesTree, dict.packageToCategory, dict.categories);
+    const modulesTree = buildCallTree('modules', callFramesTree, dict.callFrameToModule, usage.modules);
+    const packagesTree = buildCallTree('packages', modulesTree, dict.moduleToPackage, usage.packages);
+    const categoriesTree = buildCallTree('categories', packagesTree, dict.packageToCategory, usage.categories);
 
     return {
         treeSource,

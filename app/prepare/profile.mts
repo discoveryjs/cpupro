@@ -116,7 +116,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         rawSamples,
         rawTimeDeltas,
         rawSamplePositions
-    } = await work('convert samples and timeDeltas into TypeArrays', () => ({
+    } = await work('convert samples & timeDeltas into TypedArrays', () => ({
         rawSamples: convertToUint32Array(data.samples),
         rawTimeDeltas: convertToUint32Array(data.timeDeltas),
         rawSamplePositions: Array.isArray(data._samplePositions)
@@ -218,11 +218,12 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         categoriesTree
     } = await work('build trees', () =>
         buildTrees(
-            usage,
+            dict,
             nodeParent,
             nodeIndexById,
             callFrameByNodeIndex,
-            positionsTreeSource
+            positionsTreeSource,
+            usage
         )
     );
     const callTrees = [
