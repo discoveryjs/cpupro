@@ -8,6 +8,11 @@ export class Usage {
     packages: CpuProPackage[];
     categories: CpuProCategory[];
 
+    callFrameToModule: Uint32Array;
+    moduleToScript: Uint32Array;
+    moduleToPackage: Uint32Array;
+    packageToCategory: Uint32Array;
+
     constructor(
         dict: Dictionary,
         callFrameByNodeIndex: Uint32Array,
@@ -24,15 +29,22 @@ export class Usage {
         }
 
         this.callFrames = dict.callFrames.filter((_, idx) => usedCallFrame[idx]);
-        this.scripts = getUsed(dict.scripts, this.callFrames, callFrame => callFrame.script).usedDict;
-        this.modules = getUsed(dict.modules, this.callFrames, callFrame => callFrame.module).usedDict;
-        this.packages = getUsed(dict.packages, this.callFrames, callFrame => callFrame.package).usedDict;
-        this.categories = getUsed(dict.categories, this.callFrames, callFrame => callFrame.category).usedDict;
+        [this.modules, this.callFrameToModule] = getUsed(dict.modules, this.callFrames, dict.callFrameToModule);
+        [this.scripts, this.moduleToScript] = getUsed(dict.scripts, this.modules, dict.moduleToScript);
+        [this.packages, this.moduleToPackage] = getUsed(dict.packages, this.modules, dict.moduleToPackage);
+        [this.categories, this.packageToCategory] = getUsed(dict.categories, this.packages, dict.packageToCategory);
     }
 }
 
-function getUsed<T>(sourceDictionary: T[], callFrames: CpuProCallFrame[], fn: (callFrame: CpuProCallFrame) => T | null) {
-    const used = new Set(callFrames.map(fn));
+function getUsed<T, S>(
+    sourceDictionary: T[],
+    usedDictionary: S[],
+    fn: (callFrame: S) => T | null
+): [
+    dict: T[],
+    dictToSourceIndex: Uint32Array
+] {
+    const used = new Set(usedDictionary.map(fn));
     const usedDictToSourceIndex = new Uint32Array(used.size);
     const usedDict: T[] = new Array(used.size);
 
@@ -46,8 +58,8 @@ function getUsed<T>(sourceDictionary: T[], callFrames: CpuProCallFrame[], fn: (c
         }
     }
 
-    return {
-        usedDictToSourceIndex,
-        usedDict
-    };
+    return [
+        usedDict,
+        usedDictToSourceIndex
+    ];
 }

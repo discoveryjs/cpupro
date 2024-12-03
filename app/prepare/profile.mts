@@ -218,7 +218,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         categoriesTree
     } = await work('build trees', () =>
         buildTrees(
-            dict,
+            usage,
             nodeParent,
             nodeIndexById,
             callFrameByNodeIndex,

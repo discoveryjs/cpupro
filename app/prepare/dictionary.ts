@@ -100,6 +100,19 @@ export class Dictionary {
         }
     }
 
+    callFrameToModule(callFrame: CpuProCallFrame) {
+        return callFrame.module;
+    }
+    moduleToScript(module: CpuProModule) {
+        return module.script;
+    }
+    moduleToPackage(module: CpuProModule) {
+        return module.package;
+    }
+    packageToCategory(pkg: CpuProPackage) {
+        return pkg.category;
+    }
+
     setPackageNameForOrigin(origin: string, packageName: string) {
         const existingPackageName = this.#packageNameByOriginMap.get(origin);
 
