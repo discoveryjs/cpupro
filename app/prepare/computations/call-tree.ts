@@ -94,10 +94,6 @@ export class CallTree<T> {
         this.subtreeSize = subtreeSize || new Uint32Array(nodes.length);
         this.nested = nested || new Uint32Array(nodes.length);
 
-        this.entryNodes = NULL_ARRAY; // overrides by computeEntryNodes()
-        this.entryNodesOffset = NULL_ARRAY;
-        this.entryNodesCount = NULL_ARRAY;
-
         this.#entryRefMap = new Map();
         this.#childrenRefMap = new Map();
 
@@ -106,14 +102,28 @@ export class CallTree<T> {
             enumerable: true,
             get: () => this.getEntry(0)
         });
+
+        // lazy init
+        Object.defineProperties(this, {
+            entryNodes: {
+                enumerable: true,
+                configurable: true,
+                get: () => this.#computeEntryNodes().entryNodes
+            },
+            entryNodesOffset: {
+                enumerable: true,
+                configurable: true,
+                get: () => this.#computeEntryNodes().entryNodesOffset
+            },
+            entryNodesCount: {
+                enumerable: true,
+                configurable: true,
+                get: () => this.#computeEntryNodes().entryNodesCount
+            }
+        });
     }
 
-    computeEntryNodes() {
-        // skip computations if already done
-        if (this.entryNodes !== NULL_ARRAY) {
-            return this;
-        }
-
+    #computeEntryNodes() {
         const { nodes, dictionary } = this;
         const entryNodes = new Uint32Array(nodes.length);
         const entryNodesOffset = new Uint32Array(dictionary.length);
@@ -141,9 +151,17 @@ export class CallTree<T> {
         }
 
         // store new arrays on the tree
-        this.entryNodes = entryNodes;
-        this.entryNodesOffset = entryNodesOffset;
-        this.entryNodesCount = entryNodesCount;
+        Object.defineProperties(this, {
+            entryNodes: {
+                value: entryNodes
+            },
+            entryNodesOffset: {
+                value: entryNodesOffset
+            },
+            entryNodesCount: {
+                value: entryNodesCount
+            }
+        });
 
         return this;
     }

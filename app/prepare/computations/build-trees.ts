@@ -414,8 +414,7 @@ function buildCallTree<S extends CpuProNode, D extends CpuProNode = S>(
     );
 
     const createTreeStart = Date.now();
-    const tree = new CallTree(dictionary, new Int32Array(sourceNodeMap.buffer), nodes, parent, subtreeSize, nested)
-        .computeEntryNodes();
+    const tree = new CallTree(dictionary, new Int32Array(sourceNodeMap.buffer), nodes, parent, subtreeSize, nested);
 
     if (TIMINGS) {
         console.info(
