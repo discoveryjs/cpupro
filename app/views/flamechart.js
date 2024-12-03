@@ -190,7 +190,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     `);
 
     const { selfTimes, nestedTimes } = timings;
-    const unsubscribeTimings = timings.on(utils.debounce(() => {
+    const unsubscribeTimings = timings.subscribe(utils.debounce(() => {
         chart.resetValues();
         renderDetails(true);
 

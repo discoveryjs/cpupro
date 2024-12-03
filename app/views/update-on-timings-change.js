@@ -16,7 +16,7 @@ discovery.view.define('update-on-timings-change', function(el, config, data, con
         });
     };
 
-    const unsubscribeSource = timings.on(
+    const unsubscribeSource = timings.subscribe(
         debounce
             ? utils.debounce(updateRender, debounce !== true ? debounce : { wait: 16, maxWait: 48 })
             : updateRender

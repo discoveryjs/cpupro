@@ -53,21 +53,22 @@ function computeAll<T extends CpuProNode>(api: ComputeTimingsApi, bufferMap: Buf
 
 export type Listener = { fn: () => void };
 export class TimingsObserver {
-    #listeners: Listener[] = [];
-    on(fn: () => void) {
+    #subscriptions: Listener[] = [];
+
+    subscribe(fn: () => void) {
         let listener: Listener | null = { fn };
-        this.#listeners.push(listener);
+        this.#subscriptions.push(listener);
 
         return () => {
             if (listener !== null) {
-                this.#listeners = this.#listeners.filter(el => el !== listener);
+                this.#subscriptions = this.#subscriptions.filter(el => el !== listener);
                 listener = null;
             }
         };
     }
 
     notify() {
-        for (const { fn } of this.#listeners) {
+        for (const { fn } of this.#subscriptions) {
             fn();
         }
     }
