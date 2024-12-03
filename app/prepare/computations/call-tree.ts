@@ -286,13 +286,13 @@ export class CallTree<T> {
             }
         }
     }
-    *selectBy(test: TestFunctionOrEntry<T>) {
-        const { nodes } = this;
+    *selectBy(test: TestFunctionOrEntry<T>, includeNested = false) {
+        const { nodes, nested } = this;
         const mask = makeDictMask(this, test);
         const result = [];
 
         for (let i = 0; i < nodes.length; i++) {
-            if (mask[nodes[i]]) {
+            if (mask[nodes[i]] && (includeNested || nested[i] === 0)) {
                 yield i;
             }
         }
