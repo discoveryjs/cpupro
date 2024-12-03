@@ -1,7 +1,7 @@
 import { typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './computations/call-tree.js';
-import { TreeTiminigs } from './computations/timings.js';
+import { TreeTimings } from './computations/timings.js';
 
 const abbr = {
     Ignition: 'Ig',
@@ -190,7 +190,7 @@ const methods = {
     select(tree, type, ...args) {
         let treeTimings = null;
 
-        if (tree instanceof TreeTiminigs) {
+        if (tree instanceof TreeTimings) {
             treeTimings = tree;
             tree = tree.tree;
         }

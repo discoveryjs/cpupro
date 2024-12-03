@@ -2,11 +2,11 @@ import { TIMINGS } from '../const.js';
 import { CallTree } from '../computations/call-tree.js';
 import {
     createTreeCompute,
-    DictionaryTiminigs,
-    SamplesTiminigs,
-    SamplesTiminigsFiltered,
+    DictionaryTimings,
+    SamplesTimings,
+    SamplesTimingsFiltered,
     TreeTimestamps,
-    TreeTiminigs
+    TreeTimings
 } from '../computations/timings.js';
 import {
     CpuProModule,
@@ -20,32 +20,32 @@ import { convertToUint32Array } from '../utils.js';
 
 type SamplesResult = {
     recomputeTimings(): void;
-    samplesTimings: SamplesTiminigs;
-    samplesTimingsFiltered: SamplesTiminigsFiltered;
+    samplesTimings: SamplesTimings;
+    samplesTimingsFiltered: SamplesTimingsFiltered;
 
-    callFramePositionsTimings: DictionaryTiminigs<CpuProCallFramePosition> | null;
-    callFramesTimings: DictionaryTiminigs<CpuProCallFrame>;
-    modulesTimings: DictionaryTiminigs<CpuProModule>;
-    packagesTimings: DictionaryTiminigs<CpuProPackage>;
-    categoriesTimings: DictionaryTiminigs<CpuProCategory>;
+    callFramePositionsTimings: DictionaryTimings<CpuProCallFramePosition> | null;
+    callFramesTimings: DictionaryTimings<CpuProCallFrame>;
+    modulesTimings: DictionaryTimings<CpuProModule>;
+    packagesTimings: DictionaryTimings<CpuProPackage>;
+    categoriesTimings: DictionaryTimings<CpuProCategory>;
 
-    callFramePositionsTreeTimings: TreeTiminigs<CpuProCallFramePosition> | null;
-    callFramesTreeTimings: TreeTiminigs<CpuProCallFrame>;
-    modulesTreeTimings: TreeTiminigs<CpuProModule>;
-    packagesTreeTimings: TreeTiminigs<CpuProPackage>;
-    categoriesTreeTimings: TreeTiminigs<CpuProCategory>;
+    callFramePositionsTreeTimings: TreeTimings<CpuProCallFramePosition> | null;
+    callFramesTreeTimings: TreeTimings<CpuProCallFrame>;
+    modulesTreeTimings: TreeTimings<CpuProModule>;
+    packagesTreeTimings: TreeTimings<CpuProPackage>;
+    categoriesTreeTimings: TreeTimings<CpuProCategory>;
 
-    callFramePositionsTimingsFiltered: DictionaryTiminigs<CpuProCallFramePosition> | null;
-    callFramesTimingsFiltered: DictionaryTiminigs<CpuProCallFrame>;
-    modulesTimingsFiltered: DictionaryTiminigs<CpuProModule>;
-    packagesTimingsFiltered: DictionaryTiminigs<CpuProPackage>;
-    categoriesTimingsFiltered: DictionaryTiminigs<CpuProCategory>;
+    callFramePositionsTimingsFiltered: DictionaryTimings<CpuProCallFramePosition> | null;
+    callFramesTimingsFiltered: DictionaryTimings<CpuProCallFrame>;
+    modulesTimingsFiltered: DictionaryTimings<CpuProModule>;
+    packagesTimingsFiltered: DictionaryTimings<CpuProPackage>;
+    categoriesTimingsFiltered: DictionaryTimings<CpuProCategory>;
 
-    callFramePositionsTreeTimingsFiltered: TreeTiminigs<CpuProCallFramePosition> | null;
-    callFramesTreeTimingsFiltered: TreeTiminigs<CpuProCallFrame>;
-    modulesTreeTimingsFiltered: TreeTiminigs<CpuProModule>;
-    packagesTreeTimingsFiltered: TreeTiminigs<CpuProPackage>;
-    categoriesTreeTimingsFiltered: TreeTiminigs<CpuProCategory>;
+    callFramePositionsTreeTimingsFiltered: TreeTimings<CpuProCallFramePosition> | null;
+    callFramesTreeTimingsFiltered: TreeTimings<CpuProCallFrame>;
+    modulesTreeTimingsFiltered: TreeTimings<CpuProModule>;
+    packagesTreeTimingsFiltered: TreeTimings<CpuProPackage>;
+    categoriesTreeTimingsFiltered: TreeTimings<CpuProCategory>;
 
     callFramePositionsTreeTimestamps: TreeTimestamps<CpuProCallFrame> | null;
     callFramesTreeTimestamps: TreeTimestamps<CpuProCallFrame>;

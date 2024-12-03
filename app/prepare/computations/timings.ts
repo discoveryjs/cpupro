@@ -73,7 +73,7 @@ export class TimingsObserver {
     }
 }
 
-export class SamplesTiminigs extends TimingsObserver {
+export class SamplesTimings extends TimingsObserver {
     samples: Uint32Array;
     timeDeltas: Uint32Array;
     timestamps: Uint32Array;
@@ -97,7 +97,7 @@ export class SamplesTiminigs extends TimingsObserver {
     }
 }
 
-export class SamplesTiminigsFiltered extends SamplesTiminigs {
+export class SamplesTimingsFiltered extends SamplesTimings {
     samplesMask: Uint32Array;
     originalTimeDeltas: Uint32Array;
     rangeStart: number | null = null;
@@ -170,7 +170,7 @@ export class SamplesTiminigsFiltered extends SamplesTiminigs {
     }
 }
 
-export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
+export class TreeTimings<T extends CpuProNode> extends TimingsObserver {
     tree: CallTree<T>;
     samplesCount: Uint32Array;
     selfTimes: Uint32Array;
@@ -229,7 +229,7 @@ export class TreeTiminigs<T extends CpuProNode> extends TimingsObserver {
     }
 }
 
-export type DictionaryTiminig<T> = {
+export type DictionaryTiming<T> = {
     entryIndex: number;
     entry: T;
     samples: number;
@@ -238,9 +238,9 @@ export type DictionaryTiminig<T> = {
     totalTime: number;
 };
 
-export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
-    entries: DictionaryTiminig<T>[];
-    entriesMap: Map<T, DictionaryTiminig<T>>;
+export class DictionaryTimings<T extends CpuProNode> extends TimingsObserver {
+    entries: DictionaryTiming<T>[];
+    entriesMap: Map<T, DictionaryTiming<T>>;
     samplesCount: Uint32Array;
     selfTimes: Uint32Array;
     totalTimes: Uint32Array;
@@ -270,7 +270,7 @@ export class DictionaryTiminigs<T extends CpuProNode> extends TimingsObserver {
         );
     }
 
-    getEntry(sourceEntry: T): DictionaryTiminig<T> | null {
+    getEntry(sourceEntry: T): DictionaryTiming<T> | null {
         return this.entriesMap.get(sourceEntry) || null;
     }
 
@@ -299,7 +299,7 @@ export type DictionarySeen<T> = {
 
 export class TreeTimestamps<T extends CpuProNode> {
     entries: DictionarySeen<T>[];
-    entriesMap: Map<T, DictionaryTiminig<T>>;
+    entriesMap: Map<T, DictionaryTiming<T>>;
     firstSeen: Uint32Array;
     lastSeen: Uint32Array;
 
@@ -520,14 +520,14 @@ export function createTreeCompute(
 
     computeAll(computeTimingsApi, bufferMap, false);
 
-    const samplesTimings = new SamplesTiminigs(
+    const samplesTimings = new SamplesTimings(
         samples,
         timeDeltas,
         samplesMap.timestamps,
         samplesMap.samplesCount.slice(),
         samplesMap.samplesTimes.slice()
     );
-    const samplesTimingsFiltered = new SamplesTiminigsFiltered(
+    const samplesTimingsFiltered = new SamplesTimingsFiltered(
         samplesMap.samples,
         samplesMap.samplesMask,
         samplesMap.timeDeltas,
@@ -536,28 +536,28 @@ export function createTreeCompute(
         samplesMap.samplesTimes
     );
     const treeTimings = treeMaps.map((treeMap) =>
-        new TreeTiminigs(
+        new TreeTimings(
             treeMap.tree,
             treeMap.samplesCount.slice(),
             treeMap.selfTimes.slice(),
             treeMap.nestedTimes.slice()
         ));
     const treeTimingsFiltered = treeMaps.map((treeMap) =>
-        new TreeTiminigs(
+        new TreeTimings(
             treeMap.tree,
             treeMap.samplesCount,
             treeMap.selfTimes,
             treeMap.nestedTimes
         ));
     const dictionaryTimings = dictMaps.map((dictMap) =>
-        new DictionaryTiminigs(
+        new DictionaryTimings(
             dictMap.dictionary,
             dictMap.samplesCount.slice(),
             dictMap.selfTimes.slice(),
             dictMap.totalTimes.slice()
         ));
     const dictionaryTimingsFiltered = dictMaps.map((dictMap) =>
-        new DictionaryTiminigs(
+        new DictionaryTimings(
             dictMap.dictionary,
             dictMap.samplesCount,
             dictMap.selfTimes,
