@@ -1,12 +1,13 @@
 .view-duration {
     max-width: 18ex;
     height: 19.5px;
-    display: inline-flex;
+    display: flex;
     text-align: right;
     align-items: baseline;
     gap: .65ex;
 }
-.view-tree-leaf .view-duration {
+.view-tree-leaf .view-duration,
+.view-expand > .header .view-duration {
     display: inline-flex;
 }
 

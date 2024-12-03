@@ -80,7 +80,7 @@ const pageContent = [
                         view: 'table',
                         data: `.({
                                 ...,
-                                name: module.entry.name,
+                                name: package.entry.name,
                                 selfTime: package.selfTime,
                                 totalTime: package.totalTime,
                                 nestedTime: package.nestedTime
