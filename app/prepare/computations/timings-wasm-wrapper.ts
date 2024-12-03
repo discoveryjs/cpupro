@@ -235,7 +235,7 @@ export function createJavaScriptApi(): ComputeTimingsApi {
                 selfTimes,
                 nestedTimes
             } = map;
-            const nodesCount = selfTimes.length;
+            const nodesCount = parent.length;
 
             if (clear) {
                 samplesCount.fill(0);

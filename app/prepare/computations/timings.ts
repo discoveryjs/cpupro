@@ -11,6 +11,9 @@ import {
     createWasmApi
 } from './timings-wasm-wrapper.js';
 
+const computeTimingsJavaScriptApi = createJavaScriptApi();
+const { computeTreeTimings } = computeTimingsJavaScriptApi;
+
 function binarySearch(array: Uint32Array, value: number): number {
     let left = 0;
     let right = array.length - 1;
@@ -227,6 +230,53 @@ export class TreeTimings<T extends CpuProNode> extends TimingsObserver {
             nestedTime,
             totalTime: selfTime + nestedTime
         };
+    }
+}
+
+// The SubsetTreeTimings class is mostly the same as TreeTimings, but works with subtrees.
+// It uses tree's sampleIdToNode to land samples to existing nodes and the rest (sampleIdToNode[i] === -1)
+// to a special (last) element in samplesCount/selfTimes/nestedTimes arrays.
+export class SubsetTreeTimings<T extends CpuProNode> extends TreeTimings<T> {
+    samplesTimings: SamplesTimings;
+
+    constructor(tree: CallTree<T>, samplesTimings: SamplesTimings) {
+        const size = tree.nodes.length + 1; // add extra element for excluded timings
+
+        super(
+            tree,
+            new Uint32Array(size),
+            new Uint32Array(size),
+            new Uint32Array(size)
+        );
+
+        this.samplesTimings = samplesTimings;
+        this.subscribe = samplesTimings.subscribe.bind(samplesTimings);
+        this.recompute(false);
+    }
+
+    get excludedTimings() {
+        const { samplesCount, selfTimes, nestedTimes } = this;
+        const lastIndex = samplesCount.length - 1;
+
+        return {
+            samples: samplesCount[lastIndex],
+            selfTime: selfTimes[lastIndex],
+            nestedTime: nestedTimes[lastIndex],
+            totalTime: selfTimes[lastIndex] + nestedTimes[lastIndex]
+        };
+    }
+
+    recompute(clear = true) {
+        computeTreeTimings({
+            tree: this.tree,
+            sourceSamplesCount: this.samplesTimings.samplesCount,
+            sourceSamplesTimes: this.samplesTimings.samplesTimes,
+            sampleIdToNode: this.tree.sampleIdToNode,
+            parent: this.tree.parent,
+            samplesCount: this.samplesCount,
+            selfTimes: this.selfTimes,
+            nestedTimes: this.nestedTimes
+        }, clear);
     }
 }
 
@@ -456,13 +506,12 @@ export function createTreeComputeBuffer<T>(
             tree,
             sourceSamplesCount: samplesMap.samplesCount,
             sourceSamplesTimes: samplesMap.samplesTimes,
-            sampleIdToNode: adopt(tree.sampleIdToNode),
+            sampleIdToNode: tree.sampleIdToNode = adopt(tree.sampleIdToNode),
             parent: adopt(tree.parent),
             samplesCount: alloc(tree.nodes.length),
             selfTimes: alloc(tree.nodes.length),
             nestedTimes: alloc(tree.nodes.length)
         };
-        tree.sampleIdToNode = treeMap.sampleIdToNode;
         const dictMap: BufferDictionaryTimingsMap<T> = {
             dictionary: tree.dictionary,
             sourceSamplesCount: samplesMap.samplesCount,
@@ -517,7 +566,7 @@ export function createTreeCompute(
     } = bufferMap;
     const computeTimingsApi = useWasm && memory
         ? createWasmApi(memory)
-        : createJavaScriptApi();
+        : computeTimingsJavaScriptApi;
 
     computeAll(computeTimingsApi, bufferMap, false);
 

@@ -1,3 +1,6 @@
+import type { CpuProNode } from '../types.js';
+import { buildCallTreeArrays } from './build-trees.js';
+
 type Entry<T> = {
     nodeIndex: number;
     value: T;
@@ -48,8 +51,8 @@ function makeDictMask<T>(tree: CallTree<T>, test: TestFunctionOrEntry<T>) {
 export class CallTree<T> {
     dictionary: T[];              // entries
     sourceIdToNode: Int32Array;   // sourceNodeId -> index of nodes
-    sampleIdToNode: NumericArray; // sampleId  -> index of nodes
-    #sampleIdToNode: NumericArray;
+    sampleIdToNode: Uint32Array; // sampleId  -> index of nodes
+    #sampleIdToNode: Uint32Array;
     sampleIdToNodeChanged: boolean; // FIXME: temporary solution to avoid unnecessary dict recalculations
     nodes: NumericArray;          // nodeIndex -> index of dictionary
     parent: NumericArray;         // nodeIndex -> index of nodes
@@ -334,17 +337,18 @@ export class CallTree<T> {
     }
 }
 
-export class FocusCallTree<T> extends CallTree<T> {
+export class SubsetCallTree<T extends CpuProNode> extends CallTree<T> {
     timingsMap: Uint32Array;
 
     constructor(tree: CallTree<T>, value: number | T) {
+        const { dictionary } = tree;
         const outputTreeSize = tree.getValueSubtreesSize(value) + 1; // +1 for new root node
+        const timingsMap = new Uint32Array(outputTreeSize); // nodes[nodeIndex] -> tree.nodes[nodeIndex]
+        const sourceNodeMap = new Int32Array(tree.nodes.length).fill(-1);
+        const subsetNodes = new Uint32Array(outputTreeSize);
+        const subsetParent = new Uint32Array(outputTreeSize);
 
-        super(tree.dictionary, tree.sourceIdToNode.slice(), new Uint32Array(outputTreeSize));
-
-        this.timingsMap = new Uint32Array(outputTreeSize);
-        this.nodes[0] = tree.nodes[0];
-        this.subtreeSize[0] = outputTreeSize - 1;
+        subsetNodes[0] = tree.nodes[0];
 
         let offset = 1;
         for (const nodeIndex of tree.selectNodes(value)) {
@@ -352,24 +356,50 @@ export class FocusCallTree<T> extends CallTree<T> {
             const newNodeIndex = offset++;
             const moveDelta = newNodeIndex - nodeIndex;
 
-            this.timingsMap[newNodeIndex] = nodeIndex;
+            timingsMap[newNodeIndex] = nodeIndex;
+            sourceNodeMap[nodeIndex] = newNodeIndex;
+            // parent[newNodeIndex] = 0;
 
             if (size > 0) {
                 const subtreeStart = nodeIndex;
                 const subtreeEnd = subtreeStart + size + 1;
 
-                for (let i = 1; i <= size; i++) {
-                    this.timingsMap[offset] = nodeIndex + i;
-                    this.parent[offset] = tree.parent[nodeIndex + i] + moveDelta;
-                    offset++;
+                for (let i = 1; i <= size; i++, offset++) {
+                    timingsMap[offset] = nodeIndex + i;
+                    sourceNodeMap[nodeIndex + i] = offset;
+                    subsetParent[offset] = tree.parent[nodeIndex + i] + moveDelta;
                 }
 
-                this.subtreeSize.set(tree.subtreeSize.subarray(subtreeStart, subtreeEnd), newNodeIndex);
-                this.nested.set(tree.nested.subarray(subtreeStart, subtreeEnd), newNodeIndex);
-                this.nodes.set(tree.nodes.subarray(subtreeStart, subtreeEnd), newNodeIndex);
+                subsetNodes.set(tree.nodes.subarray(subtreeStart, subtreeEnd), newNodeIndex);
             } else {
-                this.nodes[newNodeIndex] = tree.nodes[nodeIndex];
+                subsetNodes[newNodeIndex] = tree.nodes[nodeIndex];
             }
         }
+
+        const {
+            sourceNodeMap: rollupNodeMap,
+            nodes,
+            parent,
+            subtreeSize,
+            nested
+        } = buildCallTreeArrays({
+            nodes: subsetNodes,
+            parent: subsetParent,
+            dictionary
+        });
+
+        for (let i = 0; i < sourceNodeMap.length; i++) {
+            if (sourceNodeMap[i] !== -1) {
+                sourceNodeMap[i] = rollupNodeMap[sourceNodeMap[i]];
+            }
+        }
+
+        super(dictionary, sourceNodeMap, nodes, parent, subtreeSize, nested);
+
+        this.sampleIdToNode = tree.sampleIdToNode.map(i =>
+            sourceNodeMap[i] !== -1
+                ? sourceNodeMap[i]
+                : nodes.length
+        );
     }
 }

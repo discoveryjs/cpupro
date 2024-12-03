@@ -1,14 +1,18 @@
-const { FocusCallTree } = require('../prepare/computations/call-tree.js');
+const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
+const { SubsetTreeTimings } = require('../prepare/computations/timings.js');
 
 discovery.view.define('flamechart-expand', function(el, config, data, context) {
     const {
         header,
         tree,
         profile = context.data.currentProfile,
-        timings,
+        samplesTimings = profile.samplesTimingsFiltered,
         value
     } = config;
-    const focusTree = new FocusCallTree(tree, value);
+    const subsetTimings = new SubsetTreeTimings(
+        value ? new SubsetCallTree(tree, value) : tree,
+        samplesTimings
+    );
 
     return this.render(el, {
         view: 'expand',
@@ -35,9 +39,9 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
             },
             content: {
                 view: 'flamechart',
-                tree: focusTree,
-                timings,
-                timingsMap: focusTree.timingsMap,
+                tree: subsetTimings.tree,
+                timings: subsetTimings,
+                // timingsMap: focusTree.timingsMap,
                 lockScrolling: true,
                 postRender(el) {
                     el.classList.toggle('lock-scrolling', true);
