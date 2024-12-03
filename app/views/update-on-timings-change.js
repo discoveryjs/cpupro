@@ -1,7 +1,7 @@
 const { utils } = require('@discoveryjs/discovery');
 
 discovery.view.define('update-on-timings-change', function(el, config, data, context) {
-    const { timings = data, debounce, content } = config;
+    const { timings = data, debounce, beforeContent, content } = config;
     let scheduledRender = null;
     const updateRender = () => {
         if (scheduledRender !== null) {
@@ -11,7 +11,8 @@ discovery.view.define('update-on-timings-change', function(el, config, data, con
         scheduledRender = requestAnimationFrame(() => {
             scheduledRender = null;
 
-            el.textContent = '';
+            el.replaceChildren();
+            beforeContent?.(data, context);
             this.render(el, content, data, context);
         });
     };
@@ -26,6 +27,7 @@ discovery.view.define('update-on-timings-change', function(el, config, data, con
         unsubscribeSource();
     };
 
+    beforeContent?.(data, context);
     return this.render(el, content, data, context);
 }, { tag: 'update-on-timings-change' });
 

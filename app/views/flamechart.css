@@ -100,17 +100,19 @@
 .view-flamechart__details .view-duration {
     align-items: baseline;
 }
-.view-flamechart__details .view-duration.total::before {
-    content: 'Total time: ';
+.view-flamechart__details .view-duration.total::before,
+.view-flamechart__details .view-duration.self::before {
     white-space: pre;
     font-size: 80%;
     color: #888;
+    min-width: 10ex;
+    text-align: right;
+}
+.view-flamechart__details .view-duration.total::before {
+    content: 'Total time: ';
 }
 .view-flamechart__details .view-duration.self::before {
     content: 'Self time: ';
-    white-space: pre;
-    font-size: 80%;
-    color: #888;
 }
 .view-flamechart__details .view-duration > .time {
     flex: 0;

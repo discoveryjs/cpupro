@@ -5,11 +5,12 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
     const {
         header,
         tree,
+        subsetTimings: rawTimings,
         profile = context.data.currentProfile,
         samplesTimings = profile.samplesTimingsFiltered,
         value
     } = config;
-    const subsetTimings = new SubsetTreeTimings(
+    const subsetTimings = rawTimings || new SubsetTreeTimings(
         value ? new SubsetCallTree(tree, value) : tree,
         samplesTimings
     );

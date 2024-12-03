@@ -1,18 +1,25 @@
+const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
+const { SubsetTreeTimings } = require('../prepare/computations/timings');
+
 const descendantTree = {
     view: 'block',
     content: [
-        'h3:"Nested call sites"',
+        'h5:"Nested call sites"',
         {
             view: 'tree',
             className: 'call-tree',
+            context: `{ ...#, timingTree: #.consolidateCallFrames
+                ? #.subsetTreeTimings
+                : #.currentProfile.callFramesTreeTimingsFiltered
+            }`,
             data: `
-                #.currentProfile.callFramesTreeTimingsFiltered
-                    .select('nodes', @, true)
+                #.timingTree
+                    .select('nodes', @, not #.consolidateCallFrames)
                     .[totalTime]
                     .sort(totalTime desc, selfTime desc)
             `,
             children: `
-                #.currentProfile.callFramesTreeTimingsFiltered
+                #.timingTree
                     .select('children', node.nodeIndex)
                     .[totalTime]
                     .sort(totalTime desc, selfTime desc, node.value.name ascN)
@@ -65,7 +72,7 @@ const descendantTree = {
 const ancestorsTree = {
     view: 'block',
     content: [
-        'h3:"Ancestor call sites"',
+        'h5:"Ancestor call sites"',
         {
             view: 'tree',
             className: 'call-tree',
@@ -158,7 +165,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: false,
+        when: true,
         className: 'trigger-outside script-source',
         data: `
             #.currentProfile.codesByCallFrame[=> callFrame = @]
@@ -175,7 +182,7 @@ const pageContent = [
                 callFrame: @
             }
         `,
-        expanded: '=source is not undefined',
+        // expanded: '=source is not undefined',
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
@@ -203,7 +210,7 @@ const pageContent = [
                     $inlinedRefs: scriptFunction.codes[-1].inlined.match(/O\\d+(?=F|$)/g).matched |
                         ? .($pos: +$[1:] - @.start; { className: 'inline', range: [$pos, $pos] })
                         : [];
-                    $codePoints: scriptFunction.codes.[positions][-1].positions.match(/O\\d+(?=C|$)/g).matched |
+                    $codePoints: scriptFunction.codes | $[=>tier="Ignition"] or .[positions][-1] | positions.match(/O\\d+(?=C|$)/g).matched |
                         ? .($pos: +$[1:] - @.start; $pos ? { className: 'code-point', range: [$pos, $pos] })
                         : [];
                     $samplePoints: #.currentProfile.callFramePositionsTimings.entries.[entry.callFrame=@.scriptFunction.callFrame] |
@@ -327,16 +334,33 @@ const pageContent = [
             className: 'trigger-outside',
             header: 'text:"Call trees"',
             content: {
-                view: 'update-on-timings-change',
-                timings: '=#.currentProfile.callFramesTimingsFiltered',
-                debounce: 150,
+                view: 'context',
+                modifiers: [
+                    {
+                        view: 'checkbox',
+                        name: 'consolidateCallFrames',
+                        checked: true,
+                        content: 'text:"Consolidate call frames"',
+                        onChange() {}
+                    }
+                ],
                 content: {
-                    view: 'hstack',
-                    className: 'trees',
-                    content: [
-                        descendantTree,
-                        ancestorsTree
-                    ]
+                    view: 'update-on-timings-change',
+                    timings: '=#.currentProfile.callFramesTimingsFiltered',
+                    debounce: 150,
+                    beforeContent(data, context) {
+                        if (context.consolidateCallFrames) {
+                            context.subsetTreeTimings.recompute();
+                        }
+                    },
+                    content: {
+                        view: 'hstack',
+                        className: 'trees',
+                        content: [
+                            descendantTree,
+                            ancestorsTree
+                        ]
+                    }
                 }
             }
         }
@@ -344,9 +368,7 @@ const pageContent = [
 
     {
         view: 'flamechart-expand',
-        tree: '=#.currentProfile.callFramesTree',
-        timings: '=#.currentProfile.callFramesTreeTimingsFiltered',
-        value: '='
+        subsetTimings: '=#.subsetTreeTimings'
     }
 ];
 
@@ -359,6 +381,19 @@ discovery.page.define('call-frame', {
             view: 'alert-warning',
             content: 'md:"No call frame with id \\"{{#.id}}\\" is found\\n\\n[Back to index page](#)"'
         } },
-        { content: pageContent }
+        { content: {
+            view: 'context',
+            context: (data, context) => ({
+                ...context,
+                subsetTreeTimings: new SubsetTreeTimings(
+                    new SubsetCallTree(
+                        context.currentProfile.callFramesTree,
+                        data
+                    ),
+                    context.currentProfile.samplesTimingsFiltered
+                )
+            }),
+            content: pageContent
+        } }
     ]
 });
