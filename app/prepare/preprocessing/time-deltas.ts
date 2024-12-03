@@ -31,17 +31,20 @@ export function processTimeDeltas(
         startTime = 0;
     }
 
-    if (!endTime) {
-        endTime = startTime + deltasSum + samplesInterval;
+    const expectedEndTime = startTime + deltasSum;
+
+    if (!endTime || endTime < expectedEndTime) {
+        endTime = expectedEndTime + samplesInterval;
     }
 
     const startNoSamplesTime = timeDeltas[0]; // time before first sample
     const maybeTotalTime = (endTime - startTime) - startNoSamplesTime; // compute potential total time excluding start no samples period
 
     // shift deltas 1 index left and compute sum of deltas to compute last delta
-    for (let i = 1; i < timeDeltas.length; i++) {
-        timeDeltas[i - 1] = timeDeltas[i];
-    }
+    // [1, 2, 3, 4, ...] -> [2, 3, 4, ..., x]
+    //  ^-- drop (startNoSamplesTime)      ^-- used for lastDelta
+    timeDeltas.copyWithin(0, 1);
+    deltasSum -= startNoSamplesTime;
 
     // compute last delta
     const maybeLastDelta = Math.max(0, maybeTotalTime - deltasSum);
