@@ -150,6 +150,12 @@ const pageContent = [
     },
 
     {
+        view: 'timeline-profiles',
+        data: '#.data.allProfiles',
+        whenData: 'size() > 1'
+    },
+
+    {
         view: 'subject-with-nested-timeline',
         data: '{ subject: @, tree: #.currentProfile.callFramesTree }'
     },
@@ -165,7 +171,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: true,
+        // when: true,
         className: 'trigger-outside script-source',
         data: `
             #.currentProfile.codesByCallFrame[=> callFrame = @]
@@ -182,7 +188,7 @@ const pageContent = [
                 callFrame: @
             }
         `,
-        // expanded: '=source is not undefined',
+        expanded: '=source is not undefined',
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
