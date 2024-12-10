@@ -1,5 +1,5 @@
 import { selectProfile, toggleProfile } from './prepare/profile.mts';
-import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule } from './prepare/computations/samples-convolution.mjs';
+import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule, topLevelConvolutionRule } from './prepare/computations/samples-convolution.mjs';
 
 const demos = discovery.context?.model?.meta?.demos;
 
@@ -60,6 +60,7 @@ discovery.setContext({
     samplesConvolutionRules: {
         all: allConvolutionRule,
         module: moduleConvolutionRule,
+        topLevel: topLevelConvolutionRule,
         profilePresence: profilePresenceConvolutionRule
     }
 });

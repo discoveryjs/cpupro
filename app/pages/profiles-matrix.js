@@ -93,6 +93,14 @@ const pageContent = [
 
             {
                 view: 'button',
+                text: 'Top level',
+                data: '#.samplesConvolutionRules.topLevel',
+                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
+            },
+
+            {
+                view: 'button',
                 text: 'Profile presence',
                 data: '#.samplesConvolutionRules.profilePresence',
                 disabled: '=#.data.currentSamplesConvolutionRule=@',

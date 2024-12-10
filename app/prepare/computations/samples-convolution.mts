@@ -6,6 +6,10 @@ export const allConvolutionRule = function () {
     return true;
 } satisfies SampleConvolutionRule<CpuProCallFrame>;
 
+export const topLevelConvolutionRule = function(_, parent) {
+    return parent.entry.id !== 1;
+} satisfies SampleConvolutionRule<CpuProCallFrame>;
+
 export const moduleConvolutionRule = function (self, parent) {
     return (
         (self.treeSamplesCount <= 3 && parent.entry.id !== 1) ||
