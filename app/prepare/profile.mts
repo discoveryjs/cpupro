@@ -1,7 +1,7 @@
 import type { Model } from '@discoveryjs/discovery';
 import { convertToInt32Array, convertToUint32Array } from './utils.js';
 import { mergeSamples, computeTimings, remapTreeSamples } from './preprocessing/samples.js';
-import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
+import { processLongTimeDeltas, processMemDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { extractCallFrames } from './preprocessing/call-frames.js';
 import { processNodes } from './preprocessing/nodes.js';
@@ -87,7 +87,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         totalTime,
         samplesInterval
     } = await work('process time deltas', () =>
-        processTimeDeltas(
+        (data._memorySamples ? processMemDeltas : processTimeDeltas)(
             data.startTime,
             data.endTime,
             data.timeDeltas,

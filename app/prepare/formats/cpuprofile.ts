@@ -156,9 +156,11 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[
         return profile;
     }
 
-    const source = profile.samples as SizeSample[];
+    let source = profile.samples as SizeSample[];
 
-    source.sort((a, b) => a.ordinal - b.ordinal);
+    // allocation samples can be in a random order, sort it by ordinal
+    // Note: used slice() to avoid mutation of an input array
+    source = source.slice().sort((a, b) => a.ordinal - b.ordinal);
 
     return {
         ...profile,

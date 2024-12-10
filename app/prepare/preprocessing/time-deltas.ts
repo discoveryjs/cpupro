@@ -69,6 +69,31 @@ export function processTimeDeltas(
     };
 }
 
+export function processMemDeltas(
+    startTime: number,
+    endTime: number,
+    timeDeltas: number[],
+    samples: number[],
+    samplePositions?: number[],
+    samplesInterval?: number
+) {
+    const deltasSum = sum(timeDeltas);
+
+    // compute samples interval as a median of deltas if needed (it might be computed on steps before time deltas processing)
+    if (typeof samplesInterval !== 'number') {
+        samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1]; // TODO: speedup?
+    }
+
+    return {
+        startTime: 0,
+        startNoSamplesTime: 0,
+        endTime: deltasSum,
+        endNoSamplesTime: 0,
+        totalTime: deltasSum,
+        samplesInterval
+    };
+}
+
 // Fixes negative deltas in a `timeDeltas` array and ensures the integrity and chronological order of the associated samples.
 // It adjusts the deltas to ensure all values are non-negative by redistributing negative deltas across adjacent elements.
 // Additionally, it corrects the order of associated samples to match the adjusted timing.

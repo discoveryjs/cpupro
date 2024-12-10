@@ -21,7 +21,7 @@ export function createTreeSourceFromParent<S>(
     dictionary: S[]
 ): TreeSource<S> {
     const nodeToSourceId = new Int32Array(parent.length).fill(-1);
-    const computedSourceIdToNode = nodeToSourceId.slice();
+    const computedSourceIdToNode = new Int32Array(sourceIdToNode.length).fill(-1);
     const { firstChild, nextSibling } = firstNextFromParent(parent);
     const { nodes: computedNodes, parent: computedParent } = nodesParentFromFirstNext(firstChild, nextSibling);
 
