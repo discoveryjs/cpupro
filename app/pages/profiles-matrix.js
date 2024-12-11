@@ -266,7 +266,7 @@ const pageContent = [
                         view: 'block',
                         className: 'pipelines-timeline',
                         context: `{
-                            $totalTime: [profiles.totalTime.max(), avgTotalTime, avgTotalTime2, avgTotalTimeAll].max();
+                            $totalTime: [...profiles.totalTime, avgTotalTime, avgTotalTime2, avgTotalTimeAll].max();
                             $startTime: profiles.startTime.min();
 
                             ...#,

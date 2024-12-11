@@ -19,6 +19,7 @@
     border-left: 1px solid currentColor;
     box-shadow: 0 0 0 .3px var(--discovery-background-color);
     z-index: 1;
+    pointer-events: none;
 }
 .page-profiles-matrix .time-line.avg-line {
     margin: -5px 0 -5px;

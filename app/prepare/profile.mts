@@ -22,10 +22,16 @@ export type CreateProfileApi = {
 }
 
 export function selectProfile(discovery: Model, profile: Profile) {
-    discovery.data = {
-        ...discovery.data,
-        currentProfile: profile
-    };
+    if (profile.disabled === false && discovery.data.currentProfile !== profile) {
+        discovery.data = {
+            ...discovery.data,
+            currentProfile: profile
+        };
+
+        return true;
+    }
+
+    return false;
 }
 
 export function toggleProfile(discovery: Model, profile: Profile) {

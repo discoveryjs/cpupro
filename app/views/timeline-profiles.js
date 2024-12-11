@@ -1,3 +1,15 @@
+const profileTooltip = [
+    'text:name',
+    { view: 'block', content: 'text:"Runtime: " + runtime.name' },
+    'html:"<hr>"',
+    { view: 'block', content: 'text-numeric:"Profile time: " + totalTime.ms()' },
+    { view: 'block', content: 'text-numeric:"Samples: " + sourceInfo.samples' },
+    { view: 'block', content: 'text-numeric:"Sampling interval: " + sourceInfo.samplesInterval' },
+    'html:"<hr>"',
+    { view: 'block', content: 'text-numeric:"Call tree nodes: " + sourceInfo.nodes' },
+    { view: 'block', content: 'text-numeric:"Call frames: " + callFrames.size()' }
+];
+
 discovery.view.define('timeline-profiles', function(el, props, data, context) {
     const profiles = props.profiles || (Array.isArray(data) ? data : []);
     const min = props.startTime || props.startTime === 0
@@ -47,16 +59,6 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         }
 
         el.append(buttonEl, barEl);
-        this.tooltip(barEl, [
-            'text:name',
-            { view: 'block', content: 'text:"Runtime: " + runtime.name' },
-            'html:"<hr>"',
-            { view: 'block', content: 'text-numeric:"Profile time: " + totalTime.ms()' },
-            { view: 'block', content: 'text-numeric:"Samples: " + sourceInfo.samples' },
-            { view: 'block', content: 'text-numeric:"Sampling interval: " + sourceInfo.samplesInterval' },
-            'html:"<hr>"',
-            { view: 'block', content: 'text-numeric:"Call tree nodes: " + sourceInfo.nodes' },
-            { view: 'block', content: 'text-numeric:"Call frames: " + callFrames.size()' }
-        ], profile, context);
+        this.tooltip(barEl, profileTooltip, profile, context);
     }
 });

@@ -45,7 +45,7 @@
     opacity: .25;
 }
 .view-timeline-profiles .toggle-disabled-button:hover + .profile:not(.selected),
-.view-timeline-profiles > .profile:not(.selected):hover {
+.view-timeline-profiles > .profile:not(.selected, .disabled):hover {
     background-color: #6d9ec9;
     cursor: pointer;
 }

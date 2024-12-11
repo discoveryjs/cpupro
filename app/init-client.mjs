@@ -26,8 +26,7 @@ discovery.nav.menu.append({
 discovery.action.define('selectProfile', (profile) => {
     const { profiles } = discovery.data;
 
-    if (Array.isArray(profiles)) {
-        selectProfile(discovery, profile);
+    if (Array.isArray(profiles) && selectProfile(discovery, profile)) {
         discovery.scheduleRender();
     }
 });
