@@ -59,7 +59,6 @@ export class Dictionary {
     #packagesMap: Map<string, CpuProPackage>;
     #categoriesMap: Map<string, CpuProCategory>;
 
-    #scriptByUrl: Map<string, CpuProScript[]>;
     #callFramesByScript: CallFrameMap;
     #anonymousFunctionNameIndex: number = 1;
     #anonymousModuleByScriptId: Map<CpuProScript, string>;
@@ -76,7 +75,6 @@ export class Dictionary {
         this.#packagesMap = new Map();
         this.#categoriesMap = new Map();
 
-        this.#scriptByUrl = new Map();
         this.#callFramesByScript = new Map();
         this.#anonymousModuleByScriptId = new Map();
         this.#packageNameByOriginMap = new Map([
@@ -264,6 +262,11 @@ export class Dictionary {
                             ref = `(${protocol}script)`;
                             name = ref;
                             path = protocol;
+                        } else if (isVsCodeDebug(modulePath)) {
+                            type = 'devtools';
+                            ref = 'vscode-js-debug';
+                            name = ref;
+                            path = modulePath.slice(0, modulePath.indexOf(':') + 1);
                         } else {
                             ref = '(script)';
                             name = ref;
@@ -537,6 +540,14 @@ export class Dictionary {
 
         return { name, regexp };
     }
+}
+
+function isVsCodeDebug(modulePath: string) {
+    return (
+        modulePath.includes('bootloader.') &&
+        /[\\\/](?:ms-vscode\.js-debug|vscode-js-debug-)/.test(modulePath) &&
+        /[\\\/](?:vscode-js-debug-)?bootloader\.(?:bundle\.)?js$/.test(modulePath)
+    );
 }
 
 function resolveRegistryPackage(modulePath: string): RegistryPackage | null {

@@ -10,6 +10,7 @@ discovery.page.define('modules', [
                     ...,
                     $entry,
                     name: $entry | packageRelPath or name,
+                    nameWithPackageName: $entry | \`\${package.name}/\${packageRelPath or name}\`,
                     packageName: $entry.package.name,
                     categoryName: $entry.category.name,
                     selfTime: left.selfTime,
@@ -39,7 +40,7 @@ discovery.page.define('modules', [
         ],
         content: {
             view: 'context',
-            data: '.[name ~= #.filter]',
+            data: '.[name ~= #.filter or nameWithPackageName ~= #.filter]',
             content: [
                 {
                     view: 'table',

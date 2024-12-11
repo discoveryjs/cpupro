@@ -1,4 +1,4 @@
-import { CpuProModule, CpuProPackage } from '../types';
+import { CpuProModule, CpuProPackage, PackageType } from '../types';
 
 function getLongestCommonPath(longestCommonModulePath: string[] | null, modulePath: string) {
     let parts = modulePath.split(/\//);
@@ -25,7 +25,12 @@ export function processPaths(
     modules: CpuProModule[]
 ) {
     // shorthand paths
-    const longestCommonModulePath: Record<string, string[] | null> = Object.create(null);
+    const shortPathPkgTypes: PackageType[] = ['script', 'devtools'];
+    const longestCommonModulePath: Record<PackageType, Record<string, string[] | null>> = Object.create(null);
+
+    for (const pkgType of shortPathPkgTypes) {
+        longestCommonModulePath[pkgType] = Object.create(null);
+    }
 
     for (const module of modules.values()) {
         // module path processing
@@ -34,19 +39,24 @@ export function processPaths(
         if (modulePath) {
             const pkg = module.package;
 
-            if (pkg.type === 'script' && pkg.path && pkg.path.includes(':') && !/^https?:/.test(pkg.path)) {
-                longestCommonModulePath[pkg.path] = getLongestCommonPath(longestCommonModulePath[pkg.path] || null, modulePath);
+            if (shortPathPkgTypes.includes(pkg.type) && pkg.path && pkg.path.includes(':') && !/^https?:/.test(pkg.path)) {
+                longestCommonModulePath[pkg.type][pkg.path] = getLongestCommonPath(
+                    longestCommonModulePath[pkg.type][pkg.path] || null,
+                    modulePath
+                );
             }
         }
     }
 
-    for (const [pkgPath, longestPath] of Object.entries(longestCommonModulePath)) {
-        if (longestPath !== null && longestPath.length > 0) {
-            const path = longestPath.join('/');
+    for (const [pkgType, longestPaths] of Object.entries(longestCommonModulePath)) {
+        for (const [pkgPath, longestPath] of Object.entries(longestPaths)) {
+            if (longestPath !== null && longestPath.length > 0) {
+                const path = longestPath.join('/');
 
-            for (const pkg of packages.values()) {
-                if (pkg.type === 'script' && pkg.path === pkgPath) {
-                    pkg.path = path;
+                for (const pkg of packages.values()) {
+                    if (pkg.type === pkgType && pkg.path === pkgPath) {
+                        pkg.path = path;
+                    }
                 }
             }
         }

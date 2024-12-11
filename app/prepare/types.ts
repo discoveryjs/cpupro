@@ -202,6 +202,7 @@ export type PackageType = // alphabetical order
     | 'internals'
     | 'node'
     | 'program'
+    | 'devtools'
     | 'regexp'
     | 'root'
     | 'script'
