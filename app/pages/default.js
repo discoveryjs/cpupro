@@ -1,6 +1,6 @@
 /* eslint-env node */
 const { supportedFormats } = require('../prepare/index.js');
-const futureReleases = false;
+const futureReleases = true;
 
 discovery.nav.primary.append({
     className: 'full-page-mode',
@@ -286,6 +286,9 @@ const categoriesTimeline = {
         {
             samples: categoriesTimings.entries.[totalTime and entry.name != 'root'].({
                 $category: entry;
+                $tree: #.currentProfile.categoriesTree;
+                $subtree: $tree.subtreeSamples($category);
+                $totalTimeBins: $subtree.mask.binCallsFromMask($binCount);
 
                 $category,
                 timings: $,
@@ -293,7 +296,8 @@ const categoriesTimeline = {
                 $binCount,
                 binTime: $totalTime / $binCount,
                 $binSamples,
-                bins: #.currentProfile.categoriesTree.binCalls($category, $binCount),
+                bins: $tree.binCalls($category, $binCount),
+                $totalTimeBins,
                 color: $category.name.color(),
                 href: $category.marker("category").href
             }),
@@ -510,6 +514,7 @@ const categoriesTimeline = {
                         bins: '=bins',
                         max: '=binTime',
                         binsMax: true,
+                        presence: '=totalTimeBins',
                         color: '=color'
                     }
                 ]
