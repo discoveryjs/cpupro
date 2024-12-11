@@ -284,7 +284,7 @@ const categoriesTimeline = {
         $binSamples: $binCount.countSamples();
 
         {
-            samples: categoriesTimings.entries.[selfTime].({
+            samples: categoriesTimings.entries.[totalTime and entry.name != 'root'].({
                 $category: entry;
 
                 $category,
