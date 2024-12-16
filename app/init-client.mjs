@@ -24,17 +24,12 @@ discovery.nav.menu.append({
 });
 
 discovery.action.define('selectProfile', (profile) => {
-    const { profiles } = discovery.data;
-
-    if (Array.isArray(profiles) && selectProfile(discovery, profile)) {
+    if (selectProfile(discovery, profile)) {
         discovery.scheduleRender();
     }
 });
 discovery.action.define('toggleProfile', (profile) => {
-    const { profiles } = discovery.data;
-
-    if (Array.isArray(profiles)) {
-        toggleProfile(discovery, profile);
+    if (toggleProfile(discovery, profile)) {
         discovery.scheduleRender();
     }
 });

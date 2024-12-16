@@ -805,7 +805,7 @@ const pageContent = [
     {
         view: 'timeline-profiles',
         when: futureReleases,
-        data: '#.data.allProfiles',
+        data: '#.data.profiles',
         whenData: 'size() > 1'
     },
 

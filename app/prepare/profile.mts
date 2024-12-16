@@ -38,28 +38,28 @@ export function toggleProfile(discovery: Model, profile: Profile) {
     const {
         currentProfile,
         profiles,
-        allProfiles,
         callFramesProfilePresence,
         currentSamplesConvolutionRule
     } = discovery.data;
     const disable = !profile.disabled;
 
-    if ((disable && profiles.length <= 2) || !allProfiles.includes(profile)) {
-        return;
+    if ((disable && profiles.length <= 2) || !profiles.includes(profile)) {
+        return false;
     }
 
     profile.disabled = !profile.disabled;
-    const newProfiles = allProfiles.filter(p => !p.disabled);
+    const enabledProfiles = profiles.filter((p: Profile) => !p.disabled);
     discovery.data = {
         ...discovery.data,
         currentProfile: disable && profile === currentProfile
-            ? newProfiles[0] || null
-            : currentProfile,
-        profiles: newProfiles
+            ? enabledProfiles[0] || null
+            : currentProfile
     };
 
-    computeCrossProfileUsage(newProfiles, callFramesProfilePresence);
-    setSamplesConvolutionRule(newProfiles, callFramesProfilePresence, currentSamplesConvolutionRule);
+    computeCrossProfileUsage(enabledProfiles, callFramesProfilePresence);
+    setSamplesConvolutionRule(enabledProfiles, callFramesProfilePresence, currentSamplesConvolutionRule);
+
+    return true;
 }
 
 export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work }: CreateProfileApi) {

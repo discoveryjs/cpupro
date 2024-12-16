@@ -135,7 +135,8 @@ const pageContent = [
             {
                 view: 'context',
                 data(data) {
-                    const { profiles, shared } = data;
+                    const { profiles: allProfiles, shared } = data;
+                    const profiles = allProfiles.filter(p => !p.disabled);
                     const { callFrames } = shared;
                     const records = [];
                     let avgTotalTime = 0;
@@ -312,7 +313,7 @@ const pageContent = [
                                 view: 'timeline-profiles',
                                 startTime: '=#.startTime',
                                 endTime: '=#.endTime',
-                                data: '#.data.allProfiles',
+                                data: '#.data.profiles',
                                 whenData: 'size() > 1'
                             }
                         ]

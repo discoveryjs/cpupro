@@ -111,8 +111,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         currentSamplesConvolutionRule: null,
 
         currentProfile,
-        profiles,
-        allProfiles: profiles.slice()
+        profiles
     };
 
     return result;

@@ -151,7 +151,7 @@ const pageContent = [
 
     {
         view: 'timeline-profiles',
-        data: '#.data.allProfiles',
+        data: '#.data.profiles',
         whenData: 'size() > 1'
     },
 
