@@ -4,5 +4,6 @@
 /build/
 /node_modules/
 /tmp/
+/experiments/
 *.wasm
 .DS_Store
