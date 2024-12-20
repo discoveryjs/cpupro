@@ -67,7 +67,17 @@ const intersectionTable = {
 const pageContent = [
     {
         view: 'page-header',
-        content: 'h1:"Profiles matrix"'
+        content: {
+            view: 'h1',
+            content: [
+                'text:"Profiles matrix"',
+                {
+                    view: 'text',
+                    when: '#.datasets[].resource.type = "file"',
+                    data: '": " + #.datasets[].resource.name'
+                }
+            ]
+        }
     },
 
     {
