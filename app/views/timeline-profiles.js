@@ -41,8 +41,10 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
                 const duration = profile.timeDeltasByProfile[i];
                 const presenceEl = document.createElement('div');
 
+                presenceEl.className = 'profiles-presence';
                 presenceEl.style.setProperty('--x1', start / total);
                 presenceEl.style.setProperty('--x2', (start + duration) / total);
+                presenceEl.style.setProperty('--presence', i / (activeProfiles.length - 1));
 
                 barEl.append(presenceEl);
 

@@ -27,14 +27,23 @@
     border: .5px solid black;
 }
 
-.view-timeline-profiles > .profile > * {
+.view-timeline-profiles > .profile > .profiles-presence {
+    --border-width: .5px;
     position: absolute;
     top: 0;
     bottom: 0;
-    left: calc(100% * var(--x2) - .5px);
-    right: 0;
-    border-left: .5px solid color-mix(in srgb, var(--discovery-background-color) 50%, transparent);
-    background-color: #00000020;
+    left: calc(100% * var(--x1));
+    right: calc(100% * (1 - var(--x2)));
+    border-left: var(--border-width) solid color-mix(in srgb, var(--discovery-background-color) 50%, transparent);
+    background-color: rgb(0, 0, 0, calc(.1 + .4 * (1 - var(--presence))));
+}
+.view-timeline-profiles > .profile > .profiles-presence:first-child {
+    display: none;
+}
+.view-timeline-profiles > .profile > .profiles-presence:last-child {
+    --color: #9b6262;
+    background-image: linear-gradient(to right, var(--color), var(--color));
+    background-size: 16px;
 }
 
 .view-timeline-profiles > .profile.selected {
@@ -43,6 +52,9 @@
 .view-timeline-profiles > .profile.disabled {
     background-color: #888;
     opacity: .25;
+}
+.view-timeline-profiles > .profile.disabled > .profiles-presence {
+    display: none;
 }
 .view-timeline-profiles .toggle-disabled-button:hover + .profile:not(.selected),
 .view-timeline-profiles > .profile:not(.selected, .disabled):hover {
