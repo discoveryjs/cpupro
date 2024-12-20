@@ -204,14 +204,14 @@ export function processLongTimeDeltas(
             const delta = timeDeltas[j];
 
             if (delta > thresholdLongSampleDuration) {
-                timeDeltas[i] = allowedSampleDuration;
-                timeDeltas[i - 1] = delta - allowedSampleDuration;
-                samples[i] = samples[j];
-                samples[i - 1] = noSamplesNodeId;
+                timeDeltas[i - 1] = allowedSampleDuration;
+                timeDeltas[i] = delta - allowedSampleDuration;
+                samples[i - 1] = samples[j];
+                samples[i] = noSamplesNodeId;
 
                 if (samplePositions !== null) {
-                    samplePositions[i] = samplePositions[j];
-                    samplePositions[i - 1] = -1;
+                    samplePositions[i - 1] = samplePositions[j];
+                    samplePositions[i] = -1;
                 }
 
                 // additional decrement since we write 2 elements
