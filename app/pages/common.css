@@ -1,3 +1,8 @@
+/* FIXME: a fix for a bug in discoveryjs beta.92 */
+.discovery-buildin-view-tooltip.hint-tooltip > .view-markdown {
+    padding: 10px 8px;
+}
+
 .discovery-root {
     --runtime-nodejs: url("../img/runtime-nodejs.png");
     --runtime-deno: url("../img/runtime-deno.svg");
