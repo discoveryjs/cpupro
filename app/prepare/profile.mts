@@ -42,13 +42,16 @@ export function toggleProfile(discovery: Model, profile: Profile) {
         currentSamplesConvolutionRule
     } = discovery.data;
     const disable = !profile.disabled;
+    const enabledProfiles = profiles.filter((p: Profile) => p === profile
+        ? p.disabled // for the profile to toggle, the disabled property will be inverted
+        : !p.disabled
+    );
 
-    if ((disable && profiles.length <= 2) || !profiles.includes(profile)) {
+    if ((disable && enabledProfiles.length <= 2) || !profiles.includes(profile)) {
         return false;
     }
 
     profile.disabled = !profile.disabled;
-    const enabledProfiles = profiles.filter((p: Profile) => !p.disabled);
     discovery.data = {
         ...discovery.data,
         currentProfile: disable && profile === currentProfile
