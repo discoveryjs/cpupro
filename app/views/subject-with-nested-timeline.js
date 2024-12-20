@@ -1,4 +1,4 @@
-const futureReleases = false;
+const experimentalFeatures = true;
 
 discovery.view.define('subject-with-nested-timeline', {
     view: 'context',
@@ -91,7 +91,7 @@ discovery.view.define('subject-with-nested-timeline', {
         },
         {
             view: 'list',
-            when: futureReleases,
+            when: experimentalFeatures,
             className: 'function-states',
             limit: false,
             data: `
