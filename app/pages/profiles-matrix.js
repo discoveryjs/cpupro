@@ -120,7 +120,7 @@ const pageContent = [
                 className: 'total-time-info',
                 content: [
                     'text:"Avg profile total time: "',
-                    'text-numeric:profiles.avg(=>totalTime).ms()'
+                    'text-numeric:profiles.[not disabled].avg(=>totalTime).ms()'
                 ]
             }
         ]
@@ -267,7 +267,7 @@ const pageContent = [
                         view: 'block',
                         className: 'pipelines-timeline',
                         context: `{
-                            $totalTime: [...profiles.totalTime, avgTotalTime, avgTotalTime2, avgTotalTimeAll].max();
+                            $totalTime: [...profiles.totalTime, /*avgTotalTime,*/ avgTotalTime2, avgTotalTimeAll].max();
                             $startTime: profiles.startTime.min();
 
                             ...#,
