@@ -1,4 +1,4 @@
-import { timingCols } from './common.js';
+import { callFramesCol, timingCols } from './common.js';
 
 const pageContent = [
     {
@@ -84,17 +84,13 @@ const pageContent = [
                     `,
                     cols: [
                         ...timingCols,
-                        { header: 'Module',
+                        {
+                            header: 'Module',
+                            className: 'subject-name',
                             sorting: 'name ascN',
                             content: 'module-badge:module.entry'
                         },
-                        {
-                            header: 'Call frames',
-                            className: 'number',
-                            data: 'callFrames',
-                            content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
-                            details: 'struct{ expanded: 1 }'
-                        }
+                        callFramesCol('callFrames.sort(selfTime desc, totalTime desc, entry.name ascN)')
                         // { header: 'Histogram', content: {
                         //     view: 'timeline-segments-bin',
                         //     bins: '=#.data.modulesTree.binCalls(entry, 100)',

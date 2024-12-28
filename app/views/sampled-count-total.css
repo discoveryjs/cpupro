@@ -1,3 +1,6 @@
+.view-sampled-count-total {
+    white-space: nowrap;
+}
 .view-sampled-count-total > .count:not(.no-sampled) {
     color: #9ea867;
 }

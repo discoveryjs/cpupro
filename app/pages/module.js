@@ -150,6 +150,7 @@ const pageContent = [
                     cols: [
                         ...timingCols,
                         { header: 'Call frame',
+                            className: 'subject-name',
                             sorting: 'name ascN',
                             content: {
                                 view: 'badge',

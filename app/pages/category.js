@@ -1,4 +1,4 @@
-import { timingCols } from './common.js';
+import { callFramesCol, timingCols } from './common.js';
 
 const pageContent = [
     {
@@ -89,21 +89,36 @@ const pageContent = [
                         `,
                         cols: [
                             ...timingCols,
-                            { header: 'Package', sorting: 'name asc', content: 'package-badge:package.entry' },
                             {
-                                header: 'Modules',
-                                className: 'number',
-                                data: 'modules.module',
-                                content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
-                                details: 'struct{ expanded: 1 }'
+                                header: 'Package',
+                                className: 'subject-name',
+                                sorting: 'name asc',
+                                content: 'package-badge:package.entry'
                             },
                             {
-                                header: 'Call frames',
-                                className: 'number',
-                                data: 'modules.callFrames',
-                                content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
-                                details: 'struct{ expanded: 1 }'
-                            }
+                                header: 'Modules',
+                                className: 'number sampled-numbers',
+                                data: 'modules.sort(module.selfTime desc, module.totalTime desc)',
+                                content: 'sampled-count-total{ hideZeroCount: true, count: module.count(=> totalTime?), total: size() }',
+                                details: [
+                                    {
+                                        view: 'table',
+                                        className: 'full-width-table',
+                                        data: '.({ ..., selfTime: module.selfTime, nestedTime: module.nestedTime, totalTime: module.totalTime })',
+                                        cols: [
+                                            ...timingCols,
+                                            {
+                                                header: 'Module',
+                                                className: 'subject-name',
+                                                sorting: 'module.entry.name ascN',
+                                                content: 'module-badge:module.entry'
+                                            },
+                                            callFramesCol('callFrames.sort(selfTime desc, totalTime desc)')
+                                        ]
+                                    }
+                                ]
+                            },
+                            callFramesCol('modules.callFrames.sort(selfTime desc, totalTime desc)', true)
                         ]
                     }
                 }
@@ -133,6 +148,7 @@ const pageContent = [
                     .group(=> entry.module)
                     .zip(=> key, #.currentProfile.modulesTimingsFiltered.entries, => entry)
                     .({ module: right, name: right.entry.name, callFrames: left.value })
+                    .sort(name ascN)
             `,
             content: {
                 view: 'update-on-timings-change',
@@ -151,14 +167,13 @@ const pageContent = [
                     `,
                     cols: [
                         ...timingCols,
-                        { header: 'Module', sorting: 'name ascN',content: 'module-badge:module.entry' },
                         {
-                            header: 'Call frames',
-                            className: 'number',
-                            data: 'callFrames',
-                            content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
-                            details: 'struct{ expanded: 1 }'
-                        }
+                            header: 'Module',
+                            className: 'subject-name',
+                            sorting: 'name ascN',
+                            content: 'module-badge:module.entry'
+                        },
+                        callFramesCol('callFrames.sort(selfTime desc, totalTime desc)')
                     ]
                 }
             }
