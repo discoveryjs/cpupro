@@ -13,6 +13,7 @@
 }
 .discovery-root-darkmode {
     --runtime-unknown: url("../img/runtime-v8-outline.svg");
+    color-scheme: dark;
 }
 
 .view-alert-warning .view-link {
