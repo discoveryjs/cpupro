@@ -1,4 +1,6 @@
-import { GeneratedNodes } from '../types.js';
+import { GeneratedNodes, WellKnownType } from '../types.js';
+
+const NoSamplesType: WellKnownType = 'no-samples';
 
 function sum(array: number[]) {
     let sum = 0;
@@ -185,9 +187,9 @@ export function processLongTimeDeltas(
         const noSamplesNodeId = generatedNodes.nodeIdSeed++;
         const originalSize = timeDeltas.length;
 
-        // create no samples node
+        // create no-samples node
         generatedNodes.noSamplesNodeId = noSamplesNodeId;
-        generatedNodes.callFrames.push(generatedNodes.dict.callFrames.wellKnownIndex['no samples']);
+        generatedNodes.callFrames.push(generatedNodes.dict.callFrames.wellKnownIndex[NoSamplesType]);
         generatedNodes.nodeParentId.push(1);
         generatedNodes.parentScriptOffsets.push(-1);
 
