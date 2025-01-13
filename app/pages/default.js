@@ -402,7 +402,7 @@ const categoriesTimeline = {
                         {
                             view: 'block',
                             className: 'details-section',
-                            when: 'functionCodes or heap',
+                            when: experimentalFeatures && 'functionCodes or heap',
                             content: [
                                 {
                                     view: 'context',
