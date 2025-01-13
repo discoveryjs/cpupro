@@ -33,7 +33,7 @@ function createRender(slug, getter) {
 
         this.tooltip(el, {
             showDelay: true,
-            className: 'hint-tooltip',
+            className: 'cpupro-hint-tooltip',
             content: {
                 view: 'md',
                 source: definitions[slug]

@@ -226,7 +226,7 @@ const pageContent = [
                             ].[])
                         : [];
                     $tooltipView: {
-                        className: 'hint-tooltip',
+                        className: 'cpupro-hint-tooltip',
                         content: [
                             'text:scriptFunction.callFrame.name',
                             'html:"<br>"',

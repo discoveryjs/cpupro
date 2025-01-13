@@ -58,7 +58,7 @@ discovery.view.define('page-indicator', function(el, config, data, context) {
 
         this.tooltip(hintEl, {
             showDelay: true,
-            className: 'hint-tooltip',
+            className: 'cpupro-hint-tooltip',
             ...typeof hint === 'object' && !Array.isArray(hint) && !hint.view
                 ? hint
                 : { content: hint }

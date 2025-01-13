@@ -1,8 +1,3 @@
-/* FIXME: a fix for a bug in discoveryjs beta.92 */
-.discovery-buildin-view-tooltip.hint-tooltip > .view-markdown {
-    padding: 10px 8px;
-}
-
 .discovery-root {
     --runtime-nodejs: url("../img/runtime-nodejs.png");
     --runtime-deno: url("../img/runtime-deno.svg");
@@ -87,17 +82,17 @@
     background-color: color-mix(in srgb, var(--discovery-view-badge-color, rgba(128, 128, 128, .25)) 35%, var(--discovery-background-color));
 }
 
-.hint-tooltip {
+.cpupro-hint-tooltip {
     max-width: 400px !important;
 }
-.hint-tooltip .view-markdown {
+.cpupro-hint-tooltip .view-markdown {
     padding: 10px 8px;
 }
-.hint-tooltip .view-markdown .view-header:first-child {
+.cpupro-hint-tooltip .view-markdown .view-header:first-child {
     margin: 0;
     margin-top: -.2em;
 }
-.hint-tooltip .view-markdown :is(p, blockquote, ul) {
+.cpupro-hint-tooltip .view-markdown :is(p, blockquote, ul) {
     margin-top: .5em;
 }
 
