@@ -22,7 +22,7 @@ export const moduleTypeByWellKnownName = new Map<WellKnownName, ModuleType>([
     ['(program)', 'program'],
     ['(garbage collector)', 'gc'],
     ['(idle)', 'idle'],
-    ['(no samples)', 'idle'],
+    ['(no samples)', 'unknown'],
     ['(parser)', 'compilation'],
     ['(compiler bytecode)', 'compilation'],
     ['(compiler)', 'compilation'],
