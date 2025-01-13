@@ -47,7 +47,7 @@ export function toggleProfile(discovery: Model, profile: Profile) {
         : !p.disabled
     );
 
-    if ((disable && enabledProfiles.length <= 2) || !profiles.includes(profile)) {
+    if ((disable && enabledProfiles.length < 2) || !profiles.includes(profile)) {
         return false;
     }
 
