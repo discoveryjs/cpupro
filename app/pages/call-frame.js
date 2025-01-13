@@ -1,6 +1,8 @@
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeTimings } = require('../prepare/computations/timings');
 
+const experimentalFeatures = false;
+
 const descendantTree = {
     view: 'block',
     content: [
@@ -173,7 +175,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        // when: true,
+        when: experimentalFeatures,
         className: 'trigger-outside script-source',
         data: `
             #.currentProfile.codesByCallFrame[=> callFrame = @]

@@ -1,4 +1,4 @@
-const experimentalFeatures = true;
+const experimentalFeatures = false;
 
 discovery.view.define('subject-with-nested-timeline', {
     view: 'context',
