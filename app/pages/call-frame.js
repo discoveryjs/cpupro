@@ -152,6 +152,8 @@ const pageContent = [
     {
         view: 'timeline-profiles',
         data: '#.data.profiles',
+        startTime: '=.[not disabled].startTime.min()',
+        endTime: '=.[not disabled].endTime.max()',
         whenData: 'size() > 1'
     },
 

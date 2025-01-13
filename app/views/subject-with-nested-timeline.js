@@ -7,7 +7,7 @@ discovery.view.define('subject-with-nested-timeline', {
         $tree;
         $subtree: $tree.subtreeSamples($subject);
         $getCategory: $subject.marker('category') ? =>$ : =>category;
-        $totalTime: #.currentProfile.totalTime;
+        $totalTime: #.data.totalTime;
         $binCount: 500;
         $binTime: $totalTime / $binCount;
         $binSamples: $binCount.countSamples();

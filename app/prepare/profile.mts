@@ -54,6 +54,7 @@ export function toggleProfile(discovery: Model, profile: Profile) {
     profile.disabled = !profile.disabled;
     discovery.data = {
         ...discovery.data,
+        totalTime: enabledProfiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
         currentProfile: disable && profile === currentProfile
             ? enabledProfiles[0] || null
             : currentProfile
