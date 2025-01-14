@@ -16,6 +16,8 @@ import { GeneratedNodes, V8CpuProfile } from './types.js';
 import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
 
+const experimentalFeatures = false;
+
 export type Profile = Awaited<ReturnType<typeof createProfile>>;
 export type CreateProfileApi = {
     work<T>(name: string, fn: () => T): Promise<T>;
@@ -107,8 +109,8 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         )
     );
 
-    // fix long time deltas
-    if (!data._memorySamples) {
+    // normalize long samples (time deltas)
+    if (experimentalFeatures && !data._memorySamples) {
         await work('process time deltas', () =>
             processLongTimeDeltas(
                 samplesInterval,
