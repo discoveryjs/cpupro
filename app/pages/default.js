@@ -648,7 +648,7 @@ const callFrameList = {
                     { header: 'Total time', sorting: 'left.totalTime desc, left.selfTime desc', content: 'duration:{ time: left.totalTime, total: #.data.totalTime }' },
                     {
                         header: '',
-                        colWhen: experimentalFeatures && '$[=>right]',
+                        colWhen: '$[=>right]',
                         sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
                         data: 'right',
                         contentWhen: 'hotness = "hot" or hotness = "warm"',

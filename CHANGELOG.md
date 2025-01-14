@@ -1,3 +1,8 @@
+## next
+
+- Viewer
+    - Added hotness icon for call frames with codes
+
 ## 0.6.0 (2025-01-14)
 
 - Viewer

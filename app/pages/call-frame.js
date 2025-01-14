@@ -141,6 +141,13 @@ const pageContent = [
             'call-frame-loc-badge'
         ],
         content: [
+            {
+                view: 'hotness-icon',
+                data: '#.currentProfile.codesByCallFrame[=> callFrame = @]',
+                whenData: 'hotness = "hot" or hotness = "warm"',
+                hotness: '=hotness',
+                topTier: '=topTier'
+            },
             { view: 'h1', when: 'not regexp', data: 'name' },
             {
                 view: 'source',

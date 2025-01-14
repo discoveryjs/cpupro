@@ -38,6 +38,16 @@ export const callFramesCol = (data, moduleCol = false) => ({
     details: [
         {
             view: 'table',
+            data: `
+                zip(=> entry, #.data.currentProfile.codesByCallFrame, => callFrame)
+                .({
+                    selfTime: left.selfTime,
+                    nestedTime: left.nestedTime,
+                    totalTime: left.totalTime,
+                    entry: left.entry,
+                    right
+                })
+            `,
             cols: [
                 ...timingCols,
                 ...moduleCol ? [{
@@ -46,6 +56,14 @@ export const callFramesCol = (data, moduleCol = false) => ({
                     sorting: 'entry.module.name ascN',
                     content: 'module-badge:entry'
                 }] : [],
+                {
+                    header: '',
+                    colWhen: '$[=>right]',
+                    sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
+                    data: 'right',
+                    contentWhen: 'hotness = "hot" or hotness = "warm"',
+                    content: 'hotness-icon{ hotness, topTier }'
+                },
                 {
                     header: 'Call frame',
                     className: 'subject-name',

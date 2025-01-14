@@ -41,7 +41,15 @@ const defaultTooltipContent = [
             { when: 'marker("call-frame")', content: [
                 'module-badge:module',
                 'call-frame-loc-badge',
-                { view: 'block', content: 'text:name' }
+                { view: 'block', content: [
+                    {
+                        view: 'context',
+                        data: '#.data.currentProfile.codesByCallFrame[=> callFrame = @]',
+                        whenData: 'hotness = "hot" or hotness = "warm"',
+                        content: ['hotness-icon{ hotness, topTier }', 'text:" "']
+                    },
+                    'text:name'
+                ] }
             ] },
             { content: [
                 { view: 'block', content: 'text:name' }

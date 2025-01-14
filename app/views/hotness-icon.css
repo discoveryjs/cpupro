@@ -15,6 +15,15 @@
 .view-table-cell > .view-hotness-icon:only-child {
     margin: 0px -5px;
 }
+.view-page-header__content .view-hotness-icon {
+    position: absolute;
+    height: 2em;
+    margin-top: 13px;
+    margin-left: -32px;
+}
+.view-page-header__content .view-hotness-icon::before {
+    height: 1.75em;
+}
 
 .view-hotness-icon[data-label]::after {
     content: attr(data-label);

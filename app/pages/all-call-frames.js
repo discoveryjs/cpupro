@@ -34,7 +34,7 @@ const table = {
         },
 
         // hotness
-        { header: '', colWhen: experimentalFeatures && '$[=>right]',
+        { header: '', colWhen: '$[=>right]',
             sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
             data: 'right',
             contentWhen: 'hotness = "hot" or hotness = "warm"',
