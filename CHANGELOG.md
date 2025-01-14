@@ -2,6 +2,7 @@
 
 - Viewer
     - Added hotness icon for call frames with codes
+    - Added a function code tier intervals indicator on the timeline in the call frame and module pages
 
 ## 0.6.0 (2025-01-14)
 

@@ -1,5 +1,3 @@
-const experimentalFeatures = false;
-
 discovery.view.define('subject-with-nested-timeline', {
     view: 'context',
     data: `
@@ -91,35 +89,44 @@ discovery.view.define('subject-with-nested-timeline', {
         },
         {
             view: 'list',
-            when: experimentalFeatures,
-            className: 'function-states',
+            className: 'function-codes',
             limit: false,
+            context: '{ ...#, binCount }',
             data: `
                 $type: subject.marker().type;
-                $type = "module" ? (#.currentProfile.codesByScript[=> script.module = @.subject] | is object ?|
-                    $module: script.module; compilation.codes.({ $module, code: $, color: tier.color(true) })) :
-                $type = "call-frame" ? (#.currentProfile.codesByCallFrame[=> callFrame = @.subject] |
-                    codes.({ ..., code: $, color: tier.color(true) })) :
-                undefined
+                $totalTime: #.currentProfile.totalTime;
+                $step: $totalTime / #.binCount;
+
+                #.currentProfile
+                    | $type = "module"     ? codesByScript[=> script = @.subject.script].compilation.codes :
+                      $type = "call-frame" ? codesByCallFrame[=> callFrame = @.subject].codes :
+                    | .({
+                        code: $,
+                        color: tier.color(true),
+                        duration: duration
+                            or ($lastSeen: (module or callFrame).timestamps($type).lastSeen;
+                                $lastSeen > tm ? $step * ($lastSeen / $step).ceil() - tm)
+                            or $totalTime - tm
+                    })
             `,
             whenData: true,
             itemConfig: {
                 view: 'block',
                 className: 'tick',
+                tooltip: [
+                    'html:code | `<span style=\"color:${tier.color()[:-2]+`d0`}\">${tier}</span><br>`',
+                    'text:`Duration: ${duration.ms()}`'
+                ],
                 postRender(el, _, data, ctx) {
-                    const code = data.code;
-                    const timestamps = data.callFrame
-                        ? ctx.currentProfile.callFramesTreeTimestamps.entriesMap.get(data.callFrame)
-                        : ctx.currentProfile.modulesTreeTimestamps.entriesMap.get(data.module);
+                    const { code, color, duration } = data;
                     const totalTime = ctx.currentProfile.totalTime;
-                    const step = totalTime / 500;
-                    const duration = code.duration ||
-                        (timestamps.lastSeen > code.tm && Math.ceil(timestamps.lastSeen / step) * step - code.tm) ||
-                        (totalTime - code.tm);
 
                     el.style.setProperty('--pos', code.tm / totalTime);
                     el.style.setProperty('--duration', duration / totalTime);
-                    el.style.setProperty('--tier-color', 'rgb(' + data.color + ', .68)');
+                    el.style.setProperty('--tier-color', 'rgb(' + color + ', .68)');
+                    // el.addEventListener('click', () => {
+                    //     ctx.currentProfile.samplesTimingsFiltered.setRange(code.tm, code.tm + duration);
+                    // });
                 }
             }
         },

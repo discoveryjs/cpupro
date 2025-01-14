@@ -345,6 +345,20 @@ const methods = {
 
         return result;
     },
+    timestamps(entry, type, profile = this.context.currentProfile) {
+        let map;
+
+        switch (type) {
+            case 'call-frame': map = profile?.callFramesTreeTimestamps.entriesMap; break;
+            case 'module':     map = profile?.modulesTreeTimestamps.entriesMap; break;
+            case 'package':    map = profile?.packagesTreeTimestamps.entriesMap; break;
+            case 'category':   map = profile?.categoriesTreeTimestamps.entriesMap; break;
+        }
+
+        if (map) {
+            return map.get(entry);
+        }
+    },
     countSamples(n = 500, profile = this.context.currentProfile) {
         const { samples, timeDeltas, totalTime } = profile;
 

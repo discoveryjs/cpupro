@@ -80,17 +80,18 @@
 }
 
 /**
-* Function states
+* Function codes
 **/
-.view-subject-with-nested-timeline .function-states {
+.view-subject-with-nested-timeline .function-codes {
     position: absolute;
-    inset: -6px 0 0;
+    inset: -8.5px 0 auto;
+    height: 7.5px;
     margin-left: 1px;
     pointer-events: none;
     contain: paint;
-    z-index: -2;
+    z-index: 1;
 }
-.view-subject-with-nested-timeline .function-states .tick {
+.view-subject-with-nested-timeline .function-codes .tick {
     --tier-color: #aaaaaaa0;
     position: absolute;
     box-sizing: border-box;
@@ -99,9 +100,11 @@
     height: 7.5px;
     border-left: .75px solid var(--tier-color);
     border-color: color(from var(--tier-color) srgb r g b / 1);
-    width: calc(100% * var(--duration) - .5px);
+    border-right: .5px solid transparent;
+    width: calc(100% * var(--duration));
+    pointer-events: all;
 }
-.view-subject-with-nested-timeline .function-states .tick::before {
+.view-subject-with-nested-timeline .function-codes .tick::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -110,4 +113,10 @@
     height: 1.5px;
     bottom: auto;
     background-color: var(--tier-color);
+    transition: 150ms ease-in;
+    transition-property: border-top-width, height;
+}
+.view-subject-with-nested-timeline .function-codes .tick:hover::before {
+    border-top-width: 2px;
+    height: 3.5px;
 }
