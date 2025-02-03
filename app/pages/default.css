@@ -164,6 +164,22 @@
     background-image: var(--runtime-unknown);
 }
 
+.page-default .view-expand.expanded > .header .labeled-value-groups {
+    /* display: none; */
+    opacity: 0;
+}
+.page-default .view-expand > .header .labeled-value-groups {
+    display: inline-flex;
+    margin-left: 57px;
+    transition: opacity .25s ease-out;
+}
+.page-default .view-expand > .header .labeled-value-group {
+    display: inline-flex;
+    gap: 1em;
+    border-left: 1px solid var(--discovery-background-color);
+    padding: 2px 1em;
+    margin: -2px 0;
+}
 .page-default .view-expand.timelines > .header > .header-content {
     background: var(--discovery-background-color);
     padding: 0;
@@ -264,12 +280,16 @@
     background: var(--color, #888);
     border-radius: 50%;
 }
-.page-default .category-timelines-item > .total-percent {
+.page-default .category-timelines-item > .total-percent,
+.page-default .category-timelines-item > .total-value {
     text-align: right;
     font-size: 11px;
     padding: 1px 8px 0 8px;
     border-bottom: 1px solid #0004;
     color: #888;
+}
+.page-default .category-timelines-item > .total-value {
+    padding-left: 4px;
 }
 .page-default .category-timelines-item > .total-percent:not(:empty)::after {
     content: '%';

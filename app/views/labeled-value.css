@@ -1,0 +1,23 @@
+.view-labeled-value {
+    --color: #888;
+    display: inline-block;
+}
+
+.view-labeled-value::before {
+    content: '';
+    display: inline-block;
+    vertical-align: middle;
+    width: .75em;
+    margin-top: -1px;
+    margin-right: .35em;
+    aspect-ratio: 1;
+    background: var(--color, #888);
+    border-radius: 50%;
+    outline: .5px solid var(--discovery-background-color);
+}
+
+.view-labeled-value > .labeled-value__value {
+    margin-left: .65ex;
+    color: #aaa;
+    font-size: 11px;
+}

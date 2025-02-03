@@ -117,18 +117,40 @@ const functionCodesView = [
             {
                 view: 'block',
                 className: 'label',
-                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                content: 'text:"Transitions"'
+                postRender: (el, _, data) => el.style.setProperty('--color', data.codesTotalColor),
+                content: 'text:"Codes"'
             },
             {
                 view: 'block',
-                className: 'total-percent',
-                content: 'text:""'
+                className: 'total-value',
+                content: 'text-numeric:compilations.size()'
             },
             {
                 view: 'timeline-segments-bin',
-                bins: '=transitions',
+                bins: '=compilationBins',
                 color: '="compilation".color()'
+            }
+        ]
+    },
+    {
+        view: 'link',
+        className: 'category-timelines-item',
+        content: [
+            {
+                view: 'block',
+                className: 'label',
+                postRender: (el, _, data) => el.style.setProperty('--color', data.totalColor),
+                content: 'text:"Functions"'
+            },
+            {
+                view: 'block',
+                className: 'total-value',
+                content: 'text-numeric:compilations.callFrame.size()'
+            },
+            {
+                view: 'timeline-segments-bin',
+                bins: '=totalBins',
+                color: '=totalColor'
             }
         ]
     },
@@ -160,28 +182,6 @@ const functionCodesView = [
                 }
             ]
         }
-    },
-    {
-        view: 'link',
-        className: 'category-timelines-item',
-        content: [
-            {
-                view: 'block',
-                className: 'label',
-                postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                content: 'text:"Functions"'
-            },
-            {
-                view: 'block',
-                className: 'total-percent',
-                content: 'text:""'
-            },
-            {
-                view: 'timeline-segments-bin',
-                bins: '=totalBins',
-                color: '=totalColor'
-            }
-        ]
     }
 ];
 
@@ -319,9 +319,11 @@ const categoriesTimeline = {
                 }).[max];
                 
                 $countByTopTier,
-                transitions: $codes.binScriptFunctionCodes(),
+                compilations: $codes,
+                compilationBins: $codes.binScriptFunctionCodes(),
                 totalBins: $totalBins.fnCount,
                 totalColor: '#7fb2f7a0',
+                codesTotalColor: "compilation".color(),
                 byTier: $byTierBins,
                 byTierMax: $maxTotal
             },
@@ -402,7 +404,7 @@ const categoriesTimeline = {
                         {
                             view: 'block',
                             className: 'details-section',
-                            when: experimentalFeatures && 'functionCodes or heap',
+                            when: 'functionCodes or heap',
                             content: [
                                 {
                                     view: 'context',
@@ -412,7 +414,7 @@ const categoriesTimeline = {
                                         {
                                             view: 'block',
                                             className: 'details-section-title',
-                                            content: 'text:"Functions by tier"'
+                                            content: 'text:"Code tiers"'
                                         },
                                         {
                                             view: 'list',
@@ -522,19 +524,46 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
-            when: experimentalFeatures,
+            expanded: '=false',
             data: 'functionCodes',
             header: [
-                'text:"Function tiers"',
+                'text:"Code tiers"',
                 {
                     view: 'switch',
                     content: [
                         { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
-                        { content: [] }
+                        { content: [
+                            { view: 'block', className: 'labeled-value-groups', content: [
+                                { view: 'block', className: 'labeled-value-group', content: [
+                                    {
+                                        view: 'labeled-value',
+                                        color: '=codesTotalColor',
+                                        text: 'Codes',
+                                        value: 'text-numeric:compilations.size()'
+                                    },
+                                    {
+                                        view: 'labeled-value',
+                                        color: '=totalColor',
+                                        text: 'Functions',
+                                        value: 'text-numeric:compilations.callFrame.size()'
+                                    }
+                                ] },
+                                {
+                                    view: 'inline-list',
+                                    className: 'labeled-value-group',
+                                    data: 'byTier',
+                                    itemConfig: {
+                                        view: 'labeled-value',
+                                        color: '=color',
+                                        text: '=name',
+                                        value: 'text:100 * maxTier / maxTotal | `${toFixed(2)}%`'
+                                    }
+                                }
+                            ] }
+                        ] }
                     ]
                 }
             ],
-            expanded: '=$',
             content: {
                 view: 'switch',
                 content: [

@@ -50,6 +50,8 @@ module.exports = {
             './views/flamechart.js',
             './views/flamechart-expand.css',
             './views/flamechart-expand.js',
+            './views/labeled-value.css',
+            './views/labeled-value.js',
             './views/hotness-icon.css',
             './views/hotness-icon.js',
             './views/nested-timings-tree.js',
