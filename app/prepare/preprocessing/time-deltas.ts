@@ -1,16 +1,7 @@
 import { GeneratedNodes, WellKnownType } from '../types.js';
+import { sum } from '../utils.js';
 
 const NoSamplesType: WellKnownType = 'no-samples';
-
-function sum(array: number[]) {
-    let sum = 0;
-
-    for (let i = 0; i < array.length; i++) {
-        sum += array[i];
-    }
-
-    return sum;
-}
 
 export function processTimeDeltas(
     startTime: number,
@@ -67,31 +58,6 @@ export function processTimeDeltas(
         endTime,
         endNoSamplesTime,
         totalTime,
-        samplesInterval
-    };
-}
-
-export function processMemDeltas(
-    startTime: number,
-    endTime: number,
-    timeDeltas: number[],
-    samples: number[],
-    samplePositions?: number[],
-    samplesInterval?: number
-) {
-    const deltasSum = sum(timeDeltas);
-
-    // compute samples interval as a median of deltas if needed (it might be computed on steps before time deltas processing)
-    if (typeof samplesInterval !== 'number') {
-        samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1]; // TODO: speedup?
-    }
-
-    return {
-        startTime: 0,
-        startNoSamplesTime: 0,
-        endTime: deltasSum,
-        endNoSamplesTime: 0,
-        totalTime: deltasSum,
         samplesInterval
     };
 }

@@ -1,7 +1,8 @@
 import type { Model } from '@discoveryjs/discovery';
 import { convertToInt32Array, convertToUint32Array } from './utils.js';
 import { mergeSamples, computeTimings, remapTreeSamples } from './preprocessing/samples.js';
-import { processLongTimeDeltas, processMemDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
+import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
+import { processMemoryAllocations } from './preprocessing/memory-allocations.js';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { extractCallFrames } from './preprocessing/call-frames.js';
 import { processNodes } from './preprocessing/nodes.js';
@@ -73,6 +74,8 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
 
+    const isMemoryProfile = Boolean(data._memorySamples);
+    const skipSampleMerge = isMemoryProfile || false;
     const generateNodes: GeneratedNodes = {
         dict,
         nodeIdSeed: data.nodes.length + 1,
@@ -99,14 +102,19 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         totalTime,
         samplesInterval
     } = await work('process time deltas', () =>
-        (data._memorySamples ? processMemDeltas : processTimeDeltas)(
-            data.startTime,
-            data.endTime,
-            data.timeDeltas,
-            data.samples,
-            data._samplePositions,
-            data._samplesInterval // could be computed on V8 log convertation into cpuprofile
-        )
+        isMemoryProfile
+            ? processMemoryAllocations(
+                data.timeDeltas,
+                data._samplesInterval // could be computed on profile's preprocessing
+            )
+            : processTimeDeltas(
+                data.startTime,
+                data.endTime,
+                data.timeDeltas,
+                data.samples,
+                data._samplePositions,
+                data._samplesInterval // could be computed on V8 log convertation into cpuprofile
+            )
     );
 
     // normalize long samples (time deltas)
@@ -143,7 +151,14 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         samplePositions,
         timeDeltas
     } = await work('process samples', () =>
-        mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
+        !skipSampleMerge
+            ? mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
+            : {
+                samples: rawSamples,
+                sampleCounts: new Uint32Array(rawSamples.length).fill(1),
+                samplePositions: rawSamplePositions,
+                timeDeltas: rawTimeDeltas
+            }
     );
 
     // attach root GC node samples to previous call stack;

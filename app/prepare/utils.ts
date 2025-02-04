@@ -1,5 +1,15 @@
 import { PackageProviderEndpoint, PackageRegistry, V8CpuProfileNode } from './types.js';
 
+export function sum(array: number[]) {
+    let sum = 0;
+
+    for (let i = 0; i < array.length; i++) {
+        sum += array[i];
+    }
+
+    return sum;
+}
+
 // As of March 6th, 2024, V8 and JavaScriptCore do not seem to optimize for `new Uint32Array(array)` construction,
 // showing no notable performance difference in SpiderMonkey.
 // For large arrays, manually creating a Uint32Array and populating it element by element outperforms
