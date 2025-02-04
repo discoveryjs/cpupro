@@ -12,11 +12,11 @@ function formatDuration(time) {
     return `${number}${delim}`;
 }
 
-discovery.view.define('duration', function(el, config, data) {
+discovery.view.define('duration', function(el, config, data, context) {
     const { time, total } = typeof data === 'number' ? { time: data } : data;
     const timeEl = document.createElement('span');
 
-    timeEl.className = 'time';
+    timeEl.className = context.data?.currentProfile?.type || 'time';
     timeEl.innerHTML = formatDuration(time);
 
     el.append(timeEl);

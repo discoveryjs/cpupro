@@ -45,9 +45,9 @@ const pageIndicators = {
             view: 'page-indicator-group',
             content: [
                 {
-                    title: 'Profiling time',
+                    title: '=`Profiling ${#.currentProfile.type or "time"}`',
                     hint: 'md{ source: "#### Profiling time\\n\\nThe time of the profiling session, excluding the time before the first sample and after the last sample, which are periods with no samples. The total profiling time is calculated by summing the durations of all captured samples and is used as the basis for computing time percentages.\\n\\nThe time before the first sample represents the start-up overhead of the profiling session, which is minimal if profiling begins at program start but may be longer if initiated during program execution.\\n\\nThe time after the last sample is typically zero unless it includes overhead from concluding the profiling session or adjustments from excluding idle samples at the end.\\n\\n- Profiling session time: `{{endTime - startTime | ms()}}`\\n- Time before first sample: `{{startNoSamplesTime | ms()}}`\\n- Time after last sample: `{{endNoSamplesTime | ms()}}`\\n- Profiling time:<br>`{{endTime - startTime | ms()}}` – `{{startNoSamplesTime | ms()}}` – `{{endNoSamplesTime | ms()}}` = `{{totalTime | ms()}}`" }',
-                    value: '=totalTime.ms()',
+                    value: '=totalTime.unit()',
                     unit: true
                 },
                 {

@@ -9,7 +9,7 @@ function hint(title, slug) {
 }
 
 function hintPercent(title, slug) {
-    return 'md{ source: "#### ' + title + ', %\\n\\nRepresents the proportion of the total duration of a profiling session.\\n\\n`100%` × `{{filtered.' + slug + ' | ms()}}` ⁄ `{{#.data.totalTime | ms()}}` = `{{filtered.' + slug + ' | totalPercent(2)}}`" }';
+    return 'md{ source: "#### ' + title + ', %\\n\\nRepresents the proportion of the total duration of a profiling session.\\n\\n`100%` × `{{filtered.' + slug + ' | unit()}}` ⁄ `{{#.data.totalTime | unit()}}` = `{{filtered.' + slug + ' | totalPercent(2)}}`" }';
 }
 
 discovery.view.define('page-indicator-timings', {
@@ -17,11 +17,11 @@ discovery.view.define('page-indicator-timings', {
     className: 'view-page-indicator-timings',
     content: [
         {
-            title: 'Self time',
+            title: '=`Self ${#.currentProfile.type or "time"}`',
             hint: hint('Self time', 'selfTime'),
             content: [
-                { view: 'text-with-unit', value: '=filtered.selfTime | ? ms() : "—"', unit: true },
-                { view: 'text-with-unit', value: '=full.selfTime | ? ms() : "—"', unit: true }
+                { view: 'text-with-unit', value: '=filtered.selfTime | ? unit() : "—"', unit: true },
+                { view: 'text-with-unit', value: '=full.selfTime | ? unit() : "—"', unit: true }
             ],
             annotation: {
                 view: 'badge',
@@ -30,17 +30,17 @@ discovery.view.define('page-indicator-timings', {
             }
         },
         {
-            title: 'Self time, %',
+            title: '=`Self ${#.currentProfile.type or "time"}, %`',
             hint: hintPercent('Self time', 'selfTime'),
             value: '=filtered.selfTime | ? totalPercent() : "—"',
             unit: true
         },
         {
-            title: 'Nested time',
+            title: '=`Nested ${#.currentProfile.type or "time"}`',
             hint: hint('Nested time', 'nestedTime'),
             content: [
-                { view: 'text-with-unit', value: '=filtered.nestedTime | ? ms() : "—"', unit: true },
-                { view: 'text-with-unit', value: '=full.nestedTime | ? ms() : "—"', unit: true }
+                { view: 'text-with-unit', value: '=filtered.nestedTime | ? unit() : "—"', unit: true },
+                { view: 'text-with-unit', value: '=full.nestedTime | ? unit() : "—"', unit: true }
             ],
             annotation: {
                 view: 'badge',
@@ -49,17 +49,17 @@ discovery.view.define('page-indicator-timings', {
             }
         },
         {
-            title: 'Nested time, %',
+            title: '=`Nested ${#.currentProfile.type or "time"}, %`',
             hint: hintPercent('Nested time', 'nestedTime'),
             value: '=filtered.nestedTime | ? totalPercent() : "—"',
             unit: true
         },
         {
-            title: 'Total time',
+            title: '=`Total ${#.currentProfile.type or "time"}`',
             hint: hint('Total time', 'totalTime'),
             content: [
-                { view: 'text-with-unit', value: '=filtered.totalTime | ? ms() : "—"', unit: true },
-                { view: 'text-with-unit', value: '=full.totalTime | ? ms() : "—"', unit: true }
+                { view: 'text-with-unit', value: '=filtered.totalTime | ? unit() : "—"', unit: true },
+                { view: 'text-with-unit', value: '=full.totalTime | ? unit() : "—"', unit: true }
             ],
             annotation: {
                 view: 'badge',
@@ -68,7 +68,7 @@ discovery.view.define('page-indicator-timings', {
             }
         },
         {
-            title: 'Total time, %',
+            title: '=`Total ${#.currentProfile.type or "time"}, %`',
             hint: hintPercent('Total time', 'totalTime'),
             value: '=filtered.totalTime | ? totalPercent() : "—"',
             unit: true

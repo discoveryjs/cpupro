@@ -15,14 +15,19 @@
     padding-left: .12em;
 }
 
-.view-duration > .time {
+.view-duration > .time,
+.view-duration > .memory {
     flex: 1;
 }
-.view-duration > .time::after {
+.view-duration > .time::after,
+.view-duration > .memory::after {
     content: 'ms';
     color: #787878;
     font-size: 90%;
     padding-left: 1px;
+}
+.view-duration > .memory::after {
+    content: 'Kb';
 }
 
 .view-duration > .fraction {

@@ -167,6 +167,12 @@ const methods = {
     ms(value) {
         return (value / 1000).toFixed(1) + 'ms';
     },
+    kb(value) {
+        return (value / 1000).toFixed(1) + 'Kb';
+    },
+    unit(value, unit = this.context.currentProfile?.type) {
+        return (value / 1000).toFixed(1) + (unit === 'memory' ? 'Kb' : 'ms');
+    },
     bytes(current, bytes = true) {
         return shortNum(current, [bytes ? 'bytes' : '', 'Kb', 'Mb', 'Gb'], 1024);
     },
