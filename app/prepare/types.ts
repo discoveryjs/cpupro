@@ -142,6 +142,7 @@ export type CpuProCallFrame = {
     id: number;
     script: CpuProScript | null;
     name: string;
+    origName: string;
     kind: CpuProFunctionKind;
     line: number;
     column: number;

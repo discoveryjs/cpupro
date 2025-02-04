@@ -158,6 +158,7 @@ export class Dictionary {
                 script,
                 kind: resolveCallFrameKind(script, name, regexp),
                 name,
+                origName: functionName,
                 line: lineNumber,
                 column: columnNumber,
                 loc: locFromLineColumn(lineNumber, columnNumber),
