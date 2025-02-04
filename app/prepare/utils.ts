@@ -1,6 +1,6 @@
 import { PackageProviderEndpoint, PackageRegistry, V8CpuProfileNode } from './types.js';
 
-export function sum(array: number[]) {
+export function sum(array: Uint32Array | number[]) {
     let sum = 0;
 
     for (let i = 0; i < array.length; i++) {

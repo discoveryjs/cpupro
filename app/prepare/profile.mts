@@ -74,8 +74,8 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
 
-    const isMemoryProfile = Boolean(data._memorySamples);
-    const skipSampleMerge = isMemoryProfile || false;
+    const profileType = data._memorySamples ? 'memory' as const : 'time' as const;
+    const skipSampleMerge = profileType === 'memory' || false;
     const generateNodes: GeneratedNodes = {
         dict,
         nodeIdSeed: data.nodes.length + 1,
@@ -101,13 +101,9 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         endNoSamplesTime,
         totalTime,
         samplesInterval
-    } = await work('process time deltas', () =>
-        isMemoryProfile
-            ? processMemoryAllocations(
-                data.timeDeltas,
-                data._samplesInterval // could be computed on profile's preprocessing
-            )
-            : processTimeDeltas(
+    } = profileType === 'time'
+        ? await work('process time deltas', () =>
+            processTimeDeltas(
                 data.startTime,
                 data.endTime,
                 data.timeDeltas,
@@ -115,10 +111,16 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
                 data._samplePositions,
                 data._samplesInterval // could be computed on V8 log convertation into cpuprofile
             )
-    );
+        )
+        : await work('process memory allocations', () =>
+            processMemoryAllocations(
+                data.timeDeltas,
+                data._samplesInterval // could be computed on profile's preprocessing
+            )
+        );
 
     // normalize long samples (time deltas)
-    if (experimentalFeatures && !data._memorySamples) {
+    if (experimentalFeatures && profileType === 'time') {
         await work('process time deltas', () =>
             processLongTimeDeltas(
                 samplesInterval,
@@ -315,6 +317,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
 
     const profile = {
         name: data._name,
+        type: profileType,
         disabled: false,
         runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
         sourceInfo: {
