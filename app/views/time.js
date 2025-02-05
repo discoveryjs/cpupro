@@ -5,7 +5,7 @@ const definitions = {
     totalTime: '#### Total time\n\nThe complete time taken to execute a function. It includes both \'self time\', which is the time the function spends executing its own code, and \'nested time\', which is the time spent executing all other functions that are called from within this function.'
 };
 
-function formatDuration(time) {
+function formatDuration(time, type = 'time') {
     time /= 1000;
 
     const number = time === 0
@@ -14,14 +14,14 @@ function formatDuration(time) {
             ? time.toFixed(1).replace(/\..+$|\B(?=(\d{3})+(\D|$))/g, m => m || delim)
             : time.toFixed(1);
 
-    return `${number}${delim}ms`;
+    return `${number}${delim}${type === 'time' ? 'ms' : 'Kb'}`;
 }
 
 function createRender(slug, getter) {
     return function render(el, config, data, context) {
         const time = typeof data === 'number' ? data : getter(data);
         const valueEl = document.createElement('span');
-        const value = time !== 0 ? formatDuration(time) : '—';
+        const value = time !== 0 ? formatDuration(time, context.currentProfile.type || 'time') : '—';
         const unit = value.match(/[a-z]*$/i)[0];
 
         el.classList.add('view-time');
