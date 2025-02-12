@@ -2,7 +2,7 @@ import type { Model } from '@discoveryjs/discovery';
 import { convertToInt32Array, convertToUint32Array } from './utils.js';
 import { mergeSamples, computeTimings, remapTreeSamples } from './preprocessing/samples.js';
 import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
-import { processMemoryAllocations } from './preprocessing/memory-allocations.js';
+import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { extractCallFrames } from './preprocessing/call-frames.js';
 import { processNodes } from './preprocessing/nodes.js';
@@ -74,7 +74,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
 
-    const profileType = data._memorySamples ? 'memory' as const : 'time' as const;
+    const profileType = '_memoryType' in data ? 'memory' as const : 'time' as const;
     const skipSampleMerge = profileType === 'memory' || false;
     const generateNodes: GeneratedNodes = {
         dict,
@@ -315,6 +315,15 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         )
     );
 
+            stat[data._memoryType[i]] += data.timeDeltas[i];
+        }
+        const mstat = {};
+        for (let i = 0; i < stat.length; i++) {
+            mstat[names[i]] = stat[i];
+        }
+        console.log(mstat);
+    }
+
     const profile = {
         name: data._name,
         type: profileType,
@@ -331,6 +340,17 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         endTime,
         endNoSamplesTime,
         totalTime,
+
+        // FIXME: experimental
+        _commonTree: null as unknown,
+        _uniqueValuesMap: new Map(),
+        _uniqueValuesArray: new Array<number>(),
+        _callFramesMap: new Map(),
+        _callFramesVariance: new Uint32Array(),
+        _callFramesStable: new Uint32Array(),
+        _samplesAll: new Uint32Array(),
+        _samplesStable: new Uint32Array(),
+        _sampleSizeCounts: {},
 
         samples: samplesTimings.samples,
         sampleCounts,

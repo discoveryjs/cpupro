@@ -6,6 +6,7 @@ import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { Dictionary } from './prepare/dictionary.js';
 import { createProfile, Profile } from './prepare/profile.mjs';
 import { computeCrossProfileUsage } from './prepare/computations/cross-profile-usage.mjs';
+import { processCrossProfileAllocations } from './prepare/preprocessing/memory-allocations.mjs';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
     const work = async function<T>(name: string, fn: () => T): Promise<T> {
@@ -76,6 +77,12 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     await work('cross-profile usage', () => {
         computeCrossProfileUsage(profiles, callFramesProfilePresence);
     });
+
+    if (profiles.some(profile => profile.type === 'memory')) {
+        await work('compute stable memory allocations', () =>
+            processCrossProfileAllocations(dict, profiles)
+        );
+    }
 
     // process paths
     await work('process module paths', () =>

@@ -1,6 +1,7 @@
 import type { Profile } from '../profile.mjs';
 import { CpuProCallFrame } from '../types.js';
 import { SampleConvolutionRule } from './call-tree.js';
+import { computeCrossProfileStableAllocations } from './cross-profile-allocations.mjs';
 
 export const allConvolutionRule = function () {
     return true;
@@ -30,8 +31,7 @@ export function setSamplesConvolutionRule(
     callFramesProfilePresence: Float32Array,
     rule: SampleConvolutionRule<CpuProCallFrame> | null = null
 ) {
-    for (let i = 0; i < profiles.length; i++) {
-        const profile = profiles[i];
+    for (const profile of profiles) {
         // const codesByCallFrame = profile.codesByCallFrame.reduce(
         //     (map, entry) => map.set(entry.callFrame, entry),
         //     new Map()
@@ -46,4 +46,6 @@ export function setSamplesConvolutionRule(
         );
         profile.recomputeTimings();
     }
+
+    computeCrossProfileStableAllocations(profiles);
 }
