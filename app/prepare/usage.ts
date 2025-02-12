@@ -44,7 +44,7 @@ function getUsed<T, S>(
     dict: T[],
     dictToSourceIndex: Uint32Array
 ] {
-    const used = new Set(usedDictionary.map(fn));
+    const used = new Set(usedDictionary.map(fn).filter(Boolean));
     const usedDictToSourceIndex = new Uint32Array(used.size);
     const usedDict: T[] = new Array(used.size);
 
