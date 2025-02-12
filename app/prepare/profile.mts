@@ -74,7 +74,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
 
-    const profileType = '_memoryType' in data ? 'memory' as const : 'time' as const;
+    const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
     const skipSampleMerge = profileType === 'memory' || false;
     const generateNodes: GeneratedNodes = {
         dict,

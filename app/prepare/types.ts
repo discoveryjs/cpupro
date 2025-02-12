@@ -14,10 +14,13 @@ export type V8CpuProfile = {
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
     _name?: string; // some profiles has a name
+    _type?: 'memory' | 'time';
     _runtime?: RuntimeCode;
     _samplesInterval?: number;
     _samplePositions?: number[];
-    _memorySamples?: boolean;
+    _memoryGc?: number[];
+    _memoryPos?: number[];
+    _memoryType?: number[];
     _callFrames?: V8CpuProfileCallFrame[];
     _scripts?: V8CpuProfileScript[];
     _functions?: V8CpuProfileFunction[];

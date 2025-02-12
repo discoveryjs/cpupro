@@ -1,6 +1,13 @@
 import type { V8CpuProfile, V8CpuProfileNode } from '../types.js';
 
-type SizeSample = { size: number, nodeId: number, ordinal: number };
+type SizeSample = {
+    size: number;
+    nodeId: number;
+    ordinal: number;
+    gc?: number;
+    pos?: number;
+    type?: number;
+};
 
 function isObject(value: unknown): value is object {
     return typeof value === 'object' && value !== null;
@@ -60,6 +67,7 @@ function isSizeSamples(value: unknown): value is SizeSample[] {
     );
 }
 
+// TODO: split into isCPUProfile & isAllocationProfile
 export function isCPUProfile(data: unknown): data is V8CpuProfile {
     const maybe = data as Partial<V8CpuProfile>;
 
@@ -151,6 +159,12 @@ export function unrollHeadToNodesIfNeeded(profile: V8CpuProfile & { head?: V8Cpu
     };
 }
 
+function extractVectorIfExists(samples: SizeSample[], property: keyof SizeSample) {
+    if (samples.length > 0 && samples[0][property]) {
+        return samples.map(sample => sample[property] as number);
+    }
+}
+
 export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[] | SizeSample[] }): V8CpuProfile {
     if (isArrayOfIntegers(profile.samples)) {
         return profile;
@@ -164,7 +178,10 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[
 
     return {
         ...profile,
-        _memorySamples: true,
+        _type: 'memory',
+        _memoryGc: extractVectorIfExists(source, 'gc'),
+        _memoryType: extractVectorIfExists(source, 'type'),
+        _samplePositions: extractVectorIfExists(source, 'pos'),
         samples: source.map(sample => sample.nodeId),
         timeDeltas: source.map(sample => sample.size)
     };
