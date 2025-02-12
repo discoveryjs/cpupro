@@ -15,9 +15,8 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         this.byUrl = new Map();
         this.#scriptByUrl = new Map();
 
-        // FIXME: use source
         for (const script of dict.scripts) {
-            const { url, source } = script;
+            const { url } = script; // FIXME: use script.source
             let scriptByUrl = this.#scriptByUrl.get(url || '');
 
             if (scriptByUrl === undefined) {
