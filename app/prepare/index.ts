@@ -57,9 +57,14 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
     if (isChromiumPerformanceProfile(data)) {
         inputProfiles = extractFromChromiumPerformanceProfile(data);
     } else if (Array.isArray(data)) {
-        if (isV8LogProfile(data[0]) || isCPUProfile(data[0])) {
+        // in case input is array of { profile } object
+        const profiles = data.map(entry =>
+            'profile' in entry && entry.profile ? entry.profile : entry
+        );
+
+        if (isV8LogProfile(profiles[0]) || isCPUProfile(profiles[0])) {
             inputProfiles = {
-                profiles: data
+                profiles
             };
         }
     } else if (isV8LogProfile(data) || isCPUProfile(data)) {
