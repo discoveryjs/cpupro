@@ -46,10 +46,22 @@
 .page-profiles-matrix .green-line {
     color: #2c9c2c;
 }
+.page-profiles-matrix .stable-line {
+    color: #ff00a9;
+}
 
+.page-profiles-matrix .view-table .view-table-header-cell {
+    white-space: nowrap;
+}
 .page-profiles-matrix .view-table .metric {
     background-color: #00000033;
 }
 .page-profiles-matrix .view-table .mid-metric {
     background-color: #ffffff0a;
+}
+.page-profiles-matrix .view-table .vs {
+    color: #d3a858;
+}
+.page-profiles-matrix .view-table .new {
+    color: #699e69;
 }
