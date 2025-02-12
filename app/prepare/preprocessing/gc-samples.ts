@@ -1,5 +1,13 @@
 import type { GeneratedNodes, V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
 
+// The distribution of GC samples based on their position in the previous call frame appears too arbitrary.
+// As a result, GC samples (typically the smaller ones) are allocated within the function code as nested operations,
+// which creates noise and can be misleading. This is because the placement of GC samples within a function is speculative
+// (GC might have triggered outside the function, and certainly not at the last recorded location).
+// The optimal solution at present is to assign GC samples to the call frame without considering their position.
+// Tracking of positions can be enabled via this flag for future experiments.
+const useSamplePositions = false;
+
 export function reparentGcNodes(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     generatedNodes: GeneratedNodes,
@@ -15,7 +23,7 @@ export function reparentGcNodes(
         return;
     }
 
-    if (samplePositions !== null) {
+    if (useSamplePositions && samplePositions !== null) {
         remapGcSamplesWithPositions(rootGcNodeId, generatedNodes, samples, samplePositions);
     } else {
         remapGcSamples(rootGcNodeId, generatedNodes, samples);
