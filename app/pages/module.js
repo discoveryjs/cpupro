@@ -1,3 +1,4 @@
+import { FEATURE_SOURCES } from '../prepare/const.js';
 import { timingCols } from './common.js';
 
 const pageContent = [
@@ -27,9 +28,8 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: false,
+        when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
-        data: '#.currentProfile.codesByScript[=> script = @.script]',
         expanded: '=script.source is not undefined',
         header: [
             'text:"Source"',
@@ -39,48 +39,7 @@ const pageContent = [
                 { content: 'html:`<span style="color: #888">(unavailable)</span>`' }
             ] }
         ],
-        content: {
-            view: 'source',
-            data: `{
-                $tooltipView: [
-                    'text:scriptFunction.callFrame.name',
-                    'html:"<br>"',
-                    {
-                        view: 'inline-list',
-                        data: 'scriptFunction.codes',
-                        item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
-                    }
-                ];
-
-                syntax: "js",
-                content: script.source | is string ? replace(/\\n$/, "") : "// source is unavailable",
-                refs: callFrameCodes.({
-                    $href: callFrame.marker('call-frame').href;
-                    $marker: codes | size() = 1
-                        ? tier[].abbr()
-                        : size() <= 3
-                            ? tier.(abbr()).join(' ')
-                            : tier[].abbr() + ' … ' + tier[-1].abbr();
-
-                    className: 'function',
-                    range: [callFrame.start, callFrame.end],
-                    marker: $href ? $marker + '" data-href="' + $href : $marker,
-                    scriptFunction: $,
-                    tooltip: $tooltipView
-                })
-            }`,
-            postRender(el) {
-                const contentEl = el.querySelector('.view-source__content');
-
-                contentEl.addEventListener('click', (event) => {
-                    const pseudoLinkEl = event.target.closest('.view-source .spotlight[data-href]');
-
-                    if (pseudoLinkEl && contentEl.contains(pseudoLinkEl)) {
-                        discovery.setPageHash(pseudoLinkEl.dataset.href);
-                    }
-                });
-            }
-        }
+        content: 'script-source:script'
     },
 
     {

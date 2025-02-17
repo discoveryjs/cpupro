@@ -19,6 +19,9 @@
 .all-page-table > thead th:last-child {
     width: 100%;
 }
+.all-page-table .view-source {
+    max-height: calc(100vh - 220px);
+}
 
 .app-page-summary {
     position: fixed;

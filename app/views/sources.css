@@ -1,0 +1,68 @@
+.view-call-frame-source .script-source .view-source.regexp .view-source__source {
+    word-break: break-word;
+    white-space: normal;
+}
+
+.view-call-frame-source .view-source__prelude:empty {
+    display: none;
+}
+.view-call-frame-source .view-source__prelude {
+    padding: 2px 7px 4px;
+    border-bottom: 1px solid var(--discovery-background-color);
+    color: #aaa;
+}
+.view-call-frame-source .view-source__prelude .function-path::before {
+    content: 'Top level';
+}
+.view-call-frame-source .view-source__prelude .function-path .view-list-item::before {
+    content: '›';
+    color: #888;
+    padding: 0 .6ex;
+}
+.view-call-frame-source .view-source__prelude .function-path .view-list-item .target {
+    display: inline;
+    padding: 1px 5px 3px;
+    border-radius: 3px;
+    background-color: #68624685;
+    color: #b6aa6a;
+}
+
+.view-call-frame-source .view-source .view-source__source .mark {
+    transition: .5s ease-out;
+    transition-property: opacity, max-width, margin, padding;
+    box-sizing: border-box;
+}
+.view-call-frame-source .view-source .view-source__source .mark:has(.empty-content) {
+    opacity: 0;
+    max-width: 0;
+    margin-inline: 0;
+    padding-inline: 0;
+}
+
+.view-source.cpupro-source .spotlight {
+    background-color: #46453c;
+}
+.view-source.cpupro-source .spotlight .spotlight {
+    background-color: inherit;
+}
+.view-source.cpupro-source .spotlight.function:not(:has(.spotlight.function:hover)):hover {
+    background-color: #686246aa;
+}
+.view-source.cpupro-source .spotlight.function {
+    padding-left: 0;
+    padding-right: 4px;
+    margin-left: 2px;
+    border-radius: 9px;
+    text-decoration: none;
+}
+.view-source.cpupro-source .spotlight.function:is(:not(:hover), :has(.spotlight.function:hover)) {
+    color: #aa9;
+}
+.view-source.cpupro-source .spotlight.function[data-href] {
+    cursor: pointer;
+}
+.view-source.cpupro-source .function-tag {
+    border-radius: 9px;
+    padding-left: 4.5px;
+    padding-right: 4px;
+}

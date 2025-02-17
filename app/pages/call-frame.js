@@ -1,7 +1,6 @@
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeTimings } = require('../prepare/computations/timings');
-
-const experimentalFeatures = false;
+const { FEATURE_SOURCES } = require('../prepare/const.js');
 
 const descendantTree = {
     view: 'block',
@@ -182,141 +181,19 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: experimentalFeatures,
+        when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
-        data: `
-            #.currentProfile.codesByCallFrame[=> callFrame = @]
-            |? {
-                $source: callFrame.script.source or "";
-                $start: $source.lastIndexOf('\\n', callFrame.start) + 1;
-                $end: $source.indexOf('\\n', callFrame.end) | $ != -1 ?: $source.size();
-
-                scriptFunction: $,
-                source: $source[$start:$end],
-                $start,
-                $end
-            } : {
-                callFrame: @
-            }
-        `,
-        expanded: '=source is not undefined',
+        expanded: '=hasSource()',
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
             { view: 'switch', content: [
-                { when: 'callFrame.regexp', content: 'html:`<span style="color: #888">${callFrame.regexp.size().bytes(true)}</html>`' },
-                { when: 'source is not undefined', content: 'html:`<span style="color: #888">${source.size().bytes(true)}</html>`' },
+                { when: 'regexp', content: 'html:`<span style="color: #888">${regexp.size().bytes(true)}</html>`' },
+                { when: 'hasSource()', content: 'html:`<span style="color: #888">${script.source.size().bytes(true)}</html>`' },
                 { content: 'html:`<span style="color: #888">(unavailable)</span>`' }
             ] }
         ],
-        content: [
-            {
-                view: 'source',
-                className: 'regexp',
-                when: 'callFrame.regexp',
-                data: '{ content: callFrame.regexp, syntax: "regexp", lineNum: false }'
-            },
-            {
-                view: 'source',
-                when: 'not callFrame.regexp',
-                data: `{
-                    $line: scriptFunction.callFrame.line or 1;
-                    $start: scriptFunction.callFrame.start;
-                    $end: scriptFunction.callFrame.end;
-                    $script: scriptFunction.callFrame.script;
-                    $inlinedRefs: scriptFunction.codes[-1].inlined.match(/O\\d+(?=F|$)/g).matched |
-                        ? .($pos: +$[1:] - @.start; { className: 'inline', range: [$pos, $pos] })
-                        : [];
-                    $codePoints: scriptFunction.codes | $[=>tier="Ignition"] or .[positions][-1] | positions.match(/O\\d+(?=C|$)/g).matched |
-                        ? .($pos: +$[1:] - @.start; $pos ? { className: 'code-point', range: [$pos, $pos] })
-                        : [];
-                    $samplePoints: #.currentProfile.callFramePositionsTimings.entries.[entry.callFrame=@.scriptFunction.callFrame] |
-                        ? .($pos: entry.scriptOffset | $ != -1 ? $ - @.start : $start - @.start; [
-                            selfTime   ? { className: 'sample-point self',   range: [$pos, $pos], marker: selfTime.ms() },
-                            nestedTime ? { className: 'sample-point nested', range: [$pos, $pos], marker: nestedTime.ms() }
-                            ].[])
-                        : [];
-                    $tooltipView: {
-                        className: 'cpupro-hint-tooltip',
-                        content: [
-                            'text:scriptFunction.callFrame.name',
-                            'html:"<br>"',
-                            // {
-                            //     view: 'context',
-                            //     data: '#.currentProfile.functionsTreeTimingsFiltered.getTimings(tooltipData.function)',
-                            //     content: [
-                            //         'self-time',
-                            //         'nested-time',
-                            //         'total-time',
-                            //         'struct:node.value'
-                            //     ]
-                            // },
-                            // 'html:"<br>"',
-                            {
-                                view: 'inline-list',
-                                data: 'scriptFunction.codes',
-                                item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
-                            }
-                    ] };
-
-                    ...,
-                    syntax: "js",
-                    content: source | is string ? replace(/\\n$/, "") : "// source is unavailable",
-                    lineNum: => $ + $line,
-                    $inlinedRefs,
-                    $codePoints,
-                    $samplePoints,
-                    refs: $codePoints + $inlinedRefs + $samplePoints + #.currentProfile.codesByCallFrame.[$ != @.scriptFunction and (callFrame | script = $script and start >= $start and end <= $end)].({
-                        $href: @.scriptFunction != $ ? callFrame.marker('call-frame').href;
-                        $marker: codes | size() = 1
-                            ? tier[].abbr()
-                            : size() <= 3
-                                ? tier.(abbr()).join(' ')
-                                : tier[].abbr() + ' … ' + tier[-1].abbr();
-
-                        className: 'function',
-                        range: [callFrame.start - @.start, callFrame.end - @.start],
-                        marker: $href ? $marker + '" data-href="' + $href : $marker,
-                        scriptFunction: $,
-                        tooltip: $tooltipView
-                    })
-                }`,
-                postRender(el) {
-                    const contentEl = el.querySelector('.view-source__content');
-
-                    contentEl.addEventListener('click', (event) => {
-                        const pseudoLinkEl = event.target.closest('.view-source .spotlight[data-href]');
-
-                        if (pseudoLinkEl && contentEl.contains(pseudoLinkEl)) {
-                            discovery.setPageHash(pseudoLinkEl.dataset.href);
-                        }
-                    });
-                },
-                prelude: {
-                    view: 'block',
-                    when: 'scriptFunction.callFrame.script',
-                    data: `
-                        scriptFunction.callFrame | $start; $end; script.callFrames
-                            .[start <= $start and end >= $end]
-                            .sort(start asc)
-                            .({
-                                target: @.scriptFunction.callFrame,
-                                callFrame: $
-                            })
-                    `,
-                    content: {
-                        view: 'inline-list',
-                        className: 'function-path',
-                        whenData: true,
-                        item: { view: 'switch', content: [
-                            { when: 'callFrame = target', content: 'block{ className: "target", content: `text:callFrame | function or $ | name or "(anonymous function)"` }' },
-                            { when: 'callFrame.marker("call-frame")', content: 'auto-link:callFrame' },
-                            { content: 'text:callFrame | name or "(anonymous function)"' }
-                        ] }
-                    }
-                }
-            }
-        ]
+        content: 'call-frame-source'
     },
 
     {
@@ -385,6 +262,7 @@ const pageContent = [
 
     {
         view: 'flamechart-expand',
+        tree: '=#.currentProfile.callFramesTree',
         subsetTimings: '=#.subsetTreeTimings'
     }
 ];

@@ -63,6 +63,8 @@ module.exports = {
             './views/page-indicator-timings.js',
             './views/sampled-count-total.css',
             './views/sampled-count-total.js',
+            './views/sources.css',
+            './views/sources.js',
             './views/subject-badges.css',
             './views/subject-badges.js',
             './views/subject-with-nested-timeline.css',

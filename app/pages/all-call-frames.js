@@ -1,3 +1,5 @@
+import { FEATURE_SOURCES } from '../prepare/const.js';
+
 const experimentalFeatures = false;
 const table = {
     view: 'table',
@@ -53,6 +55,17 @@ const table = {
                 content: 'text-match'
             }
         },
+        { header: 'Source', colWhen: FEATURE_SOURCES && '$[=>entry.hasSource()]',
+            className: 'number',
+            sorting: '(entry | end - start) desc',
+            data: 'entry',
+            content: 'text:regexp ? regexp.size() : (end - start | $ > 0?: "")',
+            detailsWhen: 'hasSource()',
+            details: {
+                view: 'call-frame-source'
+                // context: '{ ...#, nonFilteredTimings: true }'
+            }
+        },
         { header: 'Module',
             sorting: 'moduleName ascN, loc ascN',
             data: 'entry',
@@ -63,13 +76,6 @@ const table = {
         },
 
         // source & tiers
-        { header: 'Source', colWhen: experimentalFeatures && '$[=>right]',
-            className: 'number',
-            sorting: '(right.callFrame.end - right.callFrame.start) desc',
-            data: 'right.callFrame',
-            content: 'text:end - start | $ > 0?: ""',
-            details: '=end-start > 0 ? `source:{ syntax: "js", content: script.source[start:end] }`'
-        },
         { header: 'Tiers', colWhen: experimentalFeatures && '$[=>right]',
             sorting: 'right.codes.size() desc',
             data: 'right',
