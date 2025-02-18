@@ -2,7 +2,7 @@ import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import { computeCrossProfileStableAllocations } from '../computations/cross-profile-allocations.mjs';
 import type { Dictionary } from '../dictionary.js';
 import type { Profile } from '../profile.mjs';
-import { sum } from '../utils.js';
+import { min, sum } from '../utils.js';
 
 export function processMemoryAllocations(
     allocations: number[],
@@ -12,7 +12,7 @@ export function processMemoryAllocations(
 
     // compute samples interval as a median if needed (it might be computed on steps before the processing)
     if (typeof samplesInterval !== 'number') {
-        samplesInterval = allocations.slice().sort()[allocations.length >> 1]; // TODO: speedup?
+        samplesInterval = min(allocations);
     }
 
     return {

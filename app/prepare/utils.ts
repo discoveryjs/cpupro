@@ -10,6 +10,18 @@ export function sum(array: Uint32Array | number[]) {
     return sum;
 }
 
+export function min(array: Uint32Array | number[]) {
+    let min = array[0];
+
+    for (let i = 1; i < array.length; i++) {
+        if (array[i] < min) {
+            min = array[i];
+        }
+    }
+
+    return min;
+}
+
 // As of March 6th, 2024, V8 and JavaScriptCore do not seem to optimize for `new Uint32Array(array)` construction,
 // showing no notable performance difference in SpiderMonkey.
 // For large arrays, manually creating a Uint32Array and populating it element by element outperforms
