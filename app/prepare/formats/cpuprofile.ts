@@ -160,7 +160,7 @@ export function unrollHeadToNodesIfNeeded(profile: V8CpuProfile & { head?: V8Cpu
 }
 
 function extractVectorIfExists(samples: SizeSample[], property: keyof SizeSample) {
-    if (samples.length > 0 && samples[0][property]) {
+    if (samples.length > 0 && property in samples[0]) {
         return samples.map(sample => sample[property] as number);
     }
 }

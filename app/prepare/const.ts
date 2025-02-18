@@ -104,8 +104,43 @@ export const knownRegistry: Record<string, PackageProvider> = {
     ) }
 };
 
+export const allocTimespan = [
+    'alive',
+    'short-lived',
+    'long-lived'
+] as const;
+export const allocTypes = [
+    'hidden',
+    'array',
+    'string',
+    'object',
+    'code',
+    'closure',
+    'regexp',
+    'heap-number',
+    'native',
+    'synthetic',
+    'concat-string',
+    'sliced-string',
+    'symbol',
+    'bigint',
+    'object-shape',
+    'wasm-object'
+] as const;
+type AllocationTimespan = (typeof allocTimespan)[number];
+type AllocationType = (typeof allocTypes)[number];
+
 // colors in order of apperiance in a list
-export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeType, string> = {
+export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeType | AllocationType | AllocationTimespan, string> = {
+    // FIXME: place part of alloc types here, because regexp alloc type clash with package type
+    'object-shape': '#ffffffa0',
+    'object': '#fee29ca0',
+    'array': '#ffee61a0',
+    'string': '#78b362a0',
+    'concat-string': '#78b362a0',
+    'sliced-string': '#78b362a0',
+    // ----
+
     'script': '#fee29ca0',
     'npm': '#f98e94a0',
     'github': '#666666a0',
@@ -128,12 +163,30 @@ export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeTyp
     'idle': '#888888a0',
     'unknown': '#888888a0',
 
+    // compiler tier
     'Unknown': '#888888a0',
     'Ignition': '#b9b9b9a0',
     'Sparkplug': '#e3c685a0',
     'Maglev': '#dba543a0',
     'Turboprop': '#dba543a0',
-    'Turbofan': '#f78080a0'
+    'Turbofan': '#f78080a0',
+
+    // alloc types
+    // 'regexp': '#8db2f8a0',
+    'heap-number': '#65b4fda0',
+    'bigint': '#65b4fda0',
+    'closure': '#f2a376a0',
+    'code': '#fc9a9aa0',
+    'symbol': '#ffee61a0',
+    'wasm-object': '#9481ffa0',
+    'native': '#fcb69aa0',
+    'synthetic': '#fcb69aa0',
+    'hidden': '#888888a0',
+
+    // alloc timespan
+    'alive': '#78b362a0',
+    'long-lived': '#f2a376a0',
+    'short-lived': '#fee29ca0'
 };
 export const typeColorComponents = Object.fromEntries(Object.entries(typeColor)
     .map(([type, color]) =>[type, [

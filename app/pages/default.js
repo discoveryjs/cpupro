@@ -332,7 +332,7 @@ const categoriesTimeline = {
                 byTierMax: $maxTotal
             },
             heap: heap.events |? {
-                $totalHeapSize: binMemoryTotal($binCount);
+                $totalHeapSize: binHeapTotal($binCount);
                 $new: binMemory("new", $binCount);
                 $delete: binMemory("delete", $binCount);
 
@@ -343,6 +343,10 @@ const categoriesTimeline = {
                 deleteTotal: $delete.sum(),
                 max: [$new.max(), $delete.max()].max(),
                 maxTotal: $totalHeapSize.max()
+            },
+            allocations: _memoryType and {
+                byType: timeDeltas.binAllocations(_memoryType, #.allocationTypeNames, $binCount),
+                byGc: timeDeltas.binAllocations(_memoryGc, #.allocationTimespanNames, $binCount)
             }
         }
     `,
@@ -528,10 +532,15 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
+            when: '#.currentProfile.type != "memory"',
             expanded: '=false',
             data: 'functionCodes',
             header: [
-                'text:"Code tiers"',
+                {
+                    view: 'block',
+                    className: 'expand-label',
+                    content: 'text:"Code tiers"'
+                },
                 {
                     view: 'switch',
                     content: [
@@ -605,6 +614,128 @@ const categoriesTimeline = {
                         content: 'md:"The profile does not contain the necessary data."'
                     } }
                 ]
+            }
+        },
+        {
+            view: 'expand',
+            data: 'allocations.byType.[value].sort(name.order() asc)',
+            whenData: true,
+            expanded: true,
+            header: [
+                {
+                    view: 'block',
+                    className: 'expand-label',
+                    content: 'text:"Allocations type"'
+                },
+                {
+                    view: 'switch',
+                    content: [
+                        { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
+                        { content: [
+                            { view: 'block', className: 'labeled-value-groups', content: [
+                                {
+                                    view: 'inline-list',
+                                    className: 'labeled-value-group',
+                                    itemConfig: {
+                                        view: 'labeled-value',
+                                        color: '=color',
+                                        text: '=name',
+                                        value: 'text:100 * value / total | `${toFixed(2)}%`'
+                                    }
+                                }
+                            ] }
+                        ] }
+                    ]
+                }
+            ],
+            content: {
+                view: 'list',
+                className: 'category-timelines-list',
+                item: {
+                    view: 'link',
+                    className: 'category-timelines-item',
+                    content: [
+                        {
+                            view: 'block',
+                            className: 'label',
+                            postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                            content: 'text:name'
+                        },
+                        {
+                            view: 'block',
+                            className: 'total-percent',
+                            content: 'text:100 * value / total | toFixed(2)'
+                        },
+                        {
+                            view: 'timeline-segments-bin',
+                            bins: '=bins',
+                            max: '=step',
+                            binsMax: true,
+                            color: '=color'
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            view: 'expand',
+            data: 'allocations.byGc.[value].sort(name.order() asc)',
+            whenData: true,
+            expanded: true,
+            header: [
+                {
+                    view: 'block',
+                    className: 'expand-label',
+                    content: 'text:"Allocations lifespan"'
+                },
+                {
+                    view: 'switch',
+                    content: [
+                        { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
+                        { content: [
+                            { view: 'block', className: 'labeled-value-groups', content: [
+                                {
+                                    view: 'inline-list',
+                                    className: 'labeled-value-group',
+                                    itemConfig: {
+                                        view: 'labeled-value',
+                                        color: '=color',
+                                        text: '=name',
+                                        value: 'text:100 * value / total | `${toFixed(2)}%`'
+                                    }
+                                }
+                            ] }
+                        ] }
+                    ]
+                }
+            ],
+            content: {
+                view: 'list',
+                className: 'category-timelines-list',
+                item: {
+                    view: 'link',
+                    className: 'category-timelines-item',
+                    content: [
+                        {
+                            view: 'block',
+                            className: 'label',
+                            postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                            content: 'text:name'
+                        },
+                        {
+                            view: 'block',
+                            className: 'total-percent',
+                            content: 'text:100 * value / total | toFixed(2)'
+                        },
+                        {
+                            view: 'timeline-segments-bin',
+                            bins: '=bins',
+                            max: '=step',
+                            binsMax: true,
+                            color: '=color'
+                        }
+                    ]
+                }
             }
         }
     ]

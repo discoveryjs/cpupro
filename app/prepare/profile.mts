@@ -16,6 +16,7 @@ import { Usage } from './usage.js';
 import { GeneratedNodes, V8CpuProfile } from './types.js';
 import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
+import { allocTypes } from './const.js';
 
 const experimentalFeatures = false;
 
@@ -315,11 +316,14 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         )
     );
 
+    if (profileType === 'memory' && data._memoryType) {
+        const stat = new Uint32Array(allocTypes.length);
+        for (let i = 0; i < data._memoryType.length; i++) {
             stat[data._memoryType[i]] += data.timeDeltas[i];
         }
         const mstat = {};
         for (let i = 0; i < stat.length; i++) {
-            mstat[names[i]] = stat[i];
+            mstat[allocTypes[i]] = stat[i];
         }
         console.log(mstat);
     }
@@ -351,6 +355,8 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         _samplesAll: new Uint32Array(),
         _samplesStable: new Uint32Array(),
         _sampleSizeCounts: {},
+        _memoryType: data._memoryType ? new Uint8Array(data._memoryType) : null,
+        _memoryGc: data._memoryGc ? new Uint8Array(data._memoryGc) : null,
 
         samples: samplesTimings.samples,
         sampleCounts,

@@ -1,5 +1,6 @@
 import { selectProfile, toggleProfile } from './prepare/profile.mts';
 import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule, topLevelConvolutionRule } from './prepare/computations/samples-convolution.mjs';
+import { allocTimespan, allocTypes } from './prepare/const';
 
 const demos = discovery.context?.model?.meta?.demos;
 
@@ -51,6 +52,8 @@ discovery.action.call('setStructViewAnnotations', [
 ]);
 
 discovery.setContext({
+    allocationTimespanNames: allocTimespan,
+    allocationTypeNames: allocTypes,
     samplesConvolutionRules: {
         all: allConvolutionRule,
         module: moduleConvolutionRule,
