@@ -141,10 +141,10 @@ const methods = {
     hasSource: `
         is object
             ? marker("call-frame")
-            ? regexp is string or (script.source is not undefined and (end - start) > 0)
+            ? regexp is string or (script.source is string and (end - start) > 0)
             : marker("module")
-                ? script.source is not undefined
-                : marker("script").object.source is not undefined
+                ? script.source is string
+                : marker("script").object.source is string
     `,
     order(value) {
         return typeOrder[value] || 100;

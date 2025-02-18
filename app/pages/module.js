@@ -30,12 +30,12 @@ const pageContent = [
         view: 'expand',
         when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
-        expanded: '=script.source is not undefined',
+        expanded: '=script.hasSource()',
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
             { view: 'switch', content: [
-                { when: 'script.source is not undefined', content: 'html:`<span style="color: #888">${script.source.size().bytes(true)}</html>`' },
+                { when: 'script.hasSource()', content: 'html:`<span style="color: #888">${script.source.size().bytes(true)}</html>`' },
                 { content: 'html:`<span style="color: #888">(unavailable)</span>`' }
             ] }
         ],

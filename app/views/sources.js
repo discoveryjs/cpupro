@@ -13,7 +13,6 @@ const unavailableSourceView = {
 discovery.view.define('script-source', {
     view: 'switch',
     content: [
-        { when: 'regexp', content: regexpSourceView },
         { when: 'hasSource()', content: {
             view: 'source',
             className: 'cpupro-source',
@@ -80,7 +79,7 @@ discovery.view.define('script-source', {
                 });
             }
         } },
-        { countent: unavailableSourceView }
+        { content: unavailableSourceView }
     ]
 });
 
