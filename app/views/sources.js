@@ -23,11 +23,12 @@ discovery.view.define('script-source', {
                     codes: []
                 });
                 $tooltipView: [
-                    'text:scriptFunction.callFrame.name',
+                    'text:callFrameCodes.callFrame.name',
                     'html:"<br>"',
                     {
                         view: 'inline-list',
-                        data: 'scriptFunction.codes',
+                        data: 'callFrameCodes.codes',
+                        whenData: true,
                         item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
                     }
                 ];
@@ -35,29 +36,17 @@ discovery.view.define('script-source', {
                 syntax: "js",
                 content: source.replace(/\\n$/, ""),
                 $callFrameCodes,
-                refs__: $callFrameCodes.({
-                    $href: callFrame.marker('call-frame').href;
-                    $marker: codes | size() = 1
-                        ? tier[].abbr()
-                        : size() <= 3
-                            ? tier.(abbr()).join(' ')
-                            : tier[].abbr() + ' … ' + tier[-1].abbr();
-
-                    className: 'function',
-                    range: [callFrame.start, callFrame.end],
-                    marker: $href ? $marker + '" data-href="' + $href : $marker,
-                    scriptFunction: $,
-                    tooltip: $tooltipView
-                }),
                 marks: $callFrameCodes.({
                     className: 'function-tag',
                     offset: callFrame.start,
                     content: 'text:tiers',
-                    tiers: codes | size() = 1
-                        ? tier[].abbr()
-                        : size() <= 3
-                            ? tier.(abbr()).join(' ')
-                            : tier[].abbr() + ' … ' + tier[-1].abbr()
+                    tiers: codes
+                        |? size() = 1
+                            ? tier[].abbr()
+                            : size() <= 3
+                                ? tier.(abbr()).join(' ')
+                                : tier[].abbr() + ' … ' + tier[-1].abbr()
+                        : "ƒn"
                 }),
                 refs: $callFrameCodes.({
                     className: 'function',
@@ -124,8 +113,8 @@ discovery.view.define('call-frame-source', {
                     |? .({ offset: +$[1:] - $sourceSliceStart, content: 'text:"1"', className: 'def', prefix: 'Inline' });
                 $codePointMarks: $codePoints
                     |? .(+$[1:] - $sourceSliceStart | is number ? { offset: $ });
-                $codePointMarksText: $codePoints
-                    |? .($x: +$[1:];+$[1:] - $sourceSliceStart | is number ? { offset: $, abs: $x, kind: 'none', content: 'text:"O: " +abs' });
+                // $codePointMarksText: $codePoints
+                //     |? .($x: +$[1:];+$[1:] - $sourceSliceStart | is number ? { offset: $, abs: $x, kind: 'none', content: 'text:"O: " +abs' });
 
                 $sampleMarkContent: {
                     view: 'update-on-timings-change',
@@ -165,17 +154,19 @@ discovery.view.define('call-frame-source', {
                         className: 'function-tag',
                         offset: callFrame.start - $sourceSliceStart,
                         content: 'text:tiers',
-                        tiers: codes | size() = 1
-                            ? tier[].abbr()
-                            : size() <= 3
-                                ? tier.(abbr()).join(' ')
-                                : tier[].abbr() + ' … ' + tier[-1].abbr()
+                        tiers: codes
+                            |? size() = 1
+                                ? tier[].abbr()
+                                : size() <= 3
+                                    ? tier.(abbr()).join(' ')
+                                    : tier[].abbr() + ' … ' + tier[-1].abbr()
+                            : "ƒn"
                     })
                     // $codePointMarksText,
                     // $allocationMarks
                 };
 
-                $tooltipView: {
+                $callFrameTooltipView: {
                     className: 'cpupro-hint-tooltip',
                     content: [
                         'text:callFrameCodes.callFrame.name',
@@ -183,6 +174,7 @@ discovery.view.define('call-frame-source', {
                         {
                             view: 'inline-list',
                             data: 'callFrameCodes.codes',
+                            whenData: true,
                             item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
                         }
                 ] };
@@ -198,7 +190,7 @@ discovery.view.define('call-frame-source', {
                     range: [callFrame.start - $sourceSliceStart, callFrame.end - $sourceSliceStart],
                     href: callFrame.marker('call-frame').href,
                     callFrameCodes: $,
-                    tooltip: $tooltipView
+                    tooltip: $callFrameTooltipView
                 })
             }`,
             postRender(el) {

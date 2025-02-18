@@ -31,6 +31,7 @@
     transition: .5s ease-out;
     transition-property: opacity, max-width, margin, padding;
     box-sizing: border-box;
+    cursor: default;
 }
 .view-call-frame-source .view-source .view-source__source .mark:has(.empty-content) {
     opacity: 0;
