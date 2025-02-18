@@ -347,12 +347,23 @@ utils.pointerXY.subscribe(({ x, y }) => {
     currentViewEl = timeRulerEl;
 });
 
+function formatMemory(size, total) {
+    switch (true) {
+        case total < 1_000_000:
+            return `${(size / 1_000).toFixed(1).replace(/\.0$/, '')}Kb`;
+
+        default:
+            return `${(size / 1_000_000).toFixed(1).replace(/\.0$/, '')}Mb`;
+    }
+}
+
 discovery.view.define('time-ruler', function(el, options, data, context) {
     const {
         duration,
         segments: segmentsRaw,
         selectionStart = null,
         selectionEnd = null,
+        valueType = context.currentProfile?.type || 'time',
         labels = 'top',
         name = 'ruler',
         details,
@@ -406,7 +417,9 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
 
         intervalMarkerEl.className = 'interval-marker';
         intervalMarkerEl.style.setProperty('--offset', time / duration);
-        intervalMarkerEl.dataset.title = formatMicrosecondsTime(time, duration);
+        intervalMarkerEl.dataset.title = valueType === 'memory'
+            ? formatMemory(time, duration)
+            : formatMicrosecondsTime(time, duration);
     }
 
     // overlay element

@@ -59,7 +59,7 @@ const pageIndicators = {
                     title: 'Sampling interval',
                     hint: 'md:"#### Sampling interval\\n\\nThe median duration between consecutive samples recorded during profiling. This metric offers an estimate of the average frequency at which the CPU\'s state is captured, reflecting the profiler\'s temporal resolution.\\n\\nIn V8, you can set the sampling interval at the start of a CPU profiling session. Adjusting this interval helps balance the level of detail captured against the performance impact on the system."',
                     value: '=sourceInfo.samplesInterval',
-                    unit: 'μs'
+                    unit: '=#.currentProfile.type = "memory" ? "b" : "μs"'
                 }
             ]
         },
