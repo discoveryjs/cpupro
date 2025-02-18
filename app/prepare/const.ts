@@ -4,6 +4,7 @@ import { packageRegistryEndpoints } from './utils';
 export const TIMINGS = false;
 export const USE_WASM = true;
 export const FEATURE_SOURCES = false;
+export const FEATURE_MULTI_PROFILES = true;
 
 export const EMPTY_ARRAY = Object.freeze([]);
 export const maxRegExpLength = 65;

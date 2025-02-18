@@ -1,6 +1,6 @@
 import { selectProfile, toggleProfile } from './prepare/profile.mts';
 import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule, topLevelConvolutionRule } from './prepare/computations/samples-convolution.mjs';
-import { allocTimespan, allocTypes } from './prepare/const';
+import { allocTimespan, allocTypes, FEATURE_MULTI_PROFILES } from './prepare/const.js';
 
 const demos = discovery.context?.model?.meta?.demos;
 
@@ -23,6 +23,14 @@ discovery.nav.menu.append({
         ctx.widget.setPageHash('');
     }
 });
+
+if (FEATURE_MULTI_PROFILES) {
+    discovery.nav.after('discovery-page', {
+        when: '#.data.profiles.size() > 1 and #.page != "profiles-matrix"',
+        text: 'Matrix',
+        href: '#profiles-matrix'
+    });
+}
 
 discovery.action.define('selectProfile', (profile) => {
     if (selectProfile(discovery, profile)) {

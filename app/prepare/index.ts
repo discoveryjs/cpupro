@@ -4,6 +4,7 @@ import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } f
 import { convertV8LogIntoCpuProfile, isV8LogProfile } from './formats/v8-log-processed.js';
 import type { V8CpuProfile, V8CpuProfileCpuproExtensions, V8CpuProfileSet } from './types.js';
 import { V8LogProfile } from './formats/v8-log-processed/types.js';
+import { FEATURE_MULTI_PROFILES } from './const.js';
 
 export const supportedFormats = [
     '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
@@ -13,8 +14,6 @@ export const supportedFormats = [
 ];
 export const supportedFormatsText = supportedFormats
     .map(line => line.replace(/\[(.+?)\]\(.*?\)/g, '$1'));
-
-const experimentalFeatures = false;
 
 // function isCPUProfileMerge(data) {
 //     return data && Array.isArray(data.nodes) && Array.isArray(data.profiles);
@@ -105,7 +104,7 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
         rejectData('CPU profiles not found');
     }
 
-    if (!experimentalFeatures) {
+    if (!FEATURE_MULTI_PROFILES) {
         // return only the first profile until multi-profile mode is fully implemented
         return {
             ...result,
