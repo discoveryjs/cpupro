@@ -188,11 +188,14 @@
 .page-default .view-expand.timelines > .header:hover > .header-content {
     filter: brightness(1.1);
 }
-.page-default .view-expand.timelines > .header .view-timing-bar-segment {
+.page-default .view-expand.timelines > .header .view-fractions-bar {
+    pointer-events: auto;
+}
+.page-default .view-expand.timelines > .header .view-fractions-bar-segment {
     border-left-width: 0;
     padding-top: 3px;
     padding-bottom: 5px;
-    /* pointer-events: auto; */
+    pointer-events: none;
 }
 .page-default .view-expand.timelines > .content {
     padding: 2px 0 0;

@@ -259,15 +259,19 @@ const heapTotalView = [
     }
 ];
 
-const categoriesTimeBars = {
-    view: 'timing-bar',
+const categoriesFractionBars = {
+    view: 'fractions-bar',
     data: `categoriesTimings.entries.[selfTime].({
         text: entry.name,
-        duration: selfTime,
-        color: entry.name.color(),
-        href: entry.marker("category").href
+        value: selfTime,
+        color: entry.name.color()
     }).sort(duration desc)`,
+    tooltip: {
+        view: 'labeled-value-list',
+        item: 'labeled-value{ value: "duration:{ time: value, total: #.data.totalTime }" }'
+    },
     segment: {
+        formatValue: '==> unit()',
         tooltip: [
             'text:text',
             'duration:{ time: duration, total: #.data.totalTime }'
@@ -844,7 +848,7 @@ const pageContent = [
         view: 'expand',
         expanded: true,
         className: 'timelines trigger-outside',
-        header: categoriesTimeBars,
+        header: categoriesFractionBars,
         content: categoriesTimeline
     },
 

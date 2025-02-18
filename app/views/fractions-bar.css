@@ -1,9 +1,9 @@
-.view-timing-bar {
+.view-fractions-bar {
     display: flex;
     gap: 1px;
 }
 
-.view-timing-bar-segment {
+.view-fractions-bar-segment {
     display: block;
     box-sizing: border-box;
     flex: 1;
@@ -22,9 +22,9 @@
     text-decoration: none;
 }
 
-.view-timing-bar-segment[href] {
+.view-fractions-bar-segment[href] {
     cursor: pointer;
 }
-.view-timing-bar-segment[href]:hover {
+.view-fractions-bar-segment[href]:hover {
     opacity: .75;
 }
