@@ -371,6 +371,7 @@ export class Dictionary {
                 id: this.packages.length + 1,
                 type,
                 name,
+                shortName: name,
                 path,
                 version,
                 registry,

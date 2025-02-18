@@ -243,6 +243,7 @@ export type CpuProPackage = {
     id: number; // starts with 1
     type: PackageType;
     name: string;
+    shortName: string;
     version: string | null;
     registry: PackageRegistry | null;
     cdn: CDN | null;

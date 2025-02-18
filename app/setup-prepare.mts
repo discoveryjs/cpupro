@@ -1,7 +1,7 @@
 import type { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 import { TIMINGS } from './prepare/const.js';
 import { extractAndValidate } from './prepare/index.js';
-import { processPaths } from './prepare/preprocessing/paths.js';
+import { processPaths } from './prepare/preprocessing/short-paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { Dictionary } from './prepare/dictionary.js';
 import { createProfile, Profile } from './prepare/profile.mjs';
