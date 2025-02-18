@@ -384,9 +384,6 @@ const pageContent = [
                             }
                         ]
                     },
-                                })
-                        `
-                    },
                     intersectionTable,
                     {
                         view: 'table',
