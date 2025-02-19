@@ -131,7 +131,6 @@ const pageContent = [
                 content: [
                     'text:"Avg profile total time: "',
                     'text-numeric:profiles.[not disabled].avg(=>totalTime).unit()',
-                    'text:" / Stable: "',
                     {
                         view: 'context',
                         data: `
@@ -146,7 +145,9 @@ const pageContent = [
                                 avgPercent: $activeProfiles.avg(=>100 * $stableSum / totalTime)
                             }
                         `,
+                        whenData: 'stableSum',
                         content: [
+                            'text:" / Stable: "',
                             'text-numeric:stableSum.unit()',
                             'text-numeric:` (avg: ${avgPercent.toFixed(2)}%)`',
                             'text:" + " + ((min / 1000).toFixed(1) + "…" + max.unit() + " (avg: " + avg.unit() + ")")'
@@ -371,6 +372,7 @@ const pageContent = [
                                 view: 'block',
                                 className: 'time-line stable-line',
                                 data: 'profiles.[not disabled][]._callFramesStable.sum() / #.totalTime',
+                                whenData: true,
                                 postRender(el, _, data) {
                                     el.style.setProperty('--x', data);
                                 }
