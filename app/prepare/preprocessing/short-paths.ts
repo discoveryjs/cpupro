@@ -20,10 +20,72 @@ function getLongestCommonPath(longestCommonModulePath: string[] | null, modulePa
     return result;
 }
 
+function groupByShortestDomain(pkgParts, packages, prefix) {
+    const groups = new Map<string, { packages: CpuProPackage[], paths: string[][] }>();
+
+    for (let i = 0; i < pkgParts.length; i++) {
+        const parts = pkgParts[i];
+        const key = parts.length > 0 ? parts[0] : '';
+        const entry = groups.get(key);
+
+        if (entry !== undefined) {
+            entry.packages.push(packages[i]);
+            entry.paths.push(parts.slice(1));
+        } else {
+            groups.set(key, {
+                packages: [packages[i]],
+                paths: [parts.slice(1)]
+            });
+        }
+    }
+
+    const result: [string, CpuProPackage[]][] = [];
+
+    for (const [key, { packages, paths }] of groups) {
+        if (prefix && (packages.length === 1 || key === '')) {
+            result.push([`${key ? key + '.' : key}${prefix}`, packages]);
+        } else {
+            const path = `${key}${prefix ? '.' + prefix : prefix}`;
+            const res = groupByShortestDomain(paths, packages, path);
+
+            if (res.length === 1 && prefix) {
+                result.push([path, packages]);
+            } else {
+                result.push(...res);
+            }
+        }
+    }
+
+    return result;
+}
+
+function shortenHttpPackageNames(packages: CpuProPackage[]) {
+    const httpPackages: CpuProPackage[] = [];
+    const pkgPaths: string[][] = [];
+
+    for (const pkg of packages) {
+        if (pkg.path && /^https?:/.test(pkg.path)) {
+            httpPackages.push(pkg);
+        }
+    }
+
+    for (const pkg of httpPackages) {
+        pkgPaths.push(pkg.name.split('.').reverse());
+    }
+
+    for (const [shortName, packages] of groupByShortestDomain(pkgPaths, httpPackages, '')) {
+        for (const pkg of packages) {
+            pkg.shortName = shortName;
+        }
+    }
+}
+
 export function processPaths(
     packages: CpuProPackage[],
     modules: CpuProModule[]
 ) {
+    shortenHttpPackageNames(packages);
+
     // shorthand paths
     const shortPathPkgTypes: PackageType[] = ['script', 'devtools'];
     const longestCommonModulePath: Record<PackageType, Record<string, string[] | null>> = Object.create(null);

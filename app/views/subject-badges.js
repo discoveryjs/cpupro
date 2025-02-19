@@ -30,7 +30,7 @@ discovery.view.define('module-badge', {
         |? {
             ...,
             text: object | packageRelPath or path or name,
-            prefix: object.package | path and name != '(script)' and type not in ['node', 'deno'] and name,
+            prefix: object.package | path and name != '(script)' and type not in ['node', 'deno'] and shortName,
             match: #.filter
         }`,
     whenData: true,
@@ -56,7 +56,7 @@ discovery.view.define('call-frame-badge', {
             prefix: object.module |
                 package.type in ["node", "deno"]
                     ? packageRelPath
-                    : (package | name not in ["(script)", "(compiled script)", $name] and name),
+                    : (package | name not in ["(script)", "(compiled script)", $name] and shortName),
             match: #.filter
         }`,
     whenData: true,
