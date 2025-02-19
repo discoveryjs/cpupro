@@ -125,26 +125,42 @@ discovery.view.define('call-frame-source', {
                         className: => ?: 'empty-content'
                     }
                 };
+                $selfValueTooltipView: #.currentProfile | type = 'memory' and _memoryGc and _memoryType
+                    ? 'allocation-samples-matrix:#.currentProfile | callFramePositionsTree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
                 $sampleMarks: $values.entries
                     | $[].entry.callFrame
                         ? .[entry.callFrame = @]
                         : $[=> entry = @]
                     |? .($pos: entry.scriptOffset | is number and $ != -1 ? $ - $sourceSliceStart : $start - $sourceSliceStart; [
-                        selfTime   ? { offset: $pos, kind: 'self',   content: $sampleMarkContent, value: $values.entries[entryIndex], prop: 'selfTime', postfix: $unit },
-                        nestedTime ? { offset: $pos, kind: 'nested', content: $sampleMarkContent, value: $values.entries[entryIndex], prop: 'nestedTime', postfix: $unit },
-                    ]).[];
-
-                $allocationMarks: #.currentProfile | type = 'memory'
-                    ? callFramePositionsTimings.entries.[entry | callFrame=@ and scriptOffset > 0]
-                        .({
-                            offset: entry.scriptOffset - $sourceSliceStart,
+                        selfTime ? {
+                            offset: $pos,
                             kind: 'self',
                             content: $sampleMarkContent,
                             value: $values.entries[entryIndex],
                             prop: 'selfTime',
-                            postfix: 'Kb'
-                        })
-                    : [];
+                            postfix: $unit,
+                            tooltip: $selfValueTooltipView
+                        },
+                        nestedTime ? {
+                            offset: $pos,
+                            kind: 'nested',
+                            content: $sampleMarkContent,
+                            value: $values.entries[entryIndex],
+                            prop: 'nestedTime',
+                            postfix: $unit
+                        },
+                    ]).[];
+
+                // $allocationMarks: #.currentProfile | type = 'memory'
+                //     ? callFramePositionsTimings.entries.[entry | callFrame=@ and scriptOffset > 0]
+                //         .({
+                //             offset: entry.scriptOffset - $sourceSliceStart,
+                //             kind: 'self',
+                //             content: $sampleMarkContent,
+                //             value: $values.entries[entryIndex],
+                //             prop: 'selfTime',
+                //             postfix: 'Kb'
+                //         });
 
                 $allMarks: {
                     $codePointMarks,

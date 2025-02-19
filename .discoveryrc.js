@@ -40,6 +40,8 @@ module.exports = {
             './pages/profiles-matrix.js',
             './views/misc/mode-regexp.css',
             './views/misc/mode-regexp.js',
+            './views/allocation-samples-matrix.css',
+            './views/allocation-samples-matrix.js',
             './views/call-frame-kind-badge.css',
             './views/call-frame-kind-badge.js',
             './views/call-frame-loc-badge.css',

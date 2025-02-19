@@ -181,6 +181,27 @@ const pageContent = [
 
     {
         view: 'expand',
+        when: '#.currentProfile | type = "memory" and _memoryGc and _memoryType',
+        className: 'trigger-outside',
+        data: '{ callFrame: @, matrix: #.currentProfile | callFramesTree.allocationsMatrix(samplesTimings, @) }',
+        expanded: '=',
+        header: 'text:"Allocation types"',
+        content: {
+            view: 'update-on-timings-change',
+            timings: '=#.currentProfile.callFramesTimingsFiltered',
+            content: {
+                view: 'allocation-samples-matrix',
+                data: `
+                    $filtered: #.currentProfile | callFramesTree.allocationsMatrix(samplesTimingsFiltered, @.callFrame);
+
+                    matrix.($type; $filtered[=>type = $type] or { $type })
+                `
+            }
+        }
+    },
+
+    {
+        view: 'expand',
         when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
         expanded: '=hasSource()',

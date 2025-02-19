@@ -1,0 +1,63 @@
+.discovery-view-popup:has(.view-allocation-samples-matrix:only-child) {
+    padding: 0;
+}
+
+.view-allocation-samples-matrix tbody.footer td:not(.view-table-cell) {
+    padding: 1px 0 0;
+}
+.view-allocation-samples-matrix tbody.footer .view-table-cell:first-child {
+    text-align: right;
+    color: #888;
+}
+.view-allocation-samples-matrix tbody.footer .view-table-cell {
+    background-color: color-mix(in srgb, var(--discovery-background-color), #8d8d8d 15%);
+    background-clip: padding-box;
+    border: solid var(--discovery-background-color);
+    border-width: 1px 1px 1px 0;
+    padding-right: 8px;
+}
+
+.view-allocation-samples-matrix .view-table-cell:not(.metric-cell) {
+    vertical-align: middle;
+    padding-right: 16px;
+    min-width: 80px;
+}
+
+.view-allocation-samples-matrix .metric-cell {
+    text-align: right;
+    min-width: 80px;
+}
+.view-allocation-samples-matrix .metric-cell .unit {
+    padding-left: 1px;
+    color: color-mix(in srgb, currentcolor 60%, var(--discovery-background-color))
+}
+
+.view-allocation-samples-matrix .metric-cell.lifespan-total {
+    background-color: #2d2d2d;
+}
+.view-allocation-samples-matrix .metric-cell.lifespan-alive {
+    color: #699e69;
+}
+.view-allocation-samples-matrix .metric-cell.lifespan-long-lived {
+    color: #c4977f;
+}
+.view-allocation-samples-matrix .metric-cell.lifespan-short-lived {
+    color: #c0ac7a;
+}
+
+.view-allocation-samples-matrix .metric-cell:empty {
+    vertical-align: middle;
+    color: #555;
+}
+.view-allocation-samples-matrix tbody:not(.footer) .metric-cell:empty {
+    height: 34px;
+}
+.view-allocation-samples-matrix .metric-cell:empty::before {
+    content: '—';
+}
+
+.view-allocation-samples-matrix .metric-cell .metric-stat {
+    margin-top: -4px;
+    font-size: 10px;
+    color: color-mix(in srgb, currentcolor 50%, var(--discovery-background-color));
+}

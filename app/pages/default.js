@@ -344,9 +344,9 @@ const categoriesTimeline = {
                 max: [$new.max(), $delete.max()].max(),
                 maxTotal: $totalHeapSize.max()
             },
-            allocations: _memoryType and {
-                byType: timeDeltas.binAllocations(_memoryType, #.allocationTypeNames, $binCount),
-                byGc: timeDeltas.binAllocations(_memoryGc, #.allocationTimespanNames, $binCount)
+            allocations: {
+                byType: _memoryType ? timeDeltas.binAllocations(_memoryType, #.allocationTypeNames, $binCount),
+                byGc: _memoryGc ? timeDeltas.binAllocations(_memoryGc, #.allocationTimespanNames, $binCount)
             }
         }
     `,
@@ -625,7 +625,7 @@ const categoriesTimeline = {
                 {
                     view: 'block',
                     className: 'expand-label',
-                    content: 'text:"Allocations type"'
+                    content: 'text:"Allocation types"'
                 },
                 {
                     view: 'switch',
@@ -686,7 +686,7 @@ const categoriesTimeline = {
                 {
                     view: 'block',
                     className: 'expand-label',
-                    content: 'text:"Allocations lifespan"'
+                    content: 'text:"Allocation lifespans"'
                 },
                 {
                     view: 'switch',

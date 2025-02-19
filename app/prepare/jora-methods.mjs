@@ -1,4 +1,4 @@
-import { typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
+import { allocTimespan, allocTypes, typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './computations/call-tree.js';
 import { TreeTimings } from './computations/timings.js';
@@ -182,8 +182,8 @@ const methods = {
     unit(value, unit = this.context.currentProfile?.type) {
         return (value / 1000).toFixed(1) + (unit === 'memory' ? 'Kb' : 'ms');
     },
-    bytes(current, bytes = true) {
-        return shortNum(current, [bytes ? 'bytes' : '', 'Kb', 'Mb', 'Gb'], 1024);
+    bytes(current, bytes = 'b') {
+        return shortNum(current, [bytes || '', 'Kb', 'Mb', 'Gb'], 1000);
     },
     shortNum(current) {
         return shortNum(current, ['', 'K', 'M', 'G']);
@@ -481,6 +481,69 @@ const methods = {
                 bins: vector
             };
         });
+    },
+    allocationsMatrix(tree, sampleTimings, subject, profile = this.context.data.currentProfile) {
+        const { _memoryGc, _memoryType } = profile;
+        const { samples, timeDeltas } = sampleTimings;
+        const timespanCount = allocTimespan.length;
+        const typeCount = allocTypes.length;
+        const counts = new Uint32Array(timespanCount * typeCount);
+        const sums = new Uint32Array(timespanCount * typeCount);
+        const mins = new Uint32Array(timespanCount * typeCount);
+        const maxs = new Uint32Array(timespanCount * typeCount);
+        const samplesMask = makeSamplesMask(tree, subject);
+        const result = [];
+
+        for (let i = 0; i < samples.length; i++) {
+            if (samplesMask[samples[i]] !== 0) {
+                const value = timeDeltas[i];
+
+                if (value !== 0) {
+                    const index = _memoryType[i] * timespanCount + _memoryGc[i];
+
+                    counts[index]++;
+                    sums[index] += value;
+                    mins[index] = mins[index] ? Math.min(mins[index], value) : value;
+                    maxs[index] = Math.max(maxs[index], value);
+                }
+            }
+        }
+
+        for (let i = 0; i < allocTypes.length; i++) {
+            const entry = {
+                type: allocTypes[i],
+                total: {
+                    count: 0,
+                    sum: 0,
+                    min: Infinity,
+                    max: 0
+                }
+            };
+
+            for (let j = 0; j < allocTimespan.length; j++) {
+                const index = i * timespanCount + j;
+                const count = counts[index];
+
+                if (count > 0) {
+                    entry.total.count += counts[index];
+                    entry.total.sum += sums[index];
+                    entry.total.min = Math.min(entry.total.min, mins[index]);
+                    entry.total.max = Math.max(entry.total.max, maxs[index]);
+                }
+
+                entry[allocTimespan[j]] = {
+                    count: counts[index],
+                    sum: sums[index],
+                    min: mins[index],
+                    max: maxs[index]
+                };
+            }
+
+            if (entry.total.count) {
+                result.push(entry);
+            }
+        }
+        return result;
     },
     binScriptFunctionCodes(functionCodes, n = 500, profile = this.context.currentProfile) {
         const { totalTime } = profile;
