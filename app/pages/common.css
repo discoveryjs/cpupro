@@ -383,6 +383,7 @@ h2 .logo {
 }
 
 .script-source > .content > .view-source,
+.script-source > .content > .view-script-source .view-source,
 .script-source > .content > .view-call-frame-source .view-source {
     margin-top: 1px;
     margin-right: calc(1px - var(--discovery-page-padding-right));

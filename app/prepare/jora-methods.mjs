@@ -139,12 +139,14 @@ function countSamples(n, samples, timeDeltas, totalTime) {
 
 const methods = {
     hasSource: `
-        is object
-            ? marker("call-frame")
-            ? regexp is string or (script.source is string and (end - start) > 0)
-            : marker("module")
-                ? script.source is string
-                : marker("script").object.source is string
+        (callFrame
+            | $ or @
+            | is object and marker('call-frame').object
+            | regexp is string or (script.source is string and (end - start) > 0))
+        or (script
+            | $ or @
+            | is object and marker('script').object
+            | source is string)
     `,
     order(value) {
         return typeOrder[value] || 100;
@@ -305,6 +307,11 @@ const methods = {
         }
 
         return treeTimings.getTimings(subject);
+    },
+    getEntry(source, subject) {
+        if (typeof source?.getEntry === 'function') {
+            return source.getEntry(subject);
+        }
     },
     nestedTimings(treeTimings, subject, structureTree) {
         const timingsTree = treeTimings.tree;
