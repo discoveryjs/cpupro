@@ -32,7 +32,8 @@
     color: color-mix(in srgb, currentcolor 60%, var(--discovery-background-color))
 }
 
-.view-allocation-samples-matrix .metric-cell.lifespan-total {
+.view-allocation-samples-matrix .metric-cell.lifespan-total,
+.view-allocation-samples-matrix tbody.footer .metric-cell {
     background-color: #2d2d2d;
 }
 .view-allocation-samples-matrix .metric-cell.lifespan-alive {
