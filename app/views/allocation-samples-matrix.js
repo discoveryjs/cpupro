@@ -6,14 +6,18 @@ const metrics = [
     { key: 'long-lived', header: 'Long lived' },
     { key: 'short-lived', header: 'Short lived' }
 ];
-const metricView = [
-    'text-with-unit{ value: sum > 999 ? sum.unit() : sum + "b", unit: true }',
-    {
-        view: 'block',
-        className: 'metric-stat',
-        content: 'text-numeric:`${min != max ? min + "…" : ""}${max.bytes()} × ${count}`'
-    }
-];
+const metricView = {
+    view: 'context',
+    when: 'sum',
+    content: [
+        'text-with-unit{ value: sum > 999 ? sum.unit() : sum + "b", unit: true }',
+        {
+            view: 'block',
+            className: 'metric-stat',
+            content: 'text-numeric:`${min != max ? min + "…" : ""}${max.bytes()} × ${count}`'
+        }
+    ]
+};
 const metricCells = metrics.map(({ key, header }) => ({
     header,
     className: 'metric-cell lifespan-' + key,
