@@ -27,10 +27,6 @@
     text-align: right;
     min-width: 80px;
 }
-.view-allocation-samples-matrix .metric-cell .unit {
-    padding-left: 1px;
-    color: color-mix(in srgb, currentcolor 60%, var(--discovery-background-color))
-}
 
 .view-allocation-samples-matrix .metric-cell.lifespan-total,
 .view-allocation-samples-matrix tbody.footer .metric-cell {

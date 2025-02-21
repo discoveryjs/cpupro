@@ -59,7 +59,7 @@ const table = {
             className: 'number',
             sorting: '(entry | end - start) desc',
             data: 'entry',
-            content: 'text:regexp ? regexp.size() : (end - start | $ > 0?: "")',
+            content: 'text-with-unit{ value: regexp ? regexp.size() : end - start |? $ > 999 ? kb() : $ + "b" : "", unit: true }',
             detailsWhen: 'hasSource()',
             details: {
                 view: 'call-frame-source'

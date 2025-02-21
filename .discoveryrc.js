@@ -75,6 +75,7 @@ module.exports = {
             './views/subject-badges.js',
             './views/subject-with-nested-timeline.css',
             './views/subject-with-nested-timeline.js',
+            './views/text-with-unit.css',
             './views/text-with-unit.js',
             './views/time.css',
             './views/time.js',

@@ -1,0 +1,4 @@
+.view-text-with-unit > .unit {
+    padding-left: 1px;
+    color: color-mix(in srgb, currentcolor 60%, var(--discovery-background-color));
+}
