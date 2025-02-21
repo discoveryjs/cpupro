@@ -66,7 +66,13 @@ export function processTicks(
                 const codePositions = positionsByCode[id];
 
                 if (codePositions !== null) {
-                    const codePositionsIndex = findPositionsCodeIndex(codePositions.positions, tickStack[i + 1]);
+                    const codePositionsIndex = findPositionsCodeIndex(
+                        codePositions.positions,
+                        // Functions on the stack that are not currently executing store pc
+                        // on the next instruction after the callee is called,
+                        // so subtract one from the position
+                        tickStack[i + 1] - Number(i > 0)
+                    );
 
                     // store the script offset for next call frame
                     prevSourceOffset = codePositions.positions[codePositionsIndex + 1];
