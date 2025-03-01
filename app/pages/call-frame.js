@@ -209,8 +209,8 @@ const pageContent = [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
             { view: 'switch', content: [
-                { when: 'regexp', content: 'html:`<span style="color: #888">${regexp.size().bytes(true)}</html>`' },
-                { when: 'hasSource()', content: 'html:`<span style="color: #888">${script.source.size().bytes(true)}</html>`' },
+                { when: 'regexp', content: 'text-with-unit{ value: regexp.size() | bytes(), unit: true }' },
+                { when: 'hasSource()', content: 'text-with-unit{ value: end - start | bytes(), unit: true }' },
                 { content: 'html:`<span style="color: #888">(unavailable)</span>`' }
             ] }
         ],
