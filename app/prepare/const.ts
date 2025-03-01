@@ -15,7 +15,7 @@ export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
     ['(idle)', 'idle'],
     ['(no samples)', 'no-samples'],
     ['(parser)', 'parser'],
-    ['(compiler bytecode)', 'compiler-bytecode'],
+    ['(bytecode compiler)', 'bytecode-compiler'],
     ['(compiler)', 'compiler'],
     ['(atomics wait)', 'atomics-wait']
 ]);
@@ -26,7 +26,7 @@ export const moduleTypeByWellKnownName = new Map<WellKnownName, ModuleType>([
     ['(idle)', 'idle'],
     ['(no samples)', 'unknown'],
     ['(parser)', 'compilation'],
-    ['(compiler bytecode)', 'compilation'],
+    ['(bytecode compiler)', 'compilation'],
     ['(compiler)', 'compilation'],
     ['(atomics wait)', 'blocking']
 ]);

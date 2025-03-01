@@ -13,7 +13,7 @@ export const VM_STATES = [
     /* 0 */ 'js',
     /* 1 */ 'garbage collector',
     /* 2 */ 'parser',
-    /* 3 */ 'compiler bytecode',
+    /* 3 */ 'bytecode compiler',
     /* 4 */ 'compiler',
     /* 5 */ 'other',
     /* 6 */ 'external',

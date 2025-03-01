@@ -112,7 +112,7 @@ export type WellKnownName =
     | '(idle)'
     | '(no samples)'
     | '(parser)'
-    | '(compiler bytecode)'
+    | '(bytecode compiler)'
     | '(compiler)'
     | '(atomics wait)'
     ;
@@ -123,7 +123,7 @@ export type WellKnownType =
     | 'idle'
     | 'no-samples'
     | 'parser'
-    | 'compiler-bytecode'
+    | 'bytecode-compiler'
     | 'compiler'
     | 'atomics-wait'
     ;
