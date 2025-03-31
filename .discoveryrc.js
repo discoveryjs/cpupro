@@ -21,6 +21,11 @@ module.exports = {
     meta: {
         demos: require('./app/demo/index.json')
     },
+    script: {
+        modules: [
+            './text-views/index.js'
+        ]
+    },
     view: {
         assets: [
             './init-client.mjs',
@@ -88,7 +93,8 @@ module.exports = {
             './views/update-on-timings-change.css',
             './views/update-on-timings-change.js',
             './views/value-fraction.css',
-            './views/value-fraction.js'
+            './views/value-fraction.js',
+            './text-views/index.js'
         ]
     }
 };
