@@ -25,7 +25,7 @@ discovery.nav.menu.append({
 });
 
 if (FEATURE_MULTI_PROFILES) {
-    discovery.nav.after('discovery-page', {
+    discovery.nav.before('discovery-page', {
         when: '#.data.profiles.size() > 1 and #.page != "profiles-matrix"',
         text: 'Matrix',
         href: '#profiles-matrix'
