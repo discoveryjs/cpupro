@@ -50,7 +50,7 @@ export function processCallFramePositions(
     if (samplePositions !== null) {
         for (let i = 0; i < samples.length; i++) {
             const nodeIndex = nodeIndexById[samples[i]];
-            const callFrameIndex = callFrameByNodeIndex[nodeIndex];
+            const callFrameIndex = callFrameByNodeIndex[nodeIndex] || 0;
             const scriptOffset = samplePositions[i];
             const ref = positionRef(callFrameIndex, scriptOffset);
             let positionIndex = positionsMap.get(ref);
