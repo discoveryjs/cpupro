@@ -166,7 +166,7 @@
 
 .page-default .view-expand > .header .expand-label {
     display: inline-block;
-    min-width: 110px;
+    min-width: 120px;
     padding-right: 8px;
 }
 .page-default .view-expand.expanded > .header .labeled-value-groups {
@@ -235,6 +235,9 @@
     z-index: 1;
     margin-top: 1px;
 }
+.page-default .category-timelines > .view-expand > .header > .header-content {
+    display: flex;
+}
 .page-default .category-timelines > .view-expand > .content {
     display: contents;
 }
@@ -273,7 +276,7 @@
     text-align: right;
     padding: 0px 4px 0 12px;
     border-bottom: 1px solid #0004;
-    min-width: 80px;
+    min-width: 90px;
 }
 .page-default .category-timelines-item > .label::after {
     content: '';

@@ -618,9 +618,9 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
-            data: 'allocations.byType.[value].sort(name.order() asc)',
+            data: 'allocations.byType.[value].sort(value desc)', // .sort(name.order() asc)
             whenData: true,
-            expanded: true,
+            expanded: false,
             header: [
                 {
                     view: 'block',
@@ -636,6 +636,7 @@ const categoriesTimeline = {
                                 {
                                     view: 'inline-list',
                                     className: 'labeled-value-group',
+                                    limit: false,
                                     itemConfig: {
                                         view: 'labeled-value',
                                         color: '=color',
@@ -651,6 +652,7 @@ const categoriesTimeline = {
             content: {
                 view: 'list',
                 className: 'category-timelines-list',
+                limit: false,
                 item: {
                     view: 'link',
                     className: 'category-timelines-item',
