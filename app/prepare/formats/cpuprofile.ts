@@ -166,6 +166,10 @@ function extractVectorIfExists(samples: SizeSample[], property: keyof SizeSample
 }
 
 export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[] | SizeSample[] }): V8CpuProfile {
+export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
+    samples: number[] | SizeSample[];
+    scripts?: V8CpuProfileScript[];
+}): V8CpuProfile {
     if (isArrayOfIntegers(profile.samples)) {
         return profile;
     }
@@ -182,6 +186,7 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[
         _memoryGc: extractVectorIfExists(source, 'gc'),
         _memoryType: extractVectorIfExists(source, 'type'),
         _samplePositions: extractVectorIfExists(source, 'pos'),
+        _scripts: profile._scripts || profile.scripts || undefined,
         samples: source.map(sample => sample.nodeId),
         timeDeltas: source.map(sample => sample.size)
     };
