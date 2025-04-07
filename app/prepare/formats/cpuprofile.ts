@@ -1,4 +1,5 @@
-import type { V8CpuProfile, V8CpuProfileNode } from '../types.js';
+import type { V8CpuProfile, V8CpuProfileNode, V8CpuProfileScript } from '../types.js';
+import { ALLOCATION_SPACES, ALLOCATION_TIMESPANS, ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
 
 type SizeSample = {
     size: number;
@@ -7,6 +8,7 @@ type SizeSample = {
     gc?: number;
     pos?: number;
     type?: number;
+    space?: number;
 };
 
 function isObject(value: unknown): value is object {
@@ -165,7 +167,23 @@ function extractVectorIfExists(samples: SizeSample[], property: keyof SizeSample
     }
 }
 
-export function unwrapSamplesIfNeeded(profile: V8CpuProfile & { samples: number[] | SizeSample[] }): V8CpuProfile {
+function extractRemapVectorIfExists(samples: SizeSample[], vectorName: keyof SizeSample, nameMap: Record<number, string>, useId = false) {
+    let vector = extractVectorIfExists(samples, vectorName);
+    let names: string[] = [];
+
+    if (vector !== undefined) {
+        const map = new Map([...new Set(vector)].map((type, idx) => [type, idx]));
+
+        vector = vector.map(origType => map.get(origType) || 0);
+        names = [...map.keys()].map(k => useId || !Object.hasOwn(nameMap, k)
+            ? `(${k}) ${nameMap[k] || 'unknown'}`
+            : nameMap[k] || 'unknown'
+        );
+    }
+
+    return { vector, names };
+}
+
 export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
     samples: number[] | SizeSample[];
     scripts?: V8CpuProfileScript[];
@@ -180,11 +198,19 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
     // Note: used slice() to avoid mutation of an input array
     source = source.slice().sort((a, b) => a.ordinal - b.ordinal);
 
+    const { vector: typeVector, names: typeNames } = extractRemapVectorIfExists(source, 'type', ALLOCATION_INSTANCE_TYPES, true);
+    const { vector: spaceVector, names: spaceNames } = extractRemapVectorIfExists(source, 'space', ALLOCATION_SPACES);
+    const { vector: gcVector, names: gcNames } = extractRemapVectorIfExists(source, 'gc', ALLOCATION_TIMESPANS);
+
     return {
         ...profile,
         _type: 'memory',
-        _memoryGc: extractVectorIfExists(source, 'gc'),
-        _memoryType: extractVectorIfExists(source, 'type'),
+        _memoryGc: gcVector,
+        _memoryGcNames: gcNames,
+        _memoryType: typeVector,
+        _memoryTypeNames: typeNames,
+        _memorySpace: spaceVector,
+        _memorySpaceNames: spaceNames,
         _samplePositions: extractVectorIfExists(source, 'pos'),
         _scripts: profile._scripts || profile.scripts || undefined,
         samples: source.map(sample => sample.nodeId),

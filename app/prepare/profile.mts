@@ -343,7 +343,11 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         _samplesStable: new Uint32Array(),
         _sampleSizeCounts: {},
         _memoryType: data._memoryType ? new Uint8Array(data._memoryType) : null,
+        _memoryTypeNames: data._memoryTypeNames || [],
         _memoryGc: data._memoryGc ? new Uint8Array(data._memoryGc) : null,
+        _memoryGcNames: data._memoryGcNames || [],
+        _memorySpace: data._memorySpace ? new Uint8Array(data._memorySpace) : null,
+        _memorySpaceNames: data._memorySpaceNames || [],
 
         samples: samplesTimings.samples,
         sampleCounts,

@@ -1,4 +1,4 @@
-import { allocTimespan, allocTypes, typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
+import { allocTimespan, typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './computations/call-tree.js';
 import { TreeTimings } from './computations/timings.js';
@@ -490,7 +490,7 @@ const methods = {
         });
     },
     allocationsMatrix(tree, sampleTimings, subject, profile = this.context.data.currentProfile) {
-        const { _memoryGc, _memoryType } = profile;
+        const { _memoryGc, _memoryType, _memoryTypeNames: allocTypes } = profile;
         const { samples, timeDeltas } = sampleTimings;
         const timespanCount = allocTimespan.length;
         const typeCount = allocTypes.length;

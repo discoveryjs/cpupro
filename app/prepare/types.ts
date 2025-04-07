@@ -19,8 +19,12 @@ export type V8CpuProfileCpuproExtensions = {
     _samplesInterval?: number;
     _samplePositions?: number[];
     _memoryGc?: number[];
+    _memoryGcNames?: Record<number, string>;
     _memoryPos?: number[];
     _memoryType?: number[];
+    _memoryTypeNames?: Record<number, string>;
+    _memorySpace?: number[];
+    _memorySpaceNames?: Record<number, string>;
     _callFrames?: V8CpuProfileCallFrame[];
     _scripts?: V8CpuProfileScript[];
     _functions?: V8CpuProfileFunction[];

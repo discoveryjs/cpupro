@@ -128,11 +128,23 @@ export const allocTypes = [
     'object-shape',
     'wasm-object'
 ] as const;
+export const allocSpaces = [
+    'read_only_space',
+    'new_space',
+    'old_space',
+    'code_space',
+    'shared_space',
+    'lo_space',
+    'new_lo_space',
+    'code_lo_space',
+    'shared_lo_space'
+] as const;
 type AllocationTimespan = (typeof allocTimespan)[number];
 type AllocationType = (typeof allocTypes)[number];
+type AllocationSpace = (typeof allocSpaces)[number];
 
 // colors in order of apperiance in a list
-export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeType | AllocationType | AllocationTimespan, string> = {
+export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeType | AllocationType | AllocationTimespan | AllocationSpace, string> = {
     // FIXME: place part of alloc types here, because regexp alloc type clash with package type
     'object-shape': '#ffffffa0',
     'object': '#fee29ca0',
@@ -187,7 +199,17 @@ export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeTyp
     // alloc timespan
     'alive': '#78b362a0',
     'long-lived': '#f2a376a0',
-    'short-lived': '#fee29ca0'
+    'short-lived': '#fee29ca0',
+
+    'new_space': '#fee29ca0',
+    'old_space': '#f2a376a0',
+    'code_space': '#fc9a9aa0',
+    'code_lo_space': '#fc9a9aa0',
+    'new_lo_space': '#fee29ca0',
+    'lo_space': '#f2a376a0',
+    'shared_space': '#fcb69aa0',
+    'shared_lo_space': '#fcb69aa0',
+    'read_only_space': '#fee29ca0'
 };
 export const typeColorComponents = Object.fromEntries(Object.entries(typeColor)
     .map(([type, color]) =>[type, [
