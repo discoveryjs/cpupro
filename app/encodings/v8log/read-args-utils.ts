@@ -31,14 +31,10 @@ export function readAllArgs<T extends ArgParser[]>(
     end?: number
 ): [...{ [K in keyof T]: ReturnType<T[K]> }, ...string[]] {
     const args = readAllArgsRaw(buffer, start, end);
-    const parsedArgs: (string | number)[] = [];
+    const parsedArgs: (string | number)[] = args; // to avoid TS warnings
 
     for (let i = 0; i < parsers.length && i < args.length; i++) {
-        parsedArgs.push(parsers[i](args[i]));
-    }
-
-    if (parsers.length < args.length) {
-        parsedArgs.push(...args.slice(parsers.length));
+        parsedArgs[i] = parsers[i](args[i]);
     }
 
     return parsedArgs as [...{ [K in keyof T]: ReturnType<T[K]> }, ...string[]];

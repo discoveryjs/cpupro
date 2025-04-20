@@ -17,7 +17,7 @@ export function parseState(state: string) {
 
 export function kindFromState(state: CodeState) {
     switch (state) {
-        case CodeState.COMPILED: return 'Buildin';
+        case CodeState.COMPILED: return 'Builtin';
         case CodeState.IGNITION: return 'Unopt';
         case CodeState.SPARKPLUG: return 'Sparkplug';
         case CodeState.MAGLEV: return 'Maglev';
@@ -28,17 +28,31 @@ export function kindFromState(state: CodeState) {
 }
 
 export function parseString(value: string) {
+    if (value === '') {
+        return '';
+    }
+
     if (value.indexOf('\\') === -1) {
-        return value;
+        // detach sliced string from source
+        const s = value[0] + value.slice(1);
+        /^/.test(s);
+        return s;
     }
 
     const valueEnd = value.length;
     let result = '';
 
     for (let i = 0; i < valueEnd; i++) {
-        if (value[i] !== '\\') {
-            result += value[i];
-            continue;
+        const bidx = value.indexOf('\\', i);
+
+        if (bidx === -1) {
+            result += value.slice(i);
+            break;
+        }
+
+        if (bidx !== i) {
+            result += value.slice(i, bidx);
+            i = bidx;
         }
 
         if (i === valueEnd - 1) {
@@ -91,25 +105,59 @@ export function parseString(value: string) {
         }
     }
 
+    // flatten the result and detach from input srting
+    /^/.test(result);
+
     return result;
 }
 
-export function parseStack(pc: number, logStack: string[]) {
-    const parsedStack: number[] = [];
+export function parseStack(
+    pc: number,
+    func: number,
+    logStack: string[],
+    findCodeEntryByAddress: (address: number) => { id: number; start: number; } | null
+) {
+    const parsedStack: number[] = new Array(2 * (logStack.length + (func ? 2 : 1)));
+    let parsedStackCursor = 0;
+    const pushStackEntry = (address: number) => {
+        const codeEntry = findCodeEntryByAddress(address);
+
+        if (codeEntry !== null) {
+            parsedStack[parsedStackCursor++] = codeEntry.id;
+            parsedStack[parsedStackCursor++] = address - codeEntry.start;
+        } else {
+            parsedStack[parsedStackCursor++] = -1;
+            parsedStack[parsedStackCursor++] = address;
+        }
+    };
+
+    pushStackEntry(pc);
+
+    if (func) {
+        pushStackEntry(func);
+    }
 
     for (let i = 0; i < logStack.length; i++) {
         const frame = logStack[i];
-        const firstChar = frame[0];
-        if (firstChar === '+' || firstChar === '-') {
-            // An offset from the previous frame.
-            debugger;
-            parsedStack.push(pc += parseInt(frame));
-        // Filter out possible 'overflow' string.
-        } else if (firstChar !== 'o') {
-            parsedStack.push(parseInt(frame));
-        } else {
-            console.error(`Dropping unknown tick frame: ${frame}`);
+
+        switch (frame.charCodeAt(0)) {
+            case 43: // +
+            case 45: // -
+                pushStackEntry(pc += parseInt(frame));
+                break;
+
+            case 111: // o
+                // overflow frame – just ignore
+                // console.warn(`Dropping unknown tick frame: ${frame}`);
+                break;
+
+            default:
+                pushStackEntry(parseInt(frame));
         }
+    }
+
+    if (parsedStackCursor < parsedStack.length) {
+        parsedStack.length = parsedStackCursor;
     }
 
     return parsedStack;

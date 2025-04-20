@@ -1,5 +1,3 @@
-const v8logSupport = false;
-
 module.exports = {
     name: 'cpupro',
     version: require('./package.json').version,
@@ -8,12 +6,10 @@ module.exports = {
     colorScheme: 'dark-only',
     embed: true,
     upload: {
-        accept: v8logSupport
-            ? ['.cpuprofile', '.devtools', '.log', '.json', '.jsonxl']
-            : ['.cpuprofile', '.devtools', '.json', '.jsonxl']
+        accept: ['.cpuprofile', '.devtools', '.log', '.json', '.jsonxl']
     },
     basedir: __dirname + '/app',
-    ...v8logSupport ? { encodings: './encodings' } : null,
+    encodings: './encodings',
     setup: './setup.mts',
     data: './data',
     favicon: './img/favicon.png',

@@ -7,8 +7,9 @@ import { V8LogProfile } from './formats/v8-log-processed/types.js';
 import { FEATURE_MULTI_PROFILES } from './const.js';
 
 export const supportedFormats = [
+    '* [V8 log](https://v8.dev/docs/profile) (.log)',
+    '* V8 log preprocessed with [--preprocess](https://v8.dev/docs/profile#web-ui-for---prof) (.json)',
     '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
-    '* [V8 log](https://v8.dev/docs/profile) preprocessed with [--preprocess](https://v8.dev/docs/profile#web-ui-for---prof) (.json)',
     '* [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) (.json)',
     '* [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces) (.devtools)'
 ];

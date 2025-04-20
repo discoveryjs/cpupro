@@ -1,6 +1,6 @@
 import { argParsers, offsetOrEnd, readAllArgs, readAllArgsRaw } from './v8log/read-args-utils.js';
-import { kindFromState, parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
-import { CodeState, Meta } from './v8log/types.js';
+import { parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
+import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, Meta, SFI } from './v8log/types.js';
 
 const decoder = new TextDecoder();
 
@@ -14,22 +14,160 @@ const parsers = {
     'shared-library': argParsers(parseString, parseAddress, parseAddress, parseAddress),
     'code-creation': argParsers(parseString, parseInt, parseInt, parseAddress, parseAddress, parseString),
     'code-move': argParsers(parseAddress, parseAddress),
-    'sfi-move': argParsers(parseAddress, parseAddress),
+    'sfi-move': argParsers(parseString, parseString),
     'code-delete': argParsers(parseAddress),
     'code-source-info': argParsers(parseAddress, parseInt, parseInt, parseInt, parseString, parseString, parseString),
     'code-disassemble': argParsers(parseAddress, parseString, parseString),
     'tick': argParsers(parseAddress, parseInt, parseInt, parseAddress, parseInt)
 } as const;
 
+class CodeEntry {
+    id: number;
+    start: number;
+    size: number;
+    end: number;
+    code: Code;
+    constructor(id: number, start: number, size: number, code: Code) {
+        this.id = id;
+        this.start = start;
+        this.size = size;
+        this.end = start + size;
+        this.code = code;
+    }
+    clone(newAddress: number) {
+        return new CodeEntry(this.id, newAddress, this.size, this.code);
+    }
+}
+
+class BucketCodeEntry {
+    start: number;
+    size: number;
+    end: number;
+    codeEntry: CodeEntry;
+    constructor(start: number, size: number, codeEntry: CodeEntry) {
+        this.start = start;
+        this.size = size;
+        this.end = start + size;
+        this.codeEntry = codeEntry;
+    }
+}
+
+function binarySearchCodeEntryIndex(address: number, entries: BucketCodeEntry[], entryOrNext = false) {
+    let lo = 0;
+    let hi = entries.length - 1;
+
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const entry = entries[mid];
+
+        if (address < entry.start) {
+            // target is entirely to the “left” of this range
+            hi = mid - 1;
+        } else if (address > entry.end) {
+            // target is entirely to the “right” of this range
+            lo = mid + 1;
+        } else {
+            // entry.start <= address <= entry.end
+            return mid;
+        }
+    }
+
+    return entryOrNext && lo < entries.length ? lo : -1;
+}
+
+const CODE_EVENTS = false;
+const BUCKET_SIZE = 14; // number of bits
+const BUCKET_ADDRESS_BASE = 1 << BUCKET_SIZE;
+const EMPTY_ARRAY = [];
 export async function decode(iterator) {
     const meta: Meta = {};
-    const codes: unknown[] = [];
-    const sources: unknown[] = [];
+    const codes: Code[] = [];
+    let lastCodeEntry: CodeEntry | null = null;
+    const codeEvents: unknown[] = [];
+    const codeMemoryBuckets = new Map<number, BucketCodeEntry[]>();
+    const sfiByAddress = new Map<string, SFI>();
+    const functions: unknown[] = [];
+    const scriptById = new Map();
+    let maxScriptId: number = 0;
     const ticks: unknown[] = [];
     const memory: unknown[] = [];
     const profiler: unknown[] = [];
     const ignoredOps = new Set();
     const ignoredEntries: unknown[] = [];
+    let x = 0;
+    const setCodeEntry = function(codeEntry: CodeEntry) {
+        let { start: address, size } = codeEntry;
+
+        while (size > 0) {
+            const codeEntryBucketAddress = address % BUCKET_ADDRESS_BASE;
+            const codeEntryBucketSize = Math.min(size, BUCKET_ADDRESS_BASE - codeEntryBucketAddress);
+            const bucketId = address - codeEntryBucketAddress;
+            const bucketCodeEntry = new BucketCodeEntry(codeEntryBucketAddress, codeEntryBucketSize, codeEntry);
+
+            if (codeEntryBucketSize === BUCKET_ADDRESS_BASE) {
+                codeMemoryBuckets.set(bucketId, [bucketCodeEntry]);
+            } else {
+                let bucket = codeMemoryBuckets.get(bucketId);
+
+                if (bucket === undefined) {
+                    codeMemoryBuckets.set(bucketId, bucket = []);
+                }
+
+                setBucketCodeEntry(bucket, bucketCodeEntry);
+            }
+
+            address += codeEntryBucketSize;
+            size -= codeEntryBucketSize;
+        }
+    };
+    const setBucketCodeEntry = function(bucket: BucketCodeEntry[], bucketCodeEntry: BucketCodeEntry) {
+        const { start: address } = bucketCodeEntry;
+
+        // fast path
+        if (bucket.length === 0 || address > bucket[bucket.length - 1].end) {
+            bucket.push(bucketCodeEntry);
+            return;
+        }
+
+        const addressEnd = address + bucketCodeEntry.size;
+
+        // fast path
+        if (addressEnd < bucket[0].start) {
+            bucket.unshift(bucketCodeEntry);
+            return;
+        }
+
+        const firstInNewRangeEntryIndex = binarySearchCodeEntryIndex(address, bucket, true);
+        const firstEntry = bucket[firstInNewRangeEntryIndex];
+
+        if (addressEnd > firstEntry.start) {
+            let lastInNewRangeEntryIndex = firstInNewRangeEntryIndex;
+            for (; lastInNewRangeEntryIndex + 1 < bucket.length; lastInNewRangeEntryIndex++) {
+                if (bucket[lastInNewRangeEntryIndex + 1].start > addressEnd) {
+                    break;
+                }
+            }
+
+            bucket.splice(firstInNewRangeEntryIndex, lastInNewRangeEntryIndex - firstInNewRangeEntryIndex + 1, bucketCodeEntry);
+        } else {
+            bucket.splice(firstInNewRangeEntryIndex, 0, bucketCodeEntry);
+        }
+    };
+    const findCodeEntryByAddress = function(address: number, entryOrNext = false): CodeEntry | null {
+        const codeEntryBucketAddress = address % BUCKET_ADDRESS_BASE;
+        const bucketId = address - codeEntryBucketAddress;
+        const bucket = codeMemoryBuckets.get(bucketId);
+
+        if (bucket === undefined) {
+            return null;
+        }
+
+        const index = binarySearchCodeEntryIndex(codeEntryBucketAddress, bucket, entryOrNext);
+
+        return index !== -1
+            ? bucket[index].codeEntry
+            : null;
+    };
     const processLine = (buffer: string, sol: number, eol: number) => {
         if (sol >= eol) {
             return;
@@ -100,12 +238,13 @@ export async function decode(iterator) {
             }
 
             case 'script-source': {
-                const [scriptId, url, source] = readAllArgs(parsers[op], line, argsStart);
+                const [id, url, source] = readAllArgs(parsers[op], line, argsStart);
 
-                sources.push({
-                    scriptId,
-                    url,
-                    source
+                maxScriptId = Math.max(id, maxScriptId);
+                scriptById.set(id, {
+                    id,
+                    url: url,
+                    source: source
                 });
 
                 break;
@@ -113,38 +252,88 @@ export async function decode(iterator) {
 
             case 'shared-library': {
                 const [name, address, addressEnd, aslrSlide] = readAllArgs(parsers[op], line, argsStart);
+                const code: CodeSharedLib = {
+                    name: name,
+                    type: 'SHARED_LIB'
+                };
 
-                codes.push({
-                    op,
-                    address,
-                    size: addressEnd - address,
-                    name,
-                    aslrSlide
-                });
+                setCodeEntry(new CodeEntry(codes.length, address, addressEnd - address, code));
+                codes.push(code);
+
+                // if (globalThis.__cpps) {
+                //     const a = globalThis.__cpps[name];
+                //     if (Array.isArray(a)) {
+                //         codes.push(...a);
+                //     }
+                // }
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        size: addressEnd - address,
+                        name,
+                        aslrSlide
+                    });
+                }
 
                 break;
             }
 
-            case 'code-move':
+            case 'code-move': {
+                const [address, destAddress] = readAllArgs(parsers[op], line, argsStart);
+                const codeEntry = findCodeEntryByAddress(address);
+
+                if (codeEntry !== null) {
+                    // we don't care about deleting old code, since log should not address them anymore;
+                    // any new code overlaping with known codes will discard old ones.
+                    setCodeEntry(codeEntry.clone(destAddress));
+                } else {
+                    console.warn('No code found');
+                }
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        destAddress
+                    });
+                }
+                break;
+            }
+
             case 'sfi-move': {
                 const [address, destAddress] = readAllArgs(parsers[op], line, argsStart);
+                const sfi = sfiByAddress.get(address);
 
-                codes.push({
-                    op,
-                    address,
-                    destAddress
-                });
+                if (sfi !== undefined) {
+                    sfiByAddress.delete(address);
+                    sfiByAddress.set(destAddress, sfi);
+                } else {
+                    console.warn(x++, 'SFI not found, on moving SFI', address, '->', destAddress);
+                }
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        destAddress
+                    });
+                }
 
                 break;
             }
 
             case 'code-delete': {
-                const [address] = readAllArgs(parsers[op], line, argsStart);
-
-                codes.push({
-                    op,
-                    address
-                });
+                // we don't care about deleting old code, since log should not address them anymore;
+                // any new code overlaping with known codes will discard old ones.
+                if (CODE_EVENTS) {
+                    const [address] = readAllArgs(parsers[op], line, argsStart);
+                    codeEvents.push({
+                        op,
+                        address
+                    });
+                }
 
                 break;
             }
@@ -152,12 +341,14 @@ export async function decode(iterator) {
             case 'code-disassemble': {
                 const [address, kind, disassemble] = readAllArgs(parsers[op], line, argsStart);
 
-                codes.push({
-                    op,
-                    address,
-                    kind,
-                    disassemble
-                });
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        kind,
+                        disassemble
+                    });
+                }
 
                 break;
             }
@@ -168,21 +359,55 @@ export async function decode(iterator) {
                     scriptId,
                     start,
                     end,
-                    sourcePositions,
-                    inliningPositions,
-                    inlinedFunctions
+                    positions,
+                    inlinedPositions,
+                    inlinedFunctions = ''
                 ] = readAllArgs(parsers[op], line, argsStart);
+                const codeEntry = lastCodeEntry?.start === address
+                    ? lastCodeEntry
+                    : findCodeEntryByAddress(address);
 
-                codes.push({
-                    op,
-                    address,
-                    scriptId,
-                    start,
-                    end,
-                    sourcePositions,
-                    inliningPositions,
-                    inlinedFunctions
-                });
+                if (codeEntry !== null) {
+                    if (codeEntry.code.type === 'JS') {
+                        codeEntry.code.source = {
+                            script: scriptId,
+                            start,
+                            end,
+                            positions: positions,
+                            inlined: inlinedPositions,
+                            fns: inlinedFunctions !== ''
+                                ? (inlinedFunctions.match(/[^S]+/g) || EMPTY_ARRAY)
+                                    .map(sfiAddress => {
+                                        const sfi = sfiByAddress.get(sfiAddress);
+
+                                        if (sfi !== undefined) {
+                                            return sfi.id;
+                                        }
+
+                                        console.warn('No SFI found');
+                                        return -1;
+                                    })
+                                : EMPTY_ARRAY
+                        };
+                    } else {
+                        console.warn('Not a JavaScript code');
+                    }
+                } else {
+                    console.warn(`Code with address ${address} is not found`);
+                }
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        scriptId,
+                        start,
+                        end,
+                        positions,
+                        inlinedPositions,
+                        inlinedFunctions
+                    });
+                }
 
                 break;
             }
@@ -190,61 +415,75 @@ export async function decode(iterator) {
             case 'code-creation': {
                 const [
                     type,
-                    kind,
+                    kindNum,
                     timestamp,
                     address,
                     size,
-                    nameAndPosition,
-                    maybeFunc
-                ] = readAllArgs(parsers['code-creation'], line, argsStart);
-                let stateName = '';
-                let funcAddr: number | null = null;
-                let funcState: CodeState | null = null;
+                    nameAndLocation,
+                    sfiAddress,
+                    kindMarker = ''
+                ] = readAllArgs(parsers[op], line, argsStart);
+                const kind = kindMarker ? parseState(kindMarker) : type === 'JS' ? 'Builtin' : type;
+                let sfi: SFI | undefined = sfiAddress !== undefined
+                    ? sfiByAddress.get(sfiAddress)
+                    : undefined;
 
-                if (maybeFunc?.length) {
-                    stateName = maybeFunc[1] ?? '';
+                if (sfi === undefined || sfi.name !== nameAndLocation) {
+                    const sfiCodes = [];
 
-                    funcAddr = parseAddress(maybeFunc[0]);
-                    funcState = parseState(stateName);
-                    // let sfi = codeMap.findDynamicEntryByStartAddress(funcAddr);
-
-                    // if (sfi === null) {
-                    //     sfi = new SharedFunctionInfoEntry(nameAndPosition);
-                    //     codeMap.addCode(funcAddr, sfi);
-                    // } else {
-                    //     // SFI object has been overwritten with a new one.
-                    //     sfi.name = nameAndPosition; // ??
-                    // }
-
-                    // let entry = codeMap.findDynamicEntryByStartAddress(address);
-                    // if (entry !== null) {
-                    //     if (entry.size === size && entry.sfi === sfi) {
-                    //         // Entry state has changed.
-                    //         entry.state = state;
-                    //     } else {
-                    //         codeMap.deleteCode(address);
-                    //         entry = null;
-                    //     }
-                    // }
-
-                    // if (entry === null) {
-                    //     entry = new DynamicFuncCodeEntry(size, type, sfi, state);
-                    //     codeMap.addCode(address, entry);
-                    // }
+                    sfiByAddress.set(sfiAddress, sfi = {
+                        id: functions.length,
+                        name: nameAndLocation,
+                        codes: sfiCodes
+                    });
+                    functions.push({
+                        name: nameAndLocation,
+                        codes: sfiCodes
+                    });
                 }
 
-                codes.push({
-                    op,
-                    address,
-                    size,
-                    type,
-                    kind,
-                    kindName: kindFromState(funcState ?? parseState(stateName)),
-                    timestamp,
-                    nameAndPosition,
-                    funcAddr,
-                    funcState
-                });
+                let code: CodeCompiled | CodeJavaScript;
+
+                if (sfi) {
+                    nameAndLocation.indexOf(nameAndLocation[0]);
+                    kind.indexOf(kind[0]);
+                    code = {
+                        name: nameAndLocation,
+                        type: 'JS',
+                        kind: kind,
+                        func: sfi.id,
+                        tm: timestamp
+                    };
+                    sfi.codes.push(codes.length);
+                } else {
+                    nameAndLocation.indexOf(nameAndLocation[0]);
+                    kind.indexOf(kind[0]);
+                    code = {
+                        name: nameAndLocation,
+                        timestamp,
+                        type: 'CODE',
+                        kind: kind
+                    };
+                }
+
+                const codeEntry = new CodeEntry(codes.length, address, size, code);
+                setCodeEntry(codeEntry);
+                lastCodeEntry = codeEntry;
+                codes.push(code);
+
+                if (1 || CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        size,
+                        type,
+                        kindNum,
+                        kind,
+                        timestamp,
+                        nameAndLocation,
+                        sfiAddress
+                    });
+                }
                 break;
             }
 
@@ -252,7 +491,7 @@ export async function decode(iterator) {
                 const [
                     pc_,
                     timestamp,
-                    externalCallback,
+                    isExternalCallback,
                     tosOrExternalCallback_,
                     vmState,
                     ...stack
@@ -260,28 +499,29 @@ export async function decode(iterator) {
                 let pc = pc_;
                 let tosOrExternalCallback = tosOrExternalCallback_;
 
-                if (externalCallback) {
+                if (isExternalCallback) {
                     // Don't use PC when in external callback code, as it can point
                     // inside callback's code, and we will erroneously report
                     // that a callback calls itself. Instead we use tosOrExternalCallback,
                     // as simply resetting PC will produce unaccounted ticks.
                     pc = tosOrExternalCallback;
                     tosOrExternalCallback = 0;
-                // } else if (tosOrExternalCallback) {
-                //     // Find out, if top of stack was pointing inside a JS function
-                //     // meaning that we have encountered a frameless invocation.
-                //     const funcEntry = this.profile_.findEntry(tosOrExternalCallback);
-                //     if (!funcEntry || !funcEntry.isJSFunction || !funcEntry.isJSFunction()) {
-                //         tosOrExternalCallback = 0;
-                //     }
+                } else if (tosOrExternalCallback) {
+                    // Find out, if top of stack was pointing inside a JS function
+                    // meaning that we have encountered a frameless invocation.
+                    const codeEntry = findCodeEntryByAddress(tosOrExternalCallback);
+
+                    if (codeEntry === null || codeEntry.code.type !== 'JS') {
+                        tosOrExternalCallback = 0;
+                    }
                 }
 
+                const parsedStack = parseStack(pc, tosOrExternalCallback, stack, findCodeEntryByAddress);
+
                 ticks.push({
-                    timestamp,
-                    vmState,
-                    pc,
-                    tosOrExternalCallback,
-                    stack: stack ? parseStack(pc, stack) : []
+                    tm: timestamp,
+                    vm: vmState,
+                    s: parsedStack
                 });
 
                 break;
@@ -297,7 +537,6 @@ export async function decode(iterator) {
     let tail = '';
     let lineStartOffset = 0;
 
-    const t = Date.now();
     for await (const chunk of iterator) {
         const chunkText = tail + decoder.decode(chunk);
         let eol = -1;
@@ -321,21 +560,22 @@ export async function decode(iterator) {
 
         tail = String(chunkText.slice(lineStartOffset));
     }
-    console.log('parsed', Date.now() - t);
 
     // process last line
     processLine(tail, lineStartOffset, tail.length);
 
     const result = {
         meta,
-        codes,
+        code: codes,
+        functions,
         ticks,
-        sources,
+        scripts: Array.from({ length: maxScriptId + 1 }, (_, idx) => scriptById.get(idx) || null),
+
+        profiler,
+        codeEvents,
         ignoredOps: [...ignoredOps],
         ignoredEntries
     };
-
-    console.log(result);
 
     return result;
 }

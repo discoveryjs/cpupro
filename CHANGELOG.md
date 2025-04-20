@@ -1,6 +1,7 @@
 ## next
 
 - Viewer
+    - Implemented raw V8 log format support
     - Added code tiers statistics on main page if available
     - Added hotness icon for call frames with codes
     - Added a function code tier intervals indicator on the timeline in the call frame and module pages
