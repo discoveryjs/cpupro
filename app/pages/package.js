@@ -1,4 +1,4 @@
-import { callFramesCol, timingCols } from './common.js';
+import { callFramesCol, sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
@@ -26,7 +26,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('package-nested-time-distribution', true),
         className: 'trigger-outside',
         header: [
             'text:"Nested time distribution"',
@@ -46,7 +46,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('package-modules', true),
         className: 'trigger-outside',
         header: [
             'text:"Modules "',
@@ -107,6 +107,7 @@ const pageContent = [
 
     {
         view: 'flamechart-expand',
+        ...sessionExpandState('package-flame-graphs', true),
         tree: '=#.currentProfile.packagesTree',
         timings: '=#.currentProfile.packagesTreeTimingsFiltered',
         value: '='

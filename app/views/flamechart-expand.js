@@ -4,6 +4,8 @@ const { SubsetTreeTimings } = require('../prepare/computations/timings.js');
 discovery.view.define('flamechart-expand', function(el, config, data, context) {
     const {
         header,
+        expanded = true,
+        onToggle,
         tree,
         subsetTimings: rawTimings,
         profile = context.data.currentProfile,
@@ -17,9 +19,10 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
 
     return this.render(el, {
         view: 'expand',
-        expanded: true,
+        expanded,
+        onToggle,
         className: 'flamechart-expand trigger-outside',
-        header: header || 'text:"Subtrees flame chart"',
+        header: header || 'text:"Subtree flame graphs"',
         content: {
             view: 'context',
             modifiers: {

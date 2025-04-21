@@ -32,6 +32,16 @@ if (FEATURE_MULTI_PROFILES) {
     });
 }
 
+discovery.action.define('getSessionSetting', (name, defaultValue) => {
+    const value = sessionStorage.getItem(name);
+
+    return typeof value === 'string'
+        ? JSON.parse(value)
+        : defaultValue;
+});
+discovery.action.define('setSessionSetting', (name, value) => {
+    sessionStorage.setItem(name, value);
+});
 discovery.action.define('selectProfile', (profile) => {
     if (selectProfile(discovery, profile)) {
         discovery.scheduleRender();

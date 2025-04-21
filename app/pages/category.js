@@ -1,4 +1,4 @@
-import { callFramesCol, timingCols } from './common.js';
+import { callFramesCol, sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
@@ -25,7 +25,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: false,
+        ...sessionExpandState('category-nested-time-distribution', false),
         className: 'trigger-outside',
         header: [
             'text:"Nested time distribution"',
@@ -48,7 +48,7 @@ const pageContent = [
         when: 'name in ["script", "chrome-extension"]',
         content: {
             view: 'expand',
-            expanded: true,
+            ...sessionExpandState('category-packages', true),
             className: 'trigger-outside',
             header: [
                 'text:"Packages "',
@@ -128,7 +128,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('category-modules', true),
         className: 'trigger-outside',
         header: [
             'text:"Modules "',
@@ -182,6 +182,7 @@ const pageContent = [
 
     {
         view: 'flamechart-expand',
+        ...sessionExpandState('category-flame-graphs', true),
         tree: '=#.currentProfile.categoriesTree',
         timings: '=#.currentProfile.categoriesTreeTimingsFiltered',
         value: '='

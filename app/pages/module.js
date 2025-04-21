@@ -1,5 +1,5 @@
 import { FEATURE_SOURCES } from '../prepare/const.js';
-import { timingCols } from './common.js';
+import { sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
@@ -30,7 +30,9 @@ const pageContent = [
         view: 'expand',
         when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
-        expanded: '=script.hasSource()',
+        context: '{ ...#, currentScript: script }',
+        expanded: '=#.currentScript.hasSource() and "getSessionSetting".callAction("cpupro-module-source", true)',
+        onToggle: '==>#.currentScript.hasSource() and "setSessionSetting".callAction("cpupro-module-source", $)',
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
@@ -44,7 +46,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('module-nested-time-distribution', true),
         className: 'trigger-outside',
         header: [
             'text:"Nested time distribution"',
@@ -64,7 +66,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('module-call-frames', true),
         className: 'trigger-outside',
         header: [
             'text:"Call frames "',
@@ -138,6 +140,7 @@ const pageContent = [
 
     {
         view: 'flamechart-expand',
+        ...sessionExpandState('module-flame-graphs', true),
         tree: '=#.currentProfile.modulesTree',
         timings: '=#.currentProfile.modulesTreeTimingsFiltered',
         value: '='

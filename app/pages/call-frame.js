@@ -1,6 +1,7 @@
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeTimings } = require('../prepare/computations/timings');
 const { FEATURE_SOURCES } = require('../prepare/const.js');
+const { sessionExpandState } = require('./common.js');
 
 const descendantTree = {
     view: 'block',
@@ -204,7 +205,9 @@ const pageContent = [
         view: 'expand',
         when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
-        expanded: '=hasSource()',
+        context: '{ ...#, currentCallFrame: $ }',
+        expanded: '=#.currentCallFrame.hasSource() and "getSessionSetting".callAction("cpupro-call-frame-source", true)',
+        onToggle: '==>#.currentCallFrame.hasSource() and "setSessionSetting".callAction("cpupro-call-frame-source", $)',
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
@@ -219,7 +222,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('callframe-nested-time-distribution', true),
         className: 'trigger-outside',
         header: [
             'text:"Nested time distribution"',
@@ -245,7 +248,7 @@ const pageContent = [
         ],
         content: {
             view: 'expand',
-            expanded: true,
+            ...sessionExpandState('callframe-call-trees', true),
             className: 'trigger-outside',
             header: 'text:"Call trees"',
             content: {
@@ -255,8 +258,7 @@ const pageContent = [
                         view: 'checkbox',
                         name: 'consolidateCallFrames',
                         checked: true,
-                        content: 'text:"Consolidate call frames"',
-                        onChange() {}
+                        content: 'text:"Consolidate call frames"'
                     }
                 ],
                 content: {
@@ -283,6 +285,7 @@ const pageContent = [
 
     {
         view: 'flamechart-expand',
+        ...sessionExpandState('callframe-flame-graphs', true),
         tree: '=#.currentProfile.callFramesTree',
         subsetTimings: '=#.subsetTreeTimings'
     }

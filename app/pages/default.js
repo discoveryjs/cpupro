@@ -1,5 +1,6 @@
 /* eslint-env node */
 const { supportedFormats } = require('../prepare/index.js');
+const { sessionExpandState } = require('./common.js');
 const experimentalFeatures = false;
 
 discovery.nav.primary.append({
@@ -545,7 +546,7 @@ const categoriesTimeline = {
         {
             view: 'expand',
             when: '#.currentProfile.type != "memory"',
-            expanded: false,
+            ...sessionExpandState('default-timelines-code-tiers', false),
             data: 'functionCodes',
             header: [
                 {
@@ -603,7 +604,7 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
-            expanded: false,
+            ...sessionExpandState('default-timelines-heap', false),
             data: 'heap',
             whenData: true,
             header: [
@@ -1091,7 +1092,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('default-timelines', true),
         className: 'timelines trigger-outside',
         header: categoriesFractionBars,
         content: categoriesTimeline
@@ -1099,7 +1100,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('default-hierarchical-components', true),
         className: 'hierarchical-components trigger-outside',
         postRender: (el, config, data, context) =>
             el.style.setProperty('--total-time-digits', String(context.data.totalTime).replace(/\D/g, '').length - 2),
@@ -1144,9 +1145,9 @@ const pageContent = [
 
     {
         view: 'expand',
-        expanded: true,
+        ...sessionExpandState('default-flamegraphs', true),
         className: 'flamecharts trigger-outside',
-        header: 'text:"Flame charts"',
+        header: 'text:"Flame graphs"',
         content: flamecharts
     }
 ];
