@@ -291,15 +291,20 @@
     border-radius: 50%;
 }
 .page-default .category-timelines-item > .total-percent,
+.page-default .category-timelines-item > .total-size,
 .page-default .category-timelines-item > .total-value {
+    min-width: 40px;
     text-align: right;
     font-size: 11px;
-    padding: 1px 8px 0 8px;
+    padding: 1px 4px 0 8px;
     border-bottom: 1px solid #0004;
     color: #888;
 }
 .page-default .category-timelines-item > .total-value {
     padding-left: 4px;
+}
+.page-default .category-timelines-item > .total-value .view-text-with-unit {
+    display: block;
 }
 .page-default .category-timelines-item > .total-percent:not(:empty)::after {
     content: '%';
@@ -398,7 +403,7 @@
 }
 .page-default .hierarchical-components > .content .view-section > .view-content-filter > .content {
     overflow: auto;
-    max-height: 418px;
+    max-height: 421px;
 }
 .page-default .hierarchical-components > .content .view-section .view-table {
     min-width: 100%;

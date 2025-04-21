@@ -189,21 +189,26 @@ const heapTotalView = [
     {
         view: 'link',
         className: 'category-timelines-item',
-        data: 'totalHeapSize',
         content: [
             {
                 view: 'block',
                 className: 'label',
+                postRender: (el) => el.style.setProperty('--color', '#5b88c6'),
                 content: 'text:"Total size"'
             },
             {
                 view: 'block',
-                className: 'total-percent'
+                className: 'total-value',
+                content: [
+                    'text-with-unit{ value: maxTotal.bytes(false), unit: true }',
+                    'text-with-unit{ value: minTotal.bytes(), unit: true }'
+                ]
             },
             {
                 view: 'timeline-segments-bin',
                 className: 'mem-bins',
-                height: 32,
+                height: 36,
+                data: 'totalHeapSize',
                 bins: '=$',
                 // max: '=max() | $ < 20_000_000 ?: 20_000_000',
                 binsMax: true,
@@ -212,23 +217,26 @@ const heapTotalView = [
         ]
     },
     {
+        color: '#bf8354',
         view: 'link',
         className: 'category-timelines-item',
         content: [
             {
                 view: 'block',
                 className: 'label',
-                content: 'text:"Allocations"'
+                content: 'text:"Allocations"',
+                postRender: (el) => el.style.setProperty('--color', '#bf8354')
             },
             {
                 view: 'block',
-                className: 'total-percent'
+                className: 'total-value',
+                content: 'text-with-unit{ value: newTotal.bytes(false), unit: true }'
             },
             {
                 view: 'timeline-segments-bin',
                 className: 'mem-bins',
                 bins: '=new',
-                max: '=max',
+                max: '=maxNewDelete',
                 binsMax: true,
                 color: '#bf8354'
             }
@@ -241,17 +249,19 @@ const heapTotalView = [
             {
                 view: 'block',
                 className: 'label',
-                content: 'text:"Deletions"'
+                content: 'text:"Releases"',
+                postRender: (el) => el.style.setProperty('--color', '#80a556')
             },
             {
                 view: 'block',
-                className: 'total-percent'
+                className: 'total-value',
+                content: 'text-with-unit{ value: deleteTotal.bytes(false), unit: true }'
             },
             {
                 view: 'timeline-segments-bin',
                 className: 'mem-bins heap-delete-chunks',
                 bins: '=delete',
-                max: '=max',
+                max: '=maxNewDelete',
                 binsMax: true,
                 color: '#80a556'
             }
@@ -341,7 +351,8 @@ const categoriesTimeline = {
                 newTotal: $new.sum(),
                 $delete,
                 deleteTotal: $delete.sum(),
-                max: [$new.max(), $delete.max()].max(),
+                maxNewDelete: [$new.max(), $delete.max()].max(),
+                minTotal: $totalHeapSize.min(),
                 maxTotal: $totalHeapSize.max()
             },
             allocations: {
@@ -534,7 +545,7 @@ const categoriesTimeline = {
         {
             view: 'expand',
             when: '#.currentProfile.type != "memory"',
-            expanded: '=false',
+            expanded: false,
             data: 'functionCodes',
             header: [
                 {
@@ -592,19 +603,58 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
+            expanded: false,
             data: 'heap',
             whenData: true,
             header: [
-                'text:"Heap size"',
+                {
+                    view: 'block',
+                    className: 'expand-label',
+                    content: 'text:"Heap size"'
+                },
                 {
                     view: 'switch',
                     content: [
                         { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
-                        { content: [] }
+                        { content: [
+                            { view: 'block', className: 'labeled-value-groups', content: [
+                                { view: 'block', className: 'labeled-value-group', content: [
+                                    {
+                                        view: 'labeled-value',
+                                        color: '#5b88c6',
+                                        text: 'Total size',
+                                        value: [
+                                            'text-numeric:minTotal.bytes()',
+                                            {
+                                                view: 'context',
+                                                when: 'minTotal != maxTotal',
+                                                content: [
+                                                    'text:" … "',
+                                                    'text-numeric:maxTotal.bytes()'
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ] },
+                                { view: 'block', className: 'labeled-value-group', content: [
+                                    {
+                                        view: 'labeled-value',
+                                        color: '#bf8354',
+                                        text: 'Allocated',
+                                        value: 'text-numeric:newTotal.bytes()'
+                                    },
+                                    {
+                                        view: 'labeled-value',
+                                        color: '#80a556',
+                                        text: 'Released',
+                                        value: 'text-numeric:deleteTotal.bytes()'
+                                    }
+                                ] }
+                            ] }
+                        ] }
                     ]
                 }
             ],
-            expanded: '=$',
             content: {
                 view: 'switch',
                 content: [
