@@ -445,22 +445,24 @@ export async function decode(iterator) {
                     kindMarker = ''
                 ] = readAllArgs(parsers[op], line, argsStart);
                 const kind = kindMarker ? parseState(kindMarker) : type === 'JS' ? 'Builtin' : type;
-                let sfi: SFI | undefined = sfiAddress !== undefined
-                    ? sfiByAddress.get(sfiAddress)
-                    : undefined;
+                let sfi: SFI | undefined;
 
-                if (sfi === undefined || sfi.name !== nameAndLocation) {
-                    const sfiCodes = [];
+                if (sfiAddress !== undefined) {
+                    sfi = sfiByAddress.get(sfiAddress);
 
-                    sfiByAddress.set(sfiAddress, sfi = {
-                        id: functions.length,
-                        name: nameAndLocation,
-                        codes: sfiCodes
-                    });
-                    functions.push({
-                        name: nameAndLocation,
-                        codes: sfiCodes
-                    });
+                    if (sfi === undefined || sfi.name !== nameAndLocation) {
+                        const sfiCodes = [];
+
+                        sfiByAddress.set(sfiAddress, sfi = {
+                            id: functions.length,
+                            name: nameAndLocation,
+                            codes: sfiCodes
+                        });
+                        functions.push({
+                            name: nameAndLocation,
+                            codes: sfiCodes
+                        });
+                    }
                 }
 
                 let code: CodeCompiled | CodeJavaScript;
