@@ -1,5 +1,3 @@
-import { createElement } from '@discoveryjs/discovery/utils';
-
 const metrics = [
     { key: 'total', header: 'All lifespans' },
     { key: 'alive', header: 'Alive' },
@@ -23,7 +21,12 @@ const metricCells = metrics.map(({ key, header }) => ({
     className: 'metric-cell lifespan-' + key,
     sorting: `$["${key}"].sum desc`,
     data: `$["${key}"]`,
-    content: metricView
+    content: metricView,
+    footer: {
+        className: 'metric-cell lifespan-' + key,
+        data: `.($["${key}"]) | { count: sum(=>count), sum(=>sum), min.min(), max.max() }`,
+        content: metricView
+    }
 }));
 
 discovery.view.define('allocation-samples-matrix', {
@@ -33,44 +36,11 @@ discovery.view.define('allocation-samples-matrix', {
         {
             header: 'Type',
             sorting: 'type.order() asc',
-            content: 'labeled-value{ text: type, color: type.color() }'
+            content: 'labeled-value{ text: type, color: type.color() }',
+            footer: 'text:"All types"'
         },
         ...metricCells
     ],
-    postRender(el, config, data, context) {
-        if (data?.length < 2) {
-            return;
-        }
-
-        const rowEl = createElement('tr', 'view-table-row');
-
-        el.append(createElement('tbody', 'footer', [
-            // createElement('tr', 'view-table-row', [createElement('td', { colSpan: 100 })]),
-            rowEl
-        ]));
-
-        rowEl.append(
-            createElement('td', 'view-table-cell', 'All types'),
-            ...metrics.map(({ key }) => {
-                const cellEl = createElement('td', 'view-table-cell metric-cell lifespan-' + key);
-                const acc = data.reduce(
-                    (acc, { [key]: col }) => col
-                        ? {
-                            sum: acc.sum + col.sum,
-                            count: acc.count + col.count,
-                            min: Math.min(acc.min, col.min),
-                            max: Math.max(acc.max, col.max)
-                        }
-                        : acc,
-                    { sum: 0, count: 0, min: Infinity, max: 0 }
-                );
-
-                if (acc.sum) {
-                    discovery.view.render(cellEl, metricView, acc, context);
-                }
-
-                return cellEl;
-            })
-        );
-    }
+    headerWhen: 'size() > 1',
+    footerWhen: 'size() > 1'
 });

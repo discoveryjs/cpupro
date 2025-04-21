@@ -2,19 +2,11 @@
     padding: 0;
 }
 
-.view-allocation-samples-matrix tbody.footer td:not(.view-table-cell) {
-    padding: 1px 0 0;
-}
-.view-allocation-samples-matrix tbody.footer .view-table-cell:first-child {
+.view-allocation-samples-matrix tfoot .view-table-cell:first-child {
     text-align: right;
-    color: #888;
-}
-.view-allocation-samples-matrix tbody.footer .view-table-cell {
-    background-color: color-mix(in srgb, var(--discovery-background-color), #8d8d8d 15%);
-    background-clip: padding-box;
-    border: solid var(--discovery-background-color);
-    border-width: 1px 1px 1px 0;
     padding-right: 8px;
+    color: #888;
+    background-color: color-mix(in srgb, var(--discovery-background-color), #8d8d8d 15%);
 }
 
 .view-allocation-samples-matrix .view-table-cell:not(.metric-cell) {

@@ -17,7 +17,11 @@ const metricView = {
 const metricCells = metrics.map(({ key, header }) => ({
     header,
     data: `$["${key}"]`,
-    content: metricView
+    content: metricView,
+    footer: {
+        data: `.($["${key}"]) | { count: sum(=>count), sum(=>sum), min.min(), max.max() }`,
+        content: metricView
+    }
 }));
 
 export default function(host) {
@@ -27,7 +31,8 @@ export default function(host) {
         cols: [
             {
                 header: 'Type',
-                content: 'text:type'
+                content: 'text:type',
+                footer: 'text:"All types"'
             },
             ...metricCells
         ]

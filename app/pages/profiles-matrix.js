@@ -5,14 +5,24 @@ const intersectionTable = {
     limit: false,
     cols: [
         { header: 'Profiles', data: 'profiles' },
-        { header: 'Call frames', data: 'callFrames' },
-        { header: '%', className: 'number', data: 'callFramesPercent | percent()' },
-        { header: '∑ Avg samples', className: 'number', data: 'samples' },
-        { header: '%', className: 'number', data: 'samplesPercent | percent()' },
-        { header: '∑ Avg self time', className: '=profiles = profilesTotal ? "green-line number" : "number"', content: 'text:selfTime | unit()' },
-        { header: '%', className: 'number', data: 'selfTimePercent | percent()' },
-        { header: '∑ Norm avg self time', className: '=profiles = profilesTotal ? "green-line number" : "number"', content: 'text:selfTime2 | unit()' },
-        { header: '%', className: 'number', data: 'selfTimePercent2 | percent()' }
+        { header: 'Call frames', data: 'callFrames', footer: { data: 'callFrames' } },
+        { header: '%', className: 'number', data: 'callFramesPercent | percent()', footer: { className: 'number', content: 'text:"100%"' } },
+        { header: '∑ Avg samples', className: 'number', data: 'samples', footer: { data: 'samples.sum()' } },
+        { header: '%', className: 'number', data: 'samplesPercent | percent()', footer: { className: 'number', content: 'text:"100%"' } },
+        {
+            header: '∑ Avg self time',
+            className: '=profiles = profilesTotal ? "green-line number" : "number"',
+            content: 'text-numeric:selfTime | unit()',
+            footer: { className: 'number red-line', data: 'sum(=>selfTime)', content: 'text-numeric:unit()' }
+        },
+        { header: '%', className: 'number', data: 'selfTimePercent | percent()', footer: { className: 'number', content: 'text:"100%"' } },
+        {
+            header: '∑ Norm avg self time',
+            className: '=profiles = profilesTotal ? "green-line number" : "number"',
+            content: 'text-numeric:selfTime2 | unit()',
+            footer: { className: 'number orange-line', data: 'sum(=>selfTime2)', content: 'text-numeric:unit()' }
+        },
+        { header: '%', className: 'number', data: 'selfTimePercent2 | percent()', footer: { className: 'number', content: 'text:"100%"' } }
     ],
     data: `
         $records: records.[presence];
@@ -40,28 +50,7 @@ const intersectionTable = {
                 selfTime2: $st2,
                 selfTimePercent2: $st2 / $stTotal2
             })
-    `,
-    postRender(el, _, data) {
-        const rowEl = createElement('tr', 'view-table-row');
-
-        rowEl.style.color = '#888';
-        el.append(createElement('tbody', null, [
-            createElement('tr', 'view-table-row', [createElement('td', { colSpan: 100 })]),
-            rowEl
-        ]));
-
-        rowEl.append(
-            createElement('td', null, ''),
-            createElement('td', 'view-table-cell number', [data.reduce((s, e) => s + e.callFrames.length, 0)]),
-            createElement('td', 'view-table-cell number', '100%'),
-            createElement('td', 'view-table-cell number', [data.reduce((s, e) => s + e.samples, 0)]),
-            createElement('td', 'view-table-cell number', '100%'),
-            createElement('td', 'view-table-cell number red-line', [(data.reduce((s, e) => s + e.selfTime, 0) / 1000).toFixed(1) + 'ms']),
-            createElement('td', 'view-table-cell number', '100%'),
-            createElement('td', 'view-table-cell number orange-line', [(data.reduce((s, e) => s + e.selfTime2, 0) / 1000).toFixed(1) + 'ms']),
-            createElement('td', 'view-table-cell number', '100%')
-        );
-    }
+    `
 };
 
 const pageContent = [
