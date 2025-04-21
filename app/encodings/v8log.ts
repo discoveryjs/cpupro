@@ -1,6 +1,6 @@
 import { argParsers, offsetOrEnd, readAllArgs, readAllArgsRaw } from './v8log/read-args-utils.js';
 import { parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
-import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, Meta, SFI } from './v8log/types.js';
+import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, HeapEvent, Meta, SFI } from './v8log/types.js';
 
 const decoder = new TextDecoder();
 
@@ -8,8 +8,8 @@ const parsers = {
     'profiler': argParsers(parseString, parseInt),
     'heap-capacity': argParsers(parseInt),
     'heap-available': argParsers(parseInt),
-    'new': argParsers(parseString, parseAddress, parseInt),
-    'delete': argParsers(parseString, parseAddress),
+    'new': argParsers(parseString, parseString, parseInt),
+    'delete': argParsers(parseString, parseString),
     'script-source': argParsers(parseInt, parseString, parseString),
     'shared-library': argParsers(parseString, parseAddress, parseAddress, parseAddress),
     'code-creation': argParsers(parseString, parseInt, parseInt, parseAddress, parseAddress, parseString),
@@ -81,6 +81,7 @@ const BUCKET_ADDRESS_BASE = 1 << BUCKET_SIZE;
 const EMPTY_ARRAY = [];
 export async function decode(iterator) {
     const meta: Meta = {};
+    let lastTm = 0;
     const codes: Code[] = [];
     let lastCodeEntry: CodeEntry | null = null;
     const codeEvents: unknown[] = [];
@@ -90,11 +91,11 @@ export async function decode(iterator) {
     const scriptById = new Map();
     let maxScriptId: number = 0;
     const ticks: unknown[] = [];
-    const memory: unknown[] = [];
+    const knownMemoryChunks = new Map<string, number>();
+    const memory: HeapEvent[] = [];
     const profiler: unknown[] = [];
     const ignoredOps = new Set();
     const ignoredEntries: unknown[] = [];
-    let x = 0;
     const setCodeEntry = function(codeEntry: CodeEntry) {
         let { start: address, size } = codeEntry;
 
@@ -168,6 +169,17 @@ export async function decode(iterator) {
             ? bucket[index].codeEntry
             : null;
     };
+    const addTmToEvents = (tm: number) => {
+        lastTm = tm;
+
+        for (let i = memory.length - 1; i >= 0; i--) {
+            if (memory[i].tm !== 0) {
+                break;
+            }
+
+            memory[i].tm = tm;
+        }
+    };
     const processLine = (buffer: string, sol: number, eol: number) => {
         if (sol >= eol) {
             return;
@@ -214,8 +226,10 @@ export async function decode(iterator) {
             case 'new': {
                 const [type, address, size] = readAllArgs(parsers[op], line, argsStart);
 
+                knownMemoryChunks.set(address, size);
                 memory.push({
-                    op,
+                    tm: 0,
+                    event: op,
                     type,
                     address,
                     size
@@ -225,14 +239,21 @@ export async function decode(iterator) {
             }
 
             case 'delete': {
-                const [type, address, size] = readAllArgs(parsers[op], line, argsStart);
+                const [type, address] = readAllArgs(parsers[op], line, argsStart);
+                const chunkSize = knownMemoryChunks.get(address);
 
-                memory.push({
-                    op,
-                    type,
-                    address,
-                    size
-                });
+                if (chunkSize !== undefined) {
+                    knownMemoryChunks.delete(address);
+                    memory.push({
+                        tm: 0,
+                        event: op,
+                        type,
+                        address,
+                        size: chunkSize
+                    });
+                } else {
+                    console.warn(`Unknown memory chunk ${type} @ ${address}`);
+                }
 
                 break;
             }
@@ -310,7 +331,7 @@ export async function decode(iterator) {
                     sfiByAddress.delete(address);
                     sfiByAddress.set(destAddress, sfi);
                 } else {
-                    console.warn(x++, 'SFI not found, on moving SFI', address, '->', destAddress);
+                    console.warn('SFI not found, on moving SFI', address, '->', destAddress);
                 }
 
                 if (CODE_EVENTS) {
@@ -471,7 +492,9 @@ export async function decode(iterator) {
                 lastCodeEntry = codeEntry;
                 codes.push(code);
 
-                if (1 || CODE_EVENTS) {
+                addTmToEvents(timestamp);
+
+                if (CODE_EVENTS) {
                     codeEvents.push({
                         op,
                         address,
@@ -518,6 +541,7 @@ export async function decode(iterator) {
 
                 const parsedStack = parseStack(pc, tosOrExternalCallback, stack, findCodeEntryByAddress);
 
+                addTmToEvents(timestamp);
                 ticks.push({
                     tm: timestamp,
                     vm: vmState,
@@ -564,15 +588,18 @@ export async function decode(iterator) {
     // process last line
     processLine(tail, lineStartOffset, tail.length);
 
+    addTmToEvents(lastTm);
+
     const result = {
         meta,
         code: codes,
         functions,
         ticks,
         scripts: Array.from({ length: maxScriptId + 1 }, (_, idx) => scriptById.get(idx) || null),
-
         profiler,
-        codeEvents,
+        heap: { events: memory },
+
+        // codeEvents,
         ignoredOps: [...ignoredOps],
         ignoredEntries
     };

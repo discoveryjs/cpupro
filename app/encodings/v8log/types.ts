@@ -52,3 +52,10 @@ export type SFI = {
     name: string;
     codes: number[];
 }
+export type HeapEvent = {
+    tm: number;
+    event: string;
+    type: string;
+    address: string;
+    size?: number;
+}
