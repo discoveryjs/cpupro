@@ -31,7 +31,7 @@ class CodeEntry {
         this.id = id;
         this.start = start;
         this.size = size;
-        this.end = start + size;
+        this.end = start + size - 1;
         this.code = code;
     }
     clone(newAddress: number) {
@@ -47,7 +47,7 @@ class BucketCodeEntry {
     constructor(start: number, size: number, codeEntry: CodeEntry) {
         this.start = start;
         this.size = size;
-        this.end = start + size;
+        this.end = start + size - 1;
         this.codeEntry = codeEntry;
     }
 }
@@ -130,7 +130,7 @@ export async function decode(iterator) {
             return;
         }
 
-        const addressEnd = address + bucketCodeEntry.size;
+        const addressEnd = address + bucketCodeEntry.size - 1;
 
         // fast path
         if (addressEnd < bucket[0].start) {
@@ -468,8 +468,6 @@ export async function decode(iterator) {
                 let code: CodeCompiled | CodeJavaScript;
 
                 if (sfi) {
-                    nameAndLocation.indexOf(nameAndLocation[0]);
-                    kind.indexOf(kind[0]);
                     code = {
                         name: nameAndLocation,
                         type: 'JS',
@@ -479,8 +477,6 @@ export async function decode(iterator) {
                     };
                     sfi.codes.push(codes.length);
                 } else {
-                    nameAndLocation.indexOf(nameAndLocation[0]);
-                    kind.indexOf(kind[0]);
                     code = {
                         name: nameAndLocation,
                         timestamp,
