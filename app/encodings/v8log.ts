@@ -1,6 +1,6 @@
 import { argParsers, offsetOrEnd, readAllArgs, readAllArgsRaw } from './v8log/read-args-utils.js';
 import { parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
-import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, HeapEvent, Meta, SFI } from './v8log/types.js';
+import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, Heap, HeapEvent, LogFunction, Meta, ParseResult, Script, SFI, Tick } from './v8log/types.js';
 
 const decoder = new TextDecoder();
 
@@ -81,20 +81,19 @@ const BUCKET_ADDRESS_BASE = 1 << BUCKET_SIZE;
 const EMPTY_ARRAY = [];
 export async function decode(iterator) {
     const meta: Meta = {};
-    let lastTm = 0;
     const codes: Code[] = [];
     let lastCodeEntry: CodeEntry | null = null;
     const codeEvents: unknown[] = [];
     const codeMemoryBuckets = new Map<number, BucketCodeEntry[]>();
     const sfiByAddress = new Map<string, SFI>();
-    const functions: unknown[] = [];
-    const scriptById = new Map();
+    const functions: LogFunction[] = [];
+    const scriptById = new Map<number, Script>();
     let maxScriptId: number = 0;
-    const ticks: unknown[] = [];
+    const ticks: Tick[] = [];
     const knownMemoryChunks = new Map<string, number>();
-    const memory: HeapEvent[] = [];
-    const profiler: unknown[] = [];
-    const ignoredOps = new Set();
+    const heapEvents: HeapEvent[] = [];
+    const heap: Heap = { events: heapEvents };
+    const ignoredOps = new Set<string>();
     const ignoredEntries: unknown[] = [];
     const setCodeEntry = function(codeEntry: CodeEntry) {
         let { start: address, size } = codeEntry;
@@ -170,14 +169,12 @@ export async function decode(iterator) {
             : null;
     };
     const addTmToEvents = (tm: number) => {
-        lastTm = tm;
-
-        for (let i = memory.length - 1; i >= 0; i--) {
-            if (memory[i].tm !== 0) {
+        for (let i = heapEvents.length - 1; i >= 0; i--) {
+            if (heapEvents[i].tm !== 0) {
                 break;
             }
 
-            memory[i].tm = tm;
+            heapEvents[i].tm = tm;
         }
     };
     const processLine = (buffer: string, sol: number, eol: number) => {
@@ -202,24 +199,25 @@ export async function decode(iterator) {
             }
 
             case 'profiler': {
-                const [action, sampleInterval] = readAllArgs(parsers[op], line, argsStart);
+                const [action, samplesInterval] = readAllArgs(parsers[op], line, argsStart);
 
-                profiler.push({
-                    action,
-                    sampleInterval
-                });
+                if (action === 'start') {
+                    meta.samplesInterval = samplesInterval;
+                }
                 break;
             }
 
             case 'heap-capacity': {
-                const [heapCapacity] = readAllArgs(parsers[op], line, argsStart);
-                meta.heapCapacity = heapCapacity;
+                const [capacity] = readAllArgs(parsers[op], line, argsStart);
+
+                heap.capacity = capacity;
                 break;
             }
 
             case 'heap-available': {
-                const [heapAvailable] = readAllArgs(parsers[op], line, argsStart);
-                meta.heapAvailable = heapAvailable;
+                const [available] = readAllArgs(parsers[op], line, argsStart);
+
+                heap.available = available;
                 break;
             }
 
@@ -227,7 +225,7 @@ export async function decode(iterator) {
                 const [type, address, size] = readAllArgs(parsers[op], line, argsStart);
 
                 knownMemoryChunks.set(address, size);
-                memory.push({
+                heapEvents.push({
                     tm: 0,
                     event: op,
                     type,
@@ -242,17 +240,20 @@ export async function decode(iterator) {
                 const [type, address] = readAllArgs(parsers[op], line, argsStart);
                 const chunkSize = knownMemoryChunks.get(address);
 
-                if (chunkSize !== undefined) {
-                    knownMemoryChunks.delete(address);
-                    memory.push({
+                if (chunkSize === undefined) {
+                    console.warn(`Unknown memory chunk ${type} @ ${address}`);
+                } else if (chunkSize === -1) {
+                    // V8 duplicates delete events for some deletions
+                    // console.warn(`Already deleted memory chunk ${type} @ ${address}`);
+                } else {
+                    knownMemoryChunks.set(address, -1);
+                    heapEvents.push({
                         tm: 0,
                         event: op,
                         type,
                         address,
                         size: chunkSize
                     });
-                } else {
-                    console.warn(`Unknown memory chunk ${type} @ ${address}`);
                 }
 
                 break;
@@ -264,8 +265,8 @@ export async function decode(iterator) {
                 maxScriptId = Math.max(id, maxScriptId);
                 scriptById.set(id, {
                     id,
-                    url: url,
-                    source: source
+                    url,
+                    source
                 });
 
                 break;
@@ -274,7 +275,7 @@ export async function decode(iterator) {
             case 'shared-library': {
                 const [name, address, addressEnd, aslrSlide] = readAllArgs(parsers[op], line, argsStart);
                 const code: CodeSharedLib = {
-                    name: name,
+                    name,
                     type: 'SHARED_LIB'
                 };
 
@@ -394,7 +395,7 @@ export async function decode(iterator) {
                             script: scriptId,
                             start,
                             end,
-                            positions: positions,
+                            positions,
                             inlined: inlinedPositions,
                             fns: inlinedFunctions !== ''
                                 ? (inlinedFunctions.match(/[^S]+/g) || EMPTY_ARRAY)
@@ -451,7 +452,7 @@ export async function decode(iterator) {
                     sfi = sfiByAddress.get(sfiAddress);
 
                     if (sfi === undefined || sfi.name !== nameAndLocation) {
-                        const sfiCodes = [];
+                        const sfiCodes: number[] = [];
 
                         sfiByAddress.set(sfiAddress, sfi = {
                             id: functions.length,
@@ -471,7 +472,7 @@ export async function decode(iterator) {
                     code = {
                         name: nameAndLocation,
                         type: 'JS',
-                        kind: kind,
+                        kind,
                         func: sfi.id,
                         tm: timestamp
                     };
@@ -481,7 +482,7 @@ export async function decode(iterator) {
                         name: nameAndLocation,
                         timestamp,
                         type: 'CODE',
-                        kind: kind
+                        kind
                     };
                 }
 
@@ -580,22 +581,19 @@ export async function decode(iterator) {
             lineStartOffset = eol + 1;
         } while (true);
 
-        tail = String(chunkText.slice(lineStartOffset));
+        tail = chunkText.slice(lineStartOffset);
     }
 
     // process last line
     processLine(tail, lineStartOffset, tail.length);
 
-    addTmToEvents(lastTm);
-
-    const result = {
+    const result: ParseResult = {
         meta,
         code: codes,
         functions,
         ticks,
         scripts: Array.from({ length: maxScriptId + 1 }, (_, idx) => scriptById.get(idx) || null),
-        profiler,
-        heap: { events: memory },
+        heap,
 
         // codeEvents,
         ignoredOps: [...ignoredOps],
