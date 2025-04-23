@@ -1,5 +1,3 @@
-const { createElement } = require('@discoveryjs/discovery/utils');
-
 const intersectionTable = {
     view: 'table',
     limit: false,
