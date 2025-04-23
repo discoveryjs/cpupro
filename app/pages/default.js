@@ -1042,10 +1042,25 @@ const noDataPageContent = {
         },
 
         {
-            view: 'markdown',
-            source: [
-                'Supported formats:',
-                ...supportedFormats
+            view: 'hstack',
+            content: [
+                {
+                    view: 'markdown',
+                    source: [
+                        'Supported formats:',
+                        ...supportedFormats
+                    ]
+                },
+
+                {
+                    view: 'markdown',
+                    className: 'supported-formats-tips',
+                    source: [
+                        '> [!TIP]',
+                        '> - The file extension can be arbitrary; the format is determined based on the file\'s content.',
+                        '> - The file content may be compressed using `gzip` or `deflate`.'
+                    ]
+                }
             ]
         },
 
