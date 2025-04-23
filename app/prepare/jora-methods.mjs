@@ -184,8 +184,8 @@ const methods = {
     unit(value, unit = this.context.currentProfile?.type) {
         return (value / 1000).toFixed(1) + (unit === 'memory' ? 'Kb' : 'ms');
     },
-    bytes(current, bytes = 'b') {
-        return shortNum(current, [bytes || '', 'Kb', 'Mb', 'Gb'], 1000);
+    bytes(current, bytes = 'b', base = 1000) {
+        return shortNum(current, [bytes || '', 'Kb', 'Mb', 'Gb'], base);
     },
     shortNum(current) {
         return shortNum(current, ['', 'K', 'M', 'G']);
@@ -400,7 +400,7 @@ const methods = {
 
         return Array.from(bins); // TODO: remove when jora has support for TypedArrays
     },
-    binMemory(heapEvents, eventFilter = 'new', n = 500, profile = this.context.currentProfile) {
+    binHeapEvents(heapEvents, eventFilter = 'new', n = 500, profile = this.context.currentProfile) {
         const { totalTime } = profile;
         const bins = new Float64Array(n);
         const step = totalTime / n;
@@ -424,12 +424,14 @@ const methods = {
 
         return bins;
     },
-    binHeapTotal(heapEvents, n = 500, profile = this.context.currentProfile) {
+    binHeapTotal(heapEvents, n = 500, initial = 0, profile = this.context.currentProfile) {
         const { totalTime } = profile;
         const bins = new Float64Array(n);
         const step = totalTime / n;
         let end = step;
         let binIdx = 0;
+        let currentSize = initial || 0;
+        let currentMax = currentSize;
 
         for (let i = 0; i < heapEvents.length; i++) {
             const { tm, event, size } = heapEvents[i];
@@ -439,16 +441,20 @@ const methods = {
             }
 
             while (tm > end) {
+                bins[binIdx] = currentMax;
+                currentMax = currentSize;
                 binIdx++;
-                bins[binIdx] = bins[binIdx - 1];
                 end += step;
             }
 
-            bins[binIdx] += event === 'new' ? size : -size;
+            currentSize += event === 'new' ? size : -size;
+            currentMax = Math.max(currentSize, currentMax);
         }
 
+        bins[binIdx] = currentMax;
+
         if (binIdx < n - 1) {
-            bins.fill(bins[binIdx], binIdx + 1);
+            bins.fill(currentSize, binIdx + 1);
         }
 
         return bins;

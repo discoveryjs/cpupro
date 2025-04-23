@@ -342,19 +342,20 @@ const categoriesTimeline = {
                 byTier: $byTierBins,
                 byTierMax: $maxTotal
             },
-            heap: heap.events |? {
-                $totalHeapSize: binHeapTotal($binCount);
-                $new: binMemory("new", $binCount);
-                $delete: binMemory("delete", $binCount);
+            heap: heap | events ? {
+                $totalHeapSize: events.binHeapTotal($binCount, capacity);
+                $new: events.binHeapEvents("new", $binCount);
+                $delete: events.binHeapEvents("delete", $binCount);
 
+                available,
                 $totalHeapSize,
+                minTotal: $totalHeapSize.min(),
+                maxTotal: $totalHeapSize.max(),
                 $new,
                 newTotal: $new.sum(),
                 $delete,
                 deleteTotal: $delete.sum(),
-                maxNewDelete: [$new.max(), $delete.max()].max(),
-                minTotal: $totalHeapSize.min(),
-                maxTotal: $totalHeapSize.max()
+                maxNewDelete: [$new.max(), $delete.max()].max()
             },
             allocations: {
                 byType: _memoryType ? timeDeltas.binAllocations(_memoryType, _memoryTypeNames, $binCount),
@@ -635,6 +636,12 @@ const categoriesTimeline = {
                                                 ]
                                             }
                                         ]
+                                    },
+                                    {
+                                        view: 'labeled-value',
+                                        when: 'available',
+                                        text: 'Limit',
+                                        value: 'text-numeric:available.bytes(false, 1024)'
                                     }
                                 ] },
                                 { view: 'block', className: 'labeled-value-group', content: [
