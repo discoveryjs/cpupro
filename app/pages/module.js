@@ -1,4 +1,3 @@
-import { FEATURE_SOURCES } from '../prepare/const.js';
 import { sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
@@ -28,7 +27,6 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
         context: '{ ...#, currentScript: script }',
         expanded: '=#.currentScript.hasSource() and "getSessionSetting".callAction("cpupro-module-source", true)',

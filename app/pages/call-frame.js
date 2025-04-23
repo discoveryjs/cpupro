@@ -1,6 +1,5 @@
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeTimings } = require('../prepare/computations/timings');
-const { FEATURE_SOURCES } = require('../prepare/const.js');
 const { sessionExpandState } = require('./common.js');
 
 const descendantTree = {
@@ -203,7 +202,6 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: FEATURE_SOURCES,
         className: 'trigger-outside script-source',
         context: '{ ...#, currentCallFrame: $ }',
         expanded: '=#.currentCallFrame.hasSource() and "getSessionSetting".callAction("cpupro-call-frame-source", true)',

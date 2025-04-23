@@ -1,5 +1,3 @@
-import { FEATURE_SOURCES } from '../prepare/const.js';
-
 const experimentalFeatures = false;
 const table = {
     view: 'table',
@@ -55,7 +53,7 @@ const table = {
                 content: 'text-match'
             }
         },
-        { header: 'Source', colWhen: FEATURE_SOURCES && '$[=>entry.hasSource()]',
+        { header: 'Source', colWhen: '$[=>entry.hasSource()]',
             className: 'number',
             sorting: '(entry | end - start) desc',
             data: 'entry',
