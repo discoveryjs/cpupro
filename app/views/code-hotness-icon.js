@@ -1,11 +1,12 @@
-const hotnessValues = ['cold', 'warm', 'hot'];
+import { vmFunctionStateTierHotness } from '../prepare/const.js';
+
 const tooltipConfig = {
-    className: 'view-hotness-icon__tooltip',
+    className: 'view-code-hotness-icon__tooltip',
     showDelay: true,
     content: [
         'text:"Function is considered "',
-        'hotness-icon{ hotness, showLabel: true }',
-        'html:` since its top tier is <span style="color:${topTier.color()[:-2]+`d0`}">${topTier}</span>`',
+        'code-hotness-icon{ tier, showLabel: true, showHint: false }',
+        'html:` since its top tier is <span style="color:${tier.color()[:-2]+`d0`}">${tier}</span>`',
         { view: 'md', source: [
             'Code in the V8 engine progresses through multiple optimization tiers:',
             '- <span style="color:{{`Ignition`.color()[:-2]+`d0`}}">Ignition</span> — Bytecode interpreter (with/without feedback); code starts here when it is first executed',
@@ -18,17 +19,18 @@ const tooltipConfig = {
     ]
 };
 
-discovery.view.define('hotness-icon', function(el, config, data) {
-    let { hotness = data, topTier = 'Unknown', showLabel } = config;
-
-    if (!hotnessValues.includes(hotness)) {
-        hotness = 'unknown';
-    }
+discovery.view.define('code-hotness-icon', function(el, config, data) {
+    let { tier = data, showLabel, showHint = true } = config;
+    const hotness = vmFunctionStateTierHotness[tier] || 'unknown';
 
     if (showLabel) {
         el.dataset.label = hotness;
     }
 
+    el.dataset.tier = tier;
     el.className = `hotness-${hotness}`;
-    this.tooltip(el, tooltipConfig, { hotness, topTier });
+
+    if (showHint) {
+        this.tooltip(el, tooltipConfig, { tier, hotness });
+    }
 });

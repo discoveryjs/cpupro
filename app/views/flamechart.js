@@ -46,7 +46,7 @@ const defaultTooltipContent = [
                         view: 'context',
                         data: '#.data.currentProfile.codesByCallFrame[=> callFrame = @]',
                         whenData: 'hotness = "hot" or hotness = "warm"',
-                        content: ['hotness-icon{ hotness, topTier }', 'text:" "']
+                        content: ['code-hotness-icon:topTier', 'text:" "']
                     },
                     'text:name'
                 ] }

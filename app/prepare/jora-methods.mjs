@@ -1,4 +1,4 @@
-import { allocTimespan, typeColor, typeColorComponents, typeOrder, vmFunctionStateTiers } from './const.js';
+import { allocTimespan, typeColor, typeColorComponents, typeOrder, vmFunctionStateTierHotness, vmFunctionStateTiers } from './const.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './computations/call-tree.js';
 import { TreeTimings } from './computations/timings.js';
@@ -7,9 +7,9 @@ import { sum } from './utils.js';
 const abbr = {
     Ignition: 'Ig',
     Sparkplug: 'Sp',
-    Maglev: 'Mg',
+    Maglev: 'Ma',
     Turboprop: 'Tp',
-    Turbofan: 'Tb',
+    Turbofan: 'Tu',
     Unknown: '??'
 };
 
@@ -157,6 +157,9 @@ const methods = {
     },
     abbr(value) {
         return abbr[value] || value;
+    },
+    hotness(tier) {
+        return vmFunctionStateTierHotness[tier] || 'unknown';
     },
     toFixed(value, prec = 2) {
         return Number(value).toFixed(prec);

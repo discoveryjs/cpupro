@@ -38,7 +38,7 @@ const table = {
             sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
             data: 'right',
             contentWhen: 'hotness = "hot" or hotness = "warm"',
-            content: 'hotness-icon{ hotness, topTier }'
+            content: 'code-hotness-icon:topTier'
         },
 
         // call frame identity
@@ -62,6 +62,20 @@ const table = {
             details: {
                 view: 'call-frame-source'
                 // context: '{ ...#, nonFilteredTimings: true }'
+            }
+        },
+        { header: 'Tiers',
+            data: 'right',
+            content: {
+                view: 'inline-list',
+                className: 'code-tier-list',
+                when: 'codes',
+                data: 'codes.group(=>tier).({ tier: key, count: value.size() })',
+                itemConfig: {
+                    view: 'code-tier-badge',
+                    tier: '=tier',
+                    count: '=count | $ > 1?'
+                }
             }
         },
         { header: 'Module',

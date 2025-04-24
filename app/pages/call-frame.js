@@ -141,11 +141,10 @@ const pageContent = [
         ],
         content: [
             {
-                view: 'hotness-icon',
+                view: 'code-hotness-icon',
                 data: '#.currentProfile.codesByCallFrame[=> callFrame = @]',
-                whenData: 'hotness = "hot" or hotness = "warm"',
-                hotness: '=hotness',
-                topTier: '=topTier'
+                whenData: 'hotness in ["hot", "warm"]',
+                tier: '=topTier'
             },
             { view: 'h1', when: 'not regexp', data: 'name' },
             {
@@ -205,7 +204,7 @@ const pageContent = [
         className: 'trigger-outside script-source',
         context: '{ ...#, currentCallFrame: $ }',
         expanded: '=#.currentCallFrame.hasSource() and "getSessionSetting".callAction("cpupro-call-frame-source", true)',
-        onToggle: '==>#.currentCallFrame.hasSource() and "setSessionSetting".callAction("cpupro-call-frame-source", $)',
+        onToggle: '=#.currentCallFrame.hasSource() ?=> "setSessionSetting".callAction("cpupro-call-frame-source", $)',
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },

@@ -62,7 +62,7 @@ export const callFramesCol = (data, moduleCol = false) => ({
                     sorting: 'right.hotness | $ = "hot" ? 3 : $ = "warm" ? 2 : $ = "cold" ? 1 : 0 desc',
                     data: 'right',
                     contentWhen: 'hotness = "hot" or hotness = "warm"',
-                    content: 'hotness-icon{ hotness, topTier }'
+                    content: 'code-hotness-icon:topTier'
                 },
                 {
                     header: 'Call frame',
