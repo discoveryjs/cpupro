@@ -129,7 +129,7 @@
     padding: 0 9px;
 }
 .view-table-row:has(+ .view-table-cell-details-row) > td {
-    border-color: #466289;
+    border-color: #466289 !important;
 }
 .view-table-cell.details-expanded {
     background-color: #2d3746;
