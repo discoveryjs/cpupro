@@ -180,6 +180,90 @@ const pageContent = [
 
     {
         view: 'expand',
+        when: '#.currentProfile | type != "memory"',
+        className: 'trigger-outside script-source',
+        context: '{ ...#, codes: #.currentProfile.codesByCallFrame[=> callFrame = @].codes }',
+        expanded: '=#.codes.bool() and "getSessionSetting".callAction("cpupro-callframe-codes", true)',
+        onToggle: '=#.codes.bool() ?=> "setSessionSetting".callAction("cpupro-callframe-codes", $)',
+        data: '#.codes',
+        header: [
+            'text:"Codes"',
+            { view: 'block', className: 'text-divider' },
+            { view: 'switch', content: [
+                { when: 'size()', content: 'text:size()' },
+                { content: 'html:`<span style="color: #888">(unavailable)</span>`' }
+            ] }
+        ],
+        content: [
+            {
+                view: 'block',
+                whenData: 'no $',
+                className: 'view-call-frame-source',
+                content: {
+                    view: 'source',
+                    lineNum: false,
+                    actionCopySource: false,
+                    source: 'Call frame has no codes'
+                }
+            },
+            {
+                view: 'table',
+                whenData: true,
+                cols: [
+                    {
+                        header: 'Created at',
+                        className: 'number',
+                        data: 'tm',
+                        content: 'text:formatMicrosecondsTime()'
+                    },
+                    {
+                        header: 'Duration',
+                        data: 'duration',
+                        content: 'duration'
+                    },
+                    {
+                        header: '',
+                        content: 'code-hotness-icon{ tier, showHint: false }'
+                    },
+                    {
+                        header: 'Tier',
+                        sorting: 'tier.order() asc',
+                        data: 'tier',
+                        content: [
+                            'code-tier-badge',
+                            'text:"\xa0" + $'
+                        ]
+                    },
+                    {
+                        header: 'Positions',
+                        className: 'number',
+                        data: 'positions.match(/C/g).size()',
+                        contentWhen: '$',
+                        content: [
+                            'text',
+                            'html:" <span style=\\"color:#888\\">blocks</span>"'
+                        ]
+                    },
+                    {
+                        header: 'Inlined',
+                        className: 'number',
+                        contentWhen: 'inlined',
+                        content: [
+                            'text:$fns: fns.size(); $codes: inlined.match(/F/g).size(); $codes != $fns ? `${$fns} / ${$codes}` : $codes',
+                            'html:" <span style=\\"color:#888\\">codes</span>"' // \u0192n
+                        ]
+                    },
+                    {
+                        header: 'Deopt',
+                        data: 'deopt'
+                    }
+                ]
+            }
+        ]
+    },
+
+    {
+        view: 'expand',
         when: '#.currentProfile | type = "memory" and _memoryGc and _memoryType',
         className: 'trigger-outside',
         data: '{ callFrame: @, matrix: #.currentProfile | callFramesTree.allocationsMatrix(samplesTimings, @) }',
