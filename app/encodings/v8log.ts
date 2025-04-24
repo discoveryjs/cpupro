@@ -399,7 +399,7 @@ export async function decode(iterator) {
                             inlined: inlinedPositions,
                             fns: inlinedFunctions !== ''
                                 ? (inlinedFunctions.match(/[^S]+/g) || EMPTY_ARRAY)
-                                    .map(sfiAddress => {
+                                    .map((sfiAddress: string) => {
                                         const sfi = sfiByAddress.get(sfiAddress);
 
                                         if (sfi !== undefined) {

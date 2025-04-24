@@ -104,7 +104,7 @@ export function processCodePositions(codes: V8LogCode[]): (CodePositions | null)
                 // similar positions in other codes of the function and use it if any.
                 const functionId = source.fns[inlined[i]];
 
-                if (functionId === null) {
+                if (functionId === null || functionId < 0) {
                     console.error('Broken positions', code, { positions, inlined });
                     return null;
                 }
