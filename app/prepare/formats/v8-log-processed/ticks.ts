@@ -68,10 +68,11 @@ export function processTicks(
                 if (codePositions !== null) {
                     const codePositionsIndex = findPositionsCodeIndex(
                         codePositions.positions,
-                        // Functions on the stack that are not currently executing store pc
+                        // Machine code functions (at least Turbofan) on the stack
+                        // that are not currently executing store pc
                         // on the next instruction after the callee is called,
                         // so subtract one from the position
-                        tickStack[i + 1] - Number(i > 0)
+                        tickStack[i + 1] - (i > 0 && codePositions.pcOnNextInstruction ? 1 : 0)
                     );
 
                     // store the script offset for next call frame

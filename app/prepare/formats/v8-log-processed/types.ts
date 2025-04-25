@@ -104,6 +104,7 @@ export type CallNode<TCallFrame = CallFrame> = {
 export type CodePositions = {
     fistCode: number;
     lastCode: number;
+    pcOnNextInstruction: boolean;
     positions: number[];
     inlined: number[] | null;
 }

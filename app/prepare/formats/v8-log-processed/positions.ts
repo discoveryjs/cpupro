@@ -1,3 +1,4 @@
+import { functionTier } from './codes.js';
 import type { CodePositions, V8LogCode, V8LogFunction } from './types.js';
 
 // Parse "positions" and "inlined" of code.source:
@@ -86,22 +87,29 @@ export function processCodePositions(codes: V8LogCode[]): (CodePositions | null)
             return null;
         }
 
+        // Machine code functions (at least Turbofan) on the stack
+        // that are not currently executing store pc
+        // on the next instruction after the callee is called,
+        // so subtract one from the position is needed.
+        // That's not the case for Ignition bytecode.
+        // We have no positions for Sparkplug and Maglev at the moment
+        // to check that correction is needed for them as well.
+        // Need a revision once Sparkplug and Maglev positions appear
+        // on the V8 log.
+        const pcOnNextInstruction = functionTier(code.kind) === 'Turbofan';
         const positions = parsePositions(sourcePositions);
         const lastCode = positions[positions.length - 3];
         const inlined = source.inlined
             ? parsePositions(source.inlined)
             : null;
 
-        // if (code.name.startsWith('visitNodes ')) {
-        //     console.log(code);
-        //     positions.x = 1;
-        // }
-
         if (inlined !== null) {
             for (let i = 0; i < inlined.length; i += 3) {
-                // FIXME: In some rare cases, the fns array contains null instead of function id.
-                // For now, we ignore the function positions as it not defined. However, we can try to find
-                // similar positions in other codes of the function and use it if any.
+                // FIXME: In some rare cases, the fns array contains null (or -1 for our custom V8 log decoder)
+                // instead of function id. For now, we ignore the function positions as it not defined.
+                // We can try to find similar positions in other codes of the function and use it if any.
+                // However, this does not always solve the problem, so for now we output warnings and ignore
+                // the positions for such codes in order to collect more cases.
                 const functionId = source.fns[inlined[i]];
 
                 if (functionId === null || functionId < 0) {
@@ -116,6 +124,7 @@ export function processCodePositions(codes: V8LogCode[]): (CodePositions | null)
         return {
             fistCode: positions[0],
             lastCode,
+            pcOnNextInstruction,
             positions,
             inlined
         };
