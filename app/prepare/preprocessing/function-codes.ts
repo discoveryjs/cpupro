@@ -13,15 +13,18 @@ export function processFunctionCodes(
         compilation: CpuProFunctionCodes | null,
         callFrameCodes: CpuProFunctionCodes[]
     }>();
-    const codesByCallFrame = functionCodes.map(({ function: functionIndex, codes }) => {
+    const codesByCallFrame = Array.from(functionCodes, ({ function: functionIndex, codes }): CpuProFunctionCodes => ({
+        callFrame: callFrames[callFrameByFunctionIndex[functionIndex]],
+        topTier: 'Unknown',
+        hotness: 'cold',
+        codes: new Array(codes.length)
+    }));
+
+    for (let i = 0; i < codesByCallFrame.length; i++) {
+        const callFrameCodes = codesByCallFrame[i];
+        const { callFrame } = callFrameCodes;
+        const { codes } = functionCodes[i];
         let topTier: V8FunctionCodeType = 'Unknown';
-        const callFrame = callFrames[callFrameByFunctionIndex[functionIndex]];
-        const callFrameCodes: CpuProFunctionCodes = {
-            callFrame,
-            topTier,
-            hotness: 'cold',
-            codes: new Array(codes.length)
-        };
 
         // attach codes to a script
         // if (fn.script !== null) {
@@ -64,6 +67,7 @@ export function processFunctionCodes(
             const code: CpuProFunctionCode = {
                 ...state,
                 tm: state.tm - startTime,
+                fns: state.fns.map(idx => codesByCallFrame[idx].callFrame),
                 duration: i !== codes.length - 1
                     ? codes[i + 1].tm - state.tm
                     : 0,
@@ -82,9 +86,7 @@ export function processFunctionCodes(
 
         callFrameCodes.topTier = topTier;
         callFrameCodes.hotness = vmFunctionStateTierHotness[topTier];
-
-        return callFrameCodes;
-    });
+    }
 
     allCodes.sort((a, b) => a.tm - b.tm);
 

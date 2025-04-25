@@ -289,5 +289,5 @@ export type CpuProFunctionCode = {
     duration: number;
     positions: string;
     inlined: string;
-    fns: number[];
+    fns: CpuProCallFrame[];
 }

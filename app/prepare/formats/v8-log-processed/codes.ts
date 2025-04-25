@@ -37,22 +37,22 @@ export function processFunctionCodes(
         function: index,
         codes: []
     }));
+    const getFunctionIndex = functionsIndexMap !== null
+        ? (func: number) => functionsIndexMap[func]
+        : (func: number) => func;
 
     for (const code of codes) {
         const func = code.func;
 
         if (typeof func === 'number') {
             const codeSource = code.source || null;
-            const functionIndex = functionsIndexMap !== null
-                ? functionsIndexMap[func]
-                : func;
 
-            processedCodes[functionIndex].codes.push({
+            processedCodes[getFunctionIndex(func)].codes.push({
                 tm: code.tm || 0,
                 tier: functionTier(code.kind),
                 positions: codeSource?.positions || '',
                 inlined: codeSource?.inlined || '',
-                fns: codeSource?.fns || [],
+                fns: codeSource?.fns?.map(getFunctionIndex) || [],
                 deopt: code.deopt
             });
         }
