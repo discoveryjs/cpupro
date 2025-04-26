@@ -36,7 +36,10 @@ const descendantTree = {
                                 className: 'self',
                                 content: 'text:node.value.name'
                             } },
-                            { content: 'auto-link:node.value' }
+                            { content: [
+                                'call-frame-kind-badge:node.value',
+                                'auto-link:node.value'
+                            ] }
                         ]
                     },
                     { view: 'text', when: 'subtreeSize', data: '` (${subtreeSize}) `' },
@@ -101,7 +104,10 @@ const ancestorsTree = {
                                 className: 'self',
                                 content: 'text:node.value.name'
                             } },
-                            { content: 'auto-link:node.value' }
+                            { content: [
+                                'call-frame-kind-badge:node.value',
+                                'auto-link:node.value'
+                            ] }
                         ]
                     },
                     {

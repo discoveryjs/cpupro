@@ -355,6 +355,14 @@ h2 .logo {
 .page .call-tree .view-tree-leaf-content .view-badge.module {
     margin-right: 0 !important;
 }
+.page .call-tree .view-tree-leaf-content .view-badge.call-frame-kind {
+    line-height: 17px;
+    opacity: .85;
+}
+.page .call-tree .view-tree-leaf-content .view-badge.call-frame-kind:first-child {
+    margin-left: -3px;
+    margin-right: 3px;
+}
 .page .call-tree .view-tree-leaf-content .call-frame-loc {
     padding: 1px 5px 3px 2px;
     color: #aaa;
