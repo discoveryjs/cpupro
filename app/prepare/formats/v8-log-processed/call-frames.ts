@@ -69,31 +69,34 @@ function callFrameInfoFromNonJsCode(code: V8LogCode): string | null {
             if (name[1] === ' ') {
                 name = cleanupInternalName(name.slice(2));
             }
+            name = '(CPP) ' + name;
             break;
         }
 
         case 'SHARED_LIB': {
-            // FIXME: there is no way in cpuprofile to express shared libs at the moment,
-            // so represent them as (program) for now
-            name = '(LIB) ' + name; // '(program)';
+            name = '(LIB) ' + name;
             lowlevel = true;
             break;
         }
 
         case 'CODE': {
             switch (code.kind) {
-                case 'LoadIC':
-                case 'StoreIC':
-                case 'KeyedStoreIC':
-                case 'KeyedLoadIC':
-                case 'LoadGlobalIC':
-                case 'Handler':
-                    name = '(IC) ' + name;
-                    lowlevel = true;
+                case 'RegExp':
+                    name = 'RegExp: ' + name;
+                    break;
+
+                case 'Builtin':
+                    if (/IC/.test(name)) {
+                        name = '(IC) ' + name;
+                        lowlevel = true;
+                    } else {
+                        name = '(builtin) ' + name;
+                        // lowlevel = true;
+                    }
                     break;
 
                 case 'BytecodeHandler':
-                    name = '(bytecode) ~' + name;
+                    name = '(bytecode) ' + name;
                     lowlevel = true;
                     break;
 
@@ -102,13 +105,15 @@ function callFrameInfoFromNonJsCode(code: V8LogCode): string | null {
                     lowlevel = true;
                     break;
 
-                case 'Builtin':
-                    name = '(builtin) ' + name;
+                // legacy?
+                case 'LoadIC':
+                case 'StoreIC':
+                case 'KeyedStoreIC':
+                case 'KeyedLoadIC':
+                case 'LoadGlobalIC':
+                case 'Handler':
+                    name = '(IC) ' + name;
                     lowlevel = true;
-                    break;
-
-                case 'RegExp':
-                    name = 'RegExp: ' + name;
                     break;
             }
 
@@ -120,8 +125,12 @@ function callFrameInfoFromNonJsCode(code: V8LogCode): string | null {
         }
     }
 
-    // FIXME: temporary ignore lowlevel codes
-    return !lowlevel ? name : null;
+    // FIXME: temporary ignore lowlevel codes, since they need special processing
+    if (lowlevel) {
+        return null;
+    }
+
+    return name;
 }
 
 export function createCallFrame(
@@ -189,14 +198,6 @@ function createCodeCallFrames(
     for (let i = 0; i < codes.length; i++) {
         const code = codes[i];
         const func = code.func;
-
-        // FIXME: ignore Abort.Wide/ExtraWide for now since it too noisy;
-        // not sure what it stands for, but looks like an execution pause
-        if (code.kind === 'BytecodeHandler') {
-            if (code.name === 'Abort.Wide' || code.name === 'Abort.ExtraWide') {
-                continue;
-            }
-        }
 
         if (func !== undefined) {
             const functionIndex = functionsIndexMap !== null

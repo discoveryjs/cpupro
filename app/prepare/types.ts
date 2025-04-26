@@ -144,13 +144,23 @@ export type GeneratedNodes = {
     parentScriptOffsets: number[];
 }
 
-export type CpuProFunctionKind = 'script' | 'function' | 'regexp' | 'vm-state' | 'root';
+export type CpuProCallFrameKind =
+    | 'script'
+    | 'function'
+    | 'builtin'
+    | 'ic'
+    | 'bytecode'
+    | 'cpp'
+    | 'lib'
+    | 'regexp'
+    | 'vm-state'
+    | 'root';
 export type CpuProCallFrame = {
     id: number;
     script: CpuProScript | null;
     name: string;
     origName: string;
-    kind: CpuProFunctionKind;
+    kind: CpuProCallFrameKind;
     line: number;
     column: number;
     loc: string | null;

@@ -20,6 +20,21 @@
 .view-badge.call-frame-kind.script {
     --discovery-view-badge-dark-text-color: #cfb282;
 }
+.view-badge.call-frame-kind.builtin {
+    --discovery-view-badge-dark-text-color: #bbb580;
+}
+.view-badge.call-frame-kind.ic {
+    --discovery-view-badge-dark-text-color: #aea6c3;
+}
+.view-badge.call-frame-kind.bytecode {
+    --discovery-view-badge-dark-text-color: #87b2a3;
+}
+.view-badge.call-frame-kind.cpp {
+    --discovery-view-badge-dark-text-color: #a4b7a3;
+}
+.view-badge.call-frame-kind.lib {
+    --discovery-view-badge-dark-text-color: #c6a3bc;
+}
 .view-badge.call-frame-kind.function {
     --discovery-view-badge-dark-text-color: #a3bb80;
 }

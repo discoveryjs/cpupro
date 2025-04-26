@@ -11,7 +11,7 @@ import {
     CDN,
     CpuProCallFrame,
     CpuProCategory,
-    CpuProFunctionKind,
+    CpuProCallFrameKind,
     CpuProModule,
     CpuProPackage,
     CpuProScript,
@@ -24,6 +24,14 @@ import {
     WellKnownType
 } from './types.js';
 import { scriptFromScriptId } from './preprocessing/scripts.js';
+
+const callFrameKindPrefixes: [prefix: string, kind: CpuProCallFrameKind][] = [
+    ['(builtin) ', 'builtin'],
+    ['(IC) ', 'ic'],
+    ['(bytecode) ', 'bytecode'],
+    ['(LIB) ', 'lib'],
+    ['(CPP) ', 'cpp']
+];
 
 type RegistryPackage = {
     type: PackageType;
@@ -152,11 +160,11 @@ export class Dictionary {
             const start = normalizeLoc(inputCallFrame.start);
             const end = normalizeLoc(inputCallFrame.end);
             const module = this.resolveModule(script, functionName);
-            const { name, regexp } = this.#resolveFunctionName(functionName, lineNumber, columnNumber);
+            const { name, kind, regexp } = this.#resolveFunctionName(functionName, lineNumber, columnNumber);
             const callFrame: CpuProCallFrame = {
                 id: this.callFrames.length + 1,
                 script,
-                kind: resolveCallFrameKind(script, name, regexp),
+                kind: kind || resolveCallFrameKind(script, name, regexp),
                 name,
                 origName: functionName,
                 line: lineNumber,
@@ -530,17 +538,32 @@ export class Dictionary {
         lineNumber: number,
         columnNumber: number
     ) {
-        const regexp = functionName.startsWith('RegExp: ')
-            ? functionName.slice('RegExp: '.length)
-            : null;
-        const name = regexp
-            ? (regexp.length <= maxRegExpLength ? regexp : `${regexp.slice(0, maxRegExpLength - 1)}…`)
-            : functionName || (lineNumber === 0 && columnNumber === 0
-                ? '(script)'
-                : `(anonymous function #${this.#anonymousFunctionNameIndex++})`
-            );
+        let regexp: string | null = null;
+        let kind: CpuProCallFrameKind | null = null;
+        let name = functionName;
 
-        return { name, regexp };
+        if (functionName.startsWith('RegExp: ')) {
+            regexp = functionName.slice('RegExp: '.length);
+            name = regexp.length <= maxRegExpLength
+                ? regexp
+                : `${regexp.slice(0, maxRegExpLength - 1)}…`;
+        } else {
+            for (const [prefix, prefixKind] of callFrameKindPrefixes) {
+                if (functionName.startsWith(prefix)) {
+                    kind = prefixKind;
+                    name = functionName.slice(prefix.length);
+                    break;
+                }
+            }
+
+            if (!kind && !name) {
+                name = lineNumber === 0 && columnNumber === 0
+                    ? '(script)'
+                    : `(anonymous function #${this.#anonymousFunctionNameIndex++})`;
+            }
+        }
+
+        return { name, kind, regexp };
     }
 }
 
@@ -607,7 +630,7 @@ function normalizeLoc(value: unknown) {
     return typeof value === 'number' && value >= 0 ? value : -1;
 }
 
-function resolveCallFrameKind(script: CpuProScript | null, name: string, regexp: string | null): CpuProFunctionKind {
+function resolveCallFrameKind(script: CpuProScript | null, name: string, regexp: string | null): CpuProCallFrameKind {
     if (script === null) {
         if (name === '(root)') {
             return 'root';
