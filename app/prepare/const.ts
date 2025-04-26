@@ -6,7 +6,7 @@ export const USE_WASM = true;
 export const FEATURE_MULTI_PROFILES = false;
 
 export const EMPTY_ARRAY = Object.freeze([]);
-export const maxRegExpLength = 65;
+export const maxRegExpLength = 48;
 export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
     ['(root)', 'root'],
     ['(program)', 'program'],
