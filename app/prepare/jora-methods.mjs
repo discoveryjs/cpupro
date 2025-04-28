@@ -4,6 +4,8 @@ import { CallTree } from './computations/call-tree.js';
 import { TreeTimings } from './computations/timings.js';
 import { sum } from './utils.js';
 
+const sessionColorComponents = new Map();
+const sessionColor = new Map();
 const abbr = {
     Ignition: 'Ig',
     Sparkplug: 'Sp',
@@ -154,6 +156,18 @@ const methods = {
     color(value, comp) {
         const dict = comp ? typeColorComponents : typeColor;
         return dict[value] || dict.unknown;
+    },
+    // FIXME: temporary solution
+    colorRand(value, comp) {
+        const dict = comp ? typeColorComponents : typeColor;
+        const map = comp ? sessionColorComponents : sessionColor;
+
+        if (!map.has(value)) {
+            const keys = Object.keys(dict);
+            map.set(value, dict[keys[Math.floor(Math.random() * keys.length)]]);
+        }
+
+        return map.get(value);
     },
     abbr(value) {
         return abbr[value] || value;

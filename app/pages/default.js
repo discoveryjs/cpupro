@@ -711,10 +711,11 @@ const categoriesTimeline = {
             content: {
                 view: 'list',
                 className: 'category-timelines-list',
-                limit: false,
+                limit: 10,
                 item: {
                     view: 'link',
                     className: 'category-timelines-item',
+                    data: '{ ..., color: color or name.colorRand() }',
                     content: [
                         {
                             view: 'block',

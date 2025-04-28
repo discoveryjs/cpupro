@@ -196,9 +196,9 @@ export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeTyp
     'hidden': '#888888a0',
 
     // alloc timespan
-    'alive': '#78b362a0',
-    'long-lived': '#f2a376a0',
     'short-lived': '#fee29ca0',
+    'long-lived': '#f2a376a0',
+    'alive': '#78b362a0',
 
     'new_space': '#fee29ca0',
     'old_space': '#f2a376a0',

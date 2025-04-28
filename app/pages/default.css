@@ -257,6 +257,10 @@
 .page-default .category-timelines-list > .view-list-item {
     display: contents;
 }
+.page-default .category-timelines-list .more-buttons {
+    grid-column: 1 / 4;
+    padding: 3px 5px
+}
 .page-default .category-timelines-item {
     color: inherit;
     display: contents;
