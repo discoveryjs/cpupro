@@ -188,10 +188,9 @@ const pageContent = [
         view: 'expand',
         when: '#.currentProfile | type != "memory"',
         className: 'trigger-outside script-source',
-        context: '{ ...#, codes: #.currentProfile.codesByCallFrame[=> callFrame = @].codes }',
-        expanded: '=#.codes.bool() and "getSessionSetting".callAction("cpupro-callframe-codes", true)',
-        onToggle: '=#.codes.bool() ?=> "setSessionSetting".callAction("cpupro-callframe-codes", $)',
-        data: '#.codes',
+        data: '#.currentProfile.codesByCallFrame[=> callFrame = @].codes',
+        expanded: '=bool() and "getSessionSetting".callAction("cpupro-callframe-codes", true)',
+        onToggle: '=($state, $ctx)=> $ctx.data.bool() ? "setSessionSetting".callAction("cpupro-callframe-codes", $state)',
         header: [
             'text:"Codes"',
             { view: 'block', className: 'text-divider' },
@@ -215,17 +214,25 @@ const pageContent = [
             {
                 view: 'table',
                 whenData: true,
+                limit: 10,
                 cols: [
                     {
                         header: 'Created at',
-                        className: 'number',
+                        align: 'right',
                         data: 'tm',
                         content: 'text:formatMicrosecondsTime()'
                     },
                     {
-                        header: 'Duration',
+                        header: 'Lifespan',
                         data: 'duration',
-                        content: 'duration'
+                        align: 'right',
+                        content: {
+                            view: 'switch',
+                            content: [
+                                { when: '$', content: 'duration' },
+                                { content: 'text:"—"' }
+                            ]
+                        }
                     },
                     {
                         header: '',
@@ -249,21 +256,32 @@ const pageContent = [
                     },
                     {
                         header: 'Positions',
-                        className: 'number',
-                        data: 'positions.match(/C/g).size()',
+                        data: 'positions.match(/C[^C]+/g).matched',
+                        align: 'right',
                         contentWhen: '$',
                         content: [
-                            'text',
+                            'text:size()',
                             'html:" <span style=\\"color:#888\\">blocks</span>"'
-                        ]
+                        ],
+                        details: {
+                            view: 'table',
+                            data: '.(split(/\\D/) | { code: $[1], offset: $[2], inline: $[3] })'
+                        }
                     },
                     {
                         header: 'Inlined',
-                        className: 'number',
+                        align: 'right',
                         contentWhen: 'inlined',
                         content: [
                             'text:$fns: fns.size(); $codes: inlined.match(/F/g).size(); $codes != $fns ? `${$fns} / ${$codes}` : $codes',
                             'html:" <span style=\\"color:#888\\">codes</span>"' // \u0192n
+                        ],
+                        details: [
+                            {
+                                view: 'table',
+                                data: 'inlined.match(/F[^F]+/g).matched.(split(/\\D/) | { fn: $[1], offset: $[2], parent: $[3] })'
+                            },
+                            'struct:fns.map()'
                         ]
                     },
                     {

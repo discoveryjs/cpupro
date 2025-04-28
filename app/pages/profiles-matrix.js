@@ -4,23 +4,23 @@ const intersectionTable = {
     cols: [
         { header: 'Profiles', data: 'profiles' },
         { header: 'Call frames', data: 'callFrames', footer: { data: 'callFrames' } },
-        { header: '%', className: 'number', data: 'callFramesPercent | percent()', footer: { className: 'number', content: 'text:"100%"' } },
-        { header: '∑ Avg samples', className: 'number', data: 'samples', footer: { data: 'samples.sum()' } },
-        { header: '%', className: 'number', data: 'samplesPercent | percent()', footer: { className: 'number', content: 'text:"100%"' } },
+        { header: '%', data: 'callFramesPercent | percent()', align: 'right', footer: { align: 'right', content: 'text:"100%"' } },
+        { header: '∑ Avg samples', data: 'samples', align: 'right', footer: { align: 'right', data: 'samples.sum()' } },
+        { header: '%', data: 'samplesPercent | percent()', align: 'right', footer: { align: 'right', content: 'text:"100%"' } },
         {
             header: '∑ Avg self time',
             className: '=profiles = profilesTotal ? "green-line number" : "number"',
             content: 'text-numeric:selfTime | unit()',
             footer: { className: 'number red-line', data: 'sum(=>selfTime)', content: 'text-numeric:unit()' }
         },
-        { header: '%', className: 'number', data: 'selfTimePercent | percent()', footer: { className: 'number', content: 'text:"100%"' } },
+        { header: '%', align: 'right', data: 'selfTimePercent | percent()', footer: { align: 'right', content: 'text:"100%"' } },
         {
             header: '∑ Norm avg self time',
             className: '=profiles = profilesTotal ? "green-line number" : "number"',
             content: 'text-numeric:selfTime2 | unit()',
             footer: { className: 'number orange-line', data: 'sum(=>selfTime2)', content: 'text-numeric:unit()' }
         },
-        { header: '%', className: 'number', data: 'selfTimePercent2 | percent()', footer: { className: 'number', content: 'text:"100%"' } }
+        { header: '%', data: 'selfTimePercent2 | percent()', align: 'right', footer: { align: 'right', content: 'text:"100%"' } }
     ],
     data: `
         $records: records.[presence];

@@ -59,9 +59,9 @@ discovery.page.define('packages', [
                             content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                         },
                         { header: 'Category',
-                            className: 'number',
-                            data: 'entry.category',
                             sorting: 'entry.category.name ascN',
+                            data: 'entry.category',
+                            align: 'right',
                             content: 'badge{ className: "category-badge", text: name, href: marker().href, color: name.color() }'
                         },
                         { header: 'Package',

@@ -54,9 +54,9 @@ const table = {
             }
         },
         { header: 'Source', colWhen: '$[=>entry.hasSource()]',
-            className: 'number',
             sorting: '(entry | end - start) desc',
             data: 'entry',
+            align: 'right',
             content: 'text-with-unit{ value: regexp ? regexp.size() : end - start |? $ > 999 ? kb() : $ + "b" : "", unit: true }',
             detailsWhen: 'hasSource()',
             details: {
