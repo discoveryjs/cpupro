@@ -469,20 +469,22 @@ export async function decode(iterator) {
                 let code: CodeCompiled | CodeJavaScript;
 
                 if (sfi) {
+                    sfi.codes.push(codes.length);
                     code = {
                         name: nameAndLocation,
                         type: 'JS',
                         kind,
+                        size,
                         func: sfi.id,
                         tm: timestamp
                     };
-                    sfi.codes.push(codes.length);
                 } else {
                     code = {
                         name: nameAndLocation,
                         timestamp,
                         type: 'CODE',
-                        kind
+                        kind,
+                        size
                     };
                 }
 

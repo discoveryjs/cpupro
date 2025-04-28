@@ -36,6 +36,7 @@ export type V8LogCode = {
         | 'Builtin'
         | 'RegExp';
     func?: number;
+    size?: number;
     tm?: number;
     source?: V8LogCodeSource;
     deopt?: V8LogDeopt;

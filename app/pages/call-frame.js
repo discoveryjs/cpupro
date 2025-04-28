@@ -241,6 +241,13 @@ const pageContent = [
                         ]
                     },
                     {
+                        header: 'Size',
+                        colWhen: '.[size > 0]',
+                        data: 'size',
+                        align: 'right',
+                        content: 'text-with-unit{ value: bytes(), unit: true }'
+                    },
+                    {
                         header: 'Positions',
                         className: 'number',
                         data: 'positions.match(/C/g).size()',

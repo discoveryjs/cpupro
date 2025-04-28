@@ -34,11 +34,13 @@ export type CodeCompiled = {
     timestamp: number;
     type: 'CODE';
     kind: string;
+    size: number;
 }
 export type CodeJavaScript = {
     name: string;
     type: 'JS';
     kind: string;
+    size: number;
     func: number;
     tm: number;
     source?: {

@@ -73,6 +73,7 @@ export type V8CpuProfileFunctionCodes = {
 export type V8CpuProfileFunctionCode = {
     tm: number;
     tier: V8FunctionCodeType;
+    size: number;
     positions: string;
     inlined: string;
     fns: number[];
