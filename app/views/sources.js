@@ -90,7 +90,7 @@ discovery.view.define('call-frame-source', {
                 $start;
                 $end;
                 $unit: #.currentProfile.type = 'memory' ? 'Kb' : 'ms';
-                $scriptFunction: #.currentProfile.codesByCallFrame[=> callFrame = @];
+                $callFrameCodes: #.currentProfile.codesByCallFrame[=> callFrame = @];
                 $values: #.currentProfile
                     | #.nonFilteredTimings
                         ? callFramePositionsTimings or callFramesTimings
@@ -103,19 +103,16 @@ discovery.view.define('call-frame-source', {
                     })
                     | .[callFrame | $ != @ and start >= $start and end <= $end];
 
-                $inlinePoints: $scriptFunction.codes
-                    | $[-1]
-                    | inlined.match(/O\\d+(?=F|$)/g).matched;
-                $codePoints: $scriptFunction.codes
-                    | $.[tier="Ignition"][-1] or .[positions][-1]
-                    | positions.match(/O\\d+(?=C|$)/g).matched;
-
-                $inlinedMarks: $scriptFunction.codes[-1].inlined.match(/O\\d+(?=F|$)/g).matched
-                    |? .({ offset: +$[1:] - $sourceSliceStart, content: 'text:"1"', className: 'def', prefix: 'Inline' });
+                $codePoints: $callFrameCodes.codes
+                    | .[tier="Ignition"][-1] or .[positions][-1]
+                    | positions.match(/O\\d+/g).(+matched[0][1:]) + $start;
                 $codePointMarks: $codePoints
-                    |? .(+$[1:] - $sourceSliceStart | is number ? { offset: $ });
+                    |? .($ - $sourceSliceStart | is number ? { offset: $ });
                 // $codePointMarksText: $codePoints
-                //     |? .($x: +$[1:];+$[1:] - $sourceSliceStart | is number ? { offset: $, abs: $x, kind: 'none', content: 'text:"O: " +abs' });
+                //     |? .($ - $sourceSliceStart | is number ? { offset: $, abs: $ + $sourceSliceStart, kind: 'none', content: 'text:"O: " + abs' });
+
+                $inlinedMarks: $callFrameCodes.codes[-1].inlined.match(/O\\d+(?=F|$)/g).(+matched[0][1:])
+                    |? .({ offset: $ - $sourceSliceStart, content: 'text:"1"', className: 'def', prefix: 'Inline' });
 
                 $sampleMarkContent: {
                     view: 'update-on-timings-change',
@@ -128,6 +125,34 @@ discovery.view.define('call-frame-source', {
                 };
                 $selfValueTooltipView: #.currentProfile | type = 'memory' and _memoryGc and _memoryType
                     ? 'allocation-samples-matrix:#.currentProfile | callFramePositionsTree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
+                $nestedValueTooltipView: #.currentProfile | type != 'memory'
+                    ? {
+                        className: 'view-call-frame-source__tooltip',
+                        content: {
+                            view: 'table',
+                            data: \`
+                                $tree: #.currentProfile.callFramePositionsTreeTimingsFiltered;
+                                $tree
+                                    .select("nodes", value.entry).node.nodeIndex
+                                    .($tree.select("children", $))
+                                    .group(=>node.value.callFrame)
+                                    .({
+                                        callFrame: key,
+                                        selfTime: value.sum(=>selfTime),
+                                        nestedTime: value.sum(=>nestedTime),
+                                        totalTime: value.sum(=>totalTime)
+                                    })
+                                    .sort(totalTime desc)
+                            \`,
+                            cols: [
+                                { header: 'Self time', content: 'duration:selfTime' },
+                                { header: 'Nested time', content: 'duration:nestedTime' },
+                                { header: 'Total time', content: 'duration:totalTime' },
+                                { header: 'Kind', content: 'call-frame-kind-badge:callFrame.kind' },
+                                { header: 'Call frame', content: 'call-frame-badge' }
+                            ]
+                        }
+                    };
                 $sampleMarks: $values.entries
                     | $[].entry.callFrame
                         ? .[entry.callFrame = @]
@@ -148,7 +173,8 @@ discovery.view.define('call-frame-source', {
                             content: $sampleMarkContent,
                             value: $values.entries[entryIndex],
                             prop: 'nestedTime',
-                            postfix: $unit
+                            postfix: $unit,
+                            tooltip: $nestedValueTooltipView
                         },
                     ]).[];
 
@@ -164,7 +190,9 @@ discovery.view.define('call-frame-source', {
                 //         });
 
                 $allMarks: {
+                    $codePoints,
                     $codePointMarks,
+                    // $codePointMarksText,
                     $inlinedMarks,
                     $sampleMarks,
                     $nestedScriptCodes.({
@@ -179,20 +207,23 @@ discovery.view.define('call-frame-source', {
                                     : tier[].abbr() + ' … ' + tier[-1].abbr()
                             : "ƒn"
                     })
-                    // $codePointMarksText,
                     // $allocationMarks
                 };
 
                 $callFrameTooltipView: {
                     className: 'cpupro-hint-tooltip',
                     content: [
-                        'text:callFrameCodes.callFrame.name',
+                        'badge:callFrameCodes.callFrame.name',
                         'html:"<br>"',
                         {
                             view: 'inline-list',
                             data: 'callFrameCodes.codes',
                             whenData: true,
-                            item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
+                            item: [
+                                { view: 'text', when: '#.index', text: "\xa0→ " },
+                                'code-tier-badge:tier',
+                                'text:" " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
+                            ]
                         }
                 ] };
 
@@ -200,12 +231,13 @@ discovery.view.define('call-frame-source', {
                 source: $sourceSlice,
                 lineNum: => $ + $line,
                 callFrame: @,
+                $callFrameCodes,
                 $allMarks,
                 marks: $allMarks.values().[].(),
                 refs: $nestedScriptCodes.({
                     className: 'function',
                     range: [callFrame.start - $sourceSliceStart, callFrame.end - $sourceSliceStart],
-                    href: callFrame.marker('call-frame').href,
+                    marker: callFrame.marker('call-frame').href,
                     callFrameCodes: $,
                     tooltip: $callFrameTooltipView
                 })
@@ -214,12 +246,12 @@ discovery.view.define('call-frame-source', {
                 const contentEl = el.querySelector('.view-source__content');
 
                 contentEl.addEventListener('click', (event) => {
-                    const pseudoLinkEl = event.target.closest('.view-source .spotlight[data-href]');
+                    const pseudoLinkEl = event.target.closest('.view-source .spotlight.function[data-marker]');
 
                     if (pseudoLinkEl && contentEl.contains(pseudoLinkEl)) {
-                        discovery.setPageHash(pseudoLinkEl.dataset.href);
+                        discovery.setPageHash(pseudoLinkEl.dataset.marker);
                     }
-                });
+                }, true);
             },
             prelude: {
                 view: 'block',

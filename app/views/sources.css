@@ -59,13 +59,18 @@
 }
 
 .view-source.cpupro-source .spotlight {
+    border: .5px solid #353535;
     background-color: #46453c;
+    transition: .15s .15s ease-out;
+    transition-property: background-color, color;
 }
 .view-source.cpupro-source .spotlight .spotlight {
     background-color: inherit;
+    transition: none;
 }
 .view-source.cpupro-source .spotlight.function:not(:has(.spotlight.function:hover)):hover {
     background-color: #686246aa;
+    transition: none;
 }
 .view-source.cpupro-source .spotlight.function {
     padding-left: 0;
@@ -77,7 +82,7 @@
 .view-source.cpupro-source .spotlight.function:is(:not(:hover), :has(.spotlight.function:hover)) {
     color: #aa9;
 }
-.view-source.cpupro-source .spotlight.function[data-href] {
+.view-source.cpupro-source .spotlight.function[data-marker] {
     cursor: pointer;
 }
 .view-source.cpupro-source .function-tag {
@@ -101,4 +106,12 @@
     right: -100vw;
     outline: .5px solid #6a6a24;
     margin-bottom: -1px;
+}
+
+.view-call-frame-source__tooltip {
+    padding: 0 1px 1px;
+}
+.view-call-frame-source__tooltip .view-badge:not(.call-frame-kind) {
+    display: inline;
+    padding-bottom: 3px;
 }

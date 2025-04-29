@@ -325,6 +325,9 @@ const methods = {
 
         return treeTimings.getTimings(subject);
     },
+    getValueTimings(treeTimings, value) {
+        return treeTimings.getValueTimings(value);
+    },
     getEntry(source, subject) {
         if (typeof source?.getEntry === 'function') {
             return source.getEntry(subject);
