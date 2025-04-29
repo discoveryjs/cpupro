@@ -68,7 +68,7 @@ export function processTicks(
                 if (codePositions !== null) {
                     const codePositionsIndex = findPositionsCodeIndex(
                         codePositions.positions,
-                        // Machine code functions (at least Turbofan) on the stack
+                        // Machine code functions on the stack
                         // that are not currently executing store pc
                         // on the next instruction after the callee is called,
                         // so subtract one from the position

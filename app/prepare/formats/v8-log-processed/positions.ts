@@ -87,16 +87,12 @@ export function processCodePositions(codes: V8LogCode[]): (CodePositions | null)
             return null;
         }
 
-        // Machine code functions (at least Turbofan) on the stack
+        // Machine code functions on the stack
         // that are not currently executing store pc
         // on the next instruction after the callee is called,
         // so subtract one from the position is needed.
         // That's not the case for Ignition bytecode.
-        // We have no positions for Sparkplug and Maglev at the moment
-        // to check that correction is needed for them as well.
-        // Need a revision once Sparkplug and Maglev positions appear
-        // on the V8 log.
-        const pcOnNextInstruction = functionTier(code.kind) === 'Turbofan';
+        const pcOnNextInstruction = functionTier(code.kind) !== 'Ignition';
         const positions = parsePositions(sourcePositions);
         const lastCode = positions[positions.length - 3];
         const inlined = source.inlined
