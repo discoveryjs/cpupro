@@ -76,7 +76,9 @@ const table = {
                     tier: '=tier',
                     count: '=count | $ > 1?'
                 }
-            }
+            },
+            detailsWhen: 'codes',
+            details: 'call-frame-codes-table:codes'
         },
         { header: 'Module',
             sorting: 'moduleName ascN, loc ascN',

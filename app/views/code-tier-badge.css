@@ -8,6 +8,7 @@
     text-align: center;
     white-space: nowrap;
     color: var(--color);
+    color: hsl(from var(--color) h s l / .75);
     border: .5px solid currentColor;
     border-color: color-mix(in srgb, currentColor 65%, var(--bg-color));
     border-radius: 9px;
