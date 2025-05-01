@@ -188,248 +188,43 @@ export async function decode(iterator) {
         const op = buffer.slice(sol, sol + opEnd);
 
         switch (op) {
-            case 'v8-version': {
-                meta.version = readAllArgsRaw(line, argsStart).join('.');
-                break;
-            }
-
-            case 'v8-platform': {
-                meta.platform = readAllArgsRaw(line, argsStart).join('/');
-                break;
-            }
-
-            case 'profiler': {
-                const [action, samplesInterval] = readAllArgs(parsers[op], line, argsStart);
-
-                if (action === 'start') {
-                    meta.samplesInterval = samplesInterval;
-                }
-                break;
-            }
-
-            case 'heap-capacity': {
-                const [capacity] = readAllArgs(parsers[op], line, argsStart);
-
-                heap.capacity = capacity;
-                break;
-            }
-
-            case 'heap-available': {
-                const [available] = readAllArgs(parsers[op], line, argsStart);
-
-                heap.available = available;
-                break;
-            }
-
-            case 'new': {
-                const [type, address, size] = readAllArgs(parsers[op], line, argsStart);
-
-                knownMemoryChunks.set(address, size);
-                heapEvents.push({
-                    tm: 0,
-                    event: op,
-                    type,
-                    address,
-                    size
-                });
-
-                break;
-            }
-
-            case 'delete': {
-                const [type, address] = readAllArgs(parsers[op], line, argsStart);
-                const chunkSize = knownMemoryChunks.get(address);
-
-                if (chunkSize === undefined) {
-                    console.warn(`Unknown memory chunk ${type} @ ${address}`);
-                } else if (chunkSize === -1) {
-                    // V8 duplicates delete events for some deletions
-                    // console.warn(`Already deleted memory chunk ${type} @ ${address}`);
-                } else {
-                    knownMemoryChunks.set(address, -1);
-                    heapEvents.push({
-                        tm: 0,
-                        event: op,
-                        type,
-                        address,
-                        size: chunkSize
-                    });
-                }
-
-                break;
-            }
-
-            case 'script-source': {
-                const [id, url, source] = readAllArgs(parsers[op], line, argsStart);
-
-                maxScriptId = Math.max(id, maxScriptId);
-                scriptById.set(id, {
-                    id,
-                    url,
-                    source
-                });
-
-                break;
-            }
-
-            case 'shared-library': {
-                const [name, address, addressEnd, aslrSlide] = readAllArgs(parsers[op], line, argsStart);
-                const code: CodeSharedLib = {
-                    name,
-                    type: 'SHARED_LIB'
-                };
-
-                setCodeEntry(new CodeEntry(codes.length, address, addressEnd - address, code));
-                codes.push(code);
-
-                // if (globalThis.__cpps) {
-                //     const a = globalThis.__cpps[name];
-                //     if (Array.isArray(a)) {
-                //         codes.push(...a);
-                //     }
-                // }
-
-                if (CODE_EVENTS) {
-                    codeEvents.push({
-                        op,
-                        address,
-                        size: addressEnd - address,
-                        name,
-                        aslrSlide
-                    });
-                }
-
-                break;
-            }
-
-            case 'code-move': {
-                const [address, destAddress] = readAllArgs(parsers[op], line, argsStart);
-                const codeEntry = findCodeEntryByAddress(address);
-
-                if (codeEntry !== null) {
-                    // we don't care about deleting old code, since log should not address them anymore;
-                    // any new code overlaping with known codes will discard old ones.
-                    setCodeEntry(codeEntry.clone(destAddress));
-                } else {
-                    console.warn('No code found');
-                }
-
-                if (CODE_EVENTS) {
-                    codeEvents.push({
-                        op,
-                        address,
-                        destAddress
-                    });
-                }
-                break;
-            }
-
-            case 'sfi-move': {
-                const [address, destAddress] = readAllArgs(parsers[op], line, argsStart);
-                const sfi = sfiByAddress.get(address);
-
-                if (sfi !== undefined) {
-                    sfiByAddress.delete(address);
-                    sfiByAddress.set(destAddress, sfi);
-                } else {
-                    console.warn('SFI not found, on moving SFI', address, '->', destAddress);
-                }
-
-                if (CODE_EVENTS) {
-                    codeEvents.push({
-                        op,
-                        address,
-                        destAddress
-                    });
-                }
-
-                break;
-            }
-
-            case 'code-delete': {
-                // we don't care about deleting old code, since log should not address them anymore;
-                // any new code overlaping with known codes will discard old ones.
-                if (CODE_EVENTS) {
-                    const [address] = readAllArgs(parsers[op], line, argsStart);
-                    codeEvents.push({
-                        op,
-                        address
-                    });
-                }
-
-                break;
-            }
-
-            case 'code-disassemble': {
-                const [address, kind, disassemble] = readAllArgs(parsers[op], line, argsStart);
-
-                if (CODE_EVENTS) {
-                    codeEvents.push({
-                        op,
-                        address,
-                        kind,
-                        disassemble
-                    });
-                }
-
-                break;
-            }
-
-            case 'code-source-info': {
+            case 'tick': {
                 const [
-                    address,
-                    scriptId,
-                    start,
-                    end,
-                    positions,
-                    inlinedPositions,
-                    inlinedFunctions = ''
+                    pc_,
+                    timestamp,
+                    isExternalCallback,
+                    tosOrExternalCallback_,
+                    vmState,
+                    ...stack
                 ] = readAllArgs(parsers[op], line, argsStart);
-                const codeEntry = lastCodeEntry?.start === address
-                    ? lastCodeEntry
-                    : findCodeEntryByAddress(address);
+                let pc = pc_;
+                let tosOrExternalCallback = tosOrExternalCallback_;
 
-                if (codeEntry !== null) {
-                    if (codeEntry.code.type === 'JS') {
-                        codeEntry.code.source = {
-                            script: scriptId,
-                            start,
-                            end,
-                            positions,
-                            inlined: inlinedPositions,
-                            fns: inlinedFunctions !== ''
-                                ? (inlinedFunctions.match(/[^S]+/g) || EMPTY_ARRAY)
-                                    .map((sfiAddress: string) => {
-                                        const sfi = sfiByAddress.get(sfiAddress);
+                if (isExternalCallback) {
+                    // Don't use PC when in external callback code, as it can point
+                    // inside callback's code, and we will erroneously report
+                    // that a callback calls itself. Instead we use tosOrExternalCallback,
+                    // as simply resetting PC will produce unaccounted ticks.
+                    pc = tosOrExternalCallback;
+                    tosOrExternalCallback = 0;
+                } else if (tosOrExternalCallback) {
+                    // Find out, if top of stack was pointing inside a JS function
+                    // meaning that we have encountered a frameless invocation.
+                    const codeEntry = findCodeEntryByAddress(tosOrExternalCallback);
 
-                                        if (sfi !== undefined) {
-                                            return sfi.id;
-                                        }
-
-                                        console.warn('No SFI found');
-                                        return -1;
-                                    })
-                                : EMPTY_ARRAY
-                        };
-                    } else {
-                        console.warn('Not a JavaScript code');
+                    if (codeEntry === null || codeEntry.code.type !== 'JS') {
+                        tosOrExternalCallback = 0;
                     }
-                } else {
-                    console.warn(`Code with address ${address} is not found`);
                 }
 
-                if (CODE_EVENTS) {
-                    codeEvents.push({
-                        op,
-                        address,
-                        scriptId,
-                        start,
-                        end,
-                        positions,
-                        inlinedPositions,
-                        inlinedFunctions
-                    });
-                }
+                const parsedStack = parseStack(pc, tosOrExternalCallback, stack, findCodeEntryByAddress);
+
+                addTmToEvents(timestamp);
+                ticks.push({
+                    tm: timestamp,
+                    vm: vmState,
+                    s: parsedStack
+                });
 
                 break;
             }
@@ -511,44 +306,262 @@ export async function decode(iterator) {
                 break;
             }
 
-            case 'tick': {
+            case 'code-source-info': {
                 const [
-                    pc_,
-                    timestamp,
-                    isExternalCallback,
-                    tosOrExternalCallback_,
-                    vmState,
-                    ...stack
+                    address,
+                    scriptId,
+                    start,
+                    end,
+                    positions,
+                    inlinedPositions,
+                    inlinedFunctions = ''
                 ] = readAllArgs(parsers[op], line, argsStart);
-                let pc = pc_;
-                let tosOrExternalCallback = tosOrExternalCallback_;
+                const codeEntry = lastCodeEntry?.start === address
+                    ? lastCodeEntry
+                    : findCodeEntryByAddress(address);
 
-                if (isExternalCallback) {
-                    // Don't use PC when in external callback code, as it can point
-                    // inside callback's code, and we will erroneously report
-                    // that a callback calls itself. Instead we use tosOrExternalCallback,
-                    // as simply resetting PC will produce unaccounted ticks.
-                    pc = tosOrExternalCallback;
-                    tosOrExternalCallback = 0;
-                } else if (tosOrExternalCallback) {
-                    // Find out, if top of stack was pointing inside a JS function
-                    // meaning that we have encountered a frameless invocation.
-                    const codeEntry = findCodeEntryByAddress(tosOrExternalCallback);
+                if (codeEntry !== null) {
+                    if (codeEntry.code.type === 'JS') {
+                        codeEntry.code.source = {
+                            script: scriptId,
+                            start,
+                            end,
+                            positions,
+                            inlined: inlinedPositions,
+                            fns: inlinedFunctions !== ''
+                                ? (inlinedFunctions.match(/[^S]+/g) || EMPTY_ARRAY)
+                                    .map((sfiAddress: string) => {
+                                        const sfi = sfiByAddress.get(sfiAddress);
 
-                    if (codeEntry === null || codeEntry.code.type !== 'JS') {
-                        tosOrExternalCallback = 0;
+                                        if (sfi !== undefined) {
+                                            return sfi.id;
+                                        }
+
+                                        console.warn('No SFI found');
+                                        return -1;
+                                    })
+                                : EMPTY_ARRAY
+                        };
+                    } else {
+                        console.warn('Not a JavaScript code');
                     }
+                } else {
+                    console.warn(`Code with address ${address} is not found`);
                 }
 
-                const parsedStack = parseStack(pc, tosOrExternalCallback, stack, findCodeEntryByAddress);
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        scriptId,
+                        start,
+                        end,
+                        positions,
+                        inlinedPositions,
+                        inlinedFunctions
+                    });
+                }
 
-                addTmToEvents(timestamp);
-                ticks.push({
-                    tm: timestamp,
-                    vm: vmState,
-                    s: parsedStack
+                break;
+            }
+
+            case 'script-source': {
+                const [id, url, source] = readAllArgs(parsers[op], line, argsStart);
+
+                maxScriptId = Math.max(id, maxScriptId);
+                scriptById.set(id, {
+                    id,
+                    url,
+                    source
                 });
 
+                break;
+            }
+
+            case 'new': {
+                const [type, address, size] = readAllArgs(parsers[op], line, argsStart);
+
+                knownMemoryChunks.set(address, size);
+                heapEvents.push({
+                    tm: 0,
+                    event: op,
+                    type,
+                    address,
+                    size
+                });
+
+                break;
+            }
+
+            case 'delete': {
+                const [type, address] = readAllArgs(parsers[op], line, argsStart);
+                const chunkSize = knownMemoryChunks.get(address);
+
+                if (chunkSize === undefined) {
+                    console.warn(`Unknown memory chunk ${type} @ ${address}`);
+                } else if (chunkSize === -1) {
+                    // V8 duplicates delete events for some deletions
+                    // console.warn(`Already deleted memory chunk ${type} @ ${address}`);
+                } else {
+                    knownMemoryChunks.set(address, -1);
+                    heapEvents.push({
+                        tm: 0,
+                        event: op,
+                        type,
+                        address,
+                        size: chunkSize
+                    });
+                }
+
+                break;
+            }
+
+            //
+            // rare events
+            //
+
+            case 'code-move': {
+                const [address, destAddress] = readAllArgs(parsers[op], line, argsStart);
+                const codeEntry = findCodeEntryByAddress(address);
+
+                if (codeEntry !== null) {
+                    // we don't care about deleting old code, since log should not address them anymore;
+                    // any new code overlaping with known codes will discard old ones.
+                    setCodeEntry(codeEntry.clone(destAddress));
+                } else {
+                    console.warn('No code found');
+                }
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        destAddress
+                    });
+                }
+                break;
+            }
+
+            case 'sfi-move': {
+                const [address, destAddress] = readAllArgs(parsers[op], line, argsStart);
+                const sfi = sfiByAddress.get(address);
+
+                if (sfi !== undefined) {
+                    sfiByAddress.delete(address);
+                    sfiByAddress.set(destAddress, sfi);
+                } else {
+                    console.warn('SFI not found, on moving SFI', address, '->', destAddress);
+                }
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        destAddress
+                    });
+                }
+
+                break;
+            }
+
+            case 'code-delete': {
+                // we don't care about deleting old code, since log should not address them anymore;
+                // any new code overlaping with known codes will discard old ones.
+                if (CODE_EVENTS) {
+                    const [address] = readAllArgs(parsers[op], line, argsStart);
+                    codeEvents.push({
+                        op,
+                        address
+                    });
+                }
+
+                break;
+            }
+
+            case 'code-disassemble': {
+                const [address, kind, disassemble] = readAllArgs(parsers[op], line, argsStart);
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        kind,
+                        disassemble
+                    });
+                }
+
+                break;
+            }
+
+            //
+            // events that occur only in the beginning or occur just once
+            //
+
+            case 'v8-version': {
+                meta.version = readAllArgsRaw(line, argsStart).join('.');
+                break;
+            }
+
+            case 'v8-platform': {
+                meta.platform = readAllArgsRaw(line, argsStart).join('/');
+                break;
+            }
+
+            case 'profiler': {
+                const [action, samplesInterval] = readAllArgs(parsers[op], line, argsStart);
+
+                if (action === 'start') {
+                    meta.samplesInterval = samplesInterval;
+                }
+                break;
+            }
+
+            case 'heap-capacity': {
+                const [capacity] = readAllArgs(parsers[op], line, argsStart);
+
+                heap.capacity = capacity;
+                break;
+            }
+
+            case 'heap-available': {
+                const [available] = readAllArgs(parsers[op], line, argsStart);
+
+                heap.available = available;
+                break;
+            }
+
+            case 'shared-library': {
+                const [name, address, addressEnd, aslrSlide] = readAllArgs(parsers[op], line, argsStart);
+                const code: CodeSharedLib = {
+                    name,
+                    type: 'SHARED_LIB'
+                };
+
+                setCodeEntry(new CodeEntry(codes.length, address, addressEnd - address, code));
+                codes.push(code);
+
+                // if (globalThis.__cpps) {
+                //     const a = globalThis.__cpps[name];
+                //     if (Array.isArray(a)) {
+                //         codes.push(...a);
+                //     }
+                // }
+
+                if (CODE_EVENTS) {
+                    codeEvents.push({
+                        op,
+                        address,
+                        size: addressEnd - address,
+                        name,
+                        aslrSlide
+                    });
+                }
+
+                break;
+            }
+
+            case 'shared-library-end': {
+                // do nothing
                 break;
             }
 
