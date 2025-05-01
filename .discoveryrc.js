@@ -45,6 +45,7 @@ module.exports = {
             './views/misc/mode-regexp.js',
             './views/allocation-samples-matrix.css',
             './views/allocation-samples-matrix.js',
+            './views/call-frame-codes-table.css',
             './views/call-frame-codes-table.js',
             './views/call-frame-kind-badge.css',
             './views/call-frame-kind-badge.js',

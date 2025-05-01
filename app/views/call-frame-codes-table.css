@@ -1,0 +1,37 @@
+.view-call-frame-codes-table {
+    width: 100%;
+}
+.view-call-frame-codes-table > thead > tr > .view-table-header-cell,
+.view-call-frame-codes-table > tbody > tr > .view-table-cell {
+    white-space: nowrap;
+}
+.view-call-frame-codes-table > thead > tr > th:last-child {
+    width: 100%;
+}
+.view-call-frame-codes-table .view-table-cell .view-text-match {
+    color: #888;
+    padding: 0 2px;
+    border: none;
+    background: none;
+}
+.view-call-frame-codes-table .view-table-cell .view-text-match:first-child {
+    padding-left: 0;
+}
+.view-call-frame-codes-table .view-tree {
+    margin: 2px 4px;
+}
+.view-call-frame-codes-table__raw-positions {
+    contain: inline-size;
+}
+.view-call-frame-codes-table__raw-positions > .view-source .view-source__content {
+    white-space: normal;
+    word-break: break-word;
+}
+.view-call-frame-codes-table__raw-positions > .view-source .view-source__content .spotlight {
+    padding-right: 2px;
+    background: none;
+}
+.view-call-frame-codes-table__raw-positions > .view-source .view-source__content .entry {
+    white-space: nowrap;
+    padding-right: 3px;
+}

@@ -1,4 +1,5 @@
 import { allocTimespan, typeColor, typeColorComponents, typeOrder, vmFunctionStateTierHotness, vmFunctionStateTiers } from './const.js';
+import { parsePositions } from './formats/v8-log-processed/positions.js';
 import { formatMicrosecondsTime } from './time-utils.js';
 import { CallTree } from './computations/call-tree.js';
 import { TreeTimings } from './computations/timings.js';
@@ -220,6 +221,79 @@ const methods = {
         }
 
         return [...map.values()];
+    },
+    tree(value, getParentIndex, buildValue = node => node) {
+        const leafs = value.map(value => ({ parent: null, value, children: [] }));
+        const root = { value: null, children: [] };
+
+        for (const leaf of leafs) {
+            const parentIndex = getParentIndex(leaf.value);
+            const parent = Number.isInteger(parentIndex) && parentIndex >= 0 && parentIndex < leafs.length
+                ? leafs[parentIndex]
+                : root;
+
+            parent.children.push(leaf);
+            leaf.parent = parent !== root ? parent : null;
+            leaf.value = buildValue(leaf.value);
+        }
+
+        return root.children;
+    },
+    parsePositions(value, size = 0) {
+        if (typeof value !== 'string' || value === '') {
+            return [];
+        }
+
+        const parsed = parsePositions(String(value));
+        const result = [];
+        let last = null;
+
+        for (let i = 0; i < parsed.length; i += 3) {
+            const code = parsed[i];
+            const offset = parsed[i + 1];
+            const inline = parsed[i + 2];
+
+            if (last !== null) {
+                last.size = code - last.code;
+            }
+
+            result.push(last = {
+                index: result.length,
+                code,
+                offset,
+                inline: inline !== -1 ? inline : undefined,
+                size: -1
+            });
+        }
+
+        if (size > 0 && last !== null) {
+            last.size = Math.max(size - last.code, -1);
+        }
+
+        return result;
+    },
+    parseInlined(value) {
+        if (typeof value !== 'string' || value === '') {
+            return [];
+        }
+
+        const parsed = parsePositions(String(value));
+        const result = [];
+
+        for (let i = 0; i < parsed.length; i += 3) {
+            const fn = parsed[i];
+            const offset = parsed[i + 1];
+            const parent = parsed[i + 2];
+
+            result.push({
+                index: result.length,
+                fn,
+                offset,
+                parent: parent !== -1 ? parent : undefined
+            });
+        }
+
+        return result;
     },
     select(tree, type, ...args) {
         let treeTimings = null;
