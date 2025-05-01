@@ -105,7 +105,7 @@
 }
 
 .table-content-filter > .view-input {
-    margin: 3px 0 2px;
+    margin: 1px 0;
 }
 .table-content-filter > .view-input input {
     padding: 4px 6px;
@@ -241,10 +241,6 @@ h2 .logo {
     content: '—';
     padding: 0 1ex;
     color: #888;
-}
-
-.table-content-filter > .view-input {
-    margin: 1px 0;
 }
 
 .view-table-cell > .view-timeline-segments-bin {

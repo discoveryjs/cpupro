@@ -37,16 +37,17 @@
     content: "Nested time distributed by category";
     display: block;
     margin-left: 1px;
+    padding: 2px 0;
     font-size: 10px;
     text-align: center;
     background-color: #0004;
-    color: color-mix(in srgb, var(--discovery-color) 60%, var(--discovery-background-color));
+    color: color-mix(in srgb, var(--discovery-color) 80%, var(--discovery-background-color));
     opacity: .5;
     pointer-events: none;
 }
 .view-subject-with-nested-timeline .nested-work .view-timeline-segments {
     border-top: none;
-    /* transform: scaleY(-1); */
+    transform: scaleY(-1);
     margin-block: 0;
 }
 .view-subject-with-nested-timeline .view-timeline-segments-bin.nested-time {

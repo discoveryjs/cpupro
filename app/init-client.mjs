@@ -10,7 +10,6 @@ if (demos) {
 
 discovery.nav.primary.append({
     name: 'github',
-    text: 'GitHub',
     href: 'https://github.com/discoveryjs/cpupro',
     external: true
 });

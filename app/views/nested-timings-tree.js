@@ -5,7 +5,7 @@ discovery.view.define('nested-timings-tree', {
         view: 'tree',
         limitLines: 10,
         expanded: false,
-        emptyText: 'No nesting calls',
+        emptyText: 'No nested calls',
         data: `
             $tree;
             $subject;

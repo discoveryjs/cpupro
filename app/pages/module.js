@@ -29,7 +29,7 @@ const pageContent = [
         view: 'expand',
         className: 'trigger-outside script-source',
         context: '{ ...#, currentScript: script }',
-        expanded: '=#.currentScript.hasSource() and "getSessionSetting".callAction("cpupro-module-source", true)',
+        expanded: '=#.currentScript.hasSource() and "getSessionSetting".callAction("cpupro-module-source", false)',
         onToggle: '==>#.currentScript.hasSource() and "setSessionSetting".callAction("cpupro-module-source", $)',
         header: [
             'text:"Source"',
@@ -44,7 +44,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        ...sessionExpandState('module-nested-time-distribution', true),
+        ...sessionExpandState('module-nested-time-distribution', false),
         className: 'trigger-outside',
         header: [
             'text:"Nested time distribution"',

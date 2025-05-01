@@ -257,7 +257,11 @@ const pageContent = [
                 content: 'duration:#.currentProfile.callFramesTimingsFiltered.entries[=>entry=@].nestedTime'
             }
         ],
-        content: 'nested-timings-tree:{ subject: @, tree: #.currentProfile.callFramesTree, timings: #.currentProfile.callFramesTimingsFiltered }'
+        content: `nested-timings-tree:{
+            subject: @,
+            tree: #.currentProfile.callFramesTree,
+            timings: #.currentProfile.callFramesTimingsFiltered
+        }`
     },
 
     {
