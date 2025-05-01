@@ -83,3 +83,42 @@ export function sessionExpandState(name, defaultValue = false) {
         onToggle: `==>"setSessionSetting".callAction(${JSON.stringify(fullname)}, $)`
     };
 }
+
+export function fixDetailsScroll(tableEl) {
+    tableEl.addEventListener('click', () => {
+        const prevDetailsEl = tableEl.querySelector(':scope > tbody > .view-table-row > .view-table-cell.details-expanded');
+
+        Promise.race([
+            new Promise((resolve) => tableEl.addEventListener('click', resolve, { once: true, signal: AbortSignal.timeout(0) })),
+            new Promise((resolve) => setTimeout(resolve))
+        ]).then(function () {
+            const currentDetailsEl = tableEl.querySelector(':scope > tbody > .view-table-row > .view-table-cell.details-expanded');
+
+            if (currentDetailsEl !== prevDetailsEl) {
+                if (prevDetailsEl === null) {
+                    // first expanded, do nothing
+                } else if (currentDetailsEl === null) {
+                    // last collapsed
+                    const headerEl = tableEl.offsetParent.querySelector(':scope > .page > .view-page-header');
+                    const headerBox = headerEl?.getBoundingClientRect() || { bottom: 0 };
+                    const prevDetailsBox = prevDetailsEl.parentNode.getBoundingClientRect();
+                    const delta = prevDetailsBox.top - headerBox.bottom;
+
+                    if (delta < 0) {
+                        tableEl.offsetParent.scrollTop += delta;
+                    }
+                } else {
+                    // changed, try to stabilize
+                    const currentRowEl = currentDetailsEl.parentNode;
+                    const rowBox = currentRowEl.getBoundingClientRect();
+                    const nextRowBox = currentRowEl.nextSibling.getBoundingClientRect();
+                    const delta = nextRowBox.top - rowBox.bottom;
+
+                    if (Math.round(delta) !== 0) {
+                        tableEl.offsetParent.scrollTop += delta;
+                    }
+                }
+            }
+        });
+    }, true);
+}

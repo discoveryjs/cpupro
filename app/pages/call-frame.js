@@ -199,7 +199,10 @@ const pageContent = [
                 { content: 'html:`<span style="color: #888">(unavailable)</span>`' }
             ] }
         ],
-        content: 'call-frame-codes-table'
+        content: {
+            view: 'call-frame-codes-table',
+            limit: { start: 5, tolerance: 3, base: false }
+        }
     },
 
     {

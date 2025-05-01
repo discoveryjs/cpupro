@@ -1,10 +1,14 @@
+import { fixDetailsScroll } from './common.js';
+
 const experimentalFeatures = false;
 const table = {
     view: 'table',
     className: 'all-page-table',
     limit: 50,
-    data: `
-        .sort(selfTime desc, totalTime desc)`,
+    data: 'sort(selfTime desc, totalTime desc)',
+    postRender(el) {
+        fixDetailsScroll(el);
+    },
     cols: [
         { header: 'Self time',
             className: 'timings',

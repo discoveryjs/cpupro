@@ -19,12 +19,34 @@
 .all-page-table > thead th:last-child {
     width: 100%;
 }
-.all-page-table .view-source {
-    max-height: calc(100vh - 220px);
+.all-page-table > tbody > .view-table-cell-details-row > .view-cell-details-content > .view-table > thead {
+    top: 168.5px;
+    z-index: 11;
+}
+.all-page-table > tbody > .view-table-row:has(+ .view-table-cell-details-row) {
+    position: sticky;
+    top: 144px;
+    z-index: 12;
+    background: var(--discovery-background-color);
+}
+.all-page-table > tbody > .view-table-cell-details-row ~ .view-table-row {
+    position: sticky;
+    top: 0px;
+}
+.all-page-table .view-source .view-source__prelude {
+    position: sticky;
+    top: 168.5px;
+    z-index: 1;
+    background-color: rgb(53 53 53);
+    border-top: 1px solid var(--discovery-background-color);
+}
+.all-page-table .view-cell-details-content .view-call-frame-source {
+    margin-top: -1px !important;
 }
 
 .app-page-summary {
     position: fixed;
+    z-index: 11;
     inset: auto 0 0 0;
     padding:
         .5em
