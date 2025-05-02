@@ -15,6 +15,7 @@ export function processFunctionCodes(
     }>();
     const codesByCallFrame = Array.from(functionCodes, ({ function: functionIndex, codes }): CpuProFunctionCodes => ({
         callFrame: callFrames[callFrameByFunctionIndex[functionIndex]],
+        topTierWeight: -1,
         topTier: 'Unknown',
         hotness: 'cold',
         codes: new Array(codes.length)
@@ -24,6 +25,7 @@ export function processFunctionCodes(
         const callFrameCodes = codesByCallFrame[i];
         const { callFrame } = callFrameCodes;
         const { codes } = functionCodes[i];
+        let topTierWeight = -1;
         let topTier: V8FunctionCodeType = 'Unknown';
 
         // attach codes to a script
@@ -60,7 +62,7 @@ export function processFunctionCodes(
         }
 
         // process function's states
-        for (let i = 0, topTierWeight = 0; i < codes.length; i++) {
+        for (let i = 0; i < codes.length; i++) {
             const state = codes[i];
             const tier = state.tier;
             const tierWeight = vmFunctionStateTiers.indexOf(tier);
@@ -84,6 +86,7 @@ export function processFunctionCodes(
             }
         }
 
+        callFrameCodes.topTierWeight = topTierWeight;
         callFrameCodes.topTier = topTier;
         callFrameCodes.hotness = vmFunctionStateTierHotness[topTier];
     }

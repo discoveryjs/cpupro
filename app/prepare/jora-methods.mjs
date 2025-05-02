@@ -209,6 +209,9 @@ const methods = {
         return shortNum(current, ['', 'K', 'M', 'G']);
     },
     formatMicrosecondsTime,
+    formatMicrosecondsTimeFixed(value, duration) {
+        return formatMicrosecondsTime(value, duration, true);
+    },
     zip(left, leftValue = value => value, right, rightValue = value => value) {
         const map = new Map(left.map(element => [leftValue(element), { left: element, right: null }]));
 

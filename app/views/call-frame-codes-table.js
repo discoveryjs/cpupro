@@ -23,7 +23,7 @@ discovery.view.define('call-frame-codes-table', {
                         header: 'Created at',
                         align: 'right',
                         data: 'tm',
-                        content: 'text:formatMicrosecondsTime()'
+                        content: 'text:formatMicrosecondsTimeFixed()'
                     },
                     {
                         header: 'Lifespan',
@@ -58,7 +58,7 @@ discovery.view.define('call-frame-codes-table', {
                         content: 'text-with-unit{ value: bytes(), unit: true }'
                     },
                     {
-                        header: 'Positions',
+                        header: 'Positions table',
                         data: '{ code: $, positions.parsePositions(@.size) }',
                         align: 'right',
                         contentWhen: 'positions',
@@ -113,7 +113,7 @@ discovery.view.define('call-frame-codes-table', {
                         }
                     },
                     {
-                        header: 'Inlined',
+                        header: 'Inlining',
                         data: '{ code: $, inlined.parseInlined().({ ..., callFrame: @.fns[fn] }), fns }',
                         align: 'right',
                         contentWhen: 'inlined',
@@ -186,8 +186,15 @@ discovery.view.define('call-frame-codes-table', {
                         }
                     },
                     {
-                        header: 'Deopt',
-                        data: 'deopt'
+                        header: 'Deoptimisations',
+                        className: 'deopt',
+                        data: 'deopt',
+                        contentWhen: '$',
+                        content: [
+                            'badge{ prefix: tm.formatMicrosecondsTimeFixed(), text: bailoutType }',
+                            'text:reason'
+                        ],
+                        details: 'struct{ expanded: 1 }'
                     }
                 ]
             }

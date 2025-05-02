@@ -151,12 +151,12 @@
 .view-table-cell.details > .sampled-count {
     color: #9ea867;
 }
-.view-table-cell > .view-badge,
-.view-table-cell > .view-badge .prefix,
-.view-table-cell > .view-badge .postfix {
+.view-table-cell > :is(.view-badge, .view-pill-badge),
+.view-table-cell > :is(.view-badge, .view-pill-badge) .prefix,
+.view-table-cell > :is(.view-badge, .view-pill-badge) .postfix {
     padding-top: 2px;
 }
-.view-table-cell > .view-badge:not(.call-frame-loc, .call-frame-kind) {
+.view-table-cell > :is(.view-badge, .view-pill-badge):not(.call-frame-loc, .call-frame-kind) {
     font-size: inherit;
 }
 .view-badge > .prefix {
@@ -395,6 +395,15 @@ h2 .logo {
     border-top-left-radius: 0;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
+}
+.view-source .view-source__lines {
+    background-color: #353535;
+    position: sticky;
+    left: -8px;
+    z-index: 1;
+    flex-shrink: 0;
+    margin-left: -8px;
+    padding-left: 8px;
 }
 
 .view-table-cell.timings {

@@ -57,8 +57,10 @@ const table = {
                 content: 'text-match'
             }
         },
+
+        // source and codes
         { header: 'Source', colWhen: '$[=>entry.hasSource()]',
-            sorting: '(entry | end - start) desc',
+            sorting: '(entry | regexp ? regexp.size() : start >= 0 ? end - start : -1) desc',
             data: 'entry',
             align: 'right',
             content: 'text-with-unit{ value: regexp ? regexp.size() : end - start |? $ > 999 ? kb() : $ + "b" : "", unit: true }',
@@ -68,7 +70,8 @@ const table = {
                 // context: '{ ...#, nonFilteredTimings: true }'
             }
         },
-        { header: 'Tiers',
+        { header: 'Codes', colWhen: '$[=>right.codes]',
+            sorting: '(right | topTierWeight * 1000 + codes.size()) desc',
             data: 'right',
             content: {
                 view: 'inline-list',
@@ -84,6 +87,12 @@ const table = {
             detailsWhen: 'codes',
             details: 'call-frame-codes-table:codes'
         },
+        { header: 'Deopt', colWhen: '$[=>right.codes.deopt]',
+            sorting: 'right.codes.deopt.size() desc',
+            data: 'right.codes.deopt'
+        },
+
+        // secondary
         { header: 'Module',
             sorting: 'moduleName ascN, loc ascN',
             data: 'entry',

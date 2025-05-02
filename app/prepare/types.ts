@@ -288,6 +288,7 @@ export interface IProfileScriptsMap {
 
 export type CpuProFunctionCodes = {
     callFrame: CpuProCallFrame;
+    topTierWeight: number;
     topTier: V8FunctionCodeType;
     hotness: 'cold' | 'warm' | 'hot';
     codes: CpuProFunctionCode[];

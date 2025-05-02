@@ -18,8 +18,8 @@
 .view-page-header__prelude .subject-badge[data-cdn] {
     --badge-padding-left: 47px;
 }
-.view-table-cell > .subject-badge:first-child,
-.view-table-cell > .view-badge:first-child {
+.view-table-cell:not(.details) > .subject-badge:first-child,
+.view-table-cell:not(.details) > .view-badge:first-child {
     margin-left: -6px;
 }
 
