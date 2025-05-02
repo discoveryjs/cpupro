@@ -13,10 +13,18 @@
     top: 120px;
     z-index: 101;
 }
-.all-page-table > thead th {
+.all-page-table > thead .view-table-header-cell {
     white-space: nowrap;
 }
-.all-page-table > thead th:last-child {
+.all-page-table > thead .view-table-header-cell.timings {
+    min-width: 105px;
+    box-sizing: border-box;
+}
+.all-page-table > thead .view-table-header-cell.category {
+    min-width: 76px;
+    box-sizing: border-box;
+}
+.all-page-table > thead .view-table-header-cell:last-child {
     width: 100%;
 }
 .all-page-table > tbody > .view-table-cell-details-row > .view-cell-details-content > .view-table > thead {
@@ -36,7 +44,7 @@
 .all-page-table .view-source .view-source__prelude {
     position: sticky;
     top: 168.5px;
-    z-index: 1;
+    z-index: 2;
     background-color: rgb(53 53 53);
     border-top: 1px solid var(--discovery-background-color);
 }

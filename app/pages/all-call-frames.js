@@ -4,13 +4,13 @@ const experimentalFeatures = false;
 const table = {
     view: 'table',
     className: 'all-page-table',
-    limit: 50,
+    limit: 100,
     data: 'sort(selfTime desc, totalTime desc)',
     postRender(el) {
         fixDetailsScroll(el);
     },
     cols: [
-        { header: 'Self time',
+        { header: { className: 'timings', text: 'Self time' },
             className: 'timings',
             sorting: 'selfTime desc, totalTime desc',
             colSpan: '=totalTime ? 1 : 3',
@@ -23,14 +23,14 @@ const table = {
                 ]
             }
         },
-        { header: 'Nested time',
+        { header: { className: 'timings', text: 'Nested time' },
             className: 'timings',
             sorting: 'nestedTime desc, totalTime desc',
             when: 'totalTime',
             contentWhen: 'nestedTime',
             content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
         },
-        { header: 'Total time',
+        { header: { className: 'timings', text: 'Total time' },
             className: 'timings',
             sorting: 'totalTime desc, selfTime desc',
             when: 'totalTime',

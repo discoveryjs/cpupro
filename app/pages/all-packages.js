@@ -32,7 +32,7 @@ discovery.page.define('packages', [
                     limit: 50,
                     data: '.sort(selfTime desc, totalTime desc)',
                     cols: [
-                        { header: 'Self time',
+                        { header: { className: 'timings', text: 'Self time' },
                             className: 'timings',
                             colSpan: '=totalTime ? 1 : 3',
                             sorting: 'selfTime desc, totalTime desc',
@@ -45,20 +45,20 @@ discovery.page.define('packages', [
                                 ]
                             }
                         },
-                        { header: 'Nested time',
+                        { header: { className: 'timings', text: 'Nested time' },
                             className: 'timings',
                             when: 'totalTime',
                             sorting: 'nestedTime desc, totalTime desc',
                             contentWhen: 'nestedTime',
                             content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
                         },
-                        { header: 'Total time',
+                        { header: { className: 'timings', text: 'Total time' },
                             className: 'timings',
                             when: 'totalTime',
                             sorting: 'totalTime desc, selfTime desc',
                             content: 'duration:{ time: totalTime, total: #.data.totalTime }'
                         },
-                        { header: 'Category',
+                        { header: { className: 'category', text: 'Category' },
                             sorting: 'entry.category.name ascN',
                             data: 'entry.category',
                             align: 'right',
