@@ -25,6 +25,14 @@ export type Meta = {
     samplesInterval?: number;
 }
 
+export type CodeDeopt = {
+    tm: number;
+    inliningId: number;
+    scriptOffset: number;
+    posText: string;
+    reason: string;
+    bailoutType: string;
+};
 export type CodeSharedLib = {
     name: string;
     type: 'SHARED_LIB';
@@ -51,6 +59,7 @@ export type CodeJavaScript = {
         inlined: string;
         fns: number[];
     };
+    deopt?: CodeDeopt;
 }
 export type Code =
     | CodeSharedLib

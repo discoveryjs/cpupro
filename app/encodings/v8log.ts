@@ -14,6 +14,7 @@ const parsers = {
     'shared-library': argParsers(parseString, parseAddress, parseAddress, parseAddress),
     'code-creation': argParsers(parseString, parseInt, parseInt, parseAddress, parseAddress, parseString),
     'code-move': argParsers(parseAddress, parseAddress),
+    'code-deopt': argParsers(parseInt, parseInt, parseAddress, parseInt, parseInt, parseString, parseString, parseString),
     'sfi-move': argParsers(parseString, parseString),
     'code-delete': argParsers(parseAddress),
     'code-source-info': argParsers(parseAddress, parseInt, parseInt, parseInt, parseString, parseString, parseString),
@@ -419,6 +420,41 @@ export async function decode(iterator) {
             //
             // rare events
             //
+
+            case 'code-deopt': {
+                const [
+                    tm,
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    codeSize,     // ignore
+                    address,
+                    inliningId,
+                    scriptOffset,
+                    bailoutType,  // deopt kind
+                    posText,      // deopt location
+                    reason        // deopt reason
+                ] = readAllArgs(parsers[op], line, argsStart);
+                const codeEntry = findCodeEntryByAddress(address);
+
+                if (codeEntry?.code.type === 'JS') {
+                    // The comment from V8 tickprocessor:
+                    // > Only add the deopt if there was no deopt before.
+                    // > The subsequent deoptimizations should be lazy deopts for
+                    // > other on-stack activations.
+                    // We can collect all the deopts, however lazy deopts has no reason
+                    // or any other useful details, so ignore them for now
+                    if (!codeEntry.code.deopt) {
+                        codeEntry.code.deopt = {
+                            tm,
+                            inliningId,
+                            scriptOffset,
+                            posText,
+                            reason,
+                            bailoutType
+                        };
+                    }
+                }
+                break;
+            }
 
             case 'code-move': {
                 const [address, destAddress] = readAllArgs(parsers[op], line, argsStart);
