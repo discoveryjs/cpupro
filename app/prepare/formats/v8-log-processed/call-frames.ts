@@ -91,7 +91,7 @@ function callFrameInfoFromNonJsCode(code: V8LogCode): string | null {
                         lowlevel = true;
                     } else {
                         name = '(builtin) ' + name;
-                        // lowlevel = true;
+                        lowlevel = true;
                     }
                     break;
 
