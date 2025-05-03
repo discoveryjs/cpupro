@@ -231,16 +231,33 @@ export async function decode(iterator) {
             }
 
             case 'code-creation': {
-                const [
-                    type,
-                    kindNum,
-                    timestamp,
-                    address,
-                    size,
-                    nameAndLocation,
-                    sfiAddress,
-                    kindMarker = ''
-                ] = readAllArgs(parsers[op], line, argsStart);
+                // In some rare cases, nameAndLocation can contain a non-escaped comma,
+                // which breaks normal line splitting into arguments.
+                // Use custom logic for argument parsing as a workaround.
+                const args = readAllArgsRaw(line, argsStart);
+                const type = args[0];
+                // const kindNum = args[1];
+                const timestamp = parseInt(args[2]);
+                const address = parseAddress(args[3]);
+                const size = parseAddress(args[4]);
+                let nameAndLocation = args[5];
+                let sfiAddress: string | undefined = undefined;
+                let kindMarker = '';
+
+                for (let i = 6; i < args.length; i++) {
+                    const arg = args[i];
+
+                    // The next argument after nameAndLocation is an optional sfiAddress,
+                    // which should be a hex-encoded address
+                    if (arg.startsWith('0x')) {
+                        sfiAddress = arg;
+                        kindMarker = args[i + 1];
+                        break;
+                    }
+
+                    nameAndLocation += ',' + args[i];
+                }
+
                 const kind = kindMarker ? parseState(kindMarker) : type === 'JS' ? 'Builtin' : type;
                 let sfi: SFI | undefined;
 
@@ -297,7 +314,7 @@ export async function decode(iterator) {
                         address,
                         size,
                         type,
-                        kindNum,
+                        kindNum: args[1],
                         kind,
                         timestamp,
                         nameAndLocation,
