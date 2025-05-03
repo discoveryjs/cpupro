@@ -23,6 +23,10 @@
 .view-call-frame-codes-table__raw-positions {
     contain: inline-size;
 }
+.view-call-frame-codes-table__raw-positions > .view-source {
+    border-radius: 0;
+    margin: 0;
+}
 .view-call-frame-codes-table__raw-positions > .view-source .view-source__content {
     white-space: normal;
     word-break: break-word;
@@ -34,4 +38,62 @@
 .view-call-frame-codes-table__raw-positions > .view-source .view-source__content .entry {
     white-space: nowrap;
     padding-right: 3px;
+}
+.view-call-frame-codes-table__raw-positions > .view-struct {
+    margin: 1px 0 0;
+}
+
+.view-call-frame-codes-table .view-table-cell.deopt .inlining-deopt {
+    --discovery-view-badge-color: light-dark(#d3e7fb, #3a5066);
+    --discovery-view-badge-text-color: light-dark(#668fb8, #6d94ba);
+    margin-left: .6ex;
+    margin-right: .2ex;
+    padding-top: 2px;
+    font-size: inherit;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.view-call-frame-codes-table .view-table-cell.deopt .inlining-deopt > :is(.prefix, .postfix) {
+    color: color-mix(in srgb, currentColor 50%, var(--discovery-view-badge-color));
+}
+.view-call-frame-codes-table .view-table-cell.deopt .inlining-deopt > .postfix {
+    font-size: 11px;
+}
+.view-call-frame-codes-table .view-table-cell.deopt .source-loc {
+    margin-left: 1.5ex;
+    padding-top: 3px;
+    font-size: 11px;
+    color: #999;
+}
+.view-call-frame-codes-table .view-table-cell.deopt .inlining-deopt + .source-loc {
+    margin-left: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    color: #768a9d;
+}
+.view-call-frame-codes-table .source-loc .delim {
+    color: #888;
+    padding: 0 1px;
+}
+
+.view-call-frame-codes-table .view-cell-details-content .deopt-call-stack {
+    margin-top: 2px !important;
+}
+.view-call-frame-codes-table :is(.deopt-call-stack, .inlining-tree) .view-tree-leaf-content > .view-badge.call-frame {
+    border-radius: 3px 0 0 0;
+    margin: 0 1px 0 0;
+}
+.view-call-frame-codes-table :is(.deopt-call-stack, .inlining-tree) .view-tree-leaf-content > .view-badge.source-loc {
+    border-radius: 0 3px 0 0;
+    padding-top: 3px;
+    color: #b0b0b0;
+}
+.view-call-frame-codes-table :is(.deopt-call-stack, .inlining-tree) .view-call-frame-source-point {
+    margin: -1px 0 3px;
+}
+.view-call-frame-codes-table :is(.deopt-call-stack, .inlining-tree) .view-call-frame-source-point > .view-source {
+    border-radius: 0;
+}
+.view-call-frame-codes-table :is(.deopt-call-stack, .inlining-tree) .view-call-frame-source-point > .view-source .view-source__content {
+    padding: 4px 8px;
 }

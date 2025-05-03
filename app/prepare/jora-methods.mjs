@@ -298,6 +298,69 @@ const methods = {
 
         return result;
     },
+    inlinedPath(path, callFrame, offset) {
+        let cursor = { callFrame, offset: -1 };
+        const result = [cursor];
+
+        for (const { callFrame, offset } of path) {
+            cursor.offset = offset;
+            cursor = { callFrame, offset: -1 };
+            result.push(cursor);
+        }
+
+        cursor.offset = offset;
+
+        return result;
+    },
+    offsetToLineColumn(offset, source, callFrame) {
+        let lastIndex = 0;
+        let line = 0;
+        let column = 0;
+
+        if (source && !callFrame &&
+            typeof source.script?.source === 'string' &&
+            Number.isFinite(source.start) &&
+            Number.isFinite(source.line) &&
+            Number.isFinite(source.end)) {
+            callFrame = source;
+            source = source.script.source;
+        }
+
+        if (typeof source !== 'string') {
+            return null;
+        }
+
+        if (offset < 0) {
+            offset = 0;
+        } else if (offset > source.length) {
+            offset = source.length;
+        }
+
+        if (callFrame && Number.isFinite(callFrame.start) && callFrame.start >= 0) {
+            lastIndex = callFrame.start;
+            line = callFrame.line;
+            column = callFrame.column;
+
+            if (callFrame.end >= callFrame.start && offset > callFrame.end) {
+                offset = callFrame.end;
+            }
+        }
+
+        const nlRx = /\r\n?|\n/g;
+        nlRx.lastIndex = lastIndex;
+        while (nlRx.exec(source) !== null) {
+            if (nlRx.lastIndex > offset) {
+                column += offset - lastIndex;
+                break;
+            }
+
+            lastIndex = nlRx.lastIndex;
+            line++;
+            column = 0;
+        }
+
+        return { line, column };
+    },
     select(tree, type, ...args) {
         let treeTimings = null;
 

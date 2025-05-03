@@ -187,7 +187,7 @@ const pageContent = [
     {
         view: 'expand',
         when: '#.currentProfile | type != "memory"',
-        className: 'trigger-outside script-source',
+        className: 'trigger-outside call-frame-codes',
         data: '#.currentProfile.codesByCallFrame[=> callFrame = @].codes',
         expanded: '=bool() and "getSessionSetting".callAction("cpupro-callframe-codes", true)',
         onToggle: '=($state, $ctx)=> $ctx.data.bool() ? "setSessionSetting".callAction("cpupro-callframe-codes", $state)',

@@ -4,7 +4,7 @@ discovery.view.define('call-frame-codes-table', {
         return this.render(el, [
             {
                 view: 'block',
-                whenData: 'no $',
+                when: 'no $',
                 className: 'view-call-frame-source',
                 content: {
                     view: 'source',
@@ -16,18 +16,35 @@ discovery.view.define('call-frame-codes-table', {
             {
                 view: 'table',
                 className: 'view-call-frame-codes-table',
-                whenData: true,
-                limit: props.limit,
+                when: true,
+                data: `.({
+                    $ownerCallFrame: callFrame;
+                    $fns;
+                    $id: ($rec, $parsed) => $rec |
+                        (parent is number ? $parsed[parent].$id($parsed) + '-' : '') +
+                        offset + '-' + @.fns[fn].id;
+
+                    code: $,
+                    positions.parsePositions(size),
+                    inlined.parseInlined() | $parsed: $; .({
+                        ...,
+                        id: $id($parsed),
+                        callFrame: $fns[fn],
+                        $ownerCallFrame
+                    }),
+                    fns
+                })`,
+                limit: props.limit || false,
                 cols: [
                     {
                         header: 'Created at',
+                        data: 'code.tm',
                         align: 'right',
-                        data: 'tm',
                         content: 'text:formatMicrosecondsTimeFixed()'
                     },
                     {
                         header: 'Lifespan',
-                        data: 'duration',
+                        data: 'code.duration',
                         align: 'right',
                         content: {
                             view: 'switch',
@@ -39,12 +56,12 @@ discovery.view.define('call-frame-codes-table', {
                     },
                     {
                         header: '',
-                        content: 'code-hotness-icon{ tier, showHint: false }'
+                        content: 'code-hotness-icon{ tier: code.tier, showHint: false }'
                     },
                     {
                         header: 'Tier',
-                        sorting: 'tier.order() asc',
-                        data: 'tier',
+                        sorting: 'code.tier.order() asc',
+                        data: 'code.tier',
                         content: [
                             'code-tier-badge',
                             'text:"\xa0" + $'
@@ -52,14 +69,13 @@ discovery.view.define('call-frame-codes-table', {
                     },
                     {
                         header: 'Size',
-                        colWhen: '.[size > 0]',
-                        data: 'size',
+                        colWhen: '.[code.size > 0]',
+                        data: 'code.size',
                         align: 'right',
                         content: 'text-with-unit{ value: bytes(), unit: true }'
                     },
                     {
                         header: 'Positions table',
-                        data: '{ code: $, positions.parsePositions(@.size) }',
                         align: 'right',
                         contentWhen: 'positions',
                         content: [
@@ -70,7 +86,7 @@ discovery.view.define('call-frame-codes-table', {
                             view: 'tabs',
                             name: 'mode',
                             value: '="getSessionSetting".callAction("cpupro-call-frame-codes-table-positions-details:mode", "table")',
-                            onChange: '=$mode=> ? "setSessionSetting".callAction("cpupro-call-frame-codes-table-positions-details:mode", $mode)',
+                            onChange: '==> ? "setSessionSetting".callAction("cpupro-call-frame-codes-table-positions-details:mode", $)',
                             tabs: [
                                 'table',
                                 'raw'
@@ -114,7 +130,6 @@ discovery.view.define('call-frame-codes-table', {
                     },
                     {
                         header: 'Inlining',
-                        data: '{ code: $, inlined.parseInlined().({ ..., callFrame: @.fns[fn] }), fns }',
                         align: 'right',
                         contentWhen: 'inlined',
                         content: [
@@ -125,7 +140,7 @@ discovery.view.define('call-frame-codes-table', {
                             view: 'tabs',
                             name: 'mode',
                             value: '="getSessionSetting".callAction("cpupro-call-frame-codes-table-inlined-details:mode", "tree")',
-                            onChange: '=$mode=> ? "setSessionSetting".callAction("cpupro-call-frame-codes-table-inlined-details:mode", $mode)',
+                            onChange: '==> ? "setSessionSetting".callAction("cpupro-call-frame-codes-table-inlined-details:mode", $)',
                             tabs: [
                                 'tree',
                                 'table',
@@ -136,26 +151,39 @@ discovery.view.define('call-frame-codes-table', {
                                 content: [
                                     { when: '#.mode="tree"', content: {
                                         view: 'tree',
-                                        expanded: 10,
-                                        data: 'inlined.tree(=>parent)',
+                                        className: 'inlining-tree',
+                                        limitLines: false,
+                                        expanded: 20,
+                                        data: 'inlined.tree(=>parent).sort(value.offset asc)',
+                                        children: 'children.sort(value.offset asc)',
                                         item: [
                                             'call-frame-badge:value.callFrame',
                                             {
-                                                view: 'context',
-                                                when: 'no parent',
-                                                content: 'text:" at " + value.offset'
+                                                view: 'badge',
+                                                className: 'source-loc',
+                                                data: `
+                                                    $callFrame: parent ? parent.value.callFrame : value.ownerCallFrame;
+                                                    value
+                                                        | offset.offsetToLineColumn($callFrame)
+                                                        | is object ? \`:\${line}:\${column}\`
+                                                `,
+                                                whenData: true,
+                                                content: 'html:replace(/:/, `<span class=\"delim\">:</span>`)'
                                             }
+                                            // 'call-frame-source-point:value'
                                         ]
                                     } },
                                     { when: '#.mode="table"', content: {
                                         view: 'table',
+                                        limit: false,
                                         data: 'inlined.({ ..., entry: parent is number ? `F${fn}O${offset}I${parent}` : `F${fn}O${offset}` })',
                                         cols: [
                                             { header: '#', data: 'index' },
                                             { header: 'Entry', sorting: 'entry ascN', content: 'text-match{ text: entry, match: /\\D+/g }' },
                                             { header: 'F (call frame)', sorting: 'callFrame.name ascN', content: 'call-frame-badge:callFrame' },
                                             { header: 'O', data: 'offset' },
-                                            { header: 'I', data: 'parent' }
+                                            { header: 'I', data: 'parent' },
+                                            { data: 'id' }
                                         ]
                                     } },
                                     { content: {
@@ -188,13 +216,59 @@ discovery.view.define('call-frame-codes-table', {
                     {
                         header: 'Deoptimisations',
                         className: 'deopt',
-                        data: 'deopt',
-                        contentWhen: '$',
+                        contentWhen: 'code.deopt',
                         content: [
-                            'badge{ prefix: tm.formatMicrosecondsTimeFixed(), text: bailoutType }',
-                            'text:reason'
+                            'badge{ prefix: code.deopt.tm.formatMicrosecondsTimeFixed(), text: code.deopt.bailoutType }',
+                            'text:code.deopt.reason',
+                            {
+                                view: 'badge',
+                                className: 'inlining-deopt',
+                                when: 'code.deopt.inliningId != -1',
+                                prefix: 'in inlined',
+                                text: '=inlined[code.deopt.inliningId].callFrame.name'
+                            },
+                            {
+                                view: 'badge',
+                                className: 'source-loc',
+                                data: `
+                                    $callFrame: (code.deopt.inliningId = -1 ? code : inlined[code.deopt.inliningId]).callFrame;
+                                    code.deopt
+                                        | scriptOffset.offsetToLineColumn($callFrame)
+                                        | is object ? \`:\${line}:\${column}\`
+                                `,
+                                whenData: true,
+                                content: 'html:replace(/:/, `<span class=\"delim\">:</span>`)'
+                            }
                         ],
-                        details: 'struct{ expanded: 1 }'
+                        details: {
+                            view: 'tree',
+                            className: 'deopt-call-stack',
+                            expanded: 10,
+                            data: `
+                                $toTree: => [{ value: $[], children: size() > 1 ? $[1:].$toTree() }];
+
+                                code.deopt.inliningId
+                                    | $ != -1 ? $ + ..(is number ? @.inlined[$].parent) : []
+                                    | reverse().(@.inlined[$] | { callFrame, offset })
+                                    | inlinedPath(@.code.callFrame, @.code.deopt.scriptOffset)
+                                    | $list: $; .({ ..., marks: $ = $list[-1]
+                                        ? [{ offset, className: 'error', content: 'text:"deopt"' }]
+                                        : [{ offset, className: 'def', content: 'text:"inline"' }]
+                                    })
+                                    | $toTree()
+                            `,
+                            item: [
+                                'call-frame-badge:value',
+                                {
+                                    view: 'badge',
+                                    className: 'source-loc',
+                                    data: 'value | offset.offsetToLineColumn(callFrame) | is object ? `:${line}:${column}`',
+                                    whenData: true,
+                                    content: 'html:replace(/:/, `<span class=\"delim\">:</span>`)'
+                                },
+                                'call-frame-source-point:value'
+                            ]
+                        }
                     }
                 ]
             }

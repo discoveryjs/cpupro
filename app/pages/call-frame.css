@@ -16,3 +16,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.page-call-frame .call-frame-codes > .content {
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
+    overflow-x: auto;
+    overflow-y: hidden;
+}
