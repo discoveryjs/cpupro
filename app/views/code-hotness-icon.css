@@ -47,7 +47,10 @@
     --color: #999999;
 }
 .view-code-hotness-icon.hotness-warm {
-    --color: #aa9252;
+    --color: #ab9461;
+}
+.view-code-hotness-icon.hotness-hot[data-tier="Maglev"] {
+    --color: #ba8932;
 }
 .view-code-hotness-icon.hotness-hot {
     --color: #c95e5e;
