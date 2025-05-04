@@ -8,6 +8,10 @@
 .view-call-frame-codes-table > thead > tr > th:last-child {
     width: 100%;
 }
+.view-call-frame-codes-table > tbody > .view-table-row .view-table-cell > .view-code-tier-badge {
+    margin: 1px 1px 0 -2px;
+    vertical-align: top;
+}
 .view-call-frame-codes-table .view-table-cell .view-text-match {
     color: #888;
     padding: 0 2px;

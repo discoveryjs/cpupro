@@ -3,7 +3,7 @@
     min-width: 2.2ex;
     padding: 3px .5em;
     font-family: var(--discovery-font-family);
-    font-size: 83%;
+    font-size: 10px;
     line-height: 1;
     text-align: center;
     white-space: nowrap;
@@ -15,18 +15,23 @@
     background-color: light-dark(#e4e4e4, #2b2b2b);
     background-clip: padding-box;
     text-decoration-thickness: 1px;
+    /* text-transform: uppercase; */
+    font-family: var(--discovery-monospace-font-family);
 }
 
 .view-code-tier-badge[data-count]::after {
-    content: ' × ' attr(data-count);
+    content: ' ' attr(data-count);
     display: inline-block;
     padding-left: 3px;
     padding-right: 1px;
     color: color-mix(in srgb, currentColor 50%, var(--discovery-color));
+    font-family: var(--discovery-font-family);
 }
 
 .view-inline-list.code-tier-list {
     display: inline-flex;
     align-items: flex-start;
     gap: .35ex;
+    vertical-align: text-bottom;
+    margin-bottom: -1.5px;
 }

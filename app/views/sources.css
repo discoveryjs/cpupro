@@ -89,6 +89,7 @@
     border-radius: 9px;
     padding-left: 4.5px;
     padding-right: 4px;
+    font-family: var(--discovery-monospace-font-family);
 }
 
 .view-source.cpupro-source .view-source__lines span.selected {

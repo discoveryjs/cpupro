@@ -10,9 +10,10 @@ const sessionColor = new Map();
 const abbr = {
     Ignition: 'Ig',
     Sparkplug: 'Sp',
-    Maglev: 'Ma',
+    Maglev: 'Ml',
     Turboprop: 'Tp',
-    Turbofan: 'Tu',
+    Turbofan: 'Tf',
+    Turboshaft: 'Ts',
     Unknown: '??'
 };
 
