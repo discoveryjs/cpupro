@@ -5,11 +5,18 @@ export const parseAddress = parseInt; // useBigInt ? BigInt : parseInt;
 
 export function parseState(state: string) {
     switch (state) {
-        case '':  return CodeState.COMPILED;
-        case '~': return CodeState.IGNITION;
-        case '^': return CodeState.SPARKPLUG;
-        case '+': return CodeState.MAGLEV;
-        case '*': return CodeState.TURBOFAN;
+        case '':
+            return CodeState.COMPILED;
+        case '~':
+            return CodeState.IGNITION;
+        case '^':
+            return CodeState.SPARKPLUG;
+        case '+':
+        case '+\'': // context specialized
+            return CodeState.MAGLEV;
+        case '*':
+        case '*\'': // context specialized
+            return CodeState.TURBOFAN;
     }
 
     throw new Error(`Unknown code state: ${state}`);
