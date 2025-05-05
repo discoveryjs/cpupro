@@ -53,7 +53,18 @@ class BucketCodeEntry {
     }
 }
 
-function warn(...args) {
+function findNewline(str: string, offset: number) {
+    for (; offset < str.length; offset++) {
+        const code = str.charCodeAt(offset);
+        if (code === 10 /* \n */ || code === 13 /* \r */) {
+            return offset;
+        }
+    }
+
+    return -1;
+}
+
+function warn(...args: unknown[]) {
     if (LOG_WARNINGS) {
         console.warn(...args.map(detachSlicedString));
     }
@@ -635,28 +646,47 @@ export async function decode(iterator: AsyncIterableIterator<Uint8Array> | Async
 
     let tail = '';
     let lineStartOffset = 0;
+    let lineEndOffset = -1;
+    // In fact, V8 always writes the V8 log with `\n` newlines, even on Windows.
+    // This logic to handle `\r\n` (and `\r`) newlines is implemented as an extra safeguard
+    // to ensure everything works. Falling back to slow newline search makes parsing
+    // about 1.5x slower. However, this might never actually occur. Detection for `\r`-like newlines
+    // is implemented at a very low-impact level. So let’s give it a try. It probably should be
+    // removed in the future as redundant. Let’s see.
+    let slowNewlineSearch = false;
+    let maybeCR = true;
 
     for await (const chunk of iterator) {
-        const chunkText = typeof chunk === 'string' ? chunk : decoder.decode(chunk);
-        let eol = -1;
+        const chunkText = typeof chunk === 'string'
+            ? chunk
+            : decoder.decode(chunk, { stream: true });
 
         lineStartOffset = 0;
 
-        do {
-            eol = chunkText.indexOf('\n', lineStartOffset);
+        if (maybeCR && !slowNewlineSearch) {
+            slowNewlineSearch = typeof chunk === 'string'
+                ? chunk.includes('\r')
+                : chunk.includes(13);
+        }
 
-            if (eol === -1) {
+        do {
+            lineEndOffset = slowNewlineSearch
+                ? findNewline(chunkText, lineStartOffset)
+                : chunkText.indexOf('\n', lineStartOffset);
+
+            if (lineEndOffset === -1) {
                 break;
             }
 
             if (tail !== '') {
-                processLine(tail + chunkText.slice(lineStartOffset, eol));
+                processLine(tail + chunkText.slice(lineStartOffset, lineEndOffset));
                 tail = '';
-            } else if (lineStartOffset < eol) {
-                processLine(chunkText.slice(lineStartOffset, eol));
+            } else if (lineStartOffset < lineEndOffset) {
+                processLine(chunkText.slice(lineStartOffset, lineEndOffset));
             }
 
-            lineStartOffset = eol + 1;
+            lineStartOffset = lineEndOffset + 1;
+            maybeCR = false;
         } while (true);
 
         tail += chunkText.slice(lineStartOffset);
@@ -665,6 +695,7 @@ export async function decode(iterator: AsyncIterableIterator<Uint8Array> | Async
     // process last line
     if (tail !== '') {
         processLine(tail);
+        tail = '';
     }
 
     const result: ParseResult = {
