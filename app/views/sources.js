@@ -108,11 +108,17 @@ discovery.view.define('call-frame-source', {
                     | positions.match(/O\\d+/g).(+matched[0][1:]) + $start;
                 $codePointMarks: $codePoints
                     |? .($ - $sourceSliceStart | is number ? { offset: $ });
-                // $codePointMarksText: $codePoints
-                //     |? .($ - $sourceSliceStart | is number ? { offset: $, abs: $ + $sourceSliceStart, kind: 'none', content: 'text:"O: " + abs' });
 
-                $inlinedMarks: $callFrameCodes.codes[-1].inlined.match(/O\\d+(?=F|$)/g).(+matched[0][1:])
-                    |? .({ offset: $ - $sourceSliceStart, content: 'text:"1"', className: 'def', prefix: 'Inline' });
+                $inlinedPoints: $callFrameCodes.codes.inlinedMatrix();
+                $inlinedMarks: $inlinedPoints
+                    |? .($entry: $; $min; $max; offset - $sourceSliceStart | is number ? {
+                        offset: $,
+                        prefix: 'Inline',
+                        content: { view: 'text', text: $min != $max ? $min + '…' + $max: $min},
+                        className: 'def',
+                        $entry,
+                        tooltip: 'call-frame-inlined-matrix:entry'
+                    });
 
                 $sampleMarkContent: {
                     view: 'update-on-timings-change',
@@ -190,9 +196,9 @@ discovery.view.define('call-frame-source', {
                 //         });
 
                 $allMarks: {
-                    $codePoints,
                     $codePointMarks,
-                    // $codePointMarksText,
+                    // codePointMarksText: $codePoints
+                    //     |? .($ - $sourceSliceStart | is number ? { offset: $, abs: $ + $sourceSliceStart, kind: 'none', content: 'text:"O: " + abs' }),
                     $inlinedMarks,
                     $sampleMarks,
                     $nestedScriptCodes.({
@@ -232,6 +238,8 @@ discovery.view.define('call-frame-source', {
                 lineNum: => $ + $line,
                 callFrame: @,
                 $callFrameCodes,
+                $codePoints,
+                $inlinedPoints,
                 $allMarks,
                 marks: $allMarks.values().[].(),
                 refs: $nestedScriptCodes.({

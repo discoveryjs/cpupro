@@ -1,0 +1,67 @@
+.view-call-frame-inlined-matrix {
+    display: grid;
+    grid-template-areas:
+        'caption snapshots-rows'
+        'call-frame-tree snapshots-rows';
+    grid-template-columns: auto 1fr;
+    grid-template-rows: 41px 1fr;
+}
+.discovery-view-popup > .view-call-frame-inlined-matrix {
+    margin: -5px -10px;
+}
+.view-call-frame-inlined-matrix::before {
+    grid-area: caption;
+    align-self: center;
+    text-align: center;
+    content: 'Call frame / state';
+    color: #888;
+}
+.view-call-frame-inlined-matrix .call-frame-tree {
+    grid-area: call-frame-tree;
+    border-top: 1px solid #444;
+    padding-right: 12px;
+}
+.view-call-frame-inlined-matrix .snapshots-rows {
+    grid-area: snapshots-rows;
+    display: grid;
+    grid-template-columns: repeat(var(--snapshot-count), max-content);
+}
+
+.view-call-frame-inlined-matrix .snapshot-header-cell {
+    box-sizing: border-box;
+    height: 42px;
+    padding: 0 5px 5px;
+    border-left: 1px solid #444;
+    border-bottom: 1px solid #444;
+}
+.view-call-frame-inlined-matrix .codes-range {
+    font-size: 10px;
+    text-align: center;
+    padding: 2px 7px 2px;
+}
+.view-call-frame-inlined-matrix .codes-range::before {
+    content: '#';
+    color: #888;
+    padding-right: 1px;
+    margin-left: -7px;
+}
+.view-call-frame-inlined-matrix .view-inline-list.code-tier-list {
+    display: flex;
+    justify-content: center;
+}
+
+.view-call-frame-inlined-matrix .snapshot-cell {
+    border-left: 1px solid #444;
+    height: 24px;
+    min-width: 46px;
+    text-align: center;
+}
+.view-call-frame-inlined-matrix .snapshot-cell.present::before {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 100%;
+    background-color: #5488ba;
+    mask: url(../img/check.svg) no-repeat center;
+    mask-size: 12px;
+}

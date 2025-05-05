@@ -89,7 +89,8 @@ const table = {
         },
         { header: 'Deopt', colWhen: '$[=>right.codes.deopt]',
             sorting: 'right.codes.deopt.size() desc',
-            data: 'right.codes.deopt'
+            data: 'right.codes.deopt.size()',
+            contentWhen: '$'
         },
 
         // secondary

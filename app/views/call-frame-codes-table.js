@@ -17,18 +17,15 @@ discovery.view.define('call-frame-codes-table', {
                 view: 'table',
                 className: 'view-call-frame-codes-table',
                 when: true,
-                data: `.({
+                data: `$codes: $; .({
                     $ownerCallFrame: callFrame;
                     $fns;
-                    $id: ($rec, $parsed) => $rec |
-                        (parent is number ? $parsed[parent].$id($parsed) + '-' : '') +
-                        offset + '-' + @.fns[fn].id;
 
+                    index: $codes.indexOf($),
                     code: $,
                     positions.parsePositions(size),
                     inlined.parseInlined() | $parsed: $; .({
                         ...,
-                        id: $id($parsed),
                         callFrame: $fns[fn],
                         $ownerCallFrame
                     }),
@@ -36,6 +33,10 @@ discovery.view.define('call-frame-codes-table', {
                 })`,
                 limit: props.limit || false,
                 cols: [
+                    {
+                        header: '#',
+                        data: 'index'
+                    },
                     {
                         header: 'Created at',
                         data: 'code.tm',
@@ -72,16 +73,24 @@ discovery.view.define('call-frame-codes-table', {
                         colWhen: '.[code.size > 0]',
                         data: 'code.size',
                         align: 'right',
-                        content: 'text-with-unit{ value: bytes(), unit: true }'
+                        content: ['text-with-unit{ value: bytes(), unit: true }']
                     },
                     {
                         header: 'Positions table',
-                        align: 'right',
-                        contentWhen: 'positions',
-                        content: [
-                            'text:positions.size()',
-                            'html:" <span style=\\"color:#888\\">blocks</span>"'
-                        ],
+                        align: '=positions ? "right" : "center"',
+                        colSpan: '=no positions and no inlined ? 2 : 1',
+                        contentWhen: 'positions or (no positions and no inlined)',
+                        content: {
+                            view: 'switch',
+                            content: [
+                                { when: 'positions', content: [
+                                    'text:positions.size()',
+                                    'html:" <span style=\\"color:#888\\">blocks</span>"'
+                                ] },
+                                { content: 'html:"<span style=\\"color:#555;font-style:italic\\">missed in V8 log</span>"' }
+                            ]
+                        },
+                        detailsWhen: 'positions',
                         details: {
                             view: 'tabs',
                             name: 'mode',
@@ -130,6 +139,7 @@ discovery.view.define('call-frame-codes-table', {
                     },
                     {
                         header: 'Inlining',
+                        when: 'positions or inlined',
                         align: 'right',
                         contentWhen: 'inlined',
                         content: [
@@ -182,8 +192,7 @@ discovery.view.define('call-frame-codes-table', {
                                             { header: 'Entry', sorting: 'entry ascN', content: 'text-match{ text: entry, match: /\\D+/g }' },
                                             { header: 'F (call frame)', sorting: 'callFrame.name ascN', content: 'call-frame-badge:callFrame' },
                                             { header: 'O', data: 'offset' },
-                                            { header: 'I', data: 'parent' },
-                                            { data: 'id' }
+                                            { header: 'I', data: 'parent' }
                                         ]
                                     } },
                                     { content: {

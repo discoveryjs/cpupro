@@ -47,6 +47,8 @@ module.exports = {
             './views/allocation-samples-matrix.js',
             './views/call-frame-codes-table.css',
             './views/call-frame-codes-table.js',
+            './views/call-frame-inlined-matrix.css',
+            './views/call-frame-inlined-matrix.js',
             './views/call-frame-kind-badge.css',
             './views/call-frame-kind-badge.js',
             './views/call-frame-loc-badge.css',

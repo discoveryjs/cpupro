@@ -313,6 +313,113 @@ const methods = {
 
         return result;
     },
+    inlinedMatrix(codes) {
+        const recordByRef = new Map();
+        const roots = [];
+        const result = [];
+
+        for (let i = 0; i < codes.length; i++) {
+            const code = codes[i];
+            const parsed = this.method('parseInlined', code.inlined);
+            const records = [];
+
+            for (const entry of parsed) {
+                const callFrame = code.fns[entry.fn];
+                const parentRecord = entry.parent === undefined ? null : records[entry.parent];
+                const ref = parentRecord !== null
+                    ? `${entry.offset}-${callFrame.id}-${parentRecord.id}`
+                    : `${entry.offset}-${callFrame.id}`;
+                let record = recordByRef.get(ref);
+
+                if (record === undefined) {
+                    recordByRef.set(ref, record = {
+                        id: recordByRef.size,
+                        value: { offset: entry.offset, callFrame, code },
+                        parent: parentRecord,
+                        children: [],
+                        codePresence: Array.from(codes, () => 0)
+                    });
+
+                    if (parentRecord !== null) {
+                        parentRecord.children.push(record);
+                    } else {
+                        roots.push(record);
+                    }
+                }
+
+                record.codePresence[i] = 1;
+                records.push(record);
+            }
+        }
+
+        for (const root of sortByOffset(roots)) {
+            const linear = [];
+
+            walkTree(root, node => {
+                linear.push(node);
+                sortByOffset(node.children);
+            });
+
+            const snapshots = [];
+            let prevSnapshot = null;
+            let min = linear.length;
+            let max = 0;
+
+            for (let i = 0; i < codes.length; i++) {
+                const presence = Array.from(linear, record => record.codePresence[i]);
+                const hash = presence.join('');
+
+                if (prevSnapshot === null || prevSnapshot.hash !== hash) {
+                    const count = this.method('sum', presence);
+
+                    if (count !== 0 && count < min) {
+                        min = count;
+                    }
+
+                    if (count > max) {
+                        max = count;
+                    }
+
+                    snapshots.push(prevSnapshot = {
+                        hash,
+                        start: i,
+                        end: i,
+                        presence,
+                        codes: []
+                    });
+                }
+
+                prevSnapshot.end = i;
+                prevSnapshot.codes.push(codes[i]);
+            }
+
+            result.push({
+                offset: root.value.offset,
+                tree: root,
+                linear: linear.map(x => x.value),
+                min,
+                max,
+                snapshots
+            });
+        }
+
+        return result;
+
+        function sortByOffset(array) {
+            if (array.length > 1) {
+                array.sort((a, b) => a.value.offset - b.value.offset);
+            }
+
+            return array;
+        }
+
+        function walkTree(node, fn) {
+            fn(node);
+            for (const child of node.children) {
+                walkTree(child, fn);
+            }
+        }
+    },
     offsetToLineColumn(offset, source, callFrame) {
         let lastIndex = 0;
         let line = 0;
