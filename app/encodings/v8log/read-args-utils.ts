@@ -15,10 +15,10 @@ export function readAllArgsRaw(buffer: string, start: number, end = buffer.lengt
     const args: string[] = [];
 
     while (start <= end) {
-        const arg = readArgRaw(buffer, start, end);
+        const commaIdx = offsetOrEnd(',', buffer, start, end);
 
-        args.push(arg);
-        start += arg.length + 1;
+        args.push(buffer.slice(start, commaIdx));
+        start = commaIdx + 1;
     }
 
     return args;

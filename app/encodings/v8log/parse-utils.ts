@@ -34,16 +34,31 @@ export function kindFromState(state: CodeState) {
     throw new Error(`Unknown code state: ${state}`);
 }
 
-export function parseString(value: string) {
+// Make a copy of the sliced string to detach from input (parent) string
+export function detachSlicedString(value: string) {
     if (value === '') {
         return '';
     }
 
-    if (value.indexOf('\\') === -1) {
-        // detach sliced string from source
-        const s = value[0] + value.slice(1);
-        /^/.test(s);
-        return s;
+    // That's a hack to detach (make a copy of) the sliced string from its parent (source),
+    // so the parent can be GCed.
+    // To make a search across object's keys, the string must be internalizated (at least in V8).
+    // Using `in` operator enforces JS engine to make a copy of the string and compute its hash.
+    // Having a hash makes the string fast for further using as a key. Probably, that's not necessary
+    // for most of the strings and another approach should be choosen (like using replace() commented
+    // below). However, basic benchmarking doesn't demonstrated any difference in results,
+    // but with `in` operator approach shows ~10% lower memory footprint after GC on large log loading.
+    // Since the object is not escape the function, optimized code should avoid an allocation
+    // on each invocation and re-use the object (need to be comfirmed).
+    value in {};
+
+    return value;
+    // return value.replace(value[0], value[0]);
+}
+
+export function parseString(value: string) {
+    if (value === '' || value.indexOf('\\') === -1) {
+        return detachSlicedString(value);
     }
 
     const valueEnd = value.length;
@@ -112,7 +127,11 @@ export function parseString(value: string) {
         }
     }
 
-    // flatten the result and detach from input srting
+    // This is a hack to flatten the concatenated string and detach its parts from the source strings,
+    // allowing them to be garbage collected.
+    // The JS engine requires a string to be represented as a single sequence of bytes (flattened)
+    // to perform complex operations like `regexp.test()`. The regex effectively does nothing,
+    // but compilers are unaware of this and cannot eliminate the `test()` call, which triggers flattening.
     /^/.test(result);
 
     return result;

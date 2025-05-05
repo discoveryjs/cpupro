@@ -1,5 +1,5 @@
 import { argParsers, offsetOrEnd, readAllArgs, readAllArgsRaw } from './v8log/read-args-utils.js';
-import { parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
+import { detachSlicedString, parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
 import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, Heap, HeapEvent, LogFunction, Meta, ParseResult, Script, SFI, Tick } from './v8log/types.js';
 
 const decoder = new TextDecoder();
@@ -53,6 +53,12 @@ class BucketCodeEntry {
     }
 }
 
+function warn(...args) {
+    if (LOG_WARNINGS) {
+        console.warn(...args.map(detachSlicedString));
+    }
+}
+
 function binarySearchCodeEntryIndex(address: number, entries: BucketCodeEntry[], entryOrNext = false) {
     let lo = 0;
     let hi = entries.length - 1;
@@ -76,11 +82,12 @@ function binarySearchCodeEntryIndex(address: number, entries: BucketCodeEntry[],
     return entryOrNext && lo < entries.length ? lo : -1;
 }
 
+const LOG_WARNINGS = false;
 const CODE_EVENTS = false;
 const BUCKET_SIZE = 14; // number of bits
 const BUCKET_ADDRESS_BASE = 1 << BUCKET_SIZE;
 const EMPTY_ARRAY = [];
-export async function decode(iterator) {
+export async function decode(iterator: AsyncIterableIterator<Uint8Array> | AsyncIterableIterator<string>) {
     const meta: Meta = {};
     const codes: Code[] = [];
     let lastCodeEntry: CodeEntry | null = null;
@@ -178,15 +185,14 @@ export async function decode(iterator) {
             heapEvents[i].tm = tm;
         }
     };
-    const processLine = (buffer: string, sol: number, eol: number) => {
-        if (sol >= eol) {
+    const processLine = (line: string) => {
+        if (line.length === 0) {
             return;
         }
 
-        const line = buffer.slice(sol, eol);
         const opEnd = offsetOrEnd(',', line);
+        const op = line.slice(0, opEnd);
         const argsStart = opEnd + 1;
-        const op = buffer.slice(sol, sol + opEnd);
 
         switch (op) {
             case 'tick': {
@@ -255,8 +261,10 @@ export async function decode(iterator) {
                         break;
                     }
 
-                    nameAndLocation += ',' + args[i];
+                    nameAndLocation += ',' + parseString(args[i]);
                 }
+
+                nameAndLocation = detachSlicedString(nameAndLocation);
 
                 const kind = kindMarker ? parseState(kindMarker) : type === 'JS' ? 'Builtin' : type;
                 let sfi: SFI | undefined;
@@ -355,16 +363,16 @@ export async function decode(iterator) {
                                             return sfi.id;
                                         }
 
-                                        console.warn('No SFI found');
+                                        warn('No SFI found');
                                         return -1;
                                     })
                                 : EMPTY_ARRAY
                         };
                     } else {
-                        console.warn('Not a JavaScript code');
+                        warn('Not a JavaScript code');
                     }
                 } else {
-                    console.warn(`Code with address ${address} is not found`);
+                    warn(`Code with address ${address} is not found`);
                 }
 
                 if (CODE_EVENTS) {
@@ -416,10 +424,10 @@ export async function decode(iterator) {
                 const chunkSize = knownMemoryChunks.get(address);
 
                 if (chunkSize === undefined) {
-                    console.warn(`Unknown memory chunk ${type} @ ${address}`);
+                    warn(`Unknown memory chunk ${type} @ ${address}`);
                 } else if (chunkSize === -1) {
                     // V8 duplicates delete events for some deletions
-                    // console.warn(`Already deleted memory chunk ${type} @ ${address}`);
+                    // warn(`Already deleted memory chunk ${type} @ ${address}`);
                 } else {
                     knownMemoryChunks.set(address, -1);
                     heapEvents.push({
@@ -482,7 +490,7 @@ export async function decode(iterator) {
                     // any new code overlaping with known codes will discard old ones.
                     setCodeEntry(codeEntry.clone(destAddress));
                 } else {
-                    console.warn('No code found');
+                    warn('No code found');
                 }
 
                 if (CODE_EVENTS) {
@@ -503,7 +511,7 @@ export async function decode(iterator) {
                     sfiByAddress.delete(address);
                     sfiByAddress.set(destAddress, sfi);
                 } else {
-                    console.warn('SFI not found, on moving SFI', address, '->', destAddress);
+                    warn('SFI not found, on moving SFI', address, '->', destAddress);
                 }
 
                 if (CODE_EVENTS) {
@@ -629,31 +637,35 @@ export async function decode(iterator) {
     let lineStartOffset = 0;
 
     for await (const chunk of iterator) {
-        const chunkText = tail + decoder.decode(chunk);
+        const chunkText = typeof chunk === 'string' ? chunk : decoder.decode(chunk);
         let eol = -1;
 
         lineStartOffset = 0;
 
         do {
-            eol = chunkText.indexOf('\n', lineStartOffset + 1);
+            eol = chunkText.indexOf('\n', lineStartOffset);
 
             if (eol === -1) {
                 break;
             }
 
-            if (eol === lineStartOffset + 1) {
-                continue;
+            if (tail !== '') {
+                processLine(tail + chunkText.slice(lineStartOffset, eol));
+                tail = '';
+            } else if (lineStartOffset < eol) {
+                processLine(chunkText.slice(lineStartOffset, eol));
             }
 
-            processLine(chunkText, lineStartOffset, eol);
             lineStartOffset = eol + 1;
         } while (true);
 
-        tail = chunkText.slice(lineStartOffset);
+        tail += chunkText.slice(lineStartOffset);
     }
 
     // process last line
-    processLine(tail, lineStartOffset, tail.length);
+    if (tail !== '') {
+        processLine(tail);
+    }
 
     const result: ParseResult = {
         meta,
