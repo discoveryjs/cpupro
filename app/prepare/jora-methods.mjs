@@ -143,14 +143,14 @@ function countSamples(n, samples, timeDeltas, totalTime) {
 
 const methods = {
     hasSource: `
-        (callFrame
+        callFrame
             | $ or @
             | is object and marker('call-frame').object
-            | regexp is string or (script.source is string and (end - start) > 0))
-        or (script
-            | $ or @
-            | is object and marker('script').object
-            | source is string)
+            ? regexp is string or (script.source is string and (end - start) > 0)
+            : (script
+                | $ or @
+                | is object and marker('script').object
+                | source is string and source.size() > 0)
     `,
     order(value) {
         return typeOrder[value] || 100;
