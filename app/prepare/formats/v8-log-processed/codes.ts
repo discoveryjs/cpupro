@@ -50,7 +50,7 @@ export function processFunctionCodes(
             processedCodes[getFunctionIndex(func)].codes.push({
                 tm: code.tm || 0,
                 tier: functionTier(code.kind),
-                size: code.size || -1,
+                size: code.size || 0,
                 positions: codeSource?.positions || '',
                 inlined: codeSource?.inlined || '',
                 fns: codeSource?.fns?.map(getFunctionIndex) || [],
