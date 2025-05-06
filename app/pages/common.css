@@ -95,6 +95,9 @@
 .cpupro-hint-tooltip .view-markdown :is(p, blockquote, ul) {
     margin-top: .5em;
 }
+.cpupro-hint-tooltip .view-markdown code {
+    white-space: nowrap;
+}
 
 .view-badge {
     --discovery-view-badge-color: #bababa33;

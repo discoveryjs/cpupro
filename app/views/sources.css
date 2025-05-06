@@ -26,6 +26,29 @@
     background-color: #68624685;
     color: #b6aa6a;
 }
+.view-call-frame-source .view-source__prelude .missed-data-badge {
+    margin-left: 2ex;
+    font-size: inherit;
+    color: #ab9554;
+    cursor: default;
+}
+.view-call-frame-source .view-source__prelude .missed-data-badge::after {
+    content: '';
+    display: inline-block;
+    width: 13px;
+    aspect-ratio: 1;
+    mask: url('../img/hint.svg') no-repeat center;
+    mask-size: cover;
+    background-color: #ceac48;
+    vertical-align: middle;
+    margin-top: -2px;
+    margin-left: 4px;
+    margin-right: -2px;
+}
+.view-call-frame-source .view-source__prelude .missed-data-badge:hover {
+    background-color: #514d3e8f;
+    box-shadow: 0 0 0 .5px rgb(171, 149, 84, 50%);
+}
 
 .view-source.cpupro-source.unavailable .view-source__source {
     color: #666;
