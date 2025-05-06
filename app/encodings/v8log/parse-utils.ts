@@ -35,25 +35,25 @@ export function kindFromState(state: CodeState) {
 }
 
 // Make a copy of the sliced string to detach from input (parent) string
-export function detachSlicedString(value: string) {
-    if (value === '') {
+const dummyObject = Object.create(null);
+export function detachSlicedString(str: string) {
+    if (str === '') {
         return '';
     }
 
     // That's a hack to detach (make a copy of) the sliced string from its parent (source),
     // so the parent can be GCed.
     // To make a search across object's keys, the string must be internalizated (at least in V8).
-    // Using `in` operator enforces JS engine to make a copy of the string and compute its hash.
-    // Having a hash makes the string fast for further using as a key. Probably, that's not necessary
-    // for most of the strings and another approach should be choosen (like using replace() commented
-    // below). However, basic benchmarking doesn't demonstrated any difference in results,
-    // but with `in` operator approach shows ~10% lower memory footprint after GC on large log loading.
-    // Since the object is not escape the function, optimized code should avoid an allocation
-    // on each invocation and re-use the object (need to be comfirmed).
-    value in {};
+    // Using `in` operator enforces JS engine to internalizate the string.
+    // Probably, the internalization is not necessary for most of the strings and another approach
+    // that just make a copy should be choosen (like commented below), which a bit faster. However,
+    // internalization reduces memory footprint after GC on large log loading.
+    str in dummyObject;
 
-    return value;
-    // return value.replace(value[0], value[0]);
+    return str;
+    // const tmp = str[0] + str.slice(1);
+    // x = tmp.charCodeAt(0);
+    // return tmp;
 }
 
 export function parseString(value: string) {
