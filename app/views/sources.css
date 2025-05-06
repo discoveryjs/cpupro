@@ -116,3 +116,68 @@
     display: inline;
     padding-bottom: 3px;
 }
+
+.view-call-frame-source__deopt_tooltip {
+    padding: 8px;
+    /* padding-left: 20px; */
+    color: var(--discovery-color);
+    font-family: var(--discovery-font-family);
+    font-size: 12px;
+    line-height: 1.6;
+}
+.view-call-frame-source__deopt_tooltip .deopt-path {
+    /* margin-left: -12px; */
+    margin-bottom: 1px;
+    min-width: 550px;
+    contain: inline-size;
+}
+.view-call-frame-source__deopt_tooltip .deopt-path .self {
+    display: inline-block;
+    padding: 0px 5px 0.5px;
+    margin-bottom: 1px;
+    border-radius: 3px;
+    background-color: #68624685;
+    color: #b6aa6a;
+}
+.view-call-frame-source__deopt_tooltip .deopt-path .view-list-item::before {
+    content: '→';
+    padding: 0 .5ex;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    font-size: 11px;
+    color: #888;
+}
+.view-call-frame-source__deopt_tooltip .deopt-path .view-badge {
+    margin: 0;
+}
+.view-call-frame-source__deopt_tooltip > .view-list > .view-list-item {
+    border-left: 2px solid #9f6f6f;
+    padding: 5px 0 0 6px;
+}
+.view-call-frame-source__deopt_tooltip > .view-list > .view-list-item + .view-list-item {
+    margin-top: 4px;
+}
+.view-call-frame-source__deopt_tooltip .view-source {
+    border-radius: 3px 3px 0 0;
+}
+.view-call-frame-source__deopt_tooltip .view-source__lines {
+    background: none;
+}
+.view-call-frame-source__deopt_tooltip .view-source__content {
+    padding: 4px 8px;
+}
+.view-call-frame-source__deopt_tooltip .deopt-message {
+    /* margin-top: 1px; */
+    padding: 2px 4px;
+    /* border-radius: 0 0 3px 3px; */
+    /* background-color: #563333; */
+    color: #c98989;
+}
+.view-call-frame-source__deopt_tooltip .deopt-message .view-badge {
+    display: inline-block;
+    vertical-align: top;
+    margin: 0 1ex 0 -4px;
+    color: inherit;
+}
+.view-call-frame-source__deopt_tooltip .deopt-message .view-badge > .prefix {
+    padding: 3px 6px 5px;
+}

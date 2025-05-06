@@ -13,7 +13,7 @@
     grid-area: caption;
     align-self: center;
     text-align: center;
-    content: 'Call frame / state';
+    content: 'Call frame / State';
     color: #888;
 }
 .view-call-frame-inlined-matrix .call-frame-tree {

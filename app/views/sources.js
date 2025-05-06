@@ -23,6 +23,7 @@ discovery.view.define('script-source', {
                     callFrame: $,
                     codes: []
                 });
+                $callFrameCodesWithRange: $callFrameCodes.[callFrame | start >= 0 and end >= start];
                 $tooltipView: [
                     'text:callFrameCodes.callFrame.name',
                     'html:"<br>"',
@@ -37,7 +38,7 @@ discovery.view.define('script-source', {
                 syntax: "js",
                 content: source.replace(/\\n$/, ""),
                 $callFrameCodes,
-                marks: $callFrameCodes.({
+                marks: $callFrameCodesWithRange.({
                     className: 'function-tag',
                     offset: callFrame.start,
                     content: 'text:tiers',
@@ -49,7 +50,7 @@ discovery.view.define('script-source', {
                                 : tier[].abbr() + ' … ' + tier[-1].abbr()
                         : "ƒn"
                 }),
-                refs: $callFrameCodes.({
+                refs: $callFrameCodesWithRange.({
                     className: 'function',
                     range: [callFrame.start, callFrame.end],
                     href: callFrame.marker('call-frame').href,
@@ -111,14 +112,73 @@ discovery.view.define('call-frame-source', {
 
                 $inlinedPoints: $callFrameCodes.codes.inlinedMatrix();
                 $inlinedMarks: $inlinedPoints
-                    |? .($entry: $; $min; $max; offset - $sourceSliceStart | is number ? {
-                        offset: $,
+                    |? .({
+                        offset: offset - $sourceSliceStart,
                         prefix: 'Inline',
-                        content: { view: 'text', text: $min != $max ? $min + '…' + $max: $min},
+                        content: { view: 'text', text: min != max ? min + '…' + max : min},
                         className: 'def',
-                        $entry,
-                        tooltip: 'call-frame-inlined-matrix:entry'
+                        entry: $,
+                        tooltip: 'call-frame-inlined-matrix:{ ...entry, mergeSnapshots: entry.snapshots.size() > 10 }'
                     });
+
+                $deoptTooltip: {
+                    className: 'view-call-frame-source__deopt_tooltip',
+                    content: {
+                        view: 'list',
+                        data: 'deopts',
+                        item: [
+                            { view: 'block', className: 'deopt-path', content: [
+                                { view: 'block', className: 'self', content: 'text:path[].callFrame.name' },
+                                { view: 'inline-list', data: 'path[1:]', whenData: true, item: [
+                                    'call-frame-badge',
+                                    {
+                                        view: 'badge',
+                                        className: 'source-loc',
+                                        data: \`
+                                            offset.offsetToLineColumn(parent.callFrame)
+                                                | is object ? \\\`:\${line}:\${column}\\\`
+                                        \`,
+                                        whenData: true,
+                                        content: 'html:replace(/:/, \`<span class=\"delim\">:</span>\`)'
+                                    }
+                                ] }
+                            ] },
+                            'call-frame-source-point:{ ...path[-1], limit: 32 }',
+                            { view: 'block', className: 'deopt-message', content: [
+                                // 'badge{ text: deopt.bailoutType }',
+                                'text:deopt.reason + " (" + deopt.bailoutType + ")"'
+                            ] }
+                        ]
+                    }
+                };
+                $deoptMarks: $callFrameCodes.codes.(deopt and {
+                    $callFrame;
+                    $deopt;
+                    $inlined: inlined.parseInlined(fns);
+                    $path: $deopt.inliningId
+                        | $ != -1 ? $ + ..(is number ? $inlined[$].parent) : []
+                        | reverse().($inlined[$] | { callFrame, offset })
+                        | inlinedPath($callFrame, $deopt.scriptOffset)
+                        | $list: $; .({ ..., marks: $ = $list[-1]
+                            ? [{ offset, className: 'error', content: 'text:"deopt"' }]
+                            : [{ offset, className: 'def', content: 'text:"inline"' }]
+                        });
+
+                    index: $callFrameCodes.codes.indexOf($),
+                    offset: $path[].offset,
+                    $deopt,
+                    $path
+                })
+                .group(=> offset)
+                .({
+                    offset: key - $sourceSliceStart,
+                    className: 'error',
+                    prefix: 'Deopt',
+                    content: { view: 'text', data: 'deopts.size()', whenData: '$ > 1' },
+                    // content: { view: 'block', className: 'view-call-frame-source__deopt_tooltip', content: $deoptTooltip.content },
+                    deopts: value,
+                    tooltip: $deoptTooltip
+                });
 
                 $sampleMarkContent: {
                     view: 'update-on-timings-change',
@@ -199,6 +259,7 @@ discovery.view.define('call-frame-source', {
                     $codePointMarks,
                     // codePointMarksText: $codePoints
                     //     |? .($ - $sourceSliceStart | is number ? { offset: $, abs: $ + $sourceSliceStart, kind: 'none', content: 'text:"O: " + abs' }),
+                    $deoptMarks,
                     $inlinedMarks,
                     $sampleMarks,
                     $nestedScriptCodes.({

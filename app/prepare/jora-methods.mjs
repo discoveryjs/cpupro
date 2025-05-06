@@ -276,7 +276,7 @@ const methods = {
 
         return result;
     },
-    parseInlined(value) {
+    parseInlined(value, fns) {
         if (typeof value !== 'string' || value === '') {
             return [];
         }
@@ -288,24 +288,29 @@ const methods = {
             const fn = parsed[i];
             const offset = parsed[i + 1];
             const parent = parsed[i + 2];
-
-            result.push({
+            const entry = {
                 index: result.length,
                 fn,
                 offset,
                 parent: parent !== -1 ? parent : undefined
-            });
+            };
+
+            result.push(entry);
+
+            if (Array.isArray(fns)) {
+                entry.callFrame = fns[fn] || null;
+            }
         }
 
         return result;
     },
     inlinedPath(path, callFrame, offset) {
-        let cursor = { callFrame, offset: -1 };
+        let cursor = { callFrame, offset: -1, parent: null };
         const result = [cursor];
 
         for (const { callFrame, offset } of path) {
             cursor.offset = offset;
-            cursor = { callFrame, offset: -1 };
+            cursor = { callFrame, offset: -1, parent: cursor };
             result.push(cursor);
         }
 
@@ -313,7 +318,7 @@ const methods = {
 
         return result;
     },
-    inlinedMatrix(codes) {
+    inlinedMatrix(codes = []) {
         const recordByRef = new Map();
         const roots = [];
         const result = [];
@@ -361,36 +366,27 @@ const methods = {
             });
 
             const snapshots = [];
-            let prevSnapshot = null;
             let min = linear.length;
             let max = 0;
 
             for (let i = 0; i < codes.length; i++) {
                 const presence = Array.from(linear, record => record.codePresence[i]);
                 const hash = presence.join('');
+                const count = this.method('sum', presence);
 
-                if (prevSnapshot === null || prevSnapshot.hash !== hash) {
-                    const count = this.method('sum', presence);
-
-                    if (count !== 0 && count < min) {
-                        min = count;
-                    }
-
-                    if (count > max) {
-                        max = count;
-                    }
-
-                    snapshots.push(prevSnapshot = {
-                        hash,
-                        start: i,
-                        end: i,
-                        presence,
-                        codes: []
-                    });
+                if (count !== 0 && count < min) {
+                    min = count;
                 }
 
-                prevSnapshot.end = i;
-                prevSnapshot.codes.push(codes[i]);
+                if (count > max) {
+                    max = count;
+                }
+
+                snapshots.push({
+                    hash,
+                    presence,
+                    code: codes[i]
+                });
             }
 
             result.push({
