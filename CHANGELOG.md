@@ -1,10 +1,17 @@
-## next
+## 0.7.0 (2025-05-08)
 
-- Viewer
-    - Implemented raw V8 log format support
-    - Added code tiers statistics on main page if available
-    - Added hotness icon for call frames with codes
-    - Added a function code tier intervals indicator on the timeline in the call frame and module pages
+- Added raw V8 log format support
+- Added gzip and deflate compressed profile support
+- Added code state histogram on the entry page
+- Added heap size histogram on the entry page
+- Added code tier intervals indicator on the timeline in call frame and module pages
+- Added source code display on module and call frame pages, annotated with self and nested time badges, inline and deopt badges
+- Added code states table with tier, inline, and deopt details
+- Enhanced All Call Frames table with additional columns (source, code states, deopt count), expandable for inline code and code states
+- Added hotness indicator in most UI call frame listings
+- Added expanded state persistence for expandable blocks during the session
+- Fixed edge cases in call stack processing for precise sample locations
+- Many other improvements and fixes
 
 ## 0.6.0 (2025-01-14)
 
