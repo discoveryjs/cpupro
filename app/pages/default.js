@@ -436,7 +436,7 @@ const categoriesTimeline = {
                                         {
                                             view: 'block',
                                             className: 'details-section-title',
-                                            content: 'text:"Code tiers"'
+                                            content: 'text:"Code states"'
                                         },
                                         {
                                             view: 'list',
@@ -553,7 +553,7 @@ const categoriesTimeline = {
                 {
                     view: 'block',
                     className: 'expand-label',
-                    content: 'text:"Code tiers"'
+                    content: 'text:"Code states"'
                 },
                 {
                     view: 'switch',
