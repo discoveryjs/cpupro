@@ -40,6 +40,7 @@ export type V8LogCode = {
     tm?: number;
     source?: V8LogCodeSource;
     deopt?: V8LogDeopt;
+    ic?: V8LogICEntry[];
 }
 
 export type V8LogCodeSource = {
@@ -58,6 +59,18 @@ export type V8LogDeopt = {
     posText: string;
     reason: string;
     bailoutType: string;
+}
+
+export type V8LogICEntry = {
+    tm: number;
+    type: string;
+    offset: number;
+    oldState: string;
+    newState: string;
+    map: string;
+    key: string;
+    modifier: string;
+    slowReason: string;
 }
 
 export type V8LogFunction = {

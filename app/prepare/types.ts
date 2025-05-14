@@ -78,6 +78,7 @@ export type V8CpuProfileFunctionCode = {
     inlined: string;
     fns: number[];
     deopt: V8CpuProfileDeopt | undefined;
+    ic: V8CpuProfileICEntry[] | undefined;
 }
 export type V8CpuProfileDeopt = {
     tm: number;
@@ -86,6 +87,18 @@ export type V8CpuProfileDeopt = {
     posText: string;
     reason: string;
     bailoutType: string;
+}
+export type V8CpuProfileICEntry = {
+    tm: number;
+    type: string;
+    inliningId: number;
+    scriptOffset: number;
+    oldState: string;
+    newState: string;
+    map: string;
+    key: string;
+    modifier: string;
+    slowReason: string;
 }
 export type V8HeapEvent = {
     tm: number;

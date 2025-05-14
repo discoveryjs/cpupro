@@ -1,5 +1,7 @@
-import type { V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../../types.js';
-import type { NumericArray, V8LogCode, V8LogProfile } from './types.js';
+import type { V8CpuProfileFunctionCodes, V8CpuProfileICEntry, V8FunctionCodeType } from '../../types.js';
+import { FEATURE_INLINE_CACHE } from '../../const.js';
+import { findPositionsCodeIndex } from './positions.js';
+import type { CodePositions, NumericArray, V8LogCode, V8LogProfile } from './types.js';
 
 export function functionTier(kind: V8LogCode['kind']): V8FunctionCodeType {
     switch (kind) {
@@ -31,7 +33,8 @@ export function functionTier(kind: V8LogCode['kind']): V8FunctionCodeType {
 export function processFunctionCodes(
     functions: V8LogProfile['functions'],
     codes: V8LogProfile['code'],
-    functionsIndexMap: NumericArray | null = null
+    functionsIndexMap: NumericArray | null = null,
+    positionsByCode: (CodePositions | null)[]
 ): V8CpuProfileFunctionCodes[] {
     const processedCodes: V8CpuProfileFunctionCodes[] = Array.from(new Set(functionsIndexMap), (_, index) => ({
         function: index,
@@ -41,11 +44,13 @@ export function processFunctionCodes(
         ? (func: number) => functionsIndexMap[func]
         : (func: number) => func;
 
-    for (const code of codes) {
+    for (let i = 0; i < codes.length; i++) {
+        const code = codes[i];
         const func = code.func;
 
         if (typeof func === 'number') {
             const codeSource = code.source || null;
+            const codePositions = positionsByCode[i];
 
             processedCodes[getFunctionIndex(func)].codes.push({
                 tm: code.tm || 0,
@@ -54,7 +59,41 @@ export function processFunctionCodes(
                 positions: codeSource?.positions || '',
                 inlined: codeSource?.inlined || '',
                 fns: codeSource?.fns?.map(getFunctionIndex) || [],
-                deopt: code.deopt
+                deopt: code.deopt,
+                ic: FEATURE_INLINE_CACHE && Array.isArray(code.ic)
+                    ? code.ic.map((entry): V8CpuProfileICEntry => {
+                        const offset = entry.offset;
+                        let scriptOffset = codeSource?.start ?? -1;
+                        let inliningId = -1;
+
+                        if (codePositions !== null) {
+                            const codePositionsIndex = findPositionsCodeIndex(
+                                codePositions.positions,
+                                // Machine code functions on the stack
+                                // that are not currently executing store pc
+                                // on the next instruction after the callee is called,
+                                // so subtract one from the position
+                                offset - (i > 0 && codePositions.pcOnNextInstruction ? 1 : 0)
+                            );
+
+                            inliningId = codePositions.positions[codePositionsIndex + 2];
+                            scriptOffset = codePositions.positions[codePositionsIndex + 1];
+                        }
+
+                        return {
+                            tm: entry.tm,
+                            type: entry.type,
+                            inliningId,
+                            scriptOffset,
+                            oldState: entry.oldState,
+                            newState: entry.newState,
+                            map: entry.map,
+                            key: entry.key,
+                            modifier: entry.modifier,
+                            slowReason: entry.slowReason
+                        };
+                    })
+                    : undefined
             });
         }
     }

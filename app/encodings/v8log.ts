@@ -1,9 +1,12 @@
 import { argParsers, offsetOrEnd, readAllArgs, readAllArgsRaw } from './v8log/read-args-utils.js';
-import { detachSlicedString, parseAddress, parseStack, parseState, parseString } from './v8log/parse-utils.js';
-import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, Heap, HeapEvent, LogFunction, Meta, ParseResult, Script, SFI, Tick } from './v8log/types.js';
+import { detachSlicedString, parseAddress, parseStack, parseCodeState, parseString, parseICState } from './v8log/parse-utils.js';
+import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, Heap, HeapEvent, ICEntry, LogFunction, Meta, ParseResult, Script, SFI, Tick } from './v8log/types.js';
 
 const decoder = new TextDecoder();
 
+const icEntryParsers = argParsers(/* pc */ parseString, /* tm */ parseInt, /* line */ parseInt,
+    /* colum */ parseInt, /* old_state */ parseString, /* new_state */ parseString,
+    /* mapId */ parseString, /* key */ parseString, /* modifier */ parseString, /* slow_reason*/ parseString);
 const parsers = {
     'profiler': argParsers(parseString, parseInt),
     'heap-capacity': argParsers(parseInt),
@@ -19,7 +22,14 @@ const parsers = {
     'code-delete': argParsers(parseAddress),
     'code-source-info': argParsers(parseAddress, parseInt, parseInt, parseInt, parseString, parseString, parseString),
     'code-disassemble': argParsers(parseAddress, parseString, parseString),
-    'tick': argParsers(parseAddress, parseInt, parseInt, parseAddress, parseInt)
+    'tick': argParsers(parseAddress, parseInt, parseInt, parseAddress, parseInt),
+    'LoadIC': icEntryParsers,
+    'StoreIC': icEntryParsers,
+    'KeyedLoadIC': icEntryParsers,
+    'KeyedStoreIC': icEntryParsers,
+    'LoadGlobalIC': icEntryParsers,
+    'StoreGlobalIC': icEntryParsers,
+    'StoreInArrayLiteralIC': icEntryParsers
 } as const;
 
 class CodeEntry {
@@ -34,6 +44,9 @@ class CodeEntry {
         this.size = size;
         this.end = start + size - 1;
         this.code = code;
+    }
+    contains(address: number) {
+        return address >= this.start && address <= this.end;
     }
     clone(newAddress: number) {
         return new CodeEntry(this.id, newAddress, this.size, this.code);
@@ -114,6 +127,7 @@ export async function decode(iterator: AsyncIterableIterator<Uint8Array> | Async
     const heap: Heap = { events: heapEvents };
     const ignoredOps = new Set<string>();
     const ignoredEntries: unknown[] = [];
+    const unattributedICEntries: ICEntry[] = [];
     const setCodeEntry = function(codeEntry: CodeEntry) {
         let { start: address, size } = codeEntry;
 
@@ -277,7 +291,7 @@ export async function decode(iterator: AsyncIterableIterator<Uint8Array> | Async
 
                 nameAndLocation = detachSlicedString(nameAndLocation);
 
-                const kind = kindMarker ? parseState(kindMarker) : type === 'JS' ? 'Builtin' : type;
+                const kind = kindMarker ? parseCodeState(kindMarker) : type === 'JS' ? 'Builtin' : type;
                 let sfi: SFI | undefined;
 
                 if (sfiAddress !== undefined) {
@@ -448,6 +462,61 @@ export async function decode(iterator: AsyncIterableIterator<Uint8Array> | Async
                         address,
                         size: chunkSize
                     });
+                }
+
+                break;
+            }
+
+            case 'LoadIC':
+            case 'StoreIC':
+            case 'KeyedLoadIC':
+            case 'KeyedStoreIC':
+            case 'LoadGlobalIC':
+            case 'StoreGlobalIC':
+            case 'StoreInArrayLiteralIC': {
+                const [
+                    address,
+                    tm,
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    lineNumber,
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    columnNumber,
+                    oldState,
+                    newState,
+                    mapId,
+                    key,
+                    modifier,
+                    slowReason
+                ] = readAllArgs(parsers[op], line, argsStart);
+                const pc = parseAddress(address);
+                const codeEntry = lastCodeEntry?.contains(pc)
+                    ? lastCodeEntry
+                    : findCodeEntryByAddress(pc);
+                const icEntry: ICEntry = {
+                    tm,
+                    type: op,
+                    offset: codeEntry !== null ? pc - codeEntry.start : -1,
+                    oldState: parseICState(oldState),
+                    newState: parseICState(newState),
+                    map: mapId,
+                    key,
+                    modifier,
+                    slowReason
+                };
+
+                if (codeEntry !== null) {
+                    if (codeEntry.code.type === 'JS') {
+                        if (Array.isArray(codeEntry.code.ic)) {
+                            codeEntry.code.ic.push(icEntry);
+                        } else {
+                            codeEntry.code.ic = [icEntry];
+                        }
+                    } else {
+                        console.warn('Code is not JS kind', { codeEntry, icEntry });
+                    }
+                } else {
+                    unattributedICEntries.push(icEntry);
+                    console.warn(`No code ${address} found for ${op}`);
                 }
 
                 break;
@@ -704,6 +773,7 @@ export async function decode(iterator: AsyncIterableIterator<Uint8Array> | Async
         functions,
         ticks,
         scripts: Array.from({ length: maxScriptId + 1 }, (_, idx) => scriptById.get(idx) || null),
+        unattributedICEntries,
         heap,
 
         // codeEvents,

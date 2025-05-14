@@ -86,9 +86,9 @@ function collectCallFramesFromNodes(nodes: CallNode<number>[], callFrames: CallF
 export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
     const scripts = processScripts(v8log.scripts);
     const { functions, functionsIndexMap } = processScriptFunctions(v8log.functions, v8log.code, scripts);
-    const functionCodes = processFunctionCodes(v8log.functions, v8log.code, functionsIndexMap);
     const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(functions, v8log.code, functionsIndexMap);
     const positionsByCode = processCallFramePositions(v8log.code, v8log.functions, callFrameIndexByCode);
+    const functionCodes = processFunctionCodes(v8log.functions, v8log.code, functionsIndexMap, positionsByCode);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
         v8log.ticks,
         callFrames,

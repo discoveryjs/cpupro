@@ -221,6 +221,11 @@ discovery.view.define('call-frame-codes-table', {
                         }
                     },
                     {
+                        header: 'Inline cache',
+                        colWhen: 'code.ic',
+                        data: 'code.ic'
+                    },
+                    {
                         header: 'Deoptimisations',
                         className: 'deopt',
                         contentWhen: 'code.deopt',

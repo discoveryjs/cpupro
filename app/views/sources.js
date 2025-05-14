@@ -151,34 +151,69 @@ discovery.view.define('call-frame-source', {
                         ]
                     }
                 };
-                $deoptMarks: $callFrameCodes.codes.(deopt and {
-                    $callFrame;
-                    $deopt;
-                    $inlined: inlined.parseInlined(fns);
-                    $path: $deopt.inliningId
-                        | $ != -1 ? $ + ..(is number ? $inlined[$].parent) : []
-                        | reverse().($inlined[$] | { callFrame, offset })
-                        | inlinedPath($callFrame, $deopt.scriptOffset)
-                        | $list: $; .({ ..., marks: $ = $list[-1]
-                            ? [{ offset, className: 'error', content: 'text:"deopt"' }]
-                            : [{ offset, className: 'def', content: 'text:"inline"' }]
-                        });
+                $deoptMarks: $callFrameCodes.codes
+                    .(deopt and {
+                        $callFrame;
+                        $deopt;
+                        $inlined: inlined.parseInlined(fns);
+                        $path: $deopt.inliningId
+                            | $ != -1 ? $ + ..(is number ? $inlined[$].parent) : []
+                            | reverse().($inlined[$] | { callFrame, offset })
+                            | inlinedPath($callFrame, $deopt.scriptOffset)
+                            | $last: $[-1]; .({ ..., marks: $ = $last
+                                ? [{ offset, className: 'error', content: 'text:"deopt"' }]
+                                : [{ offset, className: 'def', content: 'text:"inline"' }]
+                            });
 
-                    index: $callFrameCodes.codes.indexOf($),
-                    offset: $path[].offset,
-                    $deopt,
-                    $path
-                })
-                .group(=> offset)
-                .({
-                    offset: key - $sourceSliceStart,
-                    className: 'error',
-                    prefix: 'Deopt',
-                    content: { view: 'text', data: 'deopts.size()', whenData: '$ > 1' },
-                    // content: { view: 'block', className: 'view-call-frame-source__deopt_tooltip', content: $deoptTooltip.content },
-                    deopts: value,
-                    tooltip: $deoptTooltip
-                });
+                        index: $callFrameCodes.codes.indexOf($),
+                        offset: $path[].offset,
+                        $deopt,
+                        $path
+                    })
+                    .group(=> offset)
+                    .({
+                        offset: key - $sourceSliceStart,
+                        className: 'error',
+                        prefix: 'Deopt',
+                        content: { view: 'text', data: 'deopts.size()', whenData: '$ > 1' },
+                        // content: { view: 'block', className: 'view-call-frame-source__deopt_tooltip', content: $deoptTooltip.content },
+                        deopts: value,
+                        tooltip: $deoptTooltip
+                    });
+
+                $icMarks: $callFrameCodes.codes
+                    .(ic and (
+                        $callFrame;
+                        $ic;
+                        $inlined: inlined.parseInlined(fns);
+
+                        $ic.group(=>inliningId + '-' + scriptOffset).(
+                            $scriptOffset: value[].scriptOffset;
+                            $path: value[].inliningId
+                                | $ != -1 ? $ + ..(is number ? $inlined[$].parent) : []
+                                | reverse().($inlined[$] | { callFrame, offset })
+                                | inlinedPath($callFrame, $scriptOffset)
+                                | $last: $[-1]; .({ ..., marks: $ = $last
+                                    ? [{ offset, className: 'error', content: 'text:"IC"' }]
+                                    : [{ offset, className: 'def', content: 'text:"inline"' }]
+                            });
+
+                            value.({
+                                entry: $,
+                                offset: $path[].offset,
+                                $path
+                            })
+                        )
+                    ))
+                    .group(=> offset)
+                    .({
+                        offset: key - $sourceSliceStart,
+                        className: 'global-ref',
+                        prefix: 'IC',
+                        content: { view: 'text', data: 'ic.size()' },
+                        ic: value,
+                        tooltip: 'table:ic.entry'
+                    });
 
                 $sampleMarkContent: {
                     view: 'update-on-timings-change',
@@ -260,6 +295,7 @@ discovery.view.define('call-frame-source', {
                     // codePointMarksText: $codePoints
                     //     |? .($ - $sourceSliceStart | is number ? { offset: $, abs: $ + $sourceSliceStart, kind: 'none', content: 'text:"O: " + abs' }),
                     $deoptMarks,
+                    $icMarks,
                     $inlinedMarks,
                     $sampleMarks,
                     $nestedScriptCodes.({

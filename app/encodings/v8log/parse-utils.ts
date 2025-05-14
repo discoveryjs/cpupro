@@ -1,9 +1,9 @@
-import { CodeState } from './types.js';
+import { CodeState, ICState } from './types.js';
 
 // const useBigInt = false as const;
 export const parseAddress = parseInt; // useBigInt ? BigInt : parseInt;
 
-export function parseState(state: string) {
+export function parseCodeState(state: string) {
     switch (state) {
         case '':
             return CodeState.COMPILED;
@@ -17,9 +17,24 @@ export function parseState(state: string) {
         case '*':
         case '*\'': // context specialized
             return CodeState.TURBOFAN;
+        default:
+            return CodeState.UNKNOWN;
+    }
+}
+
+export function parseICState(state: string) {
+    switch (state) {
+        case 'X': return ICState.NO_FEEDBACK;
+        case '0': return ICState.UNINITIALIZED;
+        case '1': return ICState.MONOMORPHIC;
+        case '^': return ICState.RECOMPUTE_HANDLER;
+        case 'P': return ICState.POLYMORPHIC;
+        case 'N': return ICState.MEGAMORPHIC;
+        case 'D': return ICState.MEGADOM;
+        case 'G': return ICState.GENERIC;
+        default:  return ICState.UNKNOWN;
     }
 
-    throw new Error(`Unknown code state: ${state}`);
 }
 
 export function kindFromState(state: CodeState) {

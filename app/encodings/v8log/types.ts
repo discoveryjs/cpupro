@@ -4,7 +4,19 @@ export enum CodeState {
     IGNITION = 'Unopt',
     SPARKPLUG = 'Sparkplug',
     MAGLEV = 'Maglev',
-    TURBOFAN = 'Opt'
+    TURBOFAN = 'Opt',
+    UNKNOWN = 'Unknown'
+}
+export enum ICState {
+    NO_FEEDBACK = 'NoFeedback',
+    UNINITIALIZED = 'Uninitialized',
+    MONOMORPHIC = 'Monomorphic',
+    POLYMORPHIC = 'Polymorphic',
+    MEGAMORPHIC = 'Megamorphic',
+    MEGADOM = 'Megadom',
+    RECOMPUTE_HANDLER = 'RecomputeHandler',
+    GENERIC = 'Generic',
+    UNKNOWN = 'Unknown'
 }
 
 export type ParseResult = {
@@ -13,6 +25,7 @@ export type ParseResult = {
     functions: LogFunction[];
     ticks: Tick[];
     scripts: (Script | null)[];
+    unattributedICEntries: ICEntry[];
     heap: Heap;
 
     ignoredOps?: string[];
@@ -60,6 +73,7 @@ export type CodeJavaScript = {
         fns: number[];
     };
     deopt?: CodeDeopt;
+    ic?: ICEntry[];
 }
 export type Code =
     | CodeSharedLib
@@ -87,6 +101,18 @@ export type Script = {
     id: number;
     url: string;
     source: string;
+}
+
+export type ICEntry = {
+    tm: number;
+    type: string;
+    offset: number;
+    oldState: string;
+    newState: string;
+    map: string;
+    key: string;
+    modifier: string;
+    slowReason: string;
 }
 
 export type Heap = {
