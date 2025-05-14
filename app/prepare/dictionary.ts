@@ -134,10 +134,10 @@ export class Dictionary {
         scriptsMap: IProfileScriptsMap
     ) {
         const functionName = inputCallFrame.functionName || '';
-        const lineNumber = normalizeLoc(inputCallFrame.lineNumber);
-        const columnNumber = normalizeLoc(inputCallFrame.columnNumber);
         const url = inputCallFrame.url || null;
         const script = scriptFromScriptId(inputCallFrame.scriptId, url, scriptsMap);
+        const lineNumber = script !== null ? normalizeLoc(inputCallFrame.lineNumber) : -1;
+        const columnNumber = script !== null ? normalizeLoc(inputCallFrame.columnNumber) : -1;
 
         // resolve a callFrame through a chain of maps
         let byFunctionNameMap = this.#callFramesByScript.get(script);
