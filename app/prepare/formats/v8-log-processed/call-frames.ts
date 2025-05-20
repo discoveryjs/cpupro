@@ -158,7 +158,7 @@ export function createVmStateCallFrames(callFrames: CallFrame[]) {
 
         if (name !== 'js') {
             // https://github.com/v8/v8/blob/2be84efd933f6e1e29b0c508a1035ed7d13d7127/src/profiler/symbolizer.cc#L34
-            callFrameIndexByVmState[i] = name == 'other' || name === 'external' || name === 'logging'
+            callFrameIndexByVmState[i] = name == 'other' || name === 'external'
                 ? programCallFrameIndex
                 : callFrames.push(createCallFrame(`(${name})`)) - 1;
         }

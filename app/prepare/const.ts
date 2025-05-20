@@ -13,6 +13,7 @@ export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
     ['(program)', 'program'],
     ['(garbage collector)', 'gc'],
     ['(idle)', 'idle'],
+    ['(logging)', 'logging'],
     ['(no samples)', 'no-samples'],
     ['(parser)', 'parser'],
     ['(bytecode compiler)', 'bytecode-compiler'],
@@ -24,6 +25,7 @@ export const moduleTypeByWellKnownName = new Map<WellKnownName, ModuleType>([
     ['(program)', 'program'],
     ['(garbage collector)', 'gc'],
     ['(idle)', 'idle'],
+    ['(logging)', 'logging'],
     ['(no samples)', 'unknown'],
     ['(parser)', 'compilation'],
     ['(bytecode compiler)', 'compilation'],
@@ -45,6 +47,7 @@ export const categories: Exclude<PackageType, 'webpack/runtime'>[] = [
     'compilation',
     'blocking',
     'root',
+    'logging',
     'idle',
     'unknown'
 ] as const;
@@ -173,6 +176,7 @@ export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeTyp
     'compilation': '#fc9a9aa0',
     'blocking': '#f2a376a0',
     'root': '#444444a0',
+    'logging': '#c8c8c8a0',
     'idle': '#888888a0',
     'unknown': '#888888a0',
 

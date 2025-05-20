@@ -1,3 +1,7 @@
+## next
+
+- Added `logging` category
+
 ## 0.7.0 (2025-05-08)
 
 - Added raw V8 log format support

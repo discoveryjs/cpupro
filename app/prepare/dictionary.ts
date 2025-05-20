@@ -365,6 +365,7 @@ export class Dictionary {
             case 'idle':
             case 'internals':
             case 'compilation':
+            case 'logging':
             case 'blocking':
                 ref = moduleType;
                 type = moduleType;
