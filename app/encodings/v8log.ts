@@ -271,7 +271,7 @@ export async function decode(iterator: AsyncIterableIterator<Uint8Array> | Async
                 const timestamp = parseInt(args[2]);
                 const address = parseAddress(args[3]);
                 const size = parseAddress(args[4]);
-                let nameAndLocation = args[5];
+                let nameAndLocation = parseString(args[5]);
                 let sfiAddress: string | undefined = undefined;
                 let kindMarker = '';
 
