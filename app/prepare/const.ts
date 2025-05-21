@@ -90,8 +90,9 @@ export const knownRegistry: Record<string, PackageProvider> = {
         { registry: 'denoland', pattern: 'x/[specifier]' }
     ) },
     'https://esm.sh': { cdn: 'esmsh', endpoints: packageRegistryEndpoints(
-        { registry: 'github', pattern: 'v\\d+/gh/[pkg][version][path]' },
-        { registry: 'npm', pattern: 'v\\d+/[specifier]' }
+        { registry: 'github', pattern: '(v\\d+/)?gh/[pkg][version][path]' },
+        { registry: 'jsr', pattern: 'jsr/[specifier]' },
+        { registry: 'npm', pattern: '(v\\d+/)?[specifier]' }
     ) },
     'https://cdn.jsdelivr.net': { cdn: 'jsdelivr', endpoints: packageRegistryEndpoints(
         { registry: 'npm', pattern: 'npm/[specifier]' },
