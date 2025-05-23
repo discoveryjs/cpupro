@@ -75,11 +75,11 @@ export const callFramesCol = (data, moduleCol = false) => ({
     ]
 });
 
-export function sessionExpandState(name, defaultValue = false) {
+export function sessionExpandState(name, defaultValue = false, cond) {
     const fullname = `cpupro-${name}`;
 
     return {
-        expanded: `="getSessionSetting".callAction(${JSON.stringify(fullname)}, ${defaultValue})`,
+        expanded: `=${cond ? `(${cond}).bool() and ` : ''}"getSessionSetting".callAction(${JSON.stringify(fullname)}, ${defaultValue})`,
         onToggle: `==>"setSessionSetting".callAction(${JSON.stringify(fullname)}, $)`
     };
 }

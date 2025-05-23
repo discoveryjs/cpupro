@@ -547,8 +547,9 @@ const categoriesTimeline = {
         {
             view: 'expand',
             when: '#.currentProfile.type != "memory"',
-            ...sessionExpandState('default-timelines-code-tiers', false),
+            ...sessionExpandState('default-timelines-code-tiers', false, '$'),
             data: 'functionCodes',
+            className: '=no $ ? "unavailable"',
             header: [
                 {
                     view: 'block',
@@ -598,16 +599,16 @@ const categoriesTimeline = {
                     { content: {
                         view: 'block',
                         className: 'data-unavailable',
-                        content: 'md:"The profile does not contain the necessary data. Use [V8 log](https://v8.dev/docs/profile) preprocessed with [--preprocess](https://v8.dev/docs/profile#web-ui-for---prof) format to enable the feature."'
+                        content: 'md:"The profile does not contain the necessary data. Use [V8 log](https://v8.dev/docs/profile) (raw or [preprocessed](https://v8.dev/docs/profile#web-ui-for---prof)) to enable the feature."'
                     } }
                 ]
             }
         },
         {
             view: 'expand',
-            ...sessionExpandState('default-timelines-heap', false),
+            ...sessionExpandState('default-timelines-heap', false, '$'),
             data: 'heap',
-            whenData: true,
+            className: '=no $ ? "unavailable"',
             header: [
                 {
                     view: 'block',
@@ -670,7 +671,7 @@ const categoriesTimeline = {
                     { content: {
                         view: 'block',
                         className: 'data-unavailable',
-                        content: 'md:"The profile does not contain the necessary data."'
+                        content: 'md:"The profile does not contain the necessary data. Use [V8 log](https://v8.dev/docs/profile) (raw) to enable the feature."'
                     } }
                 ]
             }

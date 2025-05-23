@@ -169,6 +169,9 @@
     min-width: 120px;
     padding-right: 8px;
 }
+.page-default .view-expand.unavailable > .header .expand-label {
+    min-width: 0;
+}
 .page-default .view-expand.expanded > .header .labeled-value-groups {
     /* display: none; */
     opacity: 0;
