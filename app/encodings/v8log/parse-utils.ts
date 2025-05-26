@@ -188,8 +188,10 @@ export function parseStack(
                 break;
 
             case 111: // o
-                // overflow frame – just ignore
-                // console.warn(`Dropping unknown tick frame: ${frame}`);
+                // "overflow" marker, means that profiler skipped some samples
+                // because of sample buffer overflow;
+                // just ignore marker for now
+                // console.warn(`Samples skipped`);
                 break;
 
             default:
