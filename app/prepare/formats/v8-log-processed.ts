@@ -20,7 +20,6 @@ import { processTicks } from './v8-log-processed/ticks.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
 import { createCallFrames } from './v8-log-processed/call-frames.js';
 import { processCallFramePositions } from './v8-log-processed/positions.js';
-import { processScripts } from './v8-log-processed/scripts.js';
 import { processFunctionCodes } from './v8-log-processed/codes.js';
 
 export function isV8LogProfile(data: unknown): data is V8LogProfile {
@@ -84,9 +83,8 @@ function collectCallFramesFromNodes(nodes: CallNode<number>[], callFrames: CallF
 }
 
 export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
-    const scripts = processScripts(v8log.scripts);
-    const { functions, functionsIndexMap } = processScriptFunctions(v8log.functions, v8log.code, scripts);
-    const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(functions, v8log.code, functionsIndexMap);
+    const { functions, functionsIndexMap, scripts } = processScriptFunctions(v8log.functions, v8log.code, v8log.scripts);
+    const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(v8log.code, functions, functionsIndexMap);
     const positionsByCode = processCallFramePositions(v8log.code, v8log.functions, callFrameIndexByCode);
     const functionCodes = processFunctionCodes(v8log.functions, v8log.code, functionsIndexMap, positionsByCode);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(

@@ -1,5 +1,6 @@
 import type { V8LogProfile, V8LogScript, V8LogScripts } from './types.js';
 import type { V8CpuProfileFunction } from '../../types.js';
+import { processScripts } from './scripts.js';
 
 export type ParseJsNameResult = {
     functionName: string;
@@ -79,17 +80,33 @@ export function processScriptFunctions(
     scripts: V8LogScripts
 ) {
     const missedScriptsByUrl = new Map<string, V8LogScript>();
-    const getScriptByUrl = (scriptUrl: string) => {
+    const getScriptByUrl = (scriptUrl: string, scriptId: number | undefined) => {
+        if (!scriptUrl || typeof scriptId !== 'number' || scriptId === 0) {
+            return null;
+        }
+
         let script = missedScriptsByUrl.get(scriptUrl);
 
         if (script === undefined) {
-            script = {
-                id: scripts.length,
-                url: scriptUrl,
-                source: ''
-            };
+            const id = scriptId;
 
-            scripts.push(script);
+            if (scripts[id]) {
+                script = scripts[id];
+            } else {
+                script = {
+                    id,
+                    url: scriptUrl,
+                    source: ''
+                };
+
+                if (scripts.length <= id) {
+                    scripts.push(...Array.from({ length: id - scripts.length + 1 }, () => null));
+                }
+
+                scripts[id] = script;
+            }
+
+
             missedScriptsByUrl.set(scriptUrl, script);
         }
 
@@ -98,7 +115,10 @@ export function processScriptFunctions(
 
     const processedFunctions: V8CpuProfileFunction[] = [];
     const functionsIndexMap = new Uint32Array(functions.length);
-    const scriptFunctionIndexByScript = new Map<V8LogScript, number>();
+    const scriptFunctionIndexByScript = new Map<V8LogScript | null, number>();
+
+    // make a copy to prevent input array mutation
+    scripts = scripts.slice();
 
     for (let i = 0; i < functions.length; i++) {
         const fn = functions[i];
@@ -108,7 +128,7 @@ export function processScriptFunctions(
 
         // wasm functions and some other has no source/script;
         // create a script by scriptUrl in that case
-        const script = v8logScript || getScriptByUrl(scriptUrl);
+        const script = v8logScript || getScriptByUrl(scriptUrl, source?.script);
 
         // V8 creates two functions for a script: one with no source parsed (likely a preparse state),
         // and a second with the source parsed (regular Ignition codes).
@@ -123,7 +143,7 @@ export function processScriptFunctions(
 
         if (scriptFunctionIndex === -1) {
             functionIndex = processedFunctions.push({
-                scriptId: script.id,
+                scriptId: script?.id || 0,
                 name: functionName,
                 start: source?.start ?? -1,
                 end: source?.end ?? -1,
@@ -140,6 +160,7 @@ export function processScriptFunctions(
     }
 
     return {
+        scripts: processScripts(scripts),
         functions: processedFunctions,
         functionsIndexMap
     };

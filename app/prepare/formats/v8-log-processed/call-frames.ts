@@ -218,8 +218,8 @@ function createCodeCallFrames(
 }
 
 export function createCallFrames(
-    functions: V8CpuProfileFunction[],
     codes: V8LogCode[],
+    functions: V8CpuProfileFunction[],
     functionsIndexMap: NumericArray | null = null
 ) {
     const callFrames: CallFrame[] = [createCallFrame('(root)')];
