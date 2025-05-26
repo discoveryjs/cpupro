@@ -3,6 +3,7 @@
 - Added `logging` category
 - Fixed missing unescaping for function name and location in the V8 log, which could lead to incorrect parsing — such as including the script path in the function name
 - Fixed functions name and location processing when no source or scripts provided in V8 log
+- Fixed attribution to `idle` VM state in V8 log, previously idle samples was attributed to `(program)` or `(atomics await)`
 - Fixed `esm.sh` registry patterns
 
 ## 0.7.0 (2025-05-08)
