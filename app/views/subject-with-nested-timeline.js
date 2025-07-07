@@ -18,7 +18,7 @@ discovery.view.define('subject-with-nested-timeline', {
             $binCount,
             $binTime,
             $binSamples,
-            totalTime: $totalTime,
+            $totalTime,
             $totalTimeBins,
             color: $subject.$getCategory().name.color(),
             nested: (

@@ -188,7 +188,7 @@ export function parseStack(
                 break;
 
             case 111: // o
-                // "overflow" marker, means that profiler skipped some samples
+                // "overflow" marker, means that a profiler skipped some samples
                 // because of sample buffer overflow;
                 // just ignore marker for now
                 // console.warn(`Samples skipped`);

@@ -101,6 +101,8 @@
     position: absolute;
     z-index: -1;
     left: calc(100% * var(--offset));
+    width: calc(100% - 100% * var(--offset));
+    overflow: hidden;
     top: 0;
     bottom: 0;
     border-left: 1px solid #6666;
