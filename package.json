@@ -49,7 +49,7 @@
   },
   "devDependencies": {
     "@discoveryjs/cli": "^2.14.2",
-    "@discoveryjs/discovery": "1.0.0-beta.97",
+    "@discoveryjs/discovery": "1.0.0-beta.98",
     "@types/node": "^22.7.5",
     "@typescript-eslint/eslint-plugin": "^7.8.0",
     "@typescript-eslint/parser": "^7.8.0",
