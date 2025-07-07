@@ -606,6 +606,7 @@ const categoriesTimeline = {
         },
         {
             view: 'expand',
+            when: '#.currentProfile.type != "memory"',
             ...sessionExpandState('default-timelines-heap', false, '$'),
             data: 'heap',
             className: '=no $ ? "unavailable"',
@@ -720,9 +721,14 @@ const categoriesTimeline = {
                     content: [
                         {
                             view: 'block',
-                            className: 'label',
+                            className: 'label allocation-type-label',
                             postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                            content: 'text:name'
+                            content: {
+                                view: 'block',
+                                className: 'text',
+                                content: 'text:name.replace(/\\(\\d+\\)\\s*/, "")',
+                                tooltip: 'text:name'
+                            }
                         },
                         {
                             view: 'block',

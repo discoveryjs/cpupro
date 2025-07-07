@@ -262,7 +262,8 @@
 }
 .page-default .category-timelines-list .more-buttons {
     grid-column: 1 / 4;
-    padding: 3px 5px
+    padding: 3px 5px;
+    position: relative;
 }
 .page-default .category-timelines-item {
     color: inherit;
@@ -296,6 +297,19 @@
     margin-top: -1px;
     background: var(--color, #888);
     border-radius: 50%;
+}
+.page-default .category-timelines-item > .allocation-type-label {
+    display: flex;
+    align-items: center;
+    padding-left: 6px;
+}
+.page-default .category-timelines-item > .allocation-type-label > .text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 85px;
+    white-space: nowrap;
+    font-size: 10px;
 }
 .page-default .category-timelines-item > .total-percent,
 .page-default .category-timelines-item > .total-size,
