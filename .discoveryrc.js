@@ -41,6 +41,8 @@ module.exports = {
             './pages/package.js',
             './pages/profiles-matrix.css',
             './pages/profiles-matrix.js',
+            './pages/samples.css',
+            './pages/samples.js',
             './views/misc/mode-regexp.css',
             './views/misc/mode-regexp.js',
             './views/allocation-samples-matrix.css',

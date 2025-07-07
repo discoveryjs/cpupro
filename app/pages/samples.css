@@ -1,0 +1,9 @@
+.page-samples .timeline {
+    position: relative;
+    padding-top: 14px;
+    margin-bottom: .5em;
+}
+.page-samples .view-timeline-segments-bin {
+    border-top: 1px solid #0004;
+    padding-top: 4px;
+}

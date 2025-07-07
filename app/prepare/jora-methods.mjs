@@ -105,40 +105,33 @@ function makeSampleBins(n, mask, samples, timeDeltas, totalTime) {
     return bins;
 }
 
-function countSamples(n, samples, timeDeltas, totalTime) {
+function countSamples(n, values, total, continues = false) {
     const bins = new Uint32Array(n);
-    const step = totalTime / n;
+    const step = total / n;
     let end = step;
     let binIdx = 0;
 
-    for (let i = 0, offset = 0; i < samples.length; i++) {
-        const delta = timeDeltas[i];
+    for (let i = 0, offset = 0; i < values.length; i++) {
+        bins[binIdx]++;
+        offset += values[i];
 
-        if (offset + delta < end) {
-            bins[binIdx]++;
-        } else {
-            const dx = end - offset;
-            let x = delta - dx;
-            let i = 1;
-            while (x > step) {
-                bins[binIdx + i]++;
-                i++;
-                x -= step;
-            }
+        if (offset >= end) {
+            binIdx = Math.min(n, Math.floor(offset / step));
+            end = (binIdx + 1) * step;
 
-            bins[binIdx]++;
-            bins[binIdx + i]++;
+            if (continues) {
+                for (let j = Math.floor((offset - values[i]) / step); j < binIdx; j++) {
+                    bins[j]++;
+                }
 
-            while (offset + delta > end) {
-                binIdx += 1;
-                end += step;
+                if (offset !== binIdx * step) {
+                    bins[binIdx]++;
+                }
             }
         }
-
-        offset += delta;
     }
 
-    return Array.from(bins); // TODO: remove when jora has support for TypedArrays
+    return bins;
 }
 
 const methods = {
@@ -647,9 +640,30 @@ const methods = {
         }
     },
     countSamples(n = 500, profile = this.context.currentProfile) {
-        const { samples, timeDeltas, totalTime } = profile;
+        const { timeDeltas, totalTime } = profile;
 
-        return countSamples(n, samples, timeDeltas, totalTime);
+        return countSamples(n, timeDeltas, totalTime, true);
+    },
+    countSamplesDiscrete(n = 500, profile = this.context.currentProfile) {
+        const { timeDeltas, totalTime } = profile;
+
+        return countSamples(n, timeDeltas, totalTime);
+    },
+    sampleXBins(n = 500, profile = this.context.currentProfile) {
+        const { timeDeltas } = profile;
+        let max = 1500; // Math.min(timeDeltas.reduce((m, i) => i > m ? i : m, 0), 2000);
+        const step = max / n;
+        const bins = new Uint32Array(n);
+
+        for (const d of timeDeltas) {
+            const x = Math.min(Math.floor(d / step), n - 1);
+            bins[x]++;
+        }
+
+        return {
+            max,
+            bins
+        };
     },
     binCalls(tree, test, n = 500, profile = this.context.currentProfile) {
         const { samples, timeDeltas, totalTime } = profile;
