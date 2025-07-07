@@ -16,6 +16,7 @@ import { Usage } from './usage.js';
 import { GeneratedNodes, V8CpuProfile } from './types.js';
 import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
+import { MERGE_SAMPLES } from './const.js';
 
 const experimentalFeatures = false;
 
@@ -75,7 +76,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const samplesCount = data.samples.length;
 
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
-    const skipSampleMerge = profileType === 'memory' || false;
+    const skipSampleMerge = profileType === 'memory' || !MERGE_SAMPLES;
     const generateNodes: GeneratedNodes = {
         dict,
         nodeIdSeed: data.nodes.length + 1,
