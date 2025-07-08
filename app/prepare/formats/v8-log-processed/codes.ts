@@ -1,9 +1,9 @@
-import type { V8CpuProfileFunctionCodes, V8CpuProfileICEntry, V8FunctionCodeType } from '../../types.js';
+import type { V8CpuProfileCallFrameCodes, V8CpuProfileICEntry, V8CallFrameCodeType } from '../../types.js';
 import { FEATURE_INLINE_CACHE } from '../../const.js';
 import { findPositionsCodeIndex } from './positions.js';
-import type { CodePositions, NumericArray, V8LogCode, V8LogProfile } from './types.js';
+import type { CodePositions, V8LogCode, V8LogProfile } from './types.js';
 
-export function functionTier(kind: V8LogCode['kind']): V8FunctionCodeType {
+export function functionTier(kind: V8LogCode['kind']): V8CallFrameCodeType {
     switch (kind) {
         case 'Builtin':
         case 'Ignition':
@@ -31,34 +31,39 @@ export function functionTier(kind: V8LogCode['kind']): V8FunctionCodeType {
 }
 
 export function processFunctionCodes(
-    functions: V8LogProfile['functions'],
     codes: V8LogProfile['code'],
-    functionsIndexMap: NumericArray | null = null,
-    positionsByCode: (CodePositions | null)[]
-): V8CpuProfileFunctionCodes[] {
-    const processedCodes: V8CpuProfileFunctionCodes[] = Array.from(new Set(functionsIndexMap), (_, index) => ({
-        function: index,
-        codes: []
-    }));
-    const getFunctionIndex = functionsIndexMap !== null
-        ? (func: number) => functionsIndexMap[func]
+    callFrameIndexByCode: Uint32Array,
+    positionsByCode: (CodePositions | null)[],
+    callFrameIndexByFunction: Uint32Array | null = null
+): V8CpuProfileCallFrameCodes[] {
+    const callFrameCodesMap = new Map<number, V8CpuProfileCallFrameCodes>();
+    const getCallFrameIndexByFunction = callFrameIndexByFunction !== null
+        ? (func: number) => callFrameIndexByFunction[func]
         : (func: number) => func;
 
     for (let i = 0; i < codes.length; i++) {
-        const code = codes[i];
-        const func = code.func;
+        const callFrameIndex = callFrameIndexByCode[i];
 
-        if (typeof func === 'number') {
+        if (callFrameIndex !== 0) {
+            const code = codes[i];
             const codeSource = code.source || null;
             const codePositions = positionsByCode[i];
+            let callFrameCodes = callFrameCodesMap.get(callFrameIndex);
 
-            processedCodes[getFunctionIndex(func)].codes.push({
+            if (callFrameCodes === undefined) {
+                callFrameCodesMap.set(callFrameIndex, callFrameCodes = {
+                    callFrame: callFrameIndex,
+                    codes: []
+                });
+            }
+
+            callFrameCodes.codes.push({
                 tm: code.tm || 0,
                 tier: functionTier(code.kind),
                 size: code.size || 0,
                 positions: codeSource?.positions || '',
                 inlined: codeSource?.inlined || '',
-                fns: codeSource?.fns?.map(getFunctionIndex) || [],
+                fns: codeSource?.fns?.map(getCallFrameIndexByFunction) || [],
                 deopt: code.deopt,
                 ic: FEATURE_INLINE_CACHE && Array.isArray(code.ic)
                     ? code.ic.map((entry): V8CpuProfileICEntry => {
@@ -98,5 +103,5 @@ export function processFunctionCodes(
         }
     }
 
-    return processedCodes;
+    return [...callFrameCodesMap.values()];
 }

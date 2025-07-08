@@ -138,6 +138,8 @@ export function createCallFrame(
     scriptId = 0,
     lineNumber = -1,
     columnNumber = -1,
+    start = -1,
+    end = -1,
     url = ''
 ): CallFrame {
     return {
@@ -145,7 +147,9 @@ export function createCallFrame(
         functionName,
         url,
         lineNumber,
-        columnNumber
+        columnNumber,
+        start,
+        end
     };
 }
 
@@ -180,7 +184,9 @@ export function createFunctionCallFrames(
             fn.name,
             fn.scriptId,
             fn.line,
-            fn.column
+            fn.column,
+            fn.start,
+            fn.end
         )) - 1;
     };
 

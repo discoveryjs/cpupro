@@ -14,7 +14,7 @@
 //
 
 import type { CallFrame, CallNode, V8LogProfile } from './v8-log-processed/types.js';
-import type { V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import type { V8CpuProfile, V8CpuProfileCallFrameCodes, V8CpuProfileScript } from '../types.js';
 import jora from 'jora'; // FIXME: temporary? to calc a median only
 import { processTicks } from './v8-log-processed/ticks.js';
 import { processScriptFunctions } from './v8-log-processed/functions.js';
@@ -61,32 +61,47 @@ function processUrls(scripts: (V8CpuProfileScript | null)[], callFrames: CallFra
     }
 }
 
-function collectCallFramesFromNodes(nodes: CallNode<number>[], callFrames: CallFrame[]) {
-    const nodeCallFrames: CallFrame[] = [];
-    const packedCallFrameIndex = new Int32Array(callFrames.length);
+function collectUsedCallFrames(
+    callFrames: CallFrame[],
+    nodes: CallNode<number>[],
+    callFrameCodes: V8CpuProfileCallFrameCodes[]
+) {
+    const usedCallFrames: CallFrame[] = [];
+    const packedCallFrameIndexMap = new Int32Array(callFrames.length);
+    const getPackedCallFrameIndex = (callFrameIndex: number) => {
+        let packedIndex = packedCallFrameIndexMap[callFrameIndex];
 
-    for (const node of nodes) {
-        const callFrameIndex = node.callFrame;
-        const callFrame = callFrames[callFrameIndex];
-        let nodeCallFramesIndex = packedCallFrameIndex[callFrameIndex];
-
-        if (nodeCallFramesIndex === 0) {
-            nodeCallFramesIndex = nodeCallFrames.length;
-            packedCallFrameIndex[callFrameIndex] = nodeCallFramesIndex;
-            nodeCallFrames.push(callFrame);
+        if (packedIndex === 0) {
+            packedIndex = usedCallFrames.length;
+            packedCallFrameIndexMap[callFrameIndex] = packedIndex;
+            usedCallFrames.push(callFrames[callFrameIndex]);
         }
 
-        node.callFrame = /* callFrame ||*/ nodeCallFramesIndex;
+        return packedIndex;
+    };
+
+    for (const node of nodes) {
+        node.callFrame = getPackedCallFrameIndex(node.callFrame);
     }
 
-    return nodeCallFrames;
+    for (const callFrameCode of callFrameCodes) {
+        callFrameCode.callFrame = getPackedCallFrameIndex(callFrameCode.callFrame);
+
+        for (const code of callFrameCode.codes) {
+            for (let i = 0; i < code.fns.length; i++) {
+                code.fns[i] = getPackedCallFrameIndex(code.fns[i]);
+            }
+        }
+    }
+
+    return usedCallFrames;
 }
 
 export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
     const { functions, functionsIndexMap, scripts } = processScriptFunctions(v8log.functions, v8log.code, v8log.scripts);
-    const { callFrames, callFrameIndexByVmState, callFrameIndexByCode } = createCallFrames(v8log.code, functions, functionsIndexMap);
+    const { callFrames, callFrameIndexByVmState, callFrameIndexByFunction, callFrameIndexByCode } = createCallFrames(v8log.code, functions, functionsIndexMap);
     const positionsByCode = processCallFramePositions(v8log.code, v8log.functions, callFrameIndexByCode);
-    const functionCodes = processFunctionCodes(v8log.functions, v8log.code, functionsIndexMap, positionsByCode);
+    const callFrameCodes = processFunctionCodes(v8log.code, callFrameIndexByCode, positionsByCode, callFrameIndexByFunction);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
         v8log.ticks,
         callFrames,
@@ -94,7 +109,7 @@ export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
         callFrameIndexByCode,
         positionsByCode
     );
-    const nodeCallFrames = collectCallFramesFromNodes(nodes, callFrames);
+    const nodeCallFrames = collectUsedCallFrames(callFrames, nodes, callFrameCodes);
     const samplesInterval = jora.methods.median(timeDeltas);
 
     processUrls(scripts, callFrames);
@@ -109,9 +124,8 @@ export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
         _samplesInterval: samplesInterval,
         _samplePositions: samplePositions,
         _scripts: scripts.filter(script => script !== null),
-        _functions: functions,
-        _functionCodes: functionCodes,
         _callFrames: nodeCallFrames,
+        _callFrameCodes: callFrameCodes,
         _heap: v8log.heap
     };
 }

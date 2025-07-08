@@ -1,4 +1,4 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8FunctionCodeType, CpuProFunctionCodes, ModuleType } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8CallFrameCodeType, CpuProFunctionCodes, ModuleType } from './types';
 import { packageRegistryEndpoints } from './utils';
 
 export const TIMINGS = false;
@@ -52,7 +52,7 @@ export const categories: Exclude<PackageType, 'webpack/runtime'>[] = [
     'idle',
     'unknown'
 ] as const;
-export const vmFunctionStateTiers: V8FunctionCodeType[] = [
+export const vmFunctionStateTiers: V8CallFrameCodeType[] = [
     'Unknown',
     'Ignition',
     'Sparkplug',
@@ -60,7 +60,7 @@ export const vmFunctionStateTiers: V8FunctionCodeType[] = [
     'Turboprop', // Removed in 2022 https://issues.chromium.org/issues/42202499
     'Turbofan'
 ] as const;
-export const vmFunctionStateTierHotness: Record<V8FunctionCodeType, CpuProFunctionCodes['hotness']> = {
+export const vmFunctionStateTierHotness: Record<V8CallFrameCodeType, CpuProFunctionCodes['hotness']> = {
     'Unknown': 'cold',
     'Ignition': 'cold',
     'Sparkplug': 'warm',
@@ -149,7 +149,7 @@ type AllocationType = (typeof allocTypes)[number];
 type AllocationSpace = (typeof allocSpaces)[number];
 
 // colors in order of apperiance in a list
-export const typeColor: Record<PackageType | PackageRegistry | V8FunctionCodeType | AllocationType | AllocationTimespan | AllocationSpace, string> = {
+export const typeColor: Record<PackageType | PackageRegistry | V8CallFrameCodeType | AllocationType | AllocationTimespan | AllocationSpace, string> = {
     // FIXME: place part of alloc types here, because regexp alloc type clash with package type
     'object-shape': '#ffffffa0',
     'object': '#fee29ca0',

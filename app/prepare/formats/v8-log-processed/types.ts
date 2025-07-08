@@ -106,6 +106,8 @@ export type CallFrame = {
     url: string;
     lineNumber: number;
     columnNumber: number;
+    start: number;
+    end: number;
 }
 
 export type CallNode<TCallFrame = CallFrame> = {

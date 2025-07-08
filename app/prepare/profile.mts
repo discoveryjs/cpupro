@@ -6,7 +6,7 @@ import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { extractCallFrames } from './preprocessing/call-frames.js';
 import { processNodes } from './preprocessing/nodes.js';
-import { processFunctionCodes } from './preprocessing/function-codes.js';
+import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { processCallFramePositions } from './preprocessing/call-frame-positions.js';
 import { detectRuntime } from './detect-runtime.js';
 import { buildTrees } from './computations/build-trees.js';
@@ -181,14 +181,13 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     //
 
     const {
-        callFrameByNodeIndex,
-        callFrameByFunctionIndex
+        callFrameByIndex,
+        callFrameByNodeIndex
     } = await work('extract call frames', () =>
         extractCallFrames(
             dict,
             data.nodes,
             data._callFrames,
-            data._functions,
             new ProfileScriptsMap(dict, data._scripts),
             generateNodes
         )
@@ -200,7 +199,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         codesByCallFrame,
         codesByScript
     } = await work('process function codes', () =>
-        processFunctionCodes(data._functionCodes, callFrameByFunctionIndex, dict.callFrames)
+        processCallFrameCodes(data._callFrameCodes, callFrameByIndex, dict.callFrames)
     );
 
     //
@@ -208,7 +207,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     //
 
     const usage = await work('usage', () =>
-        new Usage(dict, callFrameByNodeIndex, callFrameByFunctionIndex)
+        new Usage(dict, callFrameByNodeIndex)
     );
 
     //

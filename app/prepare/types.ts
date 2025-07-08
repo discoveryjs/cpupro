@@ -26,9 +26,8 @@ export type V8CpuProfileCpuproExtensions = {
     _memorySpace?: number[];
     _memorySpaceNames?: Record<number, string>;
     _callFrames?: V8CpuProfileCallFrame[];
+    _callFrameCodes?: V8CpuProfileCallFrameCodes[];
     _scripts?: V8CpuProfileScript[];
-    _functions?: V8CpuProfileFunction[];
-    _functionCodes?: V8CpuProfileFunctionCodes[];
     _executionContexts?: V8CpuProfileExecutionContext[];
     _heap?: {
         available: null | number;
@@ -48,6 +47,8 @@ export type V8CpuProfileCallFrame = {
     functionName: string | null;
     lineNumber: number;
     columnNumber: number;
+    start?: number;
+    end?: number;
 }
 export type V8CpuProfileExecutionContext = {
     origin: string;
@@ -66,13 +67,13 @@ export type V8CpuProfileFunction = {
     line: number;
     column: number;
 }
-export type V8CpuProfileFunctionCodes = {
-    function: number;
-    codes: V8CpuProfileFunctionCode[]
+export type V8CpuProfileCallFrameCodes = {
+    callFrame: number;
+    codes: V8CpuProfileCallFrameCode[]
 }
-export type V8CpuProfileFunctionCode = {
+export type V8CpuProfileCallFrameCode = {
     tm: number;
-    tier: V8FunctionCodeType;
+    tier: V8CallFrameCodeType;
     size: number;
     positions: string;
     inlined: string;
@@ -115,7 +116,7 @@ export type RuntimeCode =
     | 'nodejs'
     | 'unknown'
     ;
-export type V8FunctionCodeType =
+export type V8CallFrameCodeType =
     | 'Ignition'
     | 'Sparkplug'
     | 'Maglev'
@@ -306,7 +307,7 @@ export interface IProfileScriptsMap {
 export type CpuProFunctionCodes = {
     callFrame: CpuProCallFrame;
     topTierWeight: number;
-    topTier: V8FunctionCodeType;
+    topTier: V8CallFrameCodeType;
     hotness: 'cold' | 'warm' | 'hot';
     codes: CpuProFunctionCode[];
 }

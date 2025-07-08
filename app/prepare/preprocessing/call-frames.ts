@@ -1,20 +1,15 @@
 import type { Dictionary } from '../dictionary.js';
-import type { GeneratedNodes, IProfileScriptsMap, V8CpuProfileCallFrame, V8CpuProfileFunction, V8CpuProfileNode } from '../types.js';
+import type { GeneratedNodes, IProfileScriptsMap, V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
 import { ProfileScriptsMap } from './scripts.js';
-import { mapFunctions as extractCallFramesFromFunctions } from './functions.js';
 import { mapNodes as extractCallFramesFromNodes } from './nodes.js';
 
 export function extractCallFrames(
     dict: Dictionary,
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     callFrames?: V8CpuProfileCallFrame[] | null,
-    functions?: V8CpuProfileFunction[] | null,
     scriptsMap: IProfileScriptsMap = new ProfileScriptsMap(dict),
     gcNodes?: GeneratedNodes | null
 ) {
-    // functions should be processed first, since they contain start/end offsets
-    const callFrameByFunctionIndex = extractCallFramesFromFunctions(dict, scriptsMap, functions);
-
     // callFrames
     const callFrameByIndex = processInputCallFrames(dict, scriptsMap, callFrames);
 
@@ -28,8 +23,8 @@ export function extractCallFrames(
     );
 
     return {
-        callFrameByNodeIndex,
-        callFrameByFunctionIndex
+        callFrameByIndex,
+        callFrameByNodeIndex
     };
 }
 

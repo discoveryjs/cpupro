@@ -1,9 +1,9 @@
-import type { CpuProCallFrame, CpuProFunctionCode, CpuProFunctionCodes, CpuProScript, V8CpuProfileFunctionCodes, V8FunctionCodeType } from '../types.js';
+import type { CpuProCallFrame, CpuProFunctionCode, CpuProFunctionCodes, CpuProScript, V8CpuProfileCallFrameCodes, V8CallFrameCodeType } from '../types.js';
 import { vmFunctionStateTierHotness, vmFunctionStateTiers } from '../const.js';
 
-export function processFunctionCodes(
-    functionCodes: V8CpuProfileFunctionCodes[] = [],
-    callFrameByFunctionIndex: Uint32Array,
+export function processCallFrameCodes(
+    inputCallFrameCodes: V8CpuProfileCallFrameCodes[] = [],
+    callFrameByIndex: Uint32Array,
     callFrames: CpuProCallFrame[],
     startTime: number = 0
 ) {
@@ -13,8 +13,8 @@ export function processFunctionCodes(
         compilation: CpuProFunctionCodes | null,
         callFrameCodes: CpuProFunctionCodes[]
     }>();
-    const codesByCallFrame = Array.from(functionCodes, ({ function: functionIndex, codes }): CpuProFunctionCodes => ({
-        callFrame: callFrames[callFrameByFunctionIndex[functionIndex]],
+    const codesByCallFrame = Array.from(inputCallFrameCodes, ({ callFrame: callFrameIndex, codes }): CpuProFunctionCodes => ({
+        callFrame: callFrames[callFrameByIndex[callFrameIndex]],
         topTierWeight: -1,
         topTier: 'Unknown',
         hotness: 'cold',
@@ -24,9 +24,9 @@ export function processFunctionCodes(
     for (let i = 0; i < codesByCallFrame.length; i++) {
         const callFrameCodes = codesByCallFrame[i];
         const { callFrame } = callFrameCodes;
-        const { codes } = functionCodes[i];
+        const { codes } = inputCallFrameCodes[i];
         let topTierWeight = -1;
-        let topTier: V8FunctionCodeType = 'Unknown';
+        let topTier: V8CallFrameCodeType = 'Unknown';
 
         // attach codes to a script
         // if (fn.script !== null) {
@@ -69,7 +69,7 @@ export function processFunctionCodes(
             const code: CpuProFunctionCode = {
                 ...state,
                 tm: state.tm - startTime,
-                fns: state.fns.map(idx => codesByCallFrame[idx].callFrame),
+                fns: state.fns.map(idx => callFrames[callFrameByIndex[idx]]),
                 duration: i !== codes.length - 1
                     ? codes[i + 1].tm - state.tm
                     : 0,

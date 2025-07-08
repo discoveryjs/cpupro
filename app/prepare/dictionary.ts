@@ -1,4 +1,3 @@
-import { locFromLineColumn } from './preprocessing/functions.js';
 import {
     moduleTypeByWellKnownName,
     knownChromeExtensions,
@@ -130,7 +129,7 @@ export class Dictionary {
     }
 
     resolveCallFrameIndex(
-        inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number },
+        inputCallFrame: V8CpuProfileCallFrame,
         scriptsMap: IProfileScriptsMap
     ) {
         const functionName = inputCallFrame.functionName || '';
@@ -625,6 +624,12 @@ function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
     }
 
     return null;
+}
+
+function locFromLineColumn(line: number, column: number) {
+    return line !== -1 && column !== -1
+        ? `:${line}:${column}`
+        : null;
 }
 
 function normalizeLoc(value: unknown) {

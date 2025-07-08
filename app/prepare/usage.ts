@@ -15,8 +15,7 @@ export class Usage {
 
     constructor(
         dict: Dictionary,
-        callFrameByNodeIndex: Uint32Array,
-        callFrameByFunctionIndex: Uint32Array
+        callFrameByNodeIndex: Uint32Array
     ) {
         const usedCallFrame = new Uint8Array(dict.callFrames.length);
 
@@ -24,8 +23,11 @@ export class Usage {
             usedCallFrame[callFrameByNodeIndex[i]] = 1;
         }
 
-        for (let i = 0; i < callFrameByFunctionIndex.length; i++) {
-            usedCallFrame[callFrameByFunctionIndex[i]] = 1;
+        for (let i = 0; i < usedCallFrame.length; i++) {
+            if (usedCallFrame[i] === 0) {
+                const { kind } = dict.callFrames[i];
+                usedCallFrame[i] = Number(kind === 'function' || kind === 'script' || kind === 'regexp');
+            }
         }
 
         this.callFrames = dict.callFrames.filter((_, idx) => usedCallFrame[idx]);
