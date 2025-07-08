@@ -1,7 +1,6 @@
-import type { V8CpuProfileCallFrameCodes, V8CpuProfileICEntry, V8CallFrameCodeType } from '../../types.js';
-import { FEATURE_INLINE_CACHE } from '../../const.js';
-import { findPositionsCodeIndex } from './positions.js';
+import type { V8CpuProfileCallFrameCodes, V8CallFrameCodeType } from '../../types.js';
 import type { CodePositions, V8LogCode, V8LogProfile } from './types.js';
+import { processCodeIcArray } from './ic.js';
 
 export function functionTier(kind: V8LogCode['kind']): V8CallFrameCodeType {
     switch (kind) {
@@ -47,7 +46,6 @@ export function processFunctionCodes(
         if (callFrameIndex !== 0) {
             const code = codes[i];
             const codeSource = code.source || null;
-            const codePositions = positionsByCode[i];
             let callFrameCodes = callFrameCodesMap.get(callFrameIndex);
 
             if (callFrameCodes === undefined) {
@@ -65,40 +63,7 @@ export function processFunctionCodes(
                 inlined: codeSource?.inlined || '',
                 fns: codeSource?.fns?.map(getCallFrameIndexByFunction) || [],
                 deopt: code.deopt,
-                ic: FEATURE_INLINE_CACHE && Array.isArray(code.ic)
-                    ? code.ic.map((entry): V8CpuProfileICEntry => {
-                        const offset = entry.offset;
-                        let scriptOffset = codeSource?.start ?? -1;
-                        let inliningId = -1;
-
-                        if (codePositions !== null) {
-                            const codePositionsIndex = findPositionsCodeIndex(
-                                codePositions.positions,
-                                // Machine code functions on the stack
-                                // that are not currently executing store pc
-                                // on the next instruction after the callee is called,
-                                // so subtract one from the position
-                                offset - (i > 0 && codePositions.pcOnNextInstruction ? 1 : 0)
-                            );
-
-                            inliningId = codePositions.positions[codePositionsIndex + 2];
-                            scriptOffset = codePositions.positions[codePositionsIndex + 1];
-                        }
-
-                        return {
-                            tm: entry.tm,
-                            type: entry.type,
-                            inliningId,
-                            scriptOffset,
-                            oldState: entry.oldState,
-                            newState: entry.newState,
-                            map: entry.map,
-                            key: entry.key,
-                            modifier: entry.modifier,
-                            slowReason: entry.slowReason
-                        };
-                    })
-                    : undefined
+                ic: processCodeIcArray(code, positionsByCode[i])
             });
         }
     }
