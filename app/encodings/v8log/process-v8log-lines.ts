@@ -241,16 +241,16 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                                             return sfi.id;
                                         }
 
-                                        warn('No SFI found');
+                                        warn('(code-source-info) No SFI found');
                                         return -1;
                                     })
                                 : EMPTY_ARRAY
                         };
                     } else {
-                        warn('Not a JavaScript code');
+                        warn('(code-source-info) Not a JavaScript code');
                     }
                 } else {
-                    warn(`Code with address ${address} is not found`);
+                    warn(`(code-source-info) Code with address ${address} is not found`);
                 }
 
                 if (CODE_EVENTS) {
@@ -302,7 +302,7 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                 const chunkSize = knownMemoryChunks.get(address);
 
                 if (chunkSize === undefined) {
-                    warn(`Unknown memory chunk ${type} @ ${address}`);
+                    warn(`(delete) Unknown memory chunk ${type} @ ${address}`);
                 } else if (chunkSize === -1) {
                     // V8 duplicates delete events for some deletions
                     // warn(`Already deleted memory chunk ${type} @ ${address}`);
@@ -363,11 +363,11 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                             codeEntry.code.ic = [icEntry];
                         }
                     } else {
-                        console.warn('Code is not JS kind', { codeEntry, icEntry });
+                        warn(`(${op}) Code is not JS kind`, { codeEntry, icEntry });
                     }
                 } else {
                     unattributedICEntries.push(icEntry);
-                    console.warn(`No code ${address} found for ${op}`);
+                    warn(`(${op}) No code ${address} found for ${op}`);
                 }
 
                 break;
@@ -421,7 +421,7 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                     // any new code overlaping with known codes will discard old ones.
                     codeMap.add(codeEntry.clone(destAddress));
                 } else {
-                    warn('No code found');
+                    warn('(code-move) No code found');
                 }
 
                 if (CODE_EVENTS) {
@@ -442,7 +442,7 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                     sfiByAddress.delete(address);
                     sfiByAddress.set(destAddress, sfi);
                 } else {
-                    warn('SFI not found, on moving SFI', address, '->', destAddress);
+                    warn('(sfi-move) SFI not found, on moving SFI', address, '->', destAddress);
                 }
 
                 if (CODE_EVENTS) {
