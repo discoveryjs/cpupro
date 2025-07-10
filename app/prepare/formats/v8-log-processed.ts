@@ -16,11 +16,11 @@
 import type { CallFrame, CallNode, V8LogProfile } from './v8-log-processed/types.js';
 import type { V8CpuProfile, V8CpuProfileCallFrameCodes, V8CpuProfileScript } from '../types.js';
 import jora from 'jora'; // FIXME: temporary? to calc a median only
-import { processTicks } from './v8-log-processed/ticks.js';
-import { processScriptFunctions } from './v8-log-processed/functions.js';
+import { processFunctions } from './v8-log-processed/functions.js';
 import { createCallFrames } from './v8-log-processed/call-frames.js';
-import { processCallFramePositions } from './v8-log-processed/positions.js';
-import { processFunctionCodes } from './v8-log-processed/codes.js';
+import { processCodes } from './v8-log-processed/codes.js';
+import { processCodePositionTables } from './v8-log-processed/positions.js';
+import { processTicks } from './v8-log-processed/ticks.js';
 
 export function isV8LogProfile(data: unknown): data is V8LogProfile {
     const maybe = data as Partial<V8LogProfile>;
@@ -32,28 +32,7 @@ export function isV8LogProfile(data: unknown): data is V8LogProfile {
     );
 }
 
-function normalizeUrl(url: string) {
-    let protocol = url.match(/^([a-z\-]+):/i)?.[1] || '';
-
-    if (protocol.length === 1 && protocol >= 'A' && protocol <= 'Z') {
-        protocol = '';
-        url = url.slice(2);
-    }
-
-    if (protocol === '' && /^[\\/]/.test(url)) {
-        return 'file://' + url.replace(/\\/g, '/');
-    }
-
-    return url;
-}
-
-function processUrls(scripts: (V8CpuProfileScript | null)[], callFrames: CallFrame[]) {
-    for (const script of scripts) {
-        if (script !== null && script.url !== '') {
-            script.url = normalizeUrl(script.url);
-        }
-    }
-
+function updateCallFramesUrl(callFrames: CallFrame[], scripts: (V8CpuProfileScript | null)[]) {
     for (const callFrame of callFrames) {
         if (callFrame.scriptId !== 0) {
             callFrame.url = scripts[callFrame.scriptId]?.url || '';
@@ -67,13 +46,13 @@ function collectUsedCallFrames(
     callFrameCodes: V8CpuProfileCallFrameCodes[]
 ) {
     const usedCallFrames: CallFrame[] = [];
-    const packedCallFrameIndexMap = new Int32Array(callFrames.length);
-    const getPackedCallFrameIndex = (callFrameIndex: number) => {
-        let packedIndex = packedCallFrameIndexMap[callFrameIndex];
+    const usedCallFrameIndexMap = new Int32Array(callFrames.length);
+    const getUsedCallFrameIndex = (callFrameIndex: number) => {
+        let packedIndex = usedCallFrameIndexMap[callFrameIndex];
 
         if (packedIndex === 0) {
             packedIndex = usedCallFrames.length;
-            packedCallFrameIndexMap[callFrameIndex] = packedIndex;
+            usedCallFrameIndexMap[callFrameIndex] = packedIndex;
             usedCallFrames.push(callFrames[callFrameIndex]);
         }
 
@@ -81,15 +60,15 @@ function collectUsedCallFrames(
     };
 
     for (const node of nodes) {
-        node.callFrame = getPackedCallFrameIndex(node.callFrame);
+        node.callFrame = getUsedCallFrameIndex(node.callFrame);
     }
 
     for (const callFrameCode of callFrameCodes) {
-        callFrameCode.callFrame = getPackedCallFrameIndex(callFrameCode.callFrame);
+        callFrameCode.callFrame = getUsedCallFrameIndex(callFrameCode.callFrame);
 
         for (const code of callFrameCode.codes) {
             for (let i = 0; i < code.fns.length; i++) {
-                code.fns[i] = getPackedCallFrameIndex(code.fns[i]);
+                code.fns[i] = getUsedCallFrameIndex(code.fns[i]);
             }
         }
     }
@@ -98,21 +77,24 @@ function collectUsedCallFrames(
 }
 
 export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
-    const { functions, functionsIndexMap, scripts } = processScriptFunctions(v8log.functions, v8log.code, v8log.scripts);
-    const { callFrames, callFrameIndexByVmState, callFrameIndexByFunction, callFrameIndexByCode } = createCallFrames(v8log.code, functions, functionsIndexMap);
-    const positionsByCode = processCallFramePositions(v8log.code, v8log.functions, callFrameIndexByCode);
-    const callFrameCodes = processFunctionCodes(v8log.code, callFrameIndexByCode, positionsByCode, callFrameIndexByFunction);
+    const { functions, functionIndexMap, scripts } = processFunctions(v8log.functions, v8log.code, v8log.scripts);
+    const { callFrames, callFrameIndexByVmState, callFrameIndexByCode, callFrameIndexByV8logFunction } = createCallFrames(
+        v8log.code,
+        functions,
+        functionIndexMap
+    );
+    const positionTableByCode = processCodePositionTables(v8log.code, callFrameIndexByV8logFunction);
+    const callFrameCodes = processCodes(v8log.code, callFrameIndexByCode, positionTableByCode);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
         v8log.ticks,
-        callFrames,
         callFrameIndexByVmState,
         callFrameIndexByCode,
-        positionsByCode
+        positionTableByCode
     );
-    const nodeCallFrames = collectUsedCallFrames(callFrames, nodes, callFrameCodes);
+    const usedCallFrames = collectUsedCallFrames(callFrames, nodes, callFrameCodes);
     const samplesInterval = jora.methods.median(timeDeltas);
 
-    processUrls(scripts, callFrames);
+    updateCallFramesUrl(usedCallFrames, scripts);
 
     return {
         startTime: 0,
@@ -124,7 +106,7 @@ export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
         _samplesInterval: samplesInterval,
         _samplePositions: samplePositions,
         _scripts: scripts.filter(script => script !== null),
-        _callFrames: nodeCallFrames,
+        _callFrames: usedCallFrames,
         _callFrameCodes: callFrameCodes,
         _heap: v8log.heap
     };

@@ -117,10 +117,11 @@ export type CallNode<TCallFrame = CallFrame> = {
     parentScriptOffset: number;
 }
 
-export type CodePositions = {
+export type CodePositionTable = {
     fistCode: number;
     lastCode: number;
     pcOnNextInstruction: boolean;
     positions: number[];
     inlined: number[] | null;
+    fns: number[] | null;
 }

@@ -74,10 +74,10 @@ export function parseJsName(name: string, scriptUrl: string | null = null): Pars
     };
 }
 
-export function processScriptFunctions(
-    functions: V8LogProfile['functions'],
-    codes: V8LogProfile['code'],
-    scripts: V8LogScripts
+export function processFunctions(
+    v8logFunctions: V8LogProfile['functions'],
+    v8logCodes: V8LogProfile['code'],
+    v8logScripts: V8LogScripts
 ) {
     const missedScriptsByUrl = new Map<string, V8LogScript>();
     const getScriptByUrl = (scriptUrl: string, scriptId: number | undefined) => {
@@ -113,17 +113,15 @@ export function processScriptFunctions(
         return script;
     };
 
-    const processedFunctions: V8CpuProfileFunction[] = [];
-    const functionsIndexMap = new Uint32Array(functions.length);
+    const scripts = v8logScripts.slice(); // make a copy to prevent input array mutation
     const scriptFunctionIndexByScript = new Map<V8LogScript | null, number>();
+    const functions: V8CpuProfileFunction[] = [];
+    const functionIndexMap = new Uint32Array(v8logFunctions.length);
 
-    // make a copy to prevent input array mutation
-    scripts = scripts.slice();
-
-    for (let i = 0; i < functions.length; i++) {
-        const fn = functions[i];
-        const source = codes[fn.codes[0]].source; // all the function codes have the same reference to script source
-        const v8logScript = source && scripts[source.script];
+    for (let i = 0; i < v8logFunctions.length; i++) {
+        const fn = v8logFunctions[i];
+        const source = v8logCodes[fn.codes[0]].source; // all the function codes have the same reference to script source
+        const v8logScript = (source && v8logScripts[source.script]) ?? null;
         const { functionName, scriptUrl, line, column } = parseJsName(fn.name, v8logScript?.url);
 
         // wasm functions and some other has no source/script;
@@ -142,7 +140,7 @@ export function processScriptFunctions(
         let functionIndex = scriptFunctionIndex;
 
         if (scriptFunctionIndex === -1) {
-            functionIndex = processedFunctions.push({
+            functionIndex = functions.push({
                 scriptId: script?.id || 0,
                 name: functionName,
                 start: source?.start ?? -1,
@@ -156,12 +154,12 @@ export function processScriptFunctions(
             }
         }
 
-        functionsIndexMap[i] = functionIndex;
+        functionIndexMap[i] = functionIndex;
     }
 
     return {
         scripts: processScripts(scripts),
-        functions: processedFunctions,
-        functionsIndexMap
+        functions,
+        functionIndexMap
     };
 }

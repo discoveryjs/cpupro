@@ -1,4 +1,4 @@
-import type { CallFrame, CallNode, CodePositions, V8LogTick } from './types.js';
+import type { CallNode, CodePositionTable, V8LogTick } from './types.js';
 import { findPositionsCodeIndex } from './positions.js';
 import { VM_STATE_GC, VM_STATE_IDLE } from './const.js';
 
@@ -14,24 +14,42 @@ function createNode<T>(id: number, callFrame: T, parentScriptOffset = 0): CallNo
     };
 }
 
+function ensureSortedTicks(v8logTicks: V8LogTick[]) {
+    if (v8logTicks.length > 1) {
+        // check ticks are sorted by tm
+        for (let i = 1, prevTm = v8logTicks[0].tm; i < v8logTicks.length; i++) {
+            const { tm } = v8logTicks[i];
+
+            if (prevTm > tm) {
+                // make a copy before sorting to avoid mutation of input data
+                // TODO: replace slice().sort() with toSorted()
+                return v8logTicks.slice().sort((a, b) => a.tm - b.tm);
+            }
+
+            prevTm = tm;
+        }
+    }
+
+    return v8logTicks;
+}
+
 type CallNodeMap = Map<number, CallNode<number>>;
 
 export function processTicks(
-    ticks: V8LogTick[],
-    callFrames: CallFrame[],
+    v8logTicks: V8LogTick[],
     callFrameIndexByVmState: number[] | Uint32Array,
     callFrameIndexByCode: number[] | Uint32Array,
-    positionsByCode: (CodePositions | null)[]
+    positionTableByCode: (CodePositionTable | null)[]
 ) {
     const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_IDLE];
     const maxCodeCallFrameIndex = callFrameIndexByCode.length - 1;
     const rootNode = createNode(1, 0);
     const nodes: CallNode<number>[] = [rootNode];
     const nodeTransitionMaps = new Map<CallNode<number>, CallNodeMap>();
-    const samples: number[] = new Array(ticks.length);
-    const timeDeltas: number[] = new Array(ticks.length);
-    const samplePositions: number[] = new Array(ticks.length);
-    const sortedTicks = ticks.slice().sort((a, b) => a.tm - b.tm); // sort a copy of ticks by a timestamp
+    const samples: number[] = new Array(v8logTicks.length);
+    const timeDeltas: number[] = new Array(v8logTicks.length);
+    const samplePositions: number[] = new Array(v8logTicks.length);
+    const sortedTicks = ensureSortedTicks(v8logTicks); // ensure ticks are sorted by a timestamp
     let lastTm = 0;
 
     // process ticks
@@ -63,7 +81,7 @@ export function processTicks(
                 currentNode = getNextNode(currentNode, callFrameIndex, prevSourceOffset);
 
                 // find a script positions if possible
-                const codePositions = positionsByCode[id];
+                const codePositions = positionTableByCode[id];
 
                 if (codePositions !== null) {
                     const codePositionsIndex = findPositionsCodeIndex(

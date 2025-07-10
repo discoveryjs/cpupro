@@ -173,7 +173,8 @@ export function createVmStateCallFrames(callFrames: CallFrame[]) {
 
 export function createFunctionCallFrames(
     callFrames: CallFrame[],
-    functions: V8CpuProfileFunction[]
+    functions: V8CpuProfileFunction[],
+    functionIndexMap: NumericArray | null = null
 ) {
     const callFrameIndexByFunction = new Uint32Array(functions.length);
 
@@ -190,27 +191,26 @@ export function createFunctionCallFrames(
         )) - 1;
     };
 
+    if (functionIndexMap !== null) {
+        return functionIndexMap.map((index: number) => callFrameIndexByFunction[index]);
+    }
+
     return callFrameIndexByFunction;
 }
 
 function createCodeCallFrames(
     callFrames: CallFrame[],
-    codes: V8LogCode[],
-    callFrameIndexByFunction: Uint32Array,
-    functionsIndexMap: NumericArray | null = null
+    v8logCodes: V8LogCode[],
+    callFrameIndexByFunction: NumericArray | null = null
 ) {
-    const callFrameIndexByCode = new Uint32Array(codes.length);
+    const callFrameIndexByCode = new Uint32Array(v8logCodes.length);
 
-    for (let i = 0; i < codes.length; i++) {
-        const code = codes[i];
+    for (let i = 0; i < v8logCodes.length; i++) {
+        const code = v8logCodes[i];
         const func = code.func;
 
-        if (func !== undefined) {
-            const functionIndex = functionsIndexMap !== null
-                ? functionsIndexMap[func]
-                : func;
-
-            callFrameIndexByCode[i] = callFrameIndexByFunction[functionIndex];
+        if (func !== undefined && callFrameIndexByFunction !== null) {
+            callFrameIndexByCode[i] = callFrameIndexByFunction[func];
         } else {
             const name = callFrameInfoFromNonJsCode(code);
 
@@ -224,19 +224,19 @@ function createCodeCallFrames(
 }
 
 export function createCallFrames(
-    codes: V8LogCode[],
+    v8logCodes: V8LogCode[],
     functions: V8CpuProfileFunction[],
-    functionsIndexMap: NumericArray | null = null
+    functionIndexMap: NumericArray | null = null
 ) {
     const callFrames: CallFrame[] = [createCallFrame('(root)')];
     const callFrameIndexByVmState = createVmStateCallFrames(callFrames);
-    const callFrameIndexByFunction = createFunctionCallFrames(callFrames, functions);
-    const callFrameIndexByCode = createCodeCallFrames(callFrames, codes, callFrameIndexByFunction, functionsIndexMap);
+    const callFrameIndexByV8logFunction = createFunctionCallFrames(callFrames, functions, functionIndexMap);
+    const callFrameIndexByCode = createCodeCallFrames(callFrames, v8logCodes, callFrameIndexByV8logFunction);
 
     return {
         callFrames,
         callFrameIndexByVmState,
-        callFrameIndexByFunction,
+        callFrameIndexByV8logFunction,
         callFrameIndexByCode
     };
 }

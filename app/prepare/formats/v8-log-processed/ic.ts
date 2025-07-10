@@ -1,11 +1,11 @@
 import type { V8CpuProfileICEntry } from '../../types.js';
-import type { CodePositions, V8LogCode } from './types.js';
+import type { CodePositionTable, V8LogCode } from './types.js';
 import { FEATURE_INLINE_CACHE } from '../../const.js';
 import { findPositionsCodeIndex } from './positions.js';
 
 export function processCodeIcArray(
     code: V8LogCode,
-    codePositions: CodePositions | null
+    codePositions: CodePositionTable | null
 ): V8CpuProfileICEntry[] | undefined {
     if (!FEATURE_INLINE_CACHE || !Array.isArray(code.ic)) {
         return;

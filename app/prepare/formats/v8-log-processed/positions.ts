@@ -1,5 +1,5 @@
 import { functionTier } from './codes.js';
-import type { CodePositions, V8LogCode, V8LogFunction } from './types.js';
+import type { CodePositionTable, NumericArray, V8LogCode } from './types.js';
 
 // Parse "positions" and "inlined" of code.source:
 // - "positions" is a sequence of entries with pattern /C\d+O\d+(I\d+)?/, e.g. "C0O1C20O30I0..."
@@ -72,8 +72,11 @@ export function findPositionsCodeIndex(parsedPositions: number[], target: number
     return high === -1 ? 0 : high * 3;
 }
 
-export function processCodePositions(codes: V8LogCode[]): (CodePositions | null)[] {
-    return codes.map(code => {
+export function processCodePositionTables(
+    v8logCodes: V8LogCode[],
+    functionIdMap: NumericArray | null = null
+): (CodePositionTable | null)[] {
+    return v8logCodes.map(code => {
         const funcIdx = code.func;
         const source = code.source;
 
@@ -98,15 +101,35 @@ export function processCodePositions(codes: V8LogCode[]): (CodePositions | null)
         const inlined = source.inlined
             ? parsePositions(source.inlined)
             : null;
+        const fns = inlined !== null && Array.isArray(source.fns) && source.fns.length > 0
+            ? source.fns.slice()
+            : [];
 
         if (inlined !== null) {
-            for (let i = 0; i < inlined.length; i += 3) {
+            // Validate and remap function ID list
+            for (let i = 0; i < fns.length; i++) {
+                const functionId = fns[i];
+
                 // FIXME: In some rare cases, the fns array contains null (or -1 for our custom V8 log decoder)
                 // instead of function id. For now, we ignore the function positions as it not defined.
-                // We can try to find similar positions in other codes of the function and use it if any.
-                // However, this does not always solve the problem, so for now we output warnings and ignore
-                // the positions for such codes in order to collect more cases.
-                const functionId = source.fns[inlined[i]];
+                // We could try finding similar positions in other codes of the function and use those if available.
+                // However, this does not always resolve the issue, so for now we output warnings and ignore
+                // positions for such codes to collect more cases.
+                if (functionId === null || functionId < 0) {
+                    console.error('Broken positions', code, { positions, inlined, fns: source.fns });
+                    return null;
+                }
+
+                // Remap function ID, if map provided
+                if (functionIdMap !== null) {
+                    fns[i] = functionIdMap[functionId];
+                }
+            }
+
+            // Substitute function ID in place of index reference to avoid the need for a lookup
+            // in the fns array when using inlined array.
+            for (let i = 0; i < inlined.length; i += 3) {
+                const functionId = fns[inlined[i]] ?? null;
 
                 if (functionId === null || functionId < 0) {
                     console.error('Broken positions', code, { positions, inlined });
@@ -122,34 +145,8 @@ export function processCodePositions(codes: V8LogCode[]): (CodePositions | null)
             lastCode,
             pcOnNextInstruction,
             positions,
-            inlined
+            inlined,
+            fns
         };
     });
-}
-
-export function processCallFramePositions(
-    codes: V8LogCode[],
-    functions: V8LogFunction[],
-    callFrameIndexByCode: Uint32Array
-) {
-    const positionsByCode = processCodePositions(codes);
-
-    // replace function index in inline info for a call frame index (first code in function's codes)
-    for (const positions of positionsByCode) {
-        if (positions === null || !positions.inlined) {
-            continue;
-        }
-
-        for (let i = 0; i < positions.inlined.length; i += 3) {
-            const callFrameIndex = callFrameIndexByCode[functions[positions.inlined[i]].codes[0]];
-
-            if (typeof callFrameIndex !== 'number') {
-                throw new Error('Can\'t resolve call frame for an inlined function');
-            }
-
-            positions.inlined[i] = callFrameIndex;
-        }
-    }
-
-    return positionsByCode;
 }
