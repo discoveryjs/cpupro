@@ -1,78 +1,4 @@
-const regexpSourceView = {
-    view: 'source',
-    className: 'regexp',
-    data: '{ content: regexp, syntax: "regexp", lineNum: false }'
-};
-
-const unavailableSourceView = {
-    view: 'source',
-    lineNum: false,
-    actionCopySource: false,
-    source: 'source is unavailable'
-};
-
-discovery.view.define('script-source', {
-    view: 'switch',
-    content: [
-        { when: 'hasSource()', content: {
-            view: 'source',
-            className: 'cpupro-source',
-            data: `{
-                $callFrames;
-                $callFrameCodes: #.currentProfile.codesByScript[=> script = @].callFrameCodes or callFrames.({
-                    callFrame: $,
-                    codes: []
-                });
-                $callFrameCodesWithRange: $callFrameCodes.[callFrame | start >= 0 and end >= start];
-                $tooltipView: [
-                    'text:callFrameCodes.callFrame.name',
-                    'html:"<br>"',
-                    {
-                        view: 'inline-list',
-                        data: 'callFrameCodes.codes',
-                        whenData: true,
-                        item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
-                    }
-                ];
-
-                syntax: "js",
-                content: source.replace(/\\n$/, ""),
-                $callFrameCodes,
-                marks: $callFrameCodesWithRange.({
-                    className: 'function-tag',
-                    offset: callFrame.start,
-                    content: 'text:tiers',
-                    tiers: codes
-                        |? size() = 1
-                            ? tier[].abbr()
-                            : size() <= 3
-                                ? tier.(abbr()).join(' ')
-                                : tier[].abbr() + ' … ' + tier[-1].abbr()
-                        : "ƒn"
-                }),
-                refs: $callFrameCodesWithRange.({
-                    className: 'function',
-                    range: [callFrame.start, callFrame.end],
-                    href: callFrame.marker('call-frame').href,
-                    callFrameCodes: $,
-                    tooltip: $tooltipView
-                })
-            }`,
-            postRender(el) {
-                const contentEl = el.querySelector('.view-source__content');
-
-                contentEl.addEventListener('click', (event) => {
-                    const pseudoLinkEl = event.target.closest('.view-source .spotlight[data-href]');
-
-                    if (pseudoLinkEl && contentEl.contains(pseudoLinkEl)) {
-                        discovery.setPageHash(pseudoLinkEl.dataset.href);
-                    }
-                });
-            }
-        } },
-        { content: unavailableSourceView }
-    ]
-});
+import { regexpSourceView, unavailableSourceView } from './common.js';
 
 discovery.view.define('call-frame-source', {
     view: 'switch',
@@ -126,29 +52,7 @@ discovery.view.define('call-frame-source', {
                     content: {
                         view: 'list',
                         data: 'deopts',
-                        item: [
-                            { view: 'block', className: 'deopt-path', content: [
-                                { view: 'block', className: 'self', content: 'text:path[].callFrame.name' },
-                                { view: 'inline-list', data: 'path[1:]', whenData: true, item: [
-                                    'call-frame-badge',
-                                    {
-                                        view: 'badge',
-                                        className: 'source-loc',
-                                        data: \`
-                                            offset.offsetToLineColumn(parent.callFrame)
-                                                | is object ? \\\`:\${line}:\${column}\\\`
-                                        \`,
-                                        whenData: true,
-                                        content: 'html:replace(/:/, \`<span class=\"delim\">:</span>\`)'
-                                    }
-                                ] }
-                            ] },
-                            'call-frame-source-point:{ ...path[-1], limit: 32 }',
-                            { view: 'block', className: 'deopt-message', content: [
-                                // 'badge{ text: deopt.bailoutType }',
-                                'text:deopt.reason + " (" + deopt.bailoutType + ")"'
-                            ] }
-                        ]
+                        itemConfig: 'deopt-card'
                     }
                 };
                 $deoptMarks: $callFrameCodes.codes
@@ -172,8 +76,8 @@ discovery.view.define('call-frame-source', {
                     })
                     .group(=> offset)
                     .({
-                        offset: key - $sourceSliceStart,
                         className: 'error',
+                        offset: key - $sourceSliceStart,
                         prefix: 'Deopt',
                         content: { view: 'text', data: 'deopts.size()', whenData: '$ > 1' },
                         // content: { view: 'block', className: 'view-call-frame-source__deopt_tooltip', content: $deoptTooltip.content },
@@ -402,99 +306,4 @@ discovery.view.define('call-frame-source', {
         } },
         { content: unavailableSourceView }
     ]
-});
-
-discovery.view.define('call-frame-source-point', {
-    view: 'source',
-    className: '=syntax in ["js", "plain"] ? "cpupro-source" : "cpupro-source unavailable"',
-    actionCopySource: false,
-    data: `{
-        $source: callFrame.script.source or '';
-        $limitStart: limitStart or limit or 50;
-        $limitEnd: limitEnd or limit or 50;
-        $hasSource: $source.bool();
-        $scriptOffset: scriptOffset or offset | $hasSource and $ > 0 ? $ : 0;
-        $lineStart: $source.lastIndexOf('\\n', $scriptOffset) + 1;
-        $lineEnd: $source.indexOf('\\n', $scriptOffset) | $ != -1 ?: $source.size();
-        $line: $source[$lineStart:$lineEnd];
-        $lineRelStart: $line.match(/^\\s*/).matched[].size();
-        $lineRelEnd: $lineEnd - $lineStart;
-        $lineRelOffset: $scriptOffset - $lineStart;
-        $lineSliceStart: [$lineRelStart, $lineRelOffset - $limitStart - ($lineRelEnd - $lineRelOffset | $ >= $limitEnd ? 0 : $limitEnd - $)].max();
-        $lineSliceEnd: [$lineRelEnd, $lineRelOffset + $limitEnd + ($lineRelOffset - $lineSliceStart | $ >= $limitStart ? 0 : $limitStart - $)].min();
-        $sliceStart: $lineSliceStart + $lineStart;
-        $sliceEnd: $lineSliceEnd + $lineStart;
-        $lineNum: $source[0:$scriptOffset].match(/\\r\\n?|\\n/g).size();
-
-        syntax: $hasSource ? 'plain' or 'js',
-        source: $hasSource
-            ? [
-                $sliceStart != $lineStart + $lineRelStart ? '…' : '',
-                $source[$sliceStart:$sliceEnd],
-                $sliceEnd != $lineEnd ? '…' : ''
-              ].join('')
-            : '(source is unavailable)',
-        lineNum: () => $ + $lineNum,
-        marks: marks
-            ? marks.({ ..., offset: offset - $sliceStart })
-            : [{ offset: $scriptOffset - $sliceStart }]
-    }`
-});
-
-discovery.view.define('location-source', {
-    view: 'source',
-    className: '=syntax = "js" ? "cpupro-source" : "cpupro-source unavailable"',
-    actionCopySource: false,
-    data: `{
-        $source: callFrame.script.source or '';
-        $hasSource: $source.bool();
-        $scriptOffset: scriptOffset | $hasSource and $ > 0 ? $ : 0;
-        $sourceLineStart: $source.lastIndexOf('\\n', $scriptOffset) + 1;
-        $sourceSliceStart: $sourceLineStart + $source.slice($sourceLineStart).match(/^\\s*/).matched[].size();
-        $sourceSliceEnd: $source.indexOf('\\n', $scriptOffset) | $ != -1 ?: $source.size();
-        $lineNum: $source.slice(0, $scriptOffset).match(/\\r\\n?|\\n/g).size();
-
-        $selfValueTooltipView: #.currentProfile | type = 'memory' and _memoryGc and _memoryType
-            ? 'allocation-samples-matrix:#.currentProfile | callFramePositionsTree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
-        $unit: #.currentProfile.type = 'memory' ? 'Kb' : 'ms';
-        $values: #.currentProfile
-            | #.nonFilteredTimings
-                ? callFramePositionsTimings or callFramesTimings
-                : callFramePositionsTimingsFiltered or callFramesTimingsFiltered;
-        $sampleMarkContent: {
-            view: 'update-on-timings-change',
-            timings: $values,
-            content: {
-                view: 'text-numeric',
-                data: 'value[prop] / 1000 | $ > 0 ? toFixed(1) : ""',
-                className: => ?: 'empty-content'
-            }
-        };
-        $sampleMarks:
-            #.currentProfile.callFramePositionsTimingsFiltered.getEntry(@)
-            .($pos: entry.scriptOffset | $hasSource and is number and $ != -1 ? $ - $sourceSliceStart : 0; [
-                selfTime ? {
-                    offset: $pos,
-                    kind: 'self',
-                    content: $sampleMarkContent,
-                    value: $values.entries[entryIndex],
-                    prop: 'selfTime',
-                    postfix: $unit,
-                    tooltip: $selfValueTooltipView
-                },
-                nestedTime ? {
-                    offset: $pos,
-                    kind: 'nested',
-                    content: $sampleMarkContent,
-                    value: $values.entries[entryIndex],
-                    prop: 'nestedTime',
-                    postfix: $unit
-                },
-            ]).[];
-
-        syntax: $hasSource ? 'js',
-        lineNum: () => $ + $lineNum,
-        source: $hasSource ? $source.slice($sourceSliceStart, $sourceSliceEnd) : '(source is unavailable)',
-        marks: $sampleMarks
-    }`
 });

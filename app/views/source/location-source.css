@@ -1,0 +1,11 @@
+.view-table-cell > .view-location-source .view-source {
+    margin: -2px -8px;
+    border-radius: 0;
+    background-color: #2d2d2d;
+}
+.view-table-cell > .view-location-source .view-source__content {
+    padding: 2px 8px 3px;
+}
+.view-location-source .view-source__lines {
+    min-width: 6ex;
+}
