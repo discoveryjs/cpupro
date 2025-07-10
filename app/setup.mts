@@ -1,5 +1,5 @@
 import { ModelOptions } from '@discoveryjs/discovery';
-import joraQueryHelpers from './prepare/jora-methods.mjs';
+import joraQueryHelpers from './jora/index.mjs';
 import prepare from './setup-prepare.mjs';
 import { CpuProCallFrame, CpuProCallFramePosition, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript, CpuProFunctionCodes } from './prepare/types.js';
 
