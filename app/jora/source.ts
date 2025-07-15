@@ -61,5 +61,33 @@ export const methods = {
         }
 
         return { line, column };
-    }
+    },
+
+    sourceFragment: `
+        $source: @ or '';
+        $limitStart: $$.limitStart or $$.limit or 50;
+        $limitEnd: $$.limitEnd or $$.limit or 50;
+        $hasSource: $source.bool();
+        $sourceOffset: $$.scriptOffset or $$.offset | $hasSource and $ > 0 ? $ : 0;
+        $lineStart: $source.lastIndexOf('\\n', $sourceOffset) + 1;
+        $lineEnd: $source.indexOf('\\n', $sourceOffset) | $ != -1 ?: $source.size();
+        $line: $source[$lineStart:$lineEnd];
+        $lineRelStart: $line.match(/^\\s*/).matched[].size();
+        $lineRelEnd: $lineEnd - $lineStart;
+        $lineRelOffset: $sourceOffset - $lineStart;
+        $lineSliceStart: [$lineRelStart, $lineRelOffset - $limitStart - ($lineRelEnd - $lineRelOffset | $ >= $limitEnd ? 0 : $limitEnd - $)].max();
+        $lineSliceEnd: [$lineRelEnd, $lineRelOffset + $limitEnd + ($lineRelOffset - $lineSliceStart | $ >= $limitStart ? 0 : $limitStart - $)].min();
+        $sliceStart: $lineSliceStart + $lineStart;
+        $sliceEnd: $lineSliceEnd + $lineStart;
+        $lineNum: $source[0:$sourceOffset].match(/\\r\\n?|\\n/g).size() + 1;
+
+        { $hasSource, $source, $sourceOffset, $lineNum, $sliceStart, $sliceEnd, slice: $hasSource
+            ? [
+                $sliceStart != $lineStart + $lineRelStart ? '…' : '',
+                $source[$sliceStart:$sliceEnd],
+                $sliceEnd != $lineEnd ? '…' : ''
+              ].join('')
+            : '(source is unavailable)'
+        }
+    `
 };
