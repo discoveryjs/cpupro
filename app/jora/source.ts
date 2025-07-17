@@ -69,8 +69,8 @@ export const methods = {
         $limitEnd: $$.limitEnd or $$.limit or 50;
         $hasSource: $source.bool();
         $sourceOffset: $$.scriptOffset or $$.offset | $hasSource and $ > 0 ? $ : 0;
-        $lineStart: $source.lastIndexOf('\\n', $sourceOffset) + 1;
-        $lineEnd: $source.indexOf('\\n', $sourceOffset) | $ != -1 ?: $source.size();
+        $lineStart: $source.lastIndexOf('\\n', $sourceOffset - 1) + 1;
+        $lineEnd: $source.indexOf('\\n', $sourceOffset) | $ != -1 ? $source[$ - 1] != '\\r' ?: $ - 1 : $source.size();
         $line: $source[$lineStart:$lineEnd];
         $lineRelStart: $line.match(/^\\s*/).matched[].size();
         $lineRelEnd: $lineEnd - $lineStart;
@@ -81,7 +81,7 @@ export const methods = {
         $sliceEnd: $lineSliceEnd + $lineStart;
         $lineNum: $source[0:$sourceOffset].match(/\\r\\n?|\\n/g).size() + 1;
 
-        { $hasSource, $source, $sourceOffset, $lineNum, $sliceStart, $sliceEnd, slice: $hasSource
+        { $hasSource, $source, $sourceOffset, $lineNum, $lineStart, $lineEnd, $sliceStart, $sliceEnd, slice: $hasSource
             ? [
                 $sliceStart != $lineStart + $lineRelStart ? '…' : '',
                 $source[$sliceStart:$sliceEnd],

@@ -11,7 +11,6 @@ discovery.view.define('call-frame-source-point', {
             limitEnd
         });
 
-        _: $sourceFragment,
         syntax: $sourceFragment.hasSource ? 'plain' or 'js',
         source: $sourceFragment.slice,
         lineNum: () => $ + $sourceFragment.lineNum,
