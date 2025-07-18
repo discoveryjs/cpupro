@@ -20,10 +20,11 @@ discovery.view.define('call-frame-codes-table', {
                 data: `$codes: $; .({
                     $ownerCallFrame: callFrame;
                     $fns;
+                    $size;
 
                     index: $codes.indexOf($),
                     code: $,
-                    positions.parsePositions(size),
+                    positions.parsePositions($size),
                     inlined.parseInlined($fns).({
                         ...,
                         $ownerCallFrame
@@ -75,7 +76,7 @@ discovery.view.define('call-frame-codes-table', {
                         content: ['text-with-unit{ value: bytes(), unit: true }']
                     },
                     {
-                        header: 'Positions table',
+                        header: 'Position table',
                         align: '=positions ? "right" : "center"',
                         colSpan: '=no positions and no inlined ? 2 : 1',
                         contentWhen: 'positions or (no positions and no inlined)',
