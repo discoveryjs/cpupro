@@ -85,7 +85,13 @@ const table = {
                 }
             },
             detailsWhen: 'codes',
-            details: 'call-frame-codes-table:codes'
+            details: {
+                view: 'call-frame-codes-table',
+                data: 'codes',
+                tablePostRender(el) {
+                    fixDetailsScroll(el);
+                }
+            }
         },
         { header: 'Deopt', colWhen: '$[=>right.codes.deopt]',
             sorting: 'right.codes.deopt.size() desc',

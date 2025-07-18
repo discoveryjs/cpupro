@@ -30,6 +30,7 @@ discovery.view.define('call-frame-codes-table', {
                     })
                 })`,
                 limit: props.limit || false,
+                postRender: props.tablePostRender,
                 cols: [
                     {
                         header: '#',

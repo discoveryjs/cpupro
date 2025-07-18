@@ -51,6 +51,12 @@
 .all-page-table .view-cell-details-content .view-call-frame-source {
     margin-top: -1px !important;
 }
+.all-page-table > tbody > .view-table-cell-details-row > .view-cell-details-content > .view-call-frame-codes-table > tbody > .view-table-row:has(+.view-table-cell-details-row) {
+    position: sticky;
+    top: 193px;
+    z-index: 2;
+    background-color: var(--discovery-background-color);
+}
 
 .app-page-summary {
     position: fixed;
