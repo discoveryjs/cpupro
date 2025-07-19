@@ -39,6 +39,7 @@ export type V8LogCode = {
     size?: number;
     tm?: number;
     source?: V8LogCodeSource;
+    disassemble?: V8LogCodeDisassemble;
     deopt?: V8LogDeopt;
     ic?: V8LogICEntry[];
 }
@@ -51,6 +52,8 @@ export type V8LogCodeSource = {
     inlined: string;
     fns: number[];
 }
+
+export type V8LogCodeDisassemble = string;
 
 export type V8LogDeopt = {
     tm: number;

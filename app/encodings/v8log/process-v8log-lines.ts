@@ -472,6 +472,17 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
 
             case 'code-disassemble': {
                 const [address, kind, disassemble] = readAllArgs(parsers[op], line, argsStart);
+                const code = codeMap.findByAddress(address)?.code || null;
+
+                if (code !== null) {
+                    if (code.type === 'JS' || code.type === 'CODE') {
+                        code.disassemble = disassemble;
+                    } else {
+                        warn('(code-disassemble) Code is not JS or CODE type');
+                    }
+                } else {
+                    warn('(code-disassemble) No code found');
+                }
 
                 if (CODE_EVENTS) {
                     codeEvents.push({

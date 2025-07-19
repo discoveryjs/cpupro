@@ -38,6 +38,7 @@ export type Meta = {
     samplesInterval?: number;
 }
 
+export type CodeDisassemble = string;
 export type CodeDeopt = {
     tm: number;
     inliningId: number;
@@ -45,7 +46,7 @@ export type CodeDeopt = {
     posText: string;
     reason: string;
     bailoutType: string;
-};
+}
 export type CodeSharedLib = {
     name: string;
     type: 'SHARED_LIB';
@@ -56,6 +57,7 @@ export type CodeCompiled = {
     type: 'CODE';
     kind: string;
     size: number;
+    disassemble?: CodeDisassemble;
 }
 export type CodeJavaScript = {
     name: string;
@@ -72,6 +74,7 @@ export type CodeJavaScript = {
         inlined: string;
         fns: number[];
     };
+    disassemble?: CodeDisassemble;
     deopt?: CodeDeopt;
     ic?: ICEntry[];
 }

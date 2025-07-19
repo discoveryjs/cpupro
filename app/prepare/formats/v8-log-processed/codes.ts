@@ -1,5 +1,6 @@
 import type { V8CpuProfileCallFrameCodes, V8CallFrameCodeType } from '../../types.js';
 import type { CodePositionTable, V8LogCode, V8LogProfile } from './types.js';
+import { processDisassemble } from './disassemble.js';
 import { processCodeIcArray } from './ic.js';
 
 export function functionTier(kind: V8LogCode['kind']): V8CallFrameCodeType {
@@ -69,6 +70,7 @@ export function processCodes(
             inlined: codeSource?.inlined || '',
             fns: positionTable?.fns || [],
             deopt: code.deopt,
+            disassemble: processDisassemble(code),
             ic: processCodeIcArray(code, positionTable)
         });
     }

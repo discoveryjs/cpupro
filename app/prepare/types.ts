@@ -78,8 +78,16 @@ export type V8CpuProfileCallFrameCode = {
     positions: string;
     inlined: string;
     fns: number[];
+    disassemble: V8CpuProfileDisassemble | undefined;
     deopt: V8CpuProfileDeopt | undefined;
     ic: V8CpuProfileICEntry[] | undefined;
+}
+export type V8CpuProfileDisassemble = {
+    kind: string;
+    compiler: V8CallFrameCodeType | `Unknown(${string})`;
+    instructions: string | null;
+    sections: { header: string; content: string; }[];
+    raw: string;
 }
 export type V8CpuProfileDeopt = {
     tm: number;
@@ -320,4 +328,5 @@ export type CpuProFunctionCode = {
     positions: string;
     inlined: string;
     fns: CpuProCallFrame[];
+    disassemble?: V8CpuProfileDisassemble;
 }
