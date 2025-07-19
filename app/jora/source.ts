@@ -1,4 +1,50 @@
-import type { CpuProCallFrame } from '../prepare/types.js';
+import type { CpuProCallFrame, CpuProFunctionCode } from '../prepare/types.js';
+import { methods as positionTableMethods } from './position-table.js';
+import { bytecodeHandlersDict } from '../dicts/bytecode-handlers.js';
+import { hasOwn } from '@discoveryjs/discovery/utils';
+
+const bytecodeLineRx = /^(\s*\d+\s+[SE]>)?(\s+0[x0][a-f0-9]+\s+)(@\s*\d+\s*:)((?:\s+[a-f0-9]{2})+\s+)(\S+)((?:\s+[\[#<a-z]\S+\s*,)*\s*[\[#<a-z]\S+)?(\s*\([^)]+\))?(\s*;;;.+)?/i;
+const machineCodeLineRx = /^(\s*0[x0][a-f0-9]+\s+)([a-f0-9]+\s+)([a-f0-9]+\s+)(REX\.\S+\s+)?(\S+)((?:\s+(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?)\s*,)*\s*(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?))?(\s*\(addr [^)]+\))?(\s*(?:\([^)]+\)|\(root \([^)]+\)\)|<\S+>))?(\s*;;.+)?/i;
+
+function commonPrefix(a: string, b: string, max: number = Infinity) {
+    let i = 0;
+
+    for (const len = Math.min(a.length, b.length, max); i < len; i++) {
+        if (a[i] !== b[i]) {
+            break;
+        }
+    }
+
+    return i;
+}
+
+function nonWsRange(s: string, start = 0, end = s.length) {
+    for (; start < end; start++) {
+        if (s[start] !== ' ') {
+            break;
+        }
+    }
+
+    for (; end > start; end--) {
+        if (s[end - 1] !== ' ') {
+            break;
+        }
+    }
+
+    return { start, end };
+}
+
+function getBytecodeDefinition(name: string) {
+    if (hasOwn(bytecodeHandlersDict, name)) {
+        return bytecodeHandlersDict[name];
+    }
+
+    if (name.endsWith('.Wide') || name.endsWith('.ExtraWide')) {
+        return getBytecodeDefinition(name.slice(0, name.indexOf('.')));
+    }
+
+    return null;
+}
 
 export const methods = {
     hasSource: `
@@ -89,5 +135,214 @@ export const methods = {
               ].join('')
             : '(source is unavailable)'
         }
-    `
+    `,
+
+    commonPrefixMap(strings: string[], minLength = 2) {
+        const map = {};
+        let prev = strings[0];
+        let common = prev.length - Math.max(minLength, 1);
+
+        map[prev] = common;
+
+        for (let i = 1; i < strings.length; i++) {
+            const value = strings[i];
+
+            common = commonPrefix(prev, value, common);
+            map[value] = common;
+
+            prev = value;
+        }
+
+        return map;
+    },
+
+    assembleRanges(assemble: string) {
+        const ranges: {
+            type: string;
+            source: string;
+            range: [number, number];
+            command?: ReturnType<typeof getBytecodeDefinition>;
+            param?: string;
+        }[] = [];
+        const pushRange = (type: string, m: string, mStart = 0, mEnd = m?.length) => {
+            if (typeof m !== 'string' || !m) {
+                return;
+            }
+
+            const { start, end } = nonWsRange(m, mStart, mEnd);
+            const range: (typeof ranges)[number] = {
+                type,
+                source: assemble,
+                range: [offset + start, offset + end]
+            };
+
+            ranges.push(range);
+            offset += m.length;
+
+            return range;
+        };
+        let lineOffset = 0;
+        let offset = 0;
+
+        if (bytecodeLineRx.test(assemble)) {
+            // Ignition
+            for (const line of assemble.match(/.*(\n|$)/g) || []) {
+                offset = lineOffset;
+
+                const m = line.match(bytecodeLineRx);
+
+                if (m) {
+                    const [, label, pc, codeOffset, ops, command, params, hint, comment] = m;
+                    const commandDef = getBytecodeDefinition(command);
+
+                    pushRange('label', label);
+                    pushRange('pc', pc);
+                    pushRange('offset', codeOffset, 1, codeOffset.length - 1);
+                    pushRange('ops', ops);
+
+                    if (command) {
+                        const range = pushRange('command', command);
+                        if (range) {
+                            range.command = commandDef;
+                        }
+                    }
+
+                    if (params) {
+                        const paramList = params.split(',');
+                        for (let i = 0; i < paramList.length; i++) {
+                            if (i !== 0) {
+                                offset++;
+                            }
+
+                            const range = pushRange('param', paramList[i]);
+                            if (range) {
+                                range.command = commandDef;
+                                range.param = commandDef?.params[i];
+                            }
+                        }
+                    }
+
+                    pushRange('hint', hint);
+                    pushRange('comment', comment);
+                }
+
+                lineOffset += line.length;
+            }
+        } else {
+            for (const line of assemble.match(/.*(\n|$)/g) || []) {
+                offset = lineOffset;
+
+                const m = line.match(machineCodeLineRx);
+
+                if (m) {
+                    const [, pc, codeOffset, ops, prefix, command, params, ref, hint, comment] = m;
+
+                    pushRange('pc', pc);
+                    pushRange('offset', codeOffset);
+                    pushRange('ops', ops);
+                    pushRange('prefix', prefix);
+                    pushRange('command', command);
+
+                    if (params) {
+                        const paramList = params.split(',');
+                        for (let i = 0; i < paramList.length; i++) {
+                            if (i !== 0) {
+                                offset++;
+                            }
+
+                            let param = paramList[i];
+
+                            if (i !== paramList.length - 1) {
+                                const { start, end } = nonWsRange(param);
+
+                                if (param[start] === '[' && param[end - 1] !== ']') {
+                                    const nextParam = paramList[i + 1];
+
+                                    if (nextParam.endsWith(']') || nextParam.endsWith(']!')) {
+                                        param += ',' + nextParam;
+                                        i++;
+                                    }
+                                }
+                            }
+
+                            pushRange('param', param);
+                        }
+                    }
+
+                    pushRange('hint', ref);
+                    pushRange('hint', hint);
+                    pushRange('comment', comment);
+                }
+
+                lineOffset += line.length;
+            }
+        }
+
+        return ranges;
+    },
+
+    instructionBlocks(code: CpuProFunctionCode) {
+        type Block = {
+            index: number;
+            callFrame: CpuProFunctionCode['callFrame'];
+            offset: number;
+            code: CpuProFunctionCode;
+            compiler: string;
+            instructions: string;
+        };
+
+        if (!code?.disassemble?.instructions) {
+            return;
+        }
+
+        const callFrame = code.callFrame;
+
+        if (code.tier === 'Ignition') {
+            return code.disassemble.instructions.split(/\n(?=\s*\d+\s+[SE]>)/).map((block, index): Block => ({
+                index,
+                callFrame,
+                offset: Number(block.match(/^\s*(\d+)\s/)?.[1] || callFrame.start || -1),
+                code,
+                compiler: code.tier,
+                instructions: block
+            }));
+        } else {
+            const lines = code.disassemble.instructions.split(/\r\n?|\n/);
+            const blockStartPositions = positionTableMethods
+                .parsePositions(code.positions)
+                .reduce((map, entry) => map.set(entry.code, entry.offset), new Map());
+            const blocks: Block[] = [];
+            let buffer: string[] = [];
+            let blockOffset = callFrame.start || -1;
+            const flushBlock = () => {
+                if (buffer.length > 0) {
+                    blocks.push({
+                        index: blocks.length,
+                        callFrame,
+                        offset: blockOffset,
+                        code,
+                        compiler: code.tier,
+                        instructions: buffer.join('\n')
+                    });
+                    buffer = [];
+                }
+            };
+
+            for (const line of lines) {
+                const codeOffset = parseInt(line.match(/^0[x0]\S+\s+(\S+)/)?.[1] || '-1', 16);
+                const offset = blockStartPositions.get(codeOffset);
+
+                if (offset !== undefined) {
+                    flushBlock();
+                    blockOffset = offset;
+                }
+
+                buffer.push(line);
+            }
+
+            flushBlock();
+
+            return blocks;
+        }
+    }
 };

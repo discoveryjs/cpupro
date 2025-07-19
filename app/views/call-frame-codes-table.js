@@ -71,9 +71,11 @@ discovery.view.define('call-frame-codes-table', {
                     {
                         header: 'Size',
                         colWhen: '.[code.size > 0]',
-                        data: 'code.size',
+                        sorting: 'code.size desc',
                         align: 'right',
-                        content: ['text-with-unit{ value: bytes(), unit: true }']
+                        content: ['text-with-unit{ value: code.size.bytes(), unit: true }'],
+                        detailsWhen: 'code.disassemble',
+                        details: 'code-disassemble-viewer:code'
                     },
                     {
                         header: 'Position table',

@@ -1,0 +1,131 @@
+.view-code-disassemble-with-source > .view-list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    overflow-x: auto;
+    gap: 2px 1ex;
+    background-color: rgba(205, 205, 205, .1);
+}
+.view-code-disassemble-with-source > .view-list > .view-list-item,
+.view-code-disassemble-with-source > .view-list > .view-list-item > .view-call-frame-source-point,
+.view-code-disassemble-with-source > .view-list > .view-list-item > .view-call-frame-source-point
+    :is(.view-source, .view-source__content),
+.view-code-disassemble-with-source > .view-list > .view-list-item > .call-frame-code-instructions,
+.view-code-disassemble-with-source > .view-list > .view-list-item > .call-frame-code-instructions .view-source__content {
+    display: contents;
+}
+.view-code-disassemble-with-source > .view-list > .view-list-item > .view-call-frame-source-point
+    :is(.view-source__prelude, .view-source__postlude, .view-source__action-buttons),
+.view-code-disassemble-with-source > .view-list > .view-list-item > .call-frame-code-instructions
+    :is(.view-source__prelude, .view-source__postlude, .view-source__action-buttons){
+    display: none;
+}
+.view-code-disassemble-with-source > .view-list > .view-list-item > .view-call-frame-source-point .view-source__lines {
+    grid-row: span 2;
+    left: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 3ex;
+    background-color: color-mix(in srgb, var(--discovery-background-color), rgba(205, 205, 205) 10%, #000 15%);
+}
+.view-code-disassemble-with-source > .view-list > .view-list-item > .view-call-frame-source-point .view-source__lines span {
+    padding: 1px 1ex;
+    background-color: color-mix(in srgb, var(--discovery-background-color), rgba(205, 205, 205) 10%);
+}
+.view-code-disassemble-with-source > .view-list > .view-list-item > .view-call-frame-source-point .view-source__source {
+    padding: 1px 0;
+    padding-left: 10ex;
+    margin-left: -10ex;
+    /* background-color: #0003; */
+}
+.view-code-disassemble-with-source .call-frame-code-instructions .view-source__source {
+    padding: 6px 0;
+    padding-left: 10ex;
+    margin-left: -10ex;
+    background-color: #0000003b;
+}
+
+.view-code-disassemble-with-source .spotlight.label {
+    background: none;
+}
+.view-code-disassemble-with-source .spotlight.pc,
+.view-code-disassemble-with-source .spotlight.offset {
+    color: var(--discovery-fmt-property-color);
+    background: none;
+}
+.view-code-disassemble-with-source .spotlight.pc-common {
+    color: color-mix(in srgb, currentColor, var(--discovery-background-color) 40%);
+    background: none;
+}
+.view-code-disassemble-with-source .spotlight.offset {
+    color: var(--discovery-fmt-keyword-color);
+}
+.view-code-disassemble-with-source .spotlight.ops {
+    color: #777;
+    background: none;
+}
+.view-code-disassemble-with-source .spotlight.prefix {
+    color: #92a5d6;
+    background: none;
+}
+.view-code-disassemble-with-source .spotlight.command {
+    background: none;
+}
+.view-code-disassemble-with-source .spotlight.command.discovery-view-has-tooltip {
+    cursor: help;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor, var(--discovery-background-color) 60%);
+}
+.view-code-disassemble-with-source .spotlight.command.discovery-view-has-tooltip:hover {
+    background-color: color-mix(in srgb, currentColor, var(--discovery-background-color) 80%);
+    text-decoration-color: currentColor;
+}
+.view-code-disassemble-with-source .spotlight.param {
+    background: none;
+}
+.view-code-disassemble-with-source .spotlight.hint {
+    color: #e0af54;
+    border-radius: 3px;
+    background-color: var(--discovery-background-color);
+}
+.view-code-disassemble-with-source .spotlight.hint:has(.pc) {
+    color: inherit;
+}
+.view-code-disassemble-with-source .spotlight.hint::before {
+    content: 'hint:';
+    padding-left: 3px;
+    color: #888;
+    font-size: 11px;
+    font-family: var(--discovery-font-family);
+}
+.view-code-disassemble-with-source .spotlight.comment {
+    color: #777;
+    background: none;
+}
+
+.code-disassemble-tooltip {
+    max-width: 480px !important;
+}
+.code-disassemble-tooltip .view-header {
+    margin: 0 0 4px;
+    white-space: nowrap;
+}
+.code-disassemble-tooltip .view-header .command-name {
+    display: inline;
+    color: light-dark(#668fb8, #8cbae7);
+    padding-right: 1ex;
+}
+.code-disassemble-tooltip .view-header .param {
+    display: inline;
+    color: light-dark(#948634, #bdb06a);
+}
+.code-disassemble-tooltip .view-header .param::before {
+    content: '<';
+    opacity: .5;
+}
+.code-disassemble-tooltip .view-header .param::after {
+    content: '>';
+    opacity: .5;
+}
+.code-disassemble-tooltip .view-markdown {
+    margin: 4px 0;
+} 
