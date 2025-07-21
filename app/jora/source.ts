@@ -1,10 +1,20 @@
-import { methods as positionTableMethods } from './position-table.js';
 import type { CpuProCallFrame, CpuProCallFrameCode } from '../prepare/types.js';
+import { InlineTreeEntry, PositionTableEntry, methods as positionTableMethods } from './position-table.js';
 import { bytecodeHandlersDict } from '../dicts/bytecode-handlers.js';
 import { hasOwn } from '@discoveryjs/discovery/utils';
 
 const bytecodeLineRx = /^(\s*\d+\s+[SE]>)?(\s+0[x0][a-f0-9]+\s+)(@\s*\d+\s*:)((?:\s+[a-f0-9]{2})+\s+)(\S+)((?:\s+[\[#<a-z]\S+\s*,)*\s*[\[#<a-z]\S+)?(\s*\([^)]+\))?(\s*;;;.+)?/i;
 const machineCodeLineRx = /^(\s*0[x0][a-f0-9]+\s+)([a-f0-9]+\s+)([a-f0-9]+\s+)(REX\.\S+\s+)?(\S+)((?:\s+(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?)\s*,)*\s*(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?))?(\s*\(addr [^)]+\))?(\s*(?:\([^)]+\)|\(root \([^)]+\)\)|<\S+>))?(\s*;;.+)?/i;
+
+export type AssembleBlock = {
+    index: number;
+    code: CpuProCallFrameCode;
+    compiler: string;
+    callFrame: CpuProCallFrameCode['callFrame'];
+    offset: number;
+    inlineId: number;
+    instructions: string;
+};
 
 function commonPrefix(a: string, b: string, max: number = Infinity) {
     let i = 0;
@@ -284,58 +294,60 @@ export const methods = {
     },
 
     assembleBlocks(code: CpuProCallFrameCode) {
-        type Block = {
-            index: number;
-            callFrame: CpuProFunctionCode['callFrame'];
-            offset: number;
-            code: CpuProFunctionCode;
-            compiler: string;
-            instructions: string;
-        };
-
         if (!code?.disassemble?.instructions) {
             return;
         }
 
-        const callFrame = code.callFrame;
-        const blocks: Block[] = [];
-        const pushBlock = (offset: number, instructions: string) => blocks.push({
+        const blocks: AssembleBlock[] = [];
+        const pushBlock = (instructions: string, callFrame: CpuProCallFrame, offset: number, inlineId = -1) => blocks.push({
             index: blocks.length,
             code,
             compiler: code.tier,
             callFrame,
             offset,
+            inlineId,
             instructions
         });
 
         if (code.tier === 'Ignition') {
             for (const instructions of code.disassemble.instructions.split(/\n(?=\s*\d+\s+[SE]>)/)) {
                 pushBlock(
-                    Number(instructions.match(/^\s*(\d+)\s/)?.[1] || callFrame.start || -1),
-                    instructions
+                    instructions,
+                    code.callFrame,
+                    Number(instructions.match(/^\s*(\d+)\s/)?.[1] || code.callFrame.start || -1)
                 );
             }
         } else {
             const lines = code.disassemble.instructions.split(/\r\n?|\n/);
             const blockStartPositions = positionTableMethods
                 .parsePositions(code.positions)
-                .reduce((map, entry) => map.set(entry.code, entry.offset), new Map());
+                .reduce(
+                    (map, entry) => map.set(entry.code, entry),
+                    new Map<number, PositionTableEntry>()
+                );
+            const blockInlineCallFrames = code.fns;
             let buffer: string[] = [];
+            let callFrame = code.callFrame;
             let blockOffset = callFrame.start || -1;
+            let inline = -1;
             const flushBlock = () => {
                 if (buffer.length > 0) {
-                    pushBlock(blockOffset, buffer.join('\n'));
+                    pushBlock(buffer.join('\n'), callFrame, blockOffset, inline);
                     buffer = [];
                 }
             };
 
             for (const line of lines) {
                 const codeOffset = parseInt(line.match(/^0[x0]\S+\s+(\S+)/)?.[1] || '-1', 16);
-                const offset = blockStartPositions.get(codeOffset);
+                const positionTableEntry = blockStartPositions.get(codeOffset);
 
-                if (offset !== undefined) {
+                if (positionTableEntry !== undefined) {
                     flushBlock();
-                    blockOffset = offset;
+                    blockOffset = positionTableEntry.offset;
+                    inline = positionTableEntry.inline ?? -1;
+                    callFrame = inline !== -1
+                        ? blockInlineCallFrames[inline]
+                        : code.callFrame;
                 }
 
                 buffer.push(line);
@@ -345,5 +357,70 @@ export const methods = {
         }
 
         return blocks;
+    },
+
+    assembleBlockTree<T>(array: T[], code: CpuProCallFrameCode, fn: ((entry: T) => AssembleBlock)) {
+        type BlockTreeEntry = T | InlineGroup;
+        type InlineGroup = {
+            location: { callFrame: CpuProCallFrame; offset: number; };
+            inline: InlineTreeEntry;
+            children: BlockTreeEntry[];
+        };
+
+        if (!code || !Array.isArray(code.fns) || !code.fns.length) {
+            return array;
+        }
+
+        const result: BlockTreeEntry[] = [];
+        const inlineTable = positionTableMethods.parseInlined(code.inlined, code.fns);
+        let prevInlinePath: InlineGroup[] = [];
+
+        for (const entry of array) {
+            const block = fn(entry);
+
+            if (block.inlineId == -1) {
+                result.push(entry);
+                prevInlinePath = [];
+                continue;
+            }
+
+            const inlineTreePath: InlineTreeEntry[] = [];
+            let inlineCursor: InlineTreeEntry | null = inlineTable[block.inlineId] ?? null;
+            while (inlineCursor != null) {
+                inlineTreePath.unshift(inlineCursor);
+                inlineCursor = inlineCursor.parent !== undefined
+                    ? inlineTable[inlineCursor.parent]
+                    : null;
+            }
+
+            for (let i = 0, prev = result, currentCallFrame = code.callFrame; i < inlineTreePath.length; i++) {
+                const inlineTreePathEntry = inlineTreePath[i];
+                let inlinePathEntry = i < prevInlinePath.length && prevInlinePath[i].inline === inlineTreePathEntry
+                    ? prevInlinePath[i]
+                    : undefined;
+
+                if (inlinePathEntry === undefined) {
+                    prev.push(inlinePathEntry = prevInlinePath[i] = {
+                        location: {
+                            callFrame: currentCallFrame,
+                            offset: inlineTreePathEntry.offset
+                        },
+                        inline: inlineTreePathEntry,
+                        children: []
+                    });
+
+                    if (i < prevInlinePath.length - 1) {
+                        prevInlinePath.splice(i + 1);
+                    }
+                }
+
+                prev = inlinePathEntry.children;
+                currentCallFrame = inlinePathEntry.inline.callFrame as CpuProCallFrame;
+            }
+
+            prevInlinePath[prevInlinePath.length - 1].children.push(entry);
+        }
+
+        return result;
     }
 };

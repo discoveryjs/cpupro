@@ -1,15 +1,46 @@
+.view-code-disassemble-with-source {
+    contain: inline-size;
+}
+
 .view-code-disassemble-with-source__warning-list {
     display: flex;
     flex-direction: column;
     gap: 1px;
     padding: 1px 0 0;
     background-color: var(--discovery-background-color);
-    font-size: 85%;
+    font-size: 12px;
 }
 .view-code-disassemble-with-source .view-alert {
     padding: 2px 8px;
     border: none;
     border-radius: 0;
+}
+
+.view-code-disassemble-with-source__block-list__inlined-blocks {
+    --block-color: #8cbae7;
+    grid-column: span 2;
+    padding-left: 1px;
+    border-left: 4px solid color-mix(in srgb, var(--block-color), var(--discovery-background-color) 40%);
+    background-color: var(--discovery-background-color);
+}
+.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header {
+    display: flex;
+    align-items: center;
+    gap: 1ex;
+    margin-left: -1px;
+    padding: 0 8px;
+    font-size: 12px;
+    background-color: color-mix(in srgb, var(--block-color), var(--discovery-background-color) 75%);
+}
+.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header::before {
+    content: 'Inlined';
+    color: var(--block-color);
+    font-size: 11px;
+}
+.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header .view-badge {
+    padding: 0 6px;
+    margin: 2px 0;
+    font-size: inherit;
 }
 
 .view-code-disassemble-with-source__block-list {
@@ -39,7 +70,7 @@
     padding: 0;
     margin: 0;
     min-width: 4ex;
-    background-color: color-mix(in srgb, var(--discovery-background-color), rgba(205, 205, 205) 10%, #000 15%);
+    background-color: color-mix(in srgb, var(--discovery-background-color), #0006 50%);
     border-top: 1px solid var(--discovery-background-color);
 }
 .view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point .view-source__lines span {
@@ -53,11 +84,18 @@
     border-top: 1px solid var(--discovery-background-color);
     /* background-color: #0003; */
 }
+.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point:has(+ .view-code-disassemble-with-source__block-list__inlined-blocks) .view-source__source {
+    border-bottom: 1px solid var(--discovery-background-color);
+}
 .view-code-disassemble-with-source .call-frame-code-instructions .view-source__source {
     padding: 6px 0;
     padding-left: 10ex;
     margin-left: -10ex;
     background-color: #0000003b;
+}
+.view-code-disassemble-with-source__block-list > .more-buttons {
+    grid-column: span 2;
+    padding: 2px;
 }
 
 .view-code-disassemble-with-source .spotlight.label {
