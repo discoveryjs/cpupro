@@ -1,5 +1,5 @@
-import type { CpuProCallFrame, CpuProFunctionCode } from '../prepare/types.js';
 import { methods as positionTableMethods } from './position-table.js';
+import type { CpuProCallFrame, CpuProCallFrameCode } from '../prepare/types.js';
 import { bytecodeHandlersDict } from '../dicts/bytecode-handlers.js';
 import { hasOwn } from '@discoveryjs/discovery/utils';
 
@@ -281,7 +281,7 @@ export const methods = {
         return ranges;
     },
 
-    assembleBlocks(code: CpuProFunctionCode) {
+    assembleBlocks(code: CpuProCallFrameCode) {
         type Block = {
             index: number;
             callFrame: CpuProFunctionCode['callFrame'];

@@ -1,4 +1,4 @@
-import type { CpuProCallFrame, CpuProFunctionCode, CpuProFunctionCodes, CpuProScript, V8CpuProfileCallFrameCodes, V8CallFrameCodeType } from '../types.js';
+import type { CpuProCallFrame, CpuProCallFrameCode, CpuProCallFrameCodes, CpuProScript, V8CpuProfileCallFrameCodes, V8CallFrameCodeType } from '../types.js';
 import { vmFunctionStateTierHotness, vmFunctionStateTiers } from '../const.js';
 
 export function processCallFrameCodes(
@@ -7,13 +7,13 @@ export function processCallFrameCodes(
     callFrames: CpuProCallFrame[],
     startTime: number = 0
 ) {
-    const allCodes: CpuProFunctionCode[] = [];
+    const allCodes: CpuProCallFrameCode[] = [];
     const codesByScript = new Map<CpuProScript, {
         script: CpuProScript,
-        compilation: CpuProFunctionCodes | null,
-        callFrameCodes: CpuProFunctionCodes[]
+        compilation: CpuProCallFrameCodes | null,
+        callFrameCodes: CpuProCallFrameCodes[]
     }>();
-    const codesByCallFrame = Array.from(inputCallFrameCodes, ({ callFrame: callFrameIndex, codes }): CpuProFunctionCodes => ({
+    const codesByCallFrame = Array.from(inputCallFrameCodes, ({ callFrame: callFrameIndex, codes }): CpuProCallFrameCodes => ({
         callFrame: callFrames[callFrameByIndex[callFrameIndex]],
         topTierWeight: -1,
         topTier: 'Unknown',
@@ -66,7 +66,7 @@ export function processCallFrameCodes(
             const state = codes[i];
             const tier = state.tier;
             const tierWeight = vmFunctionStateTiers.indexOf(tier);
-            const code: CpuProFunctionCode = {
+            const code: CpuProCallFrameCode = {
                 ...state,
                 tm: state.tm - startTime,
                 fns: state.fns.map(idx => callFrames[callFrameByIndex[idx]]),

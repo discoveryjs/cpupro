@@ -1,7 +1,7 @@
 import { ModelOptions } from '@discoveryjs/discovery';
 import joraQueryHelpers from './jora/index.mjs';
 import prepare from './setup-prepare.mjs';
-import { CpuProCallFrame, CpuProCallFramePosition, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript, CpuProFunctionCodes } from './prepare/types.js';
+import { CpuProCallFrame, CpuProCallFramePosition, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript, CpuProCallFrameCodes } from './prepare/types.js';
 
 export default (function({ defineObjectMarker, addQueryMethods, setPrepare }) {
     defineObjectMarker<CpuProCallFrame>('call-frame', { ref: 'id', title: 'name', page: 'call-frame' });
@@ -10,7 +10,7 @@ export default (function({ defineObjectMarker, addQueryMethods, setPrepare }) {
     defineObjectMarker<CpuProPackage>('package', { ref: 'id', title: 'name', page: 'package' });
     defineObjectMarker<CpuProCategory>('category', { ref: 'name', title: 'name', page: 'category' });
     defineObjectMarker<CpuProScript>('script', { ref: 'id', title: 'url' });
-    defineObjectMarker<CpuProFunctionCodes>('call-frame-codes', { /* ref: 'id', */ title: fn => fn.callFrame.name });
+    defineObjectMarker<CpuProCallFrameCodes>('call-frame-codes', { /* ref: 'id', */ title: fn => fn.callFrame.name });
 
     // extend jora's queries with custom methods
     addQueryMethods(joraQueryHelpers);

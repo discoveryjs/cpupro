@@ -312,17 +312,17 @@ export interface IProfileScriptsMap {
     normalizeScriptId(scriptId: string | number): number;
 }
 
-export type CpuProFunctionCodes = {
+export type CpuProCallFrameCodes = {
     callFrame: CpuProCallFrame;
     topTierWeight: number;
     topTier: V8CallFrameCodeType;
     hotness: 'cold' | 'warm' | 'hot';
-    codes: CpuProFunctionCode[];
+    codes: CpuProCallFrameCode[];
 }
-export type CpuProFunctionCode = {
+export type CpuProCallFrameCode = {
     tm: number;
     callFrame: CpuProCallFrame;
-    callFrameCodes: CpuProFunctionCodes;
+    callFrameCodes: CpuProCallFrameCodes;
     tier: string;
     duration: number;
     positions: string;

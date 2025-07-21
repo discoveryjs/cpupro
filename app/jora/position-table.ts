@@ -1,4 +1,45 @@
 import { parsePositions } from '../prepare/formats/v8-log-processed/positions.js';
+import { CpuProCallFrame, CpuProCallFrameCode } from '../prepare/types.js';
+
+export type PositionTableEntry = {
+    index: number;
+    code: number;
+    offset: number;
+    inline: number | undefined;
+    size: number;
+};
+export type InlineTreeEntry = {
+    index: number;
+    fn: number;
+    offset: number;
+    parent: number | undefined;
+    callFrame?: CpuProCallFrame;
+};
+export type InlinePathEntry = {
+    callFrame: CpuProCallFrame;
+    offset: number;
+    parent: InlinePathEntry | null;
+};
+export type InlineMatrixTreeEntry = {
+    id: number;
+    value: { offset: number; callFrame: CpuProCallFrame; code: CpuProCallFrameCode; };
+    parent: InlineMatrixTreeEntry | null;
+    children: InlineMatrixTreeEntry[];
+    codePresence: number[];
+};
+export type InlineMatrixEntry = {
+    offset: number;
+    tree: InlineMatrixTreeEntry;
+    linear: InlineMatrixTreeEntry['value'][],
+    min: number;
+    max: number;
+    snapshots: InlineMatrixEntrySnapshot[];
+};
+export type InlineMatrixEntrySnapshot = {
+    hash: string;
+    presence: number[];
+    code: CpuProCallFrameCode
+};
 
 export const methods = {
     parsePositions(value, size = 0) {
@@ -7,8 +48,8 @@ export const methods = {
         }
 
         const parsed = parsePositions(String(value));
-        const result = [];
-        let last = null;
+        const result: PositionTableEntry[] = [];
+        let last: PositionTableEntry | null = null;
 
         for (let i = 0; i < parsed.length; i += 3) {
             const code = parsed[i];
@@ -35,19 +76,19 @@ export const methods = {
         return result;
     },
 
-    parseInlined(value, fns) {
+    parseInlined(value: unknown, fns?: CpuProCallFrame[]) {
         if (typeof value !== 'string' || value === '') {
             return [];
         }
 
-        const parsed = parsePositions(String(value));
-        const result = [];
+        const parsed = parsePositions(value);
+        const result: InlineTreeEntry[] = [];
 
         for (let i = 0; i < parsed.length; i += 3) {
             const fn = parsed[i];
             const offset = parsed[i + 1];
             const parent = parsed[i + 2];
-            const entry = {
+            const entry: InlineTreeEntry = {
                 index: result.length,
                 fn,
                 offset,
@@ -64,8 +105,8 @@ export const methods = {
         return result;
     },
 
-    inlinedPath(path, callFrame, offset) {
-        let cursor = { callFrame, offset: -1, parent: null };
+    inlinedPath(path: { callFrame: CpuProCallFrame; offset: number }[], callFrame: CpuProCallFrame, offset: number) {
+        let cursor: InlinePathEntry = { callFrame, offset: -1, parent: null };
         const result = [cursor];
 
         for (const { callFrame, offset } of path) {
@@ -79,15 +120,15 @@ export const methods = {
         return result;
     },
 
-    inlinedMatrix(codes = []) {
-        const recordByRef = new Map();
-        const roots = [];
-        const result = [];
+    inlinedMatrix(codes: CpuProCallFrameCode[] = []) {
+        const recordByRef = new Map<string, InlineMatrixTreeEntry>();
+        const roots: InlineMatrixTreeEntry[] = [];
+        const result: InlineMatrixEntry[] = [];
 
         for (let i = 0; i < codes.length; i++) {
             const code = codes[i];
             const parsed = this.method('parseInlined', code.inlined);
-            const records = [];
+            const records: InlineMatrixTreeEntry[] = [];
 
             for (const entry of parsed) {
                 const callFrame = code.fns[entry.fn];
@@ -119,14 +160,14 @@ export const methods = {
         }
 
         for (const root of sortByOffset(roots)) {
-            const linear = [];
+            const linear: InlineMatrixTreeEntry[] = [];
 
             walkTree(root, node => {
                 linear.push(node);
                 sortByOffset(node.children);
             });
 
-            const snapshots = [];
+            const snapshots: InlineMatrixEntrySnapshot[] = [];
             let min = linear.length;
             let max = 0;
 
@@ -162,7 +203,7 @@ export const methods = {
 
         return result;
 
-        function sortByOffset(array) {
+        function sortByOffset(array: InlineMatrixTreeEntry[]) {
             if (array.length > 1) {
                 array.sort((a, b) => a.value.offset - b.value.offset);
             }
@@ -170,7 +211,7 @@ export const methods = {
             return array;
         }
 
-        function walkTree(node, fn) {
+        function walkTree(node: InlineMatrixTreeEntry, fn: (node: InlineMatrixTreeEntry) => void) {
             fn(node);
             for (const child of node.children) {
                 walkTree(child, fn);
