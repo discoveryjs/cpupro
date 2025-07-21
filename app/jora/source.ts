@@ -126,10 +126,12 @@ export const methods = {
         $sliceStart: $lineSliceStart + $lineStart;
         $sliceEnd: $lineSliceEnd + $lineStart;
         $lineNum: $source[0:$sourceOffset].match(/\\r\\n?|\\n/g).size() + 1;
+        $prefix: $sliceStart != $lineStart + $lineRelStart ? '…' : '';
+        $offsetCorrection: $sliceStart - $prefix.size();
 
-        { $hasSource, $source, $sourceOffset, $lineNum, $lineStart, $lineEnd, $sliceStart, $sliceEnd, slice: $hasSource
+        { $hasSource, $source, $sourceOffset, $lineNum, $lineStart, $lineEnd, $sliceStart, $sliceEnd, $offsetCorrection, slice: $hasSource
             ? [
-                $sliceStart != $lineStart + $lineRelStart ? '…' : '',
+                $prefix,
                 $source[$sliceStart:$sliceEnd],
                 $sliceEnd != $lineEnd ? '…' : ''
               ].join('')

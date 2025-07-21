@@ -15,7 +15,7 @@ discovery.view.define('call-frame-source-point', {
         source: $sourceFragment.slice,
         lineNum: () => $ + $sourceFragment.lineNum,
         marks: marks
-            ? marks.({ ..., offset: offset - $sourceFragment.sliceStart })
-            : [{ offset: $sourceFragment.sourceOffset - $sourceFragment.sliceStart }]
+            ? marks.({ ..., offset: offset - $sourceFragment.offsetCorrection })
+            : [{ offset: $sourceFragment.sourceOffset - $sourceFragment.offsetCorrection }]
     }`
 });
