@@ -281,7 +281,7 @@ export const methods = {
         return ranges;
     },
 
-    instructionBlocks(code: CpuProFunctionCode) {
+    assembleBlocks(code: CpuProFunctionCode) {
         type Block = {
             index: number;
             callFrame: CpuProFunctionCode['callFrame'];
@@ -296,34 +296,33 @@ export const methods = {
         }
 
         const callFrame = code.callFrame;
+        const blocks: Block[] = [];
+        const pushBlock = (offset: number, instructions: string) => blocks.push({
+            index: blocks.length,
+            code,
+            compiler: code.tier,
+            callFrame,
+            offset,
+            instructions
+        });
 
         if (code.tier === 'Ignition') {
-            return code.disassemble.instructions.split(/\n(?=\s*\d+\s+[SE]>)/).map((block, index): Block => ({
-                index,
-                callFrame,
-                offset: Number(block.match(/^\s*(\d+)\s/)?.[1] || callFrame.start || -1),
-                code,
-                compiler: code.tier,
-                instructions: block
-            }));
+            for (const instructions of code.disassemble.instructions.split(/\n(?=\s*\d+\s+[SE]>)/)) {
+                pushBlock(
+                    Number(instructions.match(/^\s*(\d+)\s/)?.[1] || callFrame.start || -1),
+                    instructions
+                );
+            }
         } else {
             const lines = code.disassemble.instructions.split(/\r\n?|\n/);
             const blockStartPositions = positionTableMethods
                 .parsePositions(code.positions)
                 .reduce((map, entry) => map.set(entry.code, entry.offset), new Map());
-            const blocks: Block[] = [];
             let buffer: string[] = [];
             let blockOffset = callFrame.start || -1;
             const flushBlock = () => {
                 if (buffer.length > 0) {
-                    blocks.push({
-                        index: blocks.length,
-                        callFrame,
-                        offset: blockOffset,
-                        code,
-                        compiler: code.tier,
-                        instructions: buffer.join('\n')
-                    });
+                    pushBlock(blockOffset, buffer.join('\n'));
                     buffer = [];
                 }
             };
@@ -341,8 +340,8 @@ export const methods = {
             }
 
             flushBlock();
-
-            return blocks;
         }
+
+        return blocks;
     }
 };

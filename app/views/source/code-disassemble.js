@@ -25,8 +25,8 @@ discovery.view.define('code-disassemble-viewer', {
 
 discovery.view.define('code-disassemble-with-source', {
     view: 'context',
-    data: `
-        $blocks: instructionBlocks().({
+    data: `{
+        $blocks: assembleBlocks().({
             block: $,
             ranges: instructions.assembleRanges()
         });
@@ -35,6 +35,10 @@ discovery.view.define('code-disassemble-with-source', {
             .(source[range[0]:range[1]])
             .commonPrefixMap(2);
 
+        warnings: [
+            not hasSource() ? 'Mapping to source code is not available, because the call frame has **no source code**',
+            no positions and tier != 'Ignition' ? 'Mapping to source code is not available, because the call frame has **no position table**'
+        ].[],
         $blocks.({
             block,
             ranges: ranges + ranges.(
@@ -78,10 +82,19 @@ discovery.view.define('code-disassemble-with-source', {
                 )
             )
         })
-    `,
+    }`,
     content: [
         {
             view: 'list',
+            className: 'view-code-disassemble-with-source__warning-list',
+            data: 'warnings',
+            whenData: true,
+            item: { view: 'alert-warning', content: 'markdown' }
+        },
+        {
+            view: 'list',
+            className: 'view-code-disassemble-with-source__block-list',
+            data: 'blocks',
             limit: false,
             item: [
                 'call-frame-source-point:block',
