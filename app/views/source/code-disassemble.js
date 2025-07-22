@@ -30,10 +30,8 @@ discovery.view.define('code-disassemble-with-source', {
             block: $,
             ranges: instructions.assembleRanges()
         });
-        $commonAddressPrefixMap: $blocks.ranges
-            .[type='pc']
-            .(source[range[0]:range[1]])
-            .commonPrefixMap(2);
+        $pcToBlockMap: $blocks.assemblePcToBlockMap();
+        $commonAddressPrefixMap: $pcToBlockMap.keys().commonPrefixMap(2);
 
         warnings: [
             not hasSource() ? 'Mapping to source code is not available, because the call frame has **no source code**',
@@ -58,19 +56,24 @@ discovery.view.define('code-disassemble-with-source', {
                             { type: 'pc', $source, range: [$start + 1, $start + 1 + $maybePc.size()] },
                             { type: 'pc-common', $source, range: [$start + 1, $start + 1 + $commonAddressPrefixMap[$maybePc]] },
                             { $offset: matched[2]; type: 'offset', $source, range: [$end - 1 - $offset.size(), $end - 1] },
+                            { type: 'block-ref', $source, range: [$end - 1, $end - 1], marker: $pcToBlockMap[$maybePc].id }
                         ]
                     )) or
                     (source[$start:$end].match(/^\\(addr\\s+(\\S+?)\\)$/) |? (
                         $maybePc: matched[1];
                         $maybePcZ: $maybePc.replace(/0x0+/, '0x');
                         $s: $end - $maybePc.size() - 1;
-                        $maybePc in $commonAddressPrefixMap or $maybePcZ in $commonAddressPrefixMap ? [
-                            { type: 'pc', $source, range: [$s, $end - 1] },
-                            { type: 'pc-common', $source, range: [$s, $s + ($maybePc in $commonAddressPrefixMap
+                        $maybePc in $commonAddressPrefixMap or $maybePcZ in $commonAddressPrefixMap ? (
+                            $end_: $s + ($maybePc in $commonAddressPrefixMap
                                 ? $commonAddressPrefixMap[$maybePc]
                                 : $commonAddressPrefixMap[$maybePcZ] + ($maybePc.size() - $maybePcZ.size())
-                            )] }
-                        ]
+                            );
+                            [
+                                { type: 'pc', $source, range: [$s, $end - 1] },
+                                { type: 'pc-common', $source, range: [$s, $end_] },
+                                { type: 'block-ref', $source, range: [$end - 1, $end - 1], marker: $pcToBlockMap[$maybePc] or $pcToBlockMap[$maybePcZ] | id }
+                            ]
+                        )
                     ))
                 ) :
                 type = 'param' ? (
@@ -106,9 +109,19 @@ blockListView.item = [
     {
         view: 'block',
         className: 'block-reference',
-        content: 'text:block.index | is number ? "B" + $ : ""'
+        content: 'text:block.id or "" | $ = "" or $[0] = "B" ?: $[0].toUpperCase()'
     },
-    'call-frame-source-point:block or location',
+    {
+        view: 'switch',
+        content: [
+            { when: 'block.id or "" | $ = "" or $[0] = "B"', content: 'call-frame-source-point:block or location' },
+            { content: {
+                view: 'block',
+                className: 'special-block-header',
+                content: 'text:block.id | replace(/(^|-)./, => matched[] | (size() > 1 ? " " : "") + $[-1].toUpperCase())'
+            } }
+        ]
+    },
     {
         view: 'switch',
         content: [
@@ -144,6 +157,7 @@ blockListView.item = [
                         className: type + (type = 'command' ? (command ? ' def' : ' error') : ''),
                         source,
                         range,
+                        marker,
                         tooltip: command and not param
                             ? {
                                 className: 'code-disassemble-tooltip',
@@ -163,7 +177,7 @@ blockListView.item = [
                                 className: 'code-disassemble-tooltip',
                                 content: [
                                     { view: 'header', content: { view: 'block', className: 'command-name', content: 'text:source[range[0]:range[1]]' } },
-                                    'text:"Unknown bytecode handler, create an issue in CPUpro bug tracker"'
+                                    'text:"Unknown bytecode handler, fill an issue in CPUpro bug tracker"'
                                 ]
                             },
                         command
