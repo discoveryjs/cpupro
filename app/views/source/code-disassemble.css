@@ -10,34 +10,43 @@
     background-color: var(--discovery-background-color);
     font-size: 12px;
 }
-.view-code-disassemble-with-source .view-alert {
+.view-code-disassemble-with-source__warning-list .view-alert {
     padding: 2px 8px;
     border: none;
     border-radius: 0;
 }
 
+.view-view-code-disassemble-block-tree {
+    background-color: var(--discovery-background-color);
+    overflow-x: auto;
+}
+
 .view-code-disassemble-with-source__block-list__inlined-blocks {
     --block-color: #8cbae7;
     grid-column: span 2;
-    padding-left: 1px;
-    border-left: 4px solid color-mix(in srgb, var(--block-color), var(--discovery-background-color) 40%);
-    background-color: var(--discovery-background-color);
+    padding-left: 5px;
+    border-top: 1px solid var(--discovery-background-color);
+    background: linear-gradient(to right, color-mix(in srgb, var(--block-color), var(--discovery-background-color) 40%) 4px, transparent 0);
 }
 .view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header {
-    display: flex;
-    align-items: center;
-    gap: 1ex;
     margin-left: -1px;
-    padding: 0 8px;
-    font-size: 12px;
     background-color: color-mix(in srgb, var(--block-color), var(--discovery-background-color) 75%);
 }
-.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header::before {
+.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header > .inlined-header__content {
+    position: sticky;
+    left: 0px;
+    display: inline-flex;
+    align-items: center;
+    gap: 1ex;
+    padding: 0 8px;
+    font-size: 12px;
+}
+.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header > .inlined-header__content::before {
     content: 'Inlined';
     color: var(--block-color);
     font-size: 11px;
 }
-.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header .view-badge {
+.view-code-disassemble-with-source__block-list__inlined-blocks > .inlined-header > .inlined-header__content .view-badge {
     padding: 0 6px;
     margin: 2px 0;
     font-size: inherit;
@@ -46,51 +55,57 @@
 .view-code-disassemble-with-source__block-list {
     display: grid;
     grid-template-columns: max-content 1fr;
-    overflow-x: auto;
-    gap: 0px 1ex;
-    background-color: rgba(205, 205, 205, .1);
+    min-width: max-content;
 }
-.view-code-disassemble-with-source__block-list > .view-list-item,
-.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point,
-.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point
-    :is(.view-source, .view-source__content),
-.view-code-disassemble-with-source__block-list > .view-list-item > .call-frame-code-instructions,
-.view-code-disassemble-with-source__block-list > .view-list-item > .call-frame-code-instructions .view-source__content {
+.view-code-disassemble-with-source__block-list > .view-list-item {
     display: contents;
 }
-.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point
-    :is(.view-source__prelude, .view-source__postlude, .view-source__action-buttons),
-.view-code-disassemble-with-source__block-list > .view-list-item > .call-frame-code-instructions
-    :is(.view-source__prelude, .view-source__postlude, .view-source__action-buttons){
-    display: none;
+.view-code-disassemble-with-source__block-list > .view-list-item > .block-reference {
+    --backdrop-color: #464334;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    grid-row: span 2;
+    min-width: 4ex;
+    background:
+        linear-gradient(to left, #555555 1px, transparent 0) right top,
+        linear-gradient(to bottom, var(--backdrop-color) 22px, transparent 0);
+    background-color: color-mix(in srgb, var(--discovery-background-color), #0002 50%);
+    backdrop-filter: blur(3px);
+    border: 1px solid var(--discovery-background-color);
+    border-width: 1px .5px 0 0;
+    color: #b7ac6e;
+    font-family: var(--discovery-monospace-font-family);
+    font-size: 12px;
+    padding: 2px 4px;
+    text-align: center;
+}
+.view-code-disassemble-with-source__block-list > .view-list-item > .block-reference:empty {
+    --backdrop-color: #35353555;
 }
 .view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point .view-source__lines {
-    grid-row: span 2;
-    left: 0;
-    padding: 0;
-    margin: 0;
-    min-width: 4ex;
-    background-color: color-mix(in srgb, var(--discovery-background-color), #0006 50%);
-    border-top: 1px solid var(--discovery-background-color);
+    display: none;
 }
 .view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point .view-source__lines span {
-    padding: 3px 1ex;
+    padding: 2px 1ex;
     background-color: color-mix(in srgb, var(--discovery-background-color), rgba(205, 205, 205) 10%);
 }
-.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point .view-source__source {
-    padding: 3px 0;
-    padding-left: 10ex;
-    margin-left: -10ex;
+.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point .view-source {
+    border-radius: 0;
+}
+.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point .view-source__content {
+    padding: 2px 1ex;
+    padding-left: 1.5ex;
+    overflow: visible;
     border-top: 1px solid var(--discovery-background-color);
-    /* background-color: #0003; */
 }
-.view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point:has(+ .view-code-disassemble-with-source__block-list__inlined-blocks) .view-source__source {
-    border-bottom: 1px solid var(--discovery-background-color);
+.view-code-disassemble-with-source .call-frame-code-instructions {
+    border-radius: 0;
 }
-.view-code-disassemble-with-source .call-frame-code-instructions .view-source__source {
-    padding: 6px 0;
-    padding-left: 10ex;
-    margin-left: -10ex;
+.view-code-disassemble-with-source .call-frame-code-instructions .view-source__content {
+    padding: 6px 1ex;
+    padding-left: 1.5ex;
+    overflow: visible;
     background-color: #0000003b;
 }
 .view-code-disassemble-with-source__block-list > .more-buttons {
@@ -105,6 +120,10 @@
 .view-code-disassemble-with-source .spotlight.offset {
     color: var(--discovery-fmt-property-color);
     background: none;
+}
+.view-code-disassemble-with-source .spotlight.pc {
+    border-radius: 3px;
+    background-color: var(--discovery-background-color);
 }
 .view-code-disassemble-with-source .spotlight.pc-common {
     color: color-mix(in srgb, currentColor, var(--discovery-background-color) 40%);

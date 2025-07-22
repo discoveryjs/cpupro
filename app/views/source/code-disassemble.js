@@ -95,69 +95,83 @@ discovery.view.define('code-disassemble-with-source', {
     ]
 });
 
-discovery.view.define('view-code-disassemble-block-tree', {
+const blockListView = {
     view: 'list',
     className: 'view-code-disassemble-with-source__block-list',
     limit: false,
-    item: [
-        'call-frame-source-point:block or location',
-        {
-            view: 'switch',
-            content: [
-                { when: 'inline', content: {
-                    view: 'block',
-                    className: 'view-code-disassemble-with-source__block-list__inlined-blocks',
-                    content: [
-                        {
+    data: 'is array ?: children',
+    item: null
+};
+blockListView.item = [
+    {
+        view: 'block',
+        className: 'block-reference',
+        content: 'text:block.index | is number ? "B" + $ : ""'
+    },
+    'call-frame-source-point:block or location',
+    {
+        view: 'switch',
+        content: [
+            { when: 'inline', content: {
+                view: 'block',
+                className: 'view-code-disassemble-with-source__block-list__inlined-blocks',
+                content: [
+                    {
+                        view: 'block',
+                        className: 'inlined-header',
+                        content: {
                             view: 'block',
-                            className: 'inlined-header',
+                            className: 'inlined-header__content',
                             content: [
                                 'call-frame-badge:inline.callFrame'
                                 // 'badge{ text: inline.callFrame.name, href: inline.callFrame.marker().href }',
                                 // 'text:" from "',
                                 // 'module-badge:inline.callFrame'
                             ]
-                        },
-                        'view-code-disassemble-block-tree:children'
-                    ]
-                } },
-                { content: [
-                    {
-                        view: 'source',
-                        className: 'call-frame-code-instructions',
-                        source: '=block.instructions',
-                        ranges: `=ranges.({
-                            className: type + (type = 'command' ? (command ? ' def' : ' error') : ''),
-                            source,
-                            range,
-                            tooltip: command and not param
-                                ? {
-                                    className: 'code-disassemble-tooltip',
-                                    content: [
-                                        { view: 'header', content: [
-                                            { view: 'block', className: 'command-name', content: 'text:source[range[0]:range[1]]' },
-                                            { view: 'comma-list', data: 'command.params', item: {
-                                                view: 'block',
-                                                className: 'param',
-                                                content: 'text'
-                                            } }
-                                        ] },
-                                        'md:command.description'
-                                    ]
-                                }
-                                : type = 'command' and @.block.compiler = "Ignition" ? {
-                                    className: 'code-disassemble-tooltip',
-                                    content: [
-                                        { view: 'header', content: { view: 'block', className: 'command-name', content: 'text:source[range[0]:range[1]]' } },
-                                        'text:"Unknown bytecode handler, create an issue in CPUpro bug tracker"'
-                                    ]
-                                },
-                            command
-                        })`,
-                        lineNum: false
-                    }
-                ] }
-            ]
-        }
-    ]
-});
+                        }
+                    },
+                    blockListView
+                ]
+            } },
+            { content: [
+                {
+                    view: 'source',
+                    className: 'call-frame-code-instructions',
+                    source: '=block.instructions',
+                    lineNum: false,
+                    actionCopySource: false,
+                    ranges: `=ranges.({
+                        className: type + (type = 'command' ? (command ? ' def' : ' error') : ''),
+                        source,
+                        range,
+                        tooltip: command and not param
+                            ? {
+                                className: 'code-disassemble-tooltip',
+                                content: [
+                                    { view: 'header', content: [
+                                        { view: 'block', className: 'command-name', content: 'text:source[range[0]:range[1]]' },
+                                        { view: 'comma-list', data: 'command.params', item: {
+                                            view: 'block',
+                                            className: 'param',
+                                            content: 'text'
+                                        } }
+                                    ] },
+                                    'md:command.description'
+                                ]
+                            }
+                            : type = 'command' and @.block.compiler = "Ignition" ? {
+                                className: 'code-disassemble-tooltip',
+                                content: [
+                                    { view: 'header', content: { view: 'block', className: 'command-name', content: 'text:source[range[0]:range[1]]' } },
+                                    'text:"Unknown bytecode handler, create an issue in CPUpro bug tracker"'
+                                ]
+                            },
+                        command
+                    })`
+                }
+            ] }
+        ]
+    }
+];
+
+discovery.view.define('view-code-disassemble-block-tree', blockListView);
