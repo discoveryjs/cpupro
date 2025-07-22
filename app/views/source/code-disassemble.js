@@ -26,11 +26,11 @@ discovery.view.define('code-disassemble-viewer', {
 discovery.view.define('code-disassemble-with-source', {
     view: 'context',
     data: `{
-        $blocks: assembleBlocks().({
+        $blocks: disassembleBlocks().({
             block: $,
-            ranges: instructions.assembleRanges()
+            ranges: instructions.disassembleRanges()
         });
-        $pcToBlockMap: $blocks.assemblePcToBlockMap();
+        $pcToBlockMap: $blocks.disassemblePcToBlockMap();
         $commonAddressPrefixMap: $pcToBlockMap.keys().commonPrefixMap(2);
 
         warnings: [
@@ -93,7 +93,7 @@ discovery.view.define('code-disassemble-with-source', {
             whenData: true,
             item: { view: 'alert-warning', content: 'markdown' }
         },
-        'view-code-disassemble-block-tree:blocks.assembleBlockTree(blocks[].block.code, => block)'
+        'view-code-disassemble-block-tree:blocks.disassembleBlockTree(blocks[].block.code, => block)'
     ]
 });
 

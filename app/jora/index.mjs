@@ -1,6 +1,7 @@
 import { allocTimespan, typeColor, typeColorComponents, typeOrder, vmFunctionStateTierHotness } from '../prepare/const.js';
 import { methods as binMethods } from './bin.js';
 import { methods as callTreeMethods, makeSamplesMask } from './call-tree.js';
+import { methods as disassembleMethods } from './disassemble.js';
 import { methods as positionTableMethods } from './position-table.js';
 import { methods as samplesMethods } from './samples.js';
 import { methods as sourceMethods } from './source.js';
@@ -38,6 +39,7 @@ function shortNum(current, units, base = 1000) {
 const methods = {
     ...binMethods,
     ...callTreeMethods,
+    ...disassembleMethods,
     ...positionTableMethods,
     ...samplesMethods,
     ...sourceMethods,
