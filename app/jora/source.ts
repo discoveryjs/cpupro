@@ -4,16 +4,24 @@ import { bytecodeHandlersDict } from '../dicts/bytecode-handlers.js';
 import { hasOwn } from '@discoveryjs/discovery/utils';
 
 const bytecodeLineRx = /^(\s*\d+\s+[SE]>)?(\s+0[x0][a-f0-9]+\s+)(@\s*\d+\s*:)((?:\s+[a-f0-9]{2})+\s+)(\S+)((?:\s+[\[#<a-z]\S+\s*,)*\s*[\[#<a-z]\S+)?(\s*\([^)]+\))?(\s*;;;.+)?/i;
-const machineCodeLineRx = /^(\s*0[x0][a-f0-9]+\s+)([a-f0-9]+\s+)([a-f0-9]+\s+)(REX\.\S+\s+)?(\S+)((?:\s+(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?)\s*,)*\s*(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?))?(\s*\(addr [^)]+\))?(\s*(?:\([^)]+\)|\(root \([^)]+\)\)|<\S+>))?(\s*;;.+)?/i;
+const machineCodeLineRx = /^(\s*0[x0][a-f0-9]+\s+)([a-f0-9]+\s+)([a-f0-9]+\s+)(REX\.\S+\s+)?(\S+(?: pool begin)?)((?:\s+(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?)\s*,)*\s*(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?))?(\s*\(addr [^)]+\))?(\s*(?:\(root \([^)]+\)\)|\([^)]+\)|<\S+>))?(\s*;;.+)?/i;
 
 export type AssembleBlock = {
-    index: number;
+    id: `B${number}` | 'constant-pool' | 'deopts';
     code: CpuProCallFrameCode;
     compiler: string;
     callFrame: CpuProCallFrameCode['callFrame'];
     offset: number;
     inlineId: number;
     instructions: string;
+};
+
+export type AssembleBlockRange = {
+    type: string;
+    source: string;
+    range: [number, number];
+    command?: ReturnType<typeof getBytecodeDefinition>;
+    param?: string;
 };
 
 function commonPrefix(a: string, b: string, max: number = Infinity) {
@@ -169,20 +177,14 @@ export const methods = {
     },
 
     assembleRanges(assemble: string) {
-        const ranges: {
-            type: string;
-            source: string;
-            range: [number, number];
-            command?: ReturnType<typeof getBytecodeDefinition>;
-            param?: string;
-        }[] = [];
+        const ranges: AssembleBlockRange[] = [];
         const pushRange = (type: string, m: string, mStart = 0, mEnd = m?.length) => {
             if (typeof m !== 'string' || !m) {
                 return;
             }
 
             const { start, end } = nonWsRange(m, mStart, mEnd);
-            const range: (typeof ranges)[number] = {
+            const range: AssembleBlockRange = {
                 type,
                 source: assemble,
                 range: [offset + start, offset + end]
@@ -284,6 +286,8 @@ export const methods = {
                     pushRange('hint', ref);
                     pushRange('hint', hint);
                     pushRange('comment', comment);
+                } else if (/^\s+;;/.test(line)) {
+                    pushRange('comment', line);
                 }
 
                 lineOffset += line.length;
@@ -299,8 +303,14 @@ export const methods = {
         }
 
         const blocks: AssembleBlock[] = [];
-        const pushBlock = (instructions: string, callFrame: CpuProCallFrame, offset: number, inlineId = -1) => blocks.push({
-            index: blocks.length,
+        const pushBlock = (
+            instructions: string,
+            callFrame: CpuProCallFrame,
+            offset: number,
+            inlineId = -1,
+            id: AssembleBlock['id'] = `B${blocks.length}`
+        ) => blocks.push({
+            id,
             code,
             compiler: code.tier,
             callFrame,
@@ -328,11 +338,12 @@ export const methods = {
             const blockInlineCallFrames = code.fns;
             let buffer: string[] = [];
             let callFrame = code.callFrame;
-            let blockOffset = callFrame.start || -1;
+            let blockOffset = callFrame.start ?? -1;
             let inline = -1;
+            let id: AssembleBlock['id'] | undefined = undefined;
             const flushBlock = () => {
                 if (buffer.length > 0) {
-                    pushBlock(buffer.join('\n'), callFrame, blockOffset, inline);
+                    pushBlock(buffer.join('\n'), callFrame, blockOffset, inline, id);
                     buffer = [];
                 }
             };
@@ -348,6 +359,26 @@ export const methods = {
                     callFrame = inline !== -1
                         ? blockInlineCallFrames[inline]
                         : code.callFrame;
+                } else {
+                    const isConstantPoolBound = (
+                        (id === undefined && line.indexOf('constant pool begin') !== -1) ||
+                        (id === 'constant-pool' && line.indexOf('constant') === -1)
+                    );
+                    const isDeoptsBound = !isConstantPoolBound &&
+                        (id !== 'deopts' && line.indexOf(';; debug: deopt position') !== -1);
+
+                    if (isConstantPoolBound || isDeoptsBound) {
+                        flushBlock();
+                        inline = -1;
+                        callFrame = code.callFrame;
+                        blockOffset = callFrame.start ?? -1;
+
+                        if (isDeoptsBound || (isConstantPoolBound && id === 'constant-pool')) {
+                            id = 'deopts';
+                        } else if (isConstantPoolBound && id !== 'constant-pool') {
+                            id = 'constant-pool';
+                        }
+                    }
                 }
 
                 buffer.push(line);
@@ -357,6 +388,24 @@ export const methods = {
         }
 
         return blocks;
+    },
+
+    assemblePcToBlockMap(blockRanges: { block: AssembleBlock, ranges: AssembleBlockRange[] }[]) {
+        const map = {};
+
+        for (let i = 0; i < blockRanges.length; i++) {
+            const { block, ranges } = blockRanges[i];
+
+            for (const range of ranges) {
+                if (range.type === 'pc') {
+                    const key = range.source.slice(range.range[0], range.range[1]);
+
+                    map[key] = block;
+                }
+            }
+        }
+
+        return map;
     },
 
     assembleBlockTree<T>(array: T[], code: CpuProCallFrameCode, fn: ((entry: T) => AssembleBlock)) {

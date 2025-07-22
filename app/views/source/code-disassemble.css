@@ -181,11 +181,12 @@
 }
 .view-code-disassemble-with-source .spotlight.block-ref::before {
     content: '→';
-    padding: 0 1ex;
+    padding: 0 .5ex;
     color: #bbb;
 }
 .view-code-disassemble-with-source .spotlight.block-ref::after {
     content: attr(data-marker);
+    color: #cfc170;
 }
 .view-code-disassemble-with-source .spotlight.comment {
     color: #777;

@@ -44,11 +44,9 @@ discovery.view.define('code-disassemble-with-source', {
                 $start: range[0];
                 $end: range[1];
 
-                type = 'pc' ? {
-                    type: 'pc-common',
-                    source,
-                    range: [$start, $start + $commonAddressPrefixMap[source[$start:$end]]]
-                } :
+                type = 'pc' ? (
+                    { type: 'pc-common', source, range: [$start, $start + $commonAddressPrefixMap[source[$start:$end]]] }
+                ) :
                 type = 'hint' ? (
                     (source[$start:$end].match(/^\\((\\S+)\\s*@\\s*(\\d+)\\)$/) |? (
                         $maybePc: matched[1];
@@ -80,7 +78,8 @@ discovery.view.define('code-disassemble-with-source', {
                     $value: source[$start:$end];
                     $value in $commonAddressPrefixMap ? [
                         { type: 'pc', $source, range: [$start, $start + $value.size()] },
-                        { type: 'pc-common', $source, range: [$start, $start + $commonAddressPrefixMap[$value]] }
+                        { type: 'pc-common', $source, range: [$start, $start + $commonAddressPrefixMap[$value]] },
+                        { type: 'block-ref', source, range: [$end, $end], marker: $pcToBlockMap[$value].id }
                     ]
                 )
             )
