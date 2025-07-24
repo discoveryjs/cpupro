@@ -69,7 +69,7 @@ discovery.view.define('call-frame-codes-table', {
                         ]
                     },
                     {
-                        header: 'Size',
+                        header: 'Code',
                         colWhen: '.[code.size > 0]',
                         sorting: 'code.size desc',
                         align: 'right',

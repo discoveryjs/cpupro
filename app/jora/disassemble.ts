@@ -3,26 +3,15 @@ import { InlineTreeEntry, PositionTableEntry, methods as positionTableMethods } 
 import { bytecodeHandlersDict } from '../dicts/bytecode-handlers.js';
 import { hasOwn } from '@discoveryjs/discovery/utils';
 
-function getBytecodeDefinition(name: string) {
-    if (hasOwn(bytecodeHandlersDict, name)) {
-        return bytecodeHandlersDict[name];
-    }
-
-    if (name.endsWith('.Wide') || name.endsWith('.ExtraWide')) {
-        return getBytecodeDefinition(name.slice(0, name.indexOf('.')));
-    }
-
-    return null;
-}
-
 const bytecodeLineRx = /^(\s*\d+\s+[SE]>)?(\s+0[x0][a-f0-9]+\s+)(@\s*\d+\s*:)((?:\s+[a-f0-9]{2})+\s+)(\S+)((?:\s+[\[#<a-z]\S+\s*,)*\s*[\[#<a-z]\S+)?(\s*\([^)]+\))?(\s*;;;.+)?/i;
 const machineCodeLineRx = /^(\s*0[x0][a-f0-9]+\s+)([a-f0-9]+\s+)([a-f0-9]+\s+)(REX\.\S+\s+)?(\S+(?: pool begin)?)((?:\s+(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?)\s*,)*\s*(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?))?(\s*\(addr [^)]+\))?(\s*(?:\(root \([^)]+\)\)|\([^)]+\)|<\S+>))?(\s*;;.+)?/i;
 
 export type DisassembleBlock = {
-    id: `B${number}` | 'constant-pool' | 'deopts';
+    id: `B${number}` | 'constants' | 'deopts';
     code: CpuProCallFrameCode;
     compiler: string;
-    callFrame: CpuProCallFrameCode['callFrame'];
+    originCallFrame: CpuProCallFrameCode['callFrame'];
+    originOffset: number;
     offset: number;
     inlineId: number;
     instructions: string;
@@ -35,6 +24,18 @@ export type DisassembleBlockRange = {
     command?: ReturnType<typeof getBytecodeDefinition>;
     param?: string;
 };
+
+function getBytecodeDefinition(name: string) {
+    if (hasOwn(bytecodeHandlersDict, name)) {
+        return bytecodeHandlersDict[name];
+    }
+
+    if (name.endsWith('.Wide') || name.endsWith('.ExtraWide')) {
+        return getBytecodeDefinition(name.slice(0, name.indexOf('.')));
+    }
+
+    return null;
+}
 
 function commonPrefix(a: string, b: string, max: number = Infinity) {
     let i = 0;
@@ -64,6 +65,16 @@ function nonWsRange(s: string, start = 0, end = s.length) {
     return { start, end };
 }
 
+function getCodeInlinedOffsets(code: CpuProCallFrameCode) {
+    const result: number[] = [];
+
+    for (const entry of positionTableMethods.parseInlined(code.inlined)) {
+        result.push(entry.parent !== undefined ? result[entry.parent] : entry.offset);
+    }
+
+    return result;
+}
+
 export const methods = {
     commonPrefixMap(strings: string[], minLength = 2) {
         const map = {};
@@ -83,6 +94,71 @@ export const methods = {
 
         return map;
     },
+
+    disassembleBlocksAndRanges: `{
+        $blocks: disassembleBlocks().({
+            block: $,
+            ranges: instructions.disassembleRanges()
+        });
+        $pcToBlockMap: $blocks.disassemblePcToBlockMap();
+        $commonAddressPrefixMap: $pcToBlockMap.keys().commonPrefixMap(2);
+
+        code: @,
+        warnings: [
+            not hasSource() ? 'Mapping to source code is not available, because the call frame has **no source code**',
+            no positions and tier != 'Ignition' ? 'Mapping to source code is not available, because the call frame has **no position table**'
+        ].[],
+        $blocks.({
+            block,
+            ranges: ranges + ranges.(
+                $source;
+                $start: range[0];
+                $end: range[1];
+
+                type = 'pc' ? (
+                    { type: 'pc-common', $source, range: [$start, $start + $commonAddressPrefixMap[source[$start:$end]]] }
+                ) :
+                type = 'hint' ? (
+                    (source[$start:$end].match(/^\\((\\S+)\\s*@\\s*(\\d+)\\)$/) |? (
+                        $maybePc: matched[1];
+                        $maybePc in $commonAddressPrefixMap ? [
+                            { type: 'pc', $source, range: [$start + 1, $start + 1 + $maybePc.size()] },
+                            { type: 'pc-common', $source, range: [$start + 1, $start + 1 + $commonAddressPrefixMap[$maybePc]] },
+                            { $offset: matched[2]; type: 'offset', $source, range: [$end - 1 - $offset.size(), $end - 1] },
+                            { type: 'block-ref', $source, range: [$start + 1, $start + 1], marker: $pcToBlockMap[$maybePc].id }
+                        ]
+                    )) or
+                    (source[$start:$end].match(/^\\(addr\\s+(\\S+?)\\)$/) |? (
+                        $maybePc: matched[1];
+                        $maybePcZ: $maybePc.replace(/0x0+/, '0x');
+                        $s: $end - $maybePc.size() - 1;
+                        $maybePc in $commonAddressPrefixMap or $maybePcZ in $commonAddressPrefixMap ? (
+                            $end_: $s + ($maybePc in $commonAddressPrefixMap
+                                ? $commonAddressPrefixMap[$maybePc]
+                                : $commonAddressPrefixMap[$maybePcZ] + ($maybePc.size() - $maybePcZ.size())
+                            );
+                            [
+                                { type: 'pc', $source, range: [$s, $end - 1] },
+                                { type: 'pc-common', $source, range: [$s, $end_] },
+                                { type: 'block-ref', $source, range: [$s, $s], marker: $pcToBlockMap[$maybePc] or $pcToBlockMap[$maybePcZ] | id }
+                            ]
+                        )
+                    ))
+                ) :
+                type = 'param' ? (
+                    $value: source[$start:$end];
+                    $value in $commonAddressPrefixMap ? [
+                        { type: 'pc', $source, range: [$start, $start + $value.size()] },
+                        { type: 'pc-common', $source, range: [$start, $start + $commonAddressPrefixMap[$value]] },
+                        { type: 'block-ref', $source, range: [$start, $start], marker: $pcToBlockMap[$value].id }
+                    ] :
+                    $value ~= /^ls[lr] / ? (
+                        { type: 'command', $source, range: [$start, $start + 3] }
+                    )
+                )
+            )
+        })
+    }`,
 
     disassembleRanges(disassemble: string) {
         const ranges: DisassembleBlockRange[] = [];
@@ -137,6 +213,7 @@ export const methods = {
                             }
 
                             const range = pushRange('param', paramList[i]);
+
                             if (range) {
                                 range.command = commandDef;
                                 range.param = commandDef?.params[i];
@@ -213,15 +290,17 @@ export const methods = {
         const blocks: DisassembleBlock[] = [];
         const pushBlock = (
             instructions: string,
-            callFrame: CpuProCallFrame,
-            offset: number,
+            originCallFrame: CpuProCallFrame,
+            originOffset: number,
+            offset = originOffset,
             inlineId = -1,
             id: DisassembleBlock['id'] = `B${blocks.length}`
         ) => blocks.push({
             id,
             code,
             compiler: code.tier,
-            callFrame,
+            originCallFrame,
+            originOffset,
             offset,
             inlineId,
             instructions
@@ -243,15 +322,23 @@ export const methods = {
                     (map, entry) => map.set(entry.code, entry),
                     new Map<number, PositionTableEntry>()
                 );
-            const blockInlineCallFrames = code.fns;
+            const codeInlinedOffsets = getCodeInlinedOffsets(code);
+            const codeInlinedCallFrames = code.fns;
             let buffer: string[] = [];
-            let callFrame = code.callFrame;
-            let blockOffset = callFrame.start ?? -1;
-            let inline = -1;
-            let id: DisassembleBlock['id'] | undefined = undefined;
+            let originCallFrame = code.callFrame;
+            let blockOffset = originCallFrame.start ?? -1;
+            let inlineId = -1;
+            let blockId: DisassembleBlock['id'] | undefined = undefined;
             const flushBlock = () => {
                 if (buffer.length > 0) {
-                    pushBlock(buffer.join('\n'), callFrame, blockOffset, inline, id);
+                    pushBlock(
+                        buffer.join('\n'),
+                        originCallFrame,
+                        blockOffset,
+                        inlineId !== -1 ? codeInlinedOffsets[inlineId] : blockOffset,
+                        inlineId,
+                        blockId
+                    );
                     buffer = [];
                 }
             };
@@ -263,28 +350,28 @@ export const methods = {
                 if (positionTableEntry !== undefined) {
                     flushBlock();
                     blockOffset = positionTableEntry.offset;
-                    inline = positionTableEntry.inline ?? -1;
-                    callFrame = inline !== -1
-                        ? blockInlineCallFrames[inline]
+                    inlineId = positionTableEntry.inline ?? -1;
+                    originCallFrame = inlineId !== -1
+                        ? codeInlinedCallFrames[inlineId]
                         : code.callFrame;
                 } else {
                     const isConstantPoolBound = (
-                        (id === undefined && line.indexOf('constant pool begin') !== -1) ||
-                        (id === 'constant-pool' && line.indexOf('constant') === -1)
+                        (blockId === undefined && line.indexOf('constant pool begin') !== -1) ||
+                        (blockId === 'constants' && line.indexOf('constant') === -1)
                     );
                     const isDeoptsBound = !isConstantPoolBound &&
-                        (id !== 'deopts' && line.indexOf(';; debug: deopt position') !== -1);
+                        (blockId !== 'deopts' && line.indexOf(';; debug: deopt position') !== -1);
 
                     if (isConstantPoolBound || isDeoptsBound) {
                         flushBlock();
-                        inline = -1;
-                        callFrame = code.callFrame;
-                        blockOffset = callFrame.start ?? -1;
+                        inlineId = -1;
+                        originCallFrame = code.callFrame;
+                        blockOffset = originCallFrame.start ?? -1;
 
-                        if (isDeoptsBound || (isConstantPoolBound && id === 'constant-pool')) {
-                            id = 'deopts';
-                        } else if (isConstantPoolBound && id !== 'constant-pool') {
-                            id = 'constant-pool';
+                        if (isDeoptsBound || (isConstantPoolBound && blockId === 'constants')) {
+                            blockId = 'deopts';
+                        } else if (isConstantPoolBound && blockId !== 'constants') {
+                            blockId = 'constants';
                         }
                     }
                 }

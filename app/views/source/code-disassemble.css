@@ -16,7 +16,7 @@
     border-radius: 0;
 }
 
-.view-view-code-disassemble-block-tree {
+.view-code-disassemble-block-tree {
     background-color: var(--discovery-background-color);
     overflow-x: auto;
 }
@@ -91,6 +91,7 @@
     font-family: var(--discovery-monospace-font-family);
     font-size: var(--discovery-monospace-font-size, 12px);
     line-height: var(--discovery-monospace-line-height, 1.5);
+    text-transform: capitalize;
 }
 
 .view-code-disassemble-with-source__block-list > .view-list-item > .view-call-frame-source-point .view-source__lines {
@@ -105,10 +106,10 @@
     overflow: visible;
     border-top: 1px solid var(--discovery-background-color);
 }
-.view-code-disassemble-with-source .call-frame-code-instructions {
+.view-code-disassemble-with-source__block-list .call-frame-code-instructions {
     border-radius: 0;
 }
-.view-code-disassemble-with-source .call-frame-code-instructions .view-source__content {
+.view-code-disassemble-with-source__block-list .call-frame-code-instructions .view-source__content {
     padding: 6px 1ex;
     padding-left: 1.5ex;
     overflow: visible;
@@ -119,78 +120,132 @@
     padding: 2px;
 }
 
-.view-code-disassemble-with-source .spotlight.label {
+.call-frame-code-instructions .spotlight.label {
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.pc,
-.view-code-disassemble-with-source .spotlight.offset {
+.call-frame-code-instructions .spotlight.pc,
+.call-frame-code-instructions .spotlight.offset {
     color: var(--discovery-fmt-property-color);
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.pc {
+.call-frame-code-instructions .spotlight.pc {
     border-radius: 3px;
     background-color: var(--discovery-background-color);
 }
-.view-code-disassemble-with-source .spotlight.pc-common {
+.call-frame-code-instructions .spotlight.pc-common {
     color: color-mix(in srgb, currentColor, var(--discovery-background-color) 40%);
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.offset {
+.call-frame-code-instructions .spotlight.offset {
     color: var(--discovery-fmt-keyword-color);
 }
-.view-code-disassemble-with-source .spotlight.ops {
+.call-frame-code-instructions .spotlight.ops {
     color: #777;
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.prefix {
+.call-frame-code-instructions .spotlight.prefix {
     color: #92a5d6;
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.command {
+.call-frame-code-instructions .spotlight.command {
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.command.discovery-view-has-tooltip {
+.call-frame-code-instructions .spotlight.command.discovery-view-has-tooltip {
     cursor: help;
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, currentColor, var(--discovery-background-color) 60%);
 }
-.view-code-disassemble-with-source .spotlight.command.discovery-view-has-tooltip:hover {
+.call-frame-code-instructions .spotlight.command.discovery-view-has-tooltip:hover {
     background-color: color-mix(in srgb, currentColor, var(--discovery-background-color) 80%);
     text-decoration-color: currentColor;
 }
-.view-code-disassemble-with-source .spotlight.param {
+.call-frame-code-instructions .spotlight.param {
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.hint {
+.call-frame-code-instructions .spotlight.hint {
+    padding-top: 2px;
     color: #e0af54;
     border-radius: 3px;
     background-color: var(--discovery-background-color);
 }
-.view-code-disassemble-with-source .spotlight.hint:has(.pc) {
+.call-frame-code-instructions .spotlight.hint:has(.pc) {
     color: inherit;
 }
-.view-code-disassemble-with-source .spotlight.hint::before {
+.call-frame-code-instructions .spotlight.hint::before {
     content: 'hint:';
     padding-left: 3px;
     color: #888;
     font-size: 11px;
     font-family: var(--discovery-font-family);
 }
-.view-code-disassemble-with-source .spotlight.block-ref {
+.call-frame-code-instructions .spotlight.block-ref {
+    color: #b7ac6e;
     background: none;
 }
-.view-code-disassemble-with-source .spotlight.block-ref::before {
-    content: '→';
-    padding: 0 .5ex;
-    color: #bbb;
+.call-frame-code-instructions .spotlight.block-ref::after {
+    content: ":";
 }
-.view-code-disassemble-with-source .spotlight.block-ref::after {
+.call-frame-code-instructions .spotlight.block-ref::before {
     content: attr(data-marker);
-    color: #cfc170;
+    background-color: #464334;
+    outline: 1px solid #464334;
+    padding: 1px 2px;
 }
-.view-code-disassemble-with-source .spotlight.comment {
+.call-frame-code-instructions .spotlight.comment {
     color: #777;
     background: none;
+}
+
+.view-code-disassemble-source-to-blocks {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+        "toolbar toolbar"
+        "source blocks";
+    height: calc(100vh - 110px - var(--discovery-page-padding-bottom));
+}
+.view-code-disassemble-source-to-blocks > * {
+    grid-area: toolbar;
+}
+.view-code-disassemble-source-to-blocks > .view-source {
+    grid-area: source;
+    overflow: auto;
+}
+.view-code-disassemble-source-to-blocks > .view-source .selected[data-marker] {
+    outline: 1px solid currentColor;
+    pointer-events: none;
+}
+.view-code-disassemble-source-to-blocks > .view-source .inlined-count {
+    display: inline;
+    color: light-dark(#668fb8, #8cbae7);
+}
+.view-code-disassemble-source-to-blocks > .view-source .inlined-count::before {
+    content: ' (';
+    color: color-mix(in srgb, currentcolor, #888 40%);
+}
+.view-code-disassemble-source-to-blocks > .view-source .inlined-count::after {
+    content: ' inlined)';
+    color: color-mix(in srgb, currentcolor, #888 40%);
+}
+.view-code-disassemble-source-to-blocks > .view-source .mark[data-marker^="blocks-offset:"] {
+    cursor: pointer;
+}
+.view-code-disassemble-source-to-blocks > .blocks-list {
+    grid-area: blocks;
+    contain: inline-size;
+    overflow-y: auto;
+}
+.view-code-disassemble-source-to-blocks > .blocks-list > .view-block {
+    padding: 4px 8px;
+    color: #888;
+}
+.source-to-block-tooltip {
+    width: 350px;
+}
+.source-to-block-tooltip .action-hint {
+    margin-top: 4px;
+    color: #888;
 }
 
 .code-disassemble-tooltip {
