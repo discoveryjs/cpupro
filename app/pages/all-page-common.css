@@ -57,6 +57,9 @@
     z-index: 11;
     background-color: var(--discovery-background-color);
 }
+.all-page-table > tbody > .view-table-cell-details-row > .view-cell-details-content > .view-call-frame-codes-table .view-code-disassemble-source-to-blocks {
+    height: calc(100vh - 260px - var(--discovery-page-padding-bottom));
+}
 
 .app-page-summary {
     position: fixed;
