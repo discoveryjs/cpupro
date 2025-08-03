@@ -14,13 +14,17 @@ discovery.view.define('script-source', {
                 });
                 $callFrameCodesWithRange: $callFrameCodes.[callFrame | start >= 0 and end >= start];
                 $tooltipView: [
-                    'text:callFrameCodes.callFrame.name',
+                    'badge:callFrameCodes.callFrame.name',
                     'html:"<br>"',
                     {
                         view: 'inline-list',
                         data: 'callFrameCodes.codes',
                         whenData: true,
-                        item: 'text:"\xa0→ " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
+                        item: [
+                            { view: 'text', when: '#.index', text: "\xa0→ " },
+                            'code-tier-badge:tier',
+                            'text:" " + tier + (inlined ? " (inlined: " + fns.size() + ")" : "")'
+                        ]
                     }
                 ];
 
