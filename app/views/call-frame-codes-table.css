@@ -101,3 +101,38 @@
 .view-call-frame-codes-table :is(.deopt-call-stack, .inlining-tree) .view-call-frame-source-point > .view-source .view-source__content {
     padding: 4px 8px;
 }
+
+.view-call-frame-codes-table .view-cell-details-content .code-segments {
+    display: flex;
+    gap: 1px;
+}
+.view-call-frame-codes-table .view-cell-details-content .code-segments > .view-table {
+    margin-top: -1px;
+}
+.view-call-frame-codes-table .view-cell-details-content .code-segments > .time-ruler-wrapper {
+    flex: 1;
+    position: relative;
+}
+.view-call-frame-codes-table .view-cell-details-content .code-segments > .time-ruler-wrapper .segment {
+    --line-height: 19px + 4px; /* line-height + padding */
+    position: absolute;
+    top: calc(1px + (var(--index) + 1) * (var(--line-height) + 1px));
+    left: calc(var(--tm) * 100%);
+    width: calc(var(--duration) * 100%);
+    height: calc(var(--line-height));
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: center;
+}
+.view-call-frame-codes-table .view-cell-details-content .code-segments > .time-ruler-wrapper .segment::before {
+    content: '';
+    display: block;
+    box-sizing: content-box;
+    height: 1px;
+    border: solid rgb(var(--color));
+    border-width: 0 1px;
+    padding: 2px 0;
+    background-color: rgb(var(--color));
+    background-clip: content-box;
+}

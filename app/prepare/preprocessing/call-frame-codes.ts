@@ -5,7 +5,8 @@ export function processCallFrameCodes(
     inputCallFrameCodes: V8CpuProfileCallFrameCodes[] = [],
     callFrameByIndex: Uint32Array,
     callFrames: CpuProCallFrame[],
-    startTime: number = 0
+    startTime: number = 0,
+    endTime: number = startTime
 ) {
     const allCodes: CpuProCallFrameCode[] = [];
     const codesByScript = new Map<CpuProScript, {
@@ -27,6 +28,8 @@ export function processCallFrameCodes(
         const { codes } = inputCallFrameCodes[i];
         let topTierWeight = -1;
         let topTier: V8CallFrameCodeType = 'Unknown';
+        let currentCode: CpuProCallFrameCode | null = null;
+        let lastTm = startTime;
 
         // attach codes to a script
         // if (fn.script !== null) {
@@ -63,22 +66,43 @@ export function processCallFrameCodes(
 
         // process function's states
         for (let i = 0; i < codes.length; i++) {
-            const state = codes[i];
-            const tier = state.tier;
+            const code = codes[i];
+            const tier = code.tier;
             const tierWeight = vmFunctionStateTiers.indexOf(tier);
-            const code: CpuProCallFrameCode = {
-                ...state,
-                tm: state.tm - startTime,
-                fns: state.fns.map(idx => callFrames[callFrameByIndex[idx]]),
-                duration: i !== codes.length - 1
-                    ? codes[i + 1].tm - state.tm
-                    : 0,
+            const duration = code.deopt
+                ? code.deopt.tm - code.tm
+                : i !== codes.length - 1
+                    ? codes[i + 1].tm - code.tm
+                    : endTime > startTime
+                        ? endTime - code.tm
+                        : 0;
+            const normCode: CpuProCallFrameCode = {
+                ...code,
+                tm: code.tm - startTime,
+                fns: code.fns.map(idx => callFrames[callFrameByIndex[idx]]),
+                duration,
+                segments: null,
                 callFrameCodes,
                 callFrame
             };
 
-            callFrameCodes.codes[i] = code;
-            allCodes.push(code);
+            if (currentCode !== null && code.tm > lastTm) {
+                if (currentCode.segments === null) {
+                    currentCode.segments = [{ tm: currentCode.tm, duration: currentCode.duration }];
+                }
+
+                currentCode.segments.push({ tm: lastTm, duration: code.tm - lastTm });
+                currentCode.duration += code.tm - lastTm;
+            }
+
+            if (!code.deopt) {
+                currentCode = normCode;
+            }
+
+            lastTm = code.tm + duration;
+
+            callFrameCodes.codes[i] = normCode;
+            allCodes.push(normCode);
 
             if (tierWeight > topTierWeight) {
                 topTierWeight = tierWeight;

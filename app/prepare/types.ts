@@ -325,6 +325,7 @@ export type CpuProCallFrameCode = {
     callFrameCodes: CpuProCallFrameCodes;
     tier: string;
     duration: number;
+    segments: { tm: number; duration: number }[] | null;
     positions: string;
     inlined: string;
     fns: CpuProCallFrame[];

@@ -121,3 +121,8 @@
     border-top-width: 2px;
     height: 3.5px;
 }
+
+.subject-with-nested-timeline__code-segment-tooltip .view-code-tier-badge {
+    margin: -1px .8ex 0 0;
+    vertical-align: middle;
+}

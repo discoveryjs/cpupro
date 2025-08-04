@@ -45,13 +45,70 @@ discovery.view.define('call-frame-codes-table', {
                     },
                     {
                         header: 'Lifespan',
-                        data: 'code.duration',
+                        sorting: 'code.duration desc',
                         align: 'right',
                         content: {
                             view: 'switch',
+                            data: 'code.duration',
                             content: [
                                 { when: '$', content: 'duration' },
                                 { content: 'text:"—"' }
+                            ]
+                        },
+                        // detailsWhen: 'code.segments',
+                        details: {
+                            view: 'block',
+                            className: 'code-segments',
+                            content: [
+                                {
+                                    view: 'table',
+                                    data: 'code.segments or code',
+                                    cols: [
+                                        {
+                                            header: '#',
+                                            data: '#.index + 1'
+                                        },
+                                        {
+                                            header: 'Start at',
+                                            align: 'right',
+                                            data: 'tm',
+                                            content: 'text:formatMicrosecondsTimeFixed()'
+                                        },
+                                        {
+                                            header: 'Duration',
+                                            align: 'right',
+                                            data: 'duration',
+                                            content: 'duration'
+                                        }
+                                    ]
+                                },
+                                {
+                                    view: 'block',
+                                    className: 'time-ruler-wrapper',
+                                    content: [
+                                        {
+                                            view: 'time-ruler',
+                                            labels: 'top',
+                                            duration: '=#.data.currentProfile.totalTime'
+                                        },
+                                        {
+                                            view: 'list',
+                                            data: '$color: code.tier.color(true); (code.segments or code).({ ..., $color })',
+                                            itemConfig: {
+                                                view: 'block',
+                                                className: 'segment',
+                                                postRender(el, _, data, context) {
+                                                    const total = context.data.currentProfile.totalTime;
+
+                                                    el.style.setProperty('--index', context.index);
+                                                    el.style.setProperty('--color', data.color);
+                                                    el.style.setProperty('--tm', data.tm / total);
+                                                    el.style.setProperty('--duration', data.duration / total);
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
                             ]
                         }
                     },
@@ -60,7 +117,7 @@ discovery.view.define('call-frame-codes-table', {
                         content: 'code-hotness-icon{ tier: code.tier, showHint: false }'
                     },
                     {
-                        header: 'Tier',
+                        header: 'Compiler',
                         sorting: 'code.tier.order() asc',
                         data: 'code.tier',
                         content: [

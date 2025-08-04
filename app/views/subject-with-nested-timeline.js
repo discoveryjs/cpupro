@@ -100,11 +100,15 @@ discovery.view.define('subject-with-nested-timeline', {
                 #.currentProfile
                     | $type = "module"     ? codesByScript[=> script = @.subject.script].compilation.codes :
                       $type = "call-frame" ? codesByCallFrame[=> callFrame = @.subject].codes :
+                    | .($code: $; segments or [{ tm, duration }] | .({ ..., $code, segment: $ }))
+                    | sort(tm asc)
                     | .({
-                        code: $,
-                        color: tier.color(true),
+                        code,
+                        segment,
+                        color: code.tier.color(true),
+                        tm,
                         duration: duration
-                            or ($lastSeen: (module or callFrame).timestamps($type).lastSeen;
+                            or ($lastSeen: code | module or callFrame | timestamps($type).lastSeen;
                                 $lastSeen > tm ? $step * ($lastSeen / $step).ceil() - tm)
                             or $totalTime - tm
                     })
@@ -113,15 +117,24 @@ discovery.view.define('subject-with-nested-timeline', {
             itemConfig: {
                 view: 'block',
                 className: 'tick',
-                tooltip: [
-                    'html:code | `<span style=\"color:${tier.color()[:-2]+`d0`}\">${tier}</span><br>`',
-                    'text:`Duration: ${duration.ms()}`'
-                ],
+                tooltip: {
+                    className: 'subject-with-nested-timeline__code-segment-tooltip',
+                    content: [
+                        'code-tier-badge:code.tier',
+                        'html:code | `<span style=\"color:${tier.color()[:-2]+`d0`}\">${tier}</span><br>`',
+                        'text:`Duration: ${duration.ms()}`',
+                        { view: 'block', when: 'code.segments.size() > 1', content: [
+                            'text:`Segment ${code.segments.indexOf(segment) + 1} of ${code.segments.size()}`',
+                            'html:"<br>"',
+                            'text:`All segments duration: ${code.segments.sum(=> duration).ms()}`'
+                        ] }
+                    ]
+                },
                 postRender(el, _, data, ctx) {
-                    const { code, color, duration } = data;
+                    const { tm, duration, color } = data;
                     const totalTime = ctx.currentProfile.totalTime;
 
-                    el.style.setProperty('--pos', code.tm / totalTime);
+                    el.style.setProperty('--pos', tm / totalTime);
                     el.style.setProperty('--duration', duration / totalTime);
                     el.style.setProperty('--tier-color', 'rgb(' + color + ', .68)');
                     // el.addEventListener('click', () => {

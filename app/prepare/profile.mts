@@ -199,7 +199,13 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         codesByCallFrame,
         codesByScript
     } = await work('process function codes', () =>
-        processCallFrameCodes(data._callFrameCodes, callFrameByIndex, dict.callFrames)
+        processCallFrameCodes(
+            data._callFrameCodes,
+            callFrameByIndex,
+            dict.callFrames,
+            startTime,
+            endTime
+        )
     );
 
     //
