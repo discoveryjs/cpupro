@@ -11,13 +11,17 @@ export function trackExecutionTime<T extends Record<string,(...args: unknown[]) 
     for (const methodName of trackMethodNames) {
         const fn = methods[methodName];
 
+        if (typeof fn !== 'function') {
+            continue;
+        }
+
         methods[methodName] = function(...args) {
-            const startTime = Date.now();
+            const startTime = performance.now();
 
             try {
                 return fn.apply(this, args);
             } finally {
-                scheduleTimingsLoggingBuffer.at(-1)?.push([`${methodName}() — ${Date.now() - startTime}ms`, args]);
+                scheduleTimingsLoggingBuffer.at(-1)?.push([`${methodName}() — ${performance.now() - startTime}ms`, args]);
 
                 if (scheduleTimingsLoggingFrameTimer === null) {
                     scheduleTimingsLoggingFrameTimer = requestAnimationFrame(() => {
