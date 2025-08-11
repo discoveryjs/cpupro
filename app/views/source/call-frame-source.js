@@ -31,8 +31,8 @@ discovery.view.define('call-frame-source', {
                     | .[callFrame | $ != @ and start >= $start and end <= $end];
 
                 $codePoints: $callFrameCodes.codes
-                    | .[tier="Ignition"][-1] or .[positions][-1]
-                    | positions.match(/O\\d+/g).(+matched[0][1:]) + $start;
+                    | .[tier="Ignition"][-1] or .[tier="Sparkplug" and positions][-1]
+                    | positions.match(/O\\d+/g).(+matched[0][1:]);
                 $codePointMarks: $codePoints
                     |? .($ - $sourceSliceStart | is number ? { offset: $ });
 
