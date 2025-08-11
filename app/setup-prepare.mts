@@ -41,6 +41,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         // if (i === 0) continue;
         const profileData = profileSet.profiles[i];
 
+        if (!profileData.nodes?.length) {
+            console.warn('Ignored a profile with no call tree nodes', profileData);
+            continue;
+        }
+
         // execution context goes first sice it affects package name
         // FIXME: following profiles could affect previously loaded profiles,
         // it should perform together with path/name processing
