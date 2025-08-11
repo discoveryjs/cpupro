@@ -63,14 +63,14 @@ export function processTicks(
 
         if (tickVmState !== VM_STATE_GC && tickVmState !== VM_STATE_IDLE) {
             for (let i = tickStack.length - 2; i >= 0; i -= 2) {
-                const id = tickStack[i];
+                const codeIndex = tickStack[i];
 
-                if (id < 0 || id > maxCodeCallFrameIndex) {
+                if (codeIndex < 0 || codeIndex > maxCodeCallFrameIndex) {
                     continue;
                 }
 
                 // get precomputed call frame for the code
-                const callFrameIndex = callFrameIndexByCode[id];
+                const callFrameIndex = callFrameIndexByCode[codeIndex];
 
                 // skip ignored call frames
                 if (callFrameIndex === 0) {
@@ -81,16 +81,17 @@ export function processTicks(
                 currentNode = getNextNode(currentNode, callFrameIndex, prevSourceOffset);
 
                 // find a script positions if possible
-                const codePositions = positionTableByCode[id];
+                const codePositions = positionTableByCode[codeIndex];
 
                 if (codePositions !== null) {
+                    const pc = tickStack[i + 1];
                     const codePositionsIndex = findPositionsCodeIndex(
                         codePositions.positions,
                         // Machine code functions on the stack
                         // that are not currently executing store pc
                         // on the next instruction after the callee is called,
                         // so subtract one from the position
-                        tickStack[i + 1] - (i > 0 && codePositions.pcOnNextInstruction ? 1 : 0)
+                        pc - (i > 0 && codePositions.pcOnNextInstruction ? 1 : 0)
                     );
 
                     // store the script offset for next call frame
