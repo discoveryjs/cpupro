@@ -130,10 +130,15 @@ discovery.view.define('call-frame-source', {
                 };
                 $selfValueTooltipView: #.currentProfile | type = 'memory' and _memoryGc and _memoryType
                     ? 'allocation-samples-matrix:#.currentProfile | callFramePositionsTree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
+                $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table)"' };
+                $selfValueMisattributedTooltipView: {
+                    className: 'view-call-frame-source__tooltip',
+                    content: $misattributedMessage
+                };
                 $nestedValueTooltipView: #.currentProfile | type != 'memory'
                     ? {
                         className: 'view-call-frame-source__tooltip',
-                        content: {
+                        content: [$misattributedMessage, {
                             view: 'table',
                             data: \`
                                 $tree: #.currentProfile.callFramePositionsTreeTimingsFiltered;
@@ -156,25 +161,29 @@ discovery.view.define('call-frame-source', {
                                 { header: 'Kind', content: 'call-frame-kind-badge:callFrame.kind' },
                                 { header: 'Call frame', content: 'call-frame-badge' }
                             ]
-                        }
+                        }]
                     };
                 $sampleMarks: $values.entries
                     | $[].entry.callFrame
                         ? .[entry.callFrame = @]
                         : $[=> entry = @]
-                    |? .($pos: entry.scriptOffset | is number and $ != -1 ? $ - $sourceSliceStart : $start - $sourceSliceStart; [
+                    |? .($noloc: entry.scriptOffset = -1; $offset: entry.scriptOffset | (is number and $ != -1 ?: $start) - $sourceSliceStart; [
                         selfTime ? {
-                            offset: $pos,
+                            $offset,
+                            $noloc,
                             kind: 'self',
+                            className: $noloc ? 'noloc',
                             content: $sampleMarkContent,
                             value: $values.entries[entryIndex],
                             prop: 'selfTime',
                             postfix: $unit,
-                            tooltip: $selfValueTooltipView
+                            tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)
                         },
                         nestedTime ? {
-                            offset: $pos,
+                            $offset,
+                            $noloc,
                             kind: 'nested',
+                            className: $noloc ? 'noloc',
                             content: $sampleMarkContent,
                             value: $values.entries[entryIndex],
                             prop: 'nestedTime',
@@ -242,7 +251,7 @@ discovery.view.define('call-frame-source', {
                 $codePoints,
                 $inlinedPoints,
                 $allMarks,
-                marks: $allMarks.values().[].(),
+                marks: $allMarks.values().().sort(offset asc, (noloc or false) desc),
                 refs: $nestedScriptCodes.({
                     className: 'function',
                     range: [callFrame.start - $sourceSliceStart, callFrame.end - $sourceSliceStart],

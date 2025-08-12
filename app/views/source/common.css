@@ -17,6 +17,13 @@
     margin-inline: 0;
     padding-inline: 0;
 }
+.view-source.cpupro-source .view-source__source .mark.noloc {
+    --stripe-color: color-mix(in srgb, var(--color), var(--discovery-background-color) 60%);
+    background-image: linear-gradient(135deg, transparent 37.50%, var(--stripe-color) 37.50%, var(--stripe-color) 50%, transparent 50%, transparent 87.50%, var(--stripe-color) 87.50%, var(--stripe-color) 100%);
+    background-size: 5.66px 5.66px;
+    background-clip: padding-box;
+    border-radius: 8px;
+}
 .view-source.cpupro-source .view-source__source .mark.discovery-view-has-tooltip:hover {
     outline: 1px solid currentcolor;
 }

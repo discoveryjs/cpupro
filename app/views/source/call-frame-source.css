@@ -57,6 +57,11 @@
     display: inline;
     padding-bottom: 3px;
 }
+.view-call-frame-source__tooltip .misattributed-message {
+    padding: 4px 8px;
+    color: #ab9554;
+    background-color: #514d3e2f;
+}
 
 .view-call-frame-source__deopt_tooltip {
     padding: 8px;
