@@ -81,14 +81,14 @@ export function processFunctions(
 ) {
     const missedScriptsByUrl = new Map<string, V8LogScript>();
     const getScriptByUrl = (scriptUrl: string, scriptId: number | undefined) => {
-        if (!scriptUrl || typeof scriptId !== 'number' || scriptId === 0) {
+        if (!scriptUrl || scriptId === 0) {
             return null;
         }
 
         let script = missedScriptsByUrl.get(scriptUrl);
 
         if (script === undefined) {
-            const id = scriptId;
+            const id = scriptId ?? scripts.length;
 
             if (scripts[id]) {
                 script = scripts[id];
@@ -136,11 +136,10 @@ export function processFunctions(
         // TODO: Merge more functions, as it is typical for long-running scripts that V8 flushes functions (codes)
         // not called for a while (across several GC cycles), and recreates them once they are called again.
         const isScriptFunction = line === 0 && column === 0;
-        const scriptFunctionIndex = isScriptFunction ? scriptFunctionIndexByScript.get(script) || -1 : -1;
-        let functionIndex = scriptFunctionIndex;
+        let scriptFunctionIndex = isScriptFunction ? scriptFunctionIndexByScript.get(script) || -1 : -1;
 
         if (scriptFunctionIndex === -1) {
-            functionIndex = functions.push({
+            scriptFunctionIndex = functions.push({
                 scriptId: script?.id || 0,
                 name: functionName,
                 start: source?.start ?? -1,
@@ -150,11 +149,11 @@ export function processFunctions(
             }) - 1;
 
             if (isScriptFunction) {
-                scriptFunctionIndexByScript.set(script, functionIndex);
+                scriptFunctionIndexByScript.set(script, scriptFunctionIndex);
             }
         }
 
-        functionIndexMap[i] = functionIndex;
+        functionIndexMap[i] = scriptFunctionIndex;
     }
 
     return {
