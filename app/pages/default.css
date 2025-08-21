@@ -15,6 +15,7 @@
     min-height: var(--height);
     max-height: var(--height);
     height: var(--height);
+    margin-bottom: .1px; /* fix a bug with IntersectionObserver in Chromium */
 }
 
 .flamecharts {

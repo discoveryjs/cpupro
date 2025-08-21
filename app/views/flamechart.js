@@ -131,6 +131,9 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         class: 'view-flamechart__enable-scrolling-button',
         onclick: enableScrolling
     }, 'Start interacting with the chart or click the button to enable scrolling');
+    let contentElHeight = 0;
+    let chartElHeight = 0;
+    const updateHasScroll = () => el.classList.toggle('has-scroll', contentElHeight < chartElHeight);
 
     const tooltip = new Tooltip(discovery, (el, nodeIndex) =>
         this.render(el, tooltipContent, getNodeTimings(nodeIndex), context)
@@ -265,10 +268,24 @@ discovery.view.define('flamechart', function(el, config, data, context) {
 
         detailsResizeObserver = new ResizeObserver(function(entries) {
             for (const entry of entries) {
-                el.style.setProperty('--details-height', `${entry.borderBoxSize[0].blockSize}px`);
+                switch (entry.target) {
+                    case detailsEl:
+                        el.style.setProperty('--details-height', `${entry.borderBoxSize[0].blockSize}px`);
+                        break;
+                    case contentEl:
+                        contentElHeight = entry.borderBoxSize[0].blockSize;
+                        updateHasScroll();
+                        break;
+                    case chart.el:
+                        chartElHeight = entry.borderBoxSize[0].blockSize;
+                        updateHasScroll();
+                        break;
+                }
             }
         });
         detailsResizeObserver.observe(detailsEl);
+        detailsResizeObserver.observe(contentEl);
+        detailsResizeObserver.observe(chart.el);
     };
     destroyEl.onDestroy = () => {
         removeOnPointerDownListener?.();

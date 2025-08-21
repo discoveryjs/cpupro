@@ -121,10 +121,6 @@
     width: auto;
 }
 
-.view-flamechart:not(.fully-visible.lock-scrolling.disable-scrolling) .view-flamechart__enable-scrolling-button {
-    opacity: 0;
-    pointer-events: none;
-}
 .view-flamechart.fully-visible .view-flamechart__enable-scrolling-button {
     position: absolute;
     bottom: calc(var(--details-height, 0px) + 4px);
@@ -142,6 +138,11 @@
 }
 .view-flamechart.fully-visible .view-flamechart__enable-scrolling-button:hover {
     opacity: .95;
+}
+.view-flamechart:not(.fully-visible.lock-scrolling.disable-scrolling) .view-flamechart__enable-scrolling-button,
+.view-flamechart:not(.has-scroll) .view-flamechart__enable-scrolling-button {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .discovery-root-darkmode .flamechart .frame:hover {
@@ -192,4 +193,3 @@
 .flamechart-tooltip .view-duration > .fraction {
     width: auto;
 }
-
