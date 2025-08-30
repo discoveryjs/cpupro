@@ -116,6 +116,9 @@ const pageContent = [
                             contentWhen: 'hotness = "hot" or hotness = "warm"',
                             content: 'code-hotness-icon:topTier'
                         },
+                        { header: 'Kind',
+                            content: 'call-frame-kind-badge:left.entry.kind'
+                        },
                         { header: 'Call frame',
                             className: 'subject-name',
                             sorting: 'name ascN',
