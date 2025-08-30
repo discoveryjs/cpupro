@@ -8,6 +8,7 @@ export const VM_STATE_EXTERNAL = 6;
 export const VM_STATE_ATOMICS_WAIT = 7;
 export const VM_STATE_IDLE = 8;
 export const VM_STATE_LOGGING = 9;
+export const VM_STATE_IDLE_EXTERNAL = 10;
 
 export const VM_STATES = [
     /* 0 */ 'js',
@@ -19,5 +20,6 @@ export const VM_STATES = [
     /* 6 */ 'external',
     /* 7 */ 'atomics wait',
     /* 8 */ 'idle',
-    /* 9 */ 'logging'
+    /* 9 */ 'logging',
+    /* 10 */ 'idle external'
 ] as const;
