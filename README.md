@@ -6,14 +6,14 @@ Rethinking of CPU profile analysis and processing. Focused on profiles and logs 
 
 Supported formats:
 
+* [V8 log](https://v8.dev/docs/profile) (.log)
+* [V8 log preprocessed](https://v8.dev/docs/profile#web-ui-for---prof) with --preprocess (.json)
 * [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)
-* [V8 log](https://v8.dev/docs/profile) preprocessed with [--preprocess](https://v8.dev/docs/profile#web-ui-for---prof) (.json)
-* [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) format (.json)
+* [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) (.json)
 * [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces) (.devtools)
 
-> STATUS: MVP
->
-> The project is at an early stage of development. Some things have yet to be added and polished. Feel free to create an issue if you found a bug or have an idea.
+> The file extension can be arbitrary; the format is determined based on the file's content.  
+> The file content may be compressed using `gzip` or `deflate`.
 
 ## Usage
 
