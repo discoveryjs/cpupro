@@ -22,6 +22,13 @@ export function parseCodeState(state: string) {
     }
 }
 
+export function isSpecialized(state: string) {
+    return (
+        state === '+\'' ||
+        state === '*\''
+    );
+}
+
 export function parseICState(state: string) {
     switch (state) {
         case 'X': return ICState.NO_FEEDBACK;

@@ -1,5 +1,5 @@
 import { argParsers, offsetOrEnd, readAllArgs, readAllArgsRaw } from './read-args-utils.js';
-import { detachSlicedString, parseAddress, parseCodeState, parseString, parseICState } from './parse-utils.js';
+import { detachSlicedString, parseAddress, parseCodeState, parseString, parseICState, isSpecialized } from './parse-utils.js';
 import { Code, CodeCompiled, CodeJavaScript, CodeSharedLib, Heap, HeapEvent, ICEntry, LogFunction, Meta, ParseResult, Script, SFI, Tick } from './types.js';
 import { CodeMap, CodeEntry } from './code-map.js';
 
@@ -148,6 +148,7 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                 nameAndLocation = detachSlicedString(nameAndLocation);
 
                 const kind = kindMarker ? parseCodeState(kindMarker) : type === 'JS' ? 'Builtin' : type;
+                const specialized = isSpecialized(kindMarker);
                 let sfi: SFI | undefined;
 
                 if (sfiAddress !== undefined) {
@@ -176,6 +177,7 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                         name: nameAndLocation,
                         type: 'JS',
                         kind,
+                        specialized,
                         size,
                         func: sfi.id,
                         tm: timestamp
@@ -186,6 +188,7 @@ export async function processV8logEvents(lineIterator: AsyncIterableIterator<str
                         timestamp,
                         type: 'CODE',
                         kind,
+                        specialized,
                         size
                     };
                 }

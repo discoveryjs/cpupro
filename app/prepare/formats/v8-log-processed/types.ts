@@ -35,6 +35,7 @@ export type V8LogCode = {
         | 'Turbofan'
         | 'Builtin'
         | 'RegExp';
+    specialized?: boolean;
     func?: number;
     size?: number;
     tm?: number;

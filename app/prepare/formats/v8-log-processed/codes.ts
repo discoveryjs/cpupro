@@ -65,6 +65,7 @@ export function processCodes(
         callFrameCodes.codes.push({
             tm: code.tm || 0,
             tier: functionTier(code.kind),
+            specialized: code.specialized,
             size: code.size || 0,
             positions: codeSource?.positions || '',
             inlined: codeSource?.inlined || '',

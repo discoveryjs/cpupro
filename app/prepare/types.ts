@@ -74,6 +74,7 @@ export type V8CpuProfileCallFrameCodes = {
 export type V8CpuProfileCallFrameCode = {
     tm: number;
     tier: V8CallFrameCodeType;
+    specialized: boolean | undefined;
     size: number;
     positions: string;
     inlined: string;

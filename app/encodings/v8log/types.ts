@@ -56,6 +56,7 @@ export type CodeCompiled = {
     timestamp: number;
     type: 'CODE';
     kind: string;
+    specialized: boolean;
     size: number;
     disassemble?: CodeDisassemble;
 }
@@ -63,6 +64,7 @@ export type CodeJavaScript = {
     name: string;
     type: 'JS';
     kind: string;
+    specialized: boolean;
     size: number;
     func: number;
     tm: number;
