@@ -65,14 +65,16 @@ function nonWsRange(s: string, start = 0, end = s.length) {
     return { start, end };
 }
 
-function getCodeInlinedOffsets(code: CpuProCallFrameCode) {
-    const result: number[] = [];
+function getCodeInlinedTables(code: CpuProCallFrameCode) {
+    const offsets: number[] = [];
+    const callFrames: CpuProCallFrame[] = [];
 
     for (const entry of positionTableMethods.parseInlined(code.inlined)) {
-        result.push(entry.parent !== undefined ? result[entry.parent] : entry.offset);
+        offsets.push(entry.parent !== undefined ? offsets[entry.parent] : entry.offset);
+        callFrames.push(code.fns[entry.fn]);
     }
 
-    return result;
+    return { offsets, callFrames };
 }
 
 export const methods = {
@@ -322,8 +324,7 @@ export const methods = {
                     (map, entry) => map.set(entry.code, entry),
                     new Map<number, PositionTableEntry>()
                 );
-            const codeInlinedOffsets = getCodeInlinedOffsets(code);
-            const codeInlinedCallFrames = code.fns;
+            const codeInlined = getCodeInlinedTables(code);
             let buffer: string[] = [];
             let originCallFrame = code.callFrame;
             let blockOffset = originCallFrame.start ?? -1;
@@ -335,7 +336,7 @@ export const methods = {
                         buffer.join('\n'),
                         originCallFrame,
                         blockOffset,
-                        inlineId !== -1 ? codeInlinedOffsets[inlineId] : blockOffset,
+                        inlineId !== -1 ? codeInlined.offsets[inlineId] : blockOffset,
                         inlineId,
                         blockId
                     );
@@ -352,7 +353,7 @@ export const methods = {
                     blockOffset = positionTableEntry.offset;
                     inlineId = positionTableEntry.inline ?? -1;
                     originCallFrame = inlineId !== -1
-                        ? codeInlinedCallFrames[inlineId]
+                        ? codeInlined.callFrames[inlineId]
                         : code.callFrame;
                 } else {
                     const isConstantPoolBound = (
