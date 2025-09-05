@@ -12,10 +12,14 @@ export function parseCodeState(state: string) {
         case '^':
             return CodeState.SPARKPLUG;
         case '+':
-        case '+\'': // context specialized
+        case "+'":  // context specialized
+        case 'o+':  // OSR see https://chromium-review.googlesource.com/c/v8/v8/+/6913109
+        case "o+'": // OSR + context specialized
             return CodeState.MAGLEV;
         case '*':
-        case '*\'': // context specialized
+        case "*'":  // context specialized
+        case 'o*':  // OSR see https://chromium-review.googlesource.com/c/v8/v8/+/6913109
+        case "o*'": // OSR + context specialized
             return CodeState.TURBOFAN;
         default:
             return CodeState.UNKNOWN;
@@ -24,8 +28,10 @@ export function parseCodeState(state: string) {
 
 export function isSpecialized(state: string) {
     return (
-        state === '+\'' ||
-        state === '*\''
+        state === "+'" ||
+        state === "o+'" ||
+        state === "*'" ||
+        state === "o*'"
     );
 }
 
