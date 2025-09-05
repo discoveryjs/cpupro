@@ -120,7 +120,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         },
 
         callFramesProfilePresence,
-        currentSamplesConvolutionRule: null,
 
         currentProfile,
         profiles

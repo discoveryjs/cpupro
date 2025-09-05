@@ -39,11 +39,11 @@ export function selectProfile(discovery: Model, profile: Profile) {
 }
 
 export function toggleProfile(discovery: Model, profile: Profile) {
+    const { currentSamplesConvolutionRule } = discovery.context;
     const {
         currentProfile,
         profiles,
-        callFramesProfilePresence,
-        currentSamplesConvolutionRule
+        callFramesProfilePresence
     } = discovery.data;
     const disable = !profile.disabled;
     const enabledProfiles = profiles.filter((p: Profile) => p === profile

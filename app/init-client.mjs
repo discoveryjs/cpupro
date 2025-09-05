@@ -58,15 +58,24 @@ discovery.action.define('toggleProfile', (profile) => {
     }
 });
 
-discovery.action.define('setSamplesConvolutionRule', (rule) => {
-    const { profiles, callFramesProfilePresence } = discovery.data;
+discovery.action.define('setSamplesConvolutionRule', (newRule) => {
+    const { profiles, callFramesProfilePresence } = discovery.data || {};
+    const rule = typeof newRule === 'function' ? newRule : null;
+
+    discovery.setContext({ currentSamplesConvolutionRule: rule });
 
     if (Array.isArray(profiles)) {
-        const newRule = typeof rule === 'function' ? rule : null;
-
-        setSamplesConvolutionRule(profiles, callFramesProfilePresence, newRule);
-        discovery.data = { ...discovery.data, currentSamplesConvolutionRule: newRule };
+        setSamplesConvolutionRule(profiles, callFramesProfilePresence, rule);
         discovery.scheduleRender();
+    }
+});
+discovery.on('data', () => {
+    const { currentSamplesConvolutionRule } = discovery.context;
+
+    if (currentSamplesConvolutionRule) {
+        const { profiles, callFramesProfilePresence } = discovery.data;
+
+        setSamplesConvolutionRule(profiles, callFramesProfilePresence, currentSamplesConvolutionRule);
     }
 });
 

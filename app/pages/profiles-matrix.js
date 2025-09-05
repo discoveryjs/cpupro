@@ -76,7 +76,7 @@ const pageContent = [
                 view: 'button',
                 text: 'All (demo)',
                 data: '#.samplesConvolutionRules.all',
-                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                disabled: '=#.currentSamplesConvolutionRule=@',
                 onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
             },
 
@@ -84,7 +84,7 @@ const pageContent = [
                 view: 'button',
                 text: 'Module',
                 data: '#.samplesConvolutionRules.module',
-                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                disabled: '=#.currentSamplesConvolutionRule=@',
                 onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
             },
 
@@ -92,7 +92,7 @@ const pageContent = [
                 view: 'button',
                 text: 'Top level',
                 data: '#.samplesConvolutionRules.topLevel',
-                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                disabled: '=#.currentSamplesConvolutionRule=@',
                 onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
             },
 
@@ -100,7 +100,7 @@ const pageContent = [
                 view: 'button',
                 text: 'Profile presence',
                 data: '#.samplesConvolutionRules.profilePresence',
-                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                disabled: '=#.currentSamplesConvolutionRule=@',
                 onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
             },
 
@@ -108,7 +108,7 @@ const pageContent = [
                 view: 'button',
                 text: 'Reset',
                 data: null,
-                disabled: '=#.data.currentSamplesConvolutionRule=@',
+                disabled: '=#.currentSamplesConvolutionRule=@',
                 onClick: '="setSamplesConvolutionRule".actionHandler(@, =>null)'
             },
 
