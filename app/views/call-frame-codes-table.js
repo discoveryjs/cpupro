@@ -119,10 +119,11 @@ discovery.view.define('call-frame-codes-table', {
                     {
                         header: 'Compiler',
                         sorting: 'code.tier.order() asc',
-                        data: 'code.tier',
+                        data: 'code',
                         content: [
-                            'code-tier-badge',
-                            'text:"\xa0" + $'
+                            'code-tier-badge:tier',
+                            'text:`\xa0${tier}\xa0`',
+                            'badge{ when: specialized, text: "(S)", tooltip: "text:`Context specialized code`" }'
                         ]
                     },
                     {
