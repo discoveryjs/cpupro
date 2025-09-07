@@ -1,4 +1,4 @@
-import { convertParentIntoChildrenIfNeeded, isCPUProfile, unrollHeadToNodesIfNeeded, unwrapSamplesIfNeeded } from './formats/cpuprofile.js';
+import { convertParentIntoChildrenIfNeeded, isCPUProfile, normalizeCpuProfile, unrollHeadToNodesIfNeeded, unwrapSamplesIfNeeded } from './formats/cpuprofile.js';
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuProfile, isV8LogProfile } from './formats/v8-log-processed.js';
@@ -87,6 +87,7 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
             profile = unrollHeadToNodesIfNeeded(profile);
             profile = unwrapSamplesIfNeeded(profile);
             convertParentIntoChildrenIfNeeded(profile);
+            normalizeCpuProfile(profile);
             Object.assign(profile, extensions);
             result.profiles.push(profile);
         } else {

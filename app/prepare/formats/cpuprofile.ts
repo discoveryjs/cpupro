@@ -94,6 +94,15 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
     return true;
 }
 
+export function normalizeCpuProfile(data: V8CpuProfile) {
+    return {
+        ...data,
+        trace_ids: data.trace_ids || {},
+        lines: Array.isArray(data.lines) && data.lines.length > 0 ? data.lines : undefined,
+        columns: Array.isArray(data.columns) && data.columns.length > 0 ? data.columns : undefined
+    };
+}
+
 // nodes may missing children field but have parent field, rebuild children arrays then;
 // avoid updating children when nodes have parent and children fields
 export function convertParentIntoChildrenIfNeeded(data: V8CpuProfile) {

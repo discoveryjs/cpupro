@@ -10,10 +10,13 @@ export type V8CpuProfile = {
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[];
     timeDeltas: number[];
     samples: number[];
+    trace_ids?: Record<string, number>;
+    lines?: number[];
+    columns?: number[];
 } & V8CpuProfileCpuproExtensions;
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
-    _name?: string; // some profiles has a name
+    _name?: string | null; // some profiles has a name
     _type?: 'memory' | 'time';
     _runtime?: RuntimeCode;
     _samplesInterval?: number;

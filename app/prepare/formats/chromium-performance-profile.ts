@@ -8,6 +8,15 @@ export type ChromiumTraceEventsProfile = {
     [key: string]: unknown;
 };
 
+type ChromiumTraceProfileData = {
+    cpuProfile: V8CpuProfile;
+    timeDeltas: number[];
+    lines: number[];
+    columns: number[];
+    startTime: number;
+    endTime: number;
+};
+
 interface ChromiumTraceEvent {
     pid: number;
     tid: number;
@@ -84,14 +93,17 @@ export function extractFromChromiumPerformanceProfile(
 
         if (event.name === 'Profile') {
             const profileId = `${event.pid}:${event.id}`;
-            const profile = {
+            const profile: V8CpuProfile = {
                 _name: threadNameId.get(event.tid) || null,
                 startTime: 0,
                 endTime: 0,
                 nodes: [],
                 samples: [],
                 timeDeltas: [],
-                ...event.args.data
+                trace_ids: {},
+                lines: [],
+                columns: [],
+                ...event.args.data as Partial<V8CpuProfile>
             };
             // profile.threadId = event.tid;
 
@@ -109,35 +121,50 @@ export function extractFromChromiumPerformanceProfile(
         if (event.name === 'ProfileChunk') {
             const profileId = `${event.pid}:${event.id}`;
             const cpuProfile = cpuProfileById.get(profileId);
-            const chunk = event.args.data;
+            const chunk: ChromiumTraceProfileData = event.args.data;
 
             if (!cpuProfile) {
                 console.warn(`Ignoring ProfileChunk for undeclared Profile with id ${profileId}`);
                 continue;
             }
 
-            if (chunk.cpuProfile) {
-                const { nodes, samples } = chunk.cpuProfile;
+            for (const chunkKey of Object.keys(chunk) as (keyof ChromiumTraceProfileData)[]) {
+                switch (chunkKey) {
+                    case 'cpuProfile': {
+                        const { nodes, samples, trace_ids: traceIds } = chunk.cpuProfile;
 
-                if (Array.isArray(nodes) && nodes.length > 0) {
-                    cpuProfile.nodes.push(...nodes);
+                        if (Array.isArray(nodes)) {
+                            (cpuProfile.nodes as unknown[]).push(...nodes);
+                        }
+
+                        if (Array.isArray(samples)) {
+                            cpuProfile.samples.push(...samples);
+                        }
+
+                        if (traceIds) {
+                            Object.assign(cpuProfile.trace_ids!, traceIds);
+                        }
+
+                        break;
+                    }
+
+                    case 'timeDeltas':
+                        cpuProfile.timeDeltas.push(...chunk.timeDeltas);
+                        break;
+
+                    case 'lines':
+                        cpuProfile.lines!.push(...chunk.lines);
+                        break;
+
+                    case 'columns':
+                        cpuProfile.columns!.push(...chunk.columns);
+                        break;
+
+                    case 'startTime':
+                    case 'endTime':
+                        cpuProfile[chunkKey] = chunk[chunkKey];
+                        break;
                 }
-
-                if (samples) {
-                    cpuProfile.samples.push(...samples);
-                }
-            }
-
-            if (chunk.timeDeltas) {
-                cpuProfile.timeDeltas.push(...chunk.timeDeltas);
-            }
-
-            if (chunk.startTime != null) {
-                cpuProfile.startTime = chunk.startTime;
-            }
-
-            if (chunk.endTime != null) {
-                cpuProfile.endTime = chunk.endTime;
             }
         }
     }
