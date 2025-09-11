@@ -120,7 +120,7 @@ export type V8HeapEvent = {
     size: number;
 }
 
-export type RuntimeCode =
+export type RuntimeCode = // alphabetical order
     | 'chromium'
     | 'deno'
     | 'edge'
@@ -138,29 +138,29 @@ export type V8CallFrameCodeType =
     ;
 export type WellKnownName =
     | '(root)'
-    | '(program)'
     | '(garbage collector)'
+    | '(program)'
     | '(idle)'
-    | '(idle external)'
-    | '(logging)'
     | '(no samples)'
     | '(parser)'
     | '(bytecode compiler)'
     | '(compiler)'
     | '(atomics wait)'
+    | '(logging)'
+    | '(idle external)'
     ;
-export type WellKnownType =
-    | 'root'
-    | 'program'
+export type WellKnownType = // alphabetical order
+    | 'atomics-wait'
+    | 'bytecode-compiler'
+    | 'compiler'
     | 'gc'
-    | 'idle'
     | 'idle-external'
+    | 'idle'
     | 'logging'
     | 'no-samples'
     | 'parser'
-    | 'bytecode-compiler'
-    | 'compiler'
-    | 'atomics-wait'
+    | 'program'
+    | 'root'
     ;
 
 export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory | CpuProCallFramePosition;
@@ -175,17 +175,18 @@ export type GeneratedNodes = {
     parentScriptOffsets: number[];
 }
 
-export type CpuProCallFrameKind =
-    | 'script'
-    | 'function'
+export type CpuProCallFrameKind = // alphabetical order
     | 'builtin'
-    | 'ic'
     | 'bytecode'
     | 'cpp'
+    | 'function'
+    | 'ic'
     | 'lib'
     | 'regexp'
+    | 'root'
+    | 'script'
     | 'vm-state'
-    | 'root';
+    ;
 export type CpuProCallFrame = {
     id: number;
     script: CpuProScript | null;
@@ -216,8 +217,8 @@ export type ModuleType = // alphabetical order
     | 'deno'
     | 'electron'
     | 'gc'
-    | 'internals'
     | 'idle'
+    | 'internals'
     | 'logging'
     | 'node'
     | 'program'
@@ -246,6 +247,7 @@ export type PackageType = // alphabetical order
     | 'chrome-extension'
     | 'compilation'
     | 'deno'
+    | 'devtools'
     | 'electron'
     | 'gc'
     | 'idle'
@@ -253,7 +255,6 @@ export type PackageType = // alphabetical order
     | 'logging'
     | 'node'
     | 'program'
-    | 'devtools'
     | 'regexp'
     | 'root'
     | 'script'
@@ -274,9 +275,9 @@ export type CDN = // alphabetical order
     | 'jsdelivr'
     | 'jspm'
     | 'jsr'
-    | 'unpkg'
     | 'npm'
     | 'skypack'
+    | 'unpkg'
     ;
 export type PackageProviderEndpoint = {
     registry: PackageRegistry;
