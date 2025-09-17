@@ -1,60 +1,60 @@
 {
-  "name": "cpupro",
-  "version": "0.7.0",
-  "description": "Rethinking of CPU profile (collected in Node.js or Chromium browsers) analysis",
-  "author": "Roman Dvornov <rdvornov@gmail.com> (https://github.com/lahmatiy)",
-  "license": "MIT",
-  "keywords": [
-    "v8",
-    "cpu",
-    "profile",
-    "cpuprofile",
-    "ui",
-    "viewer",
-    "report",
-    "analysis",
-    "discovery"
-  ],
-  "bin": "./bin/cpupro",
-  "files": [
-    "bin",
-    "build/app.html",
-    "build/report.html",
-    "lib"
-  ],
-  "exports": {
-    ".": "./lib/index.js",
-    "./file": "./lib/require-file-report.js",
-    "./file/report": "./lib/require-file-report.js",
-    "./file/data": "./lib/require-file-data.js",
-    "./build/*.html": "./build/*.html",
-    "./package.json": "./package.json"
-  },
-  "scripts": {
-    "start": "discovery",
-    "lint": "eslint lib app",
-    "typecheck": "tsc --noEmit",
-    "build": "npm run build-wasm && npm run build-app && npm run build-report-template",
-    "build-wasm": "node scripts/wat-compile.js",
-    "build-app": "discovery-build --clean --config .discoveryrc.app.js --single-file --no-data --entry-names \"app\" --script-names \"cpupro-[name]\"",
-    "build-report-template": "discovery-build --single-file --no-data --no-model-data-upload --entry-names \"report\"",
-    "build-gh-pages": "npm run build-wasm && discovery-build --config .discoveryrc.ghpages.js --single-file --no-data -o .gh-pages && node scripts/gh-pages-files",
-    "prepublishOnly": "npm run build"
-  },
-  "dependencies": {
-    "@discoveryjs/json-ext": "^0.6.3",
-    "clap": "^3.1.1",
-    "open": "^8.4.0",
-    "v8-profiler-next": "~1.5.1"
-  },
-  "devDependencies": {
-    "@discoveryjs/cli": "^2.14.2",
-    "@discoveryjs/discovery": "1.0.0-beta.98",
-    "@types/node": "^22.7.5",
-    "@typescript-eslint/eslint-plugin": "^7.8.0",
-    "@typescript-eslint/parser": "^7.8.0",
-    "eslint": "^8.7.0",
-    "typescript": "^5.8.3",
-    "wabt": "^1.0.32"
-  }
+    "name": "cpupro",
+    "version": "0.7.0",
+    "description": "Rethinking of CPU profile (collected in Node.js or Chromium browsers) analysis",
+    "author": "Roman Dvornov <rdvornov@gmail.com> (https://github.com/lahmatiy)",
+    "license": "MIT",
+    "keywords": [
+        "v8",
+        "cpu",
+        "profile",
+        "cpuprofile",
+        "ui",
+        "viewer",
+        "report",
+        "analysis",
+        "discovery"
+    ],
+    "bin": "./bin/cpupro",
+    "files": [
+        "bin",
+        "build/app.html",
+        "build/report.html",
+        "lib"
+    ],
+    "exports": {
+        ".": "./lib/index.js",
+        "./file": "./lib/require-file-report.js",
+        "./file/report": "./lib/require-file-report.js",
+        "./file/data": "./lib/require-file-data.js",
+        "./build/*.html": "./build/*.html",
+        "./package.json": "./package.json"
+    },
+    "scripts": {
+        "start": "discovery",
+        "lint": "eslint lib app",
+        "typecheck": "tsc --noEmit",
+        "build": "npm run build-wasm && npm run build-app && npm run build-report-template",
+        "build-wasm": "node scripts/wat-compile.js",
+        "build-app": "discovery-build --clean --config .discoveryrc.app.js --single-file --no-data --entry-names \"app\" --script-names \"cpupro-[name]\"",
+        "build-report-template": "discovery-build --single-file --no-data --no-model-data-upload --entry-names \"report\"",
+        "build-gh-pages": "npm run build-wasm && discovery-build --config .discoveryrc.ghpages.js --single-file --no-data -o .gh-pages && node scripts/gh-pages-files",
+        "prepublishOnly": "npm run build"
+    },
+    "dependencies": {
+        "@discoveryjs/json-ext": "^0.6.3",
+        "clap": "^3.1.1",
+        "open": "^8.4.0",
+        "v8-profiler-next": "~1.5.1"
+    },
+    "devDependencies": {
+        "@discoveryjs/cli": "^2.14.2",
+        "@discoveryjs/discovery": "1.0.0-beta.98",
+        "@types/node": "^22.7.5",
+        "@typescript-eslint/eslint-plugin": "^7.8.0",
+        "@typescript-eslint/parser": "^7.8.0",
+        "eslint": "^8.7.0",
+        "typescript": "^5.8.3",
+        "wabt": "^1.0.32"
+    }
 }
