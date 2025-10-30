@@ -151,51 +151,7 @@ discovery.view.define('call-frame-codes-table', {
                             ]
                         },
                         detailsWhen: 'positions',
-                        details: {
-                            view: 'tabs',
-                            name: 'mode',
-                            value: '="getSessionSetting".callAction("cpupro-call-frame-codes-table-positions-details:mode", "table")',
-                            onChange: '==> ? "setSessionSetting".callAction("cpupro-call-frame-codes-table-positions-details:mode", $)',
-                            tabs: [
-                                'table',
-                                'raw'
-                            ],
-                            content: {
-                                view: 'switch',
-                                content: [
-                                    { when: '#.mode="table"', content: {
-                                        view: 'table',
-                                        data: 'positions.({ ..., entry: inline is number ? `C${code}O${offset}I${inline}` : `C${code}O${offset}` })',
-                                        cols: [
-                                            { header: '#', data: 'index' },
-                                            { header: 'Entry', sorting: 'entry ascN', content: 'text-match{ text: entry, match: /\\D+/g }' },
-                                            { header: 'C', data: 'code' },
-                                            { header: 'O', data: 'offset' },
-                                            { header: 'I', data: 'inline' },
-                                            { header: 'Size', data: 'size' }
-                                        ]
-                                    } },
-                                    { content: {
-                                        view: 'block',
-                                        className: 'view-call-frame-codes-table__raw-positions',
-                                        content: [
-                                            {
-                                                view: 'source',
-                                                data: 'code.positions',
-                                                lineNum: false,
-                                                ranges: `=
-                                                    $match: ($rx, $kind) => @.match($rx, true).({ className: $kind, range: [start, end] });
-                                                    /C\\d+/.$match('def') +
-                                                    /O\\d+/.$match('') +
-                                                    /I\\d+/.$match('ref') +
-                                                    /C[^C]+/.$match('entry')
-                                                `
-                                            }
-                                        ]
-                                    } }
-                                ]
-                            }
-                        }
+                        details: 'code-positions-table-viewer:code'
                     },
                     {
                         header: 'Inlining',
@@ -206,81 +162,7 @@ discovery.view.define('call-frame-codes-table', {
                             'text:$locs: inlined.count(=>no parent?); $codes: inlined.size(); $codes != $locs ? `${$locs} / ${$codes}` : $codes',
                             'html:" <span style=\\"color:#888\\">codes</span>"' // \u0192n
                         ],
-                        details: {
-                            view: 'tabs',
-                            name: 'mode',
-                            value: '="getSessionSetting".callAction("cpupro-call-frame-codes-table-inlined-details:mode", "tree")',
-                            onChange: '==> ? "setSessionSetting".callAction("cpupro-call-frame-codes-table-inlined-details:mode", $)',
-                            tabs: [
-                                'tree',
-                                'table',
-                                'raw'
-                            ],
-                            content: {
-                                view: 'switch',
-                                content: [
-                                    { when: '#.mode="tree"', content: {
-                                        view: 'tree',
-                                        className: 'inlining-tree',
-                                        limitLines: false,
-                                        expanded: 20,
-                                        data: 'inlined.tree(=>parent).sort(value.offset asc)',
-                                        children: 'children.sort(value.offset asc)',
-                                        item: [
-                                            'call-frame-badge:value.callFrame',
-                                            {
-                                                view: 'badge',
-                                                className: 'source-loc',
-                                                data: `
-                                                    $callFrame: parent ? parent.value.callFrame : value.ownerCallFrame;
-                                                    value
-                                                        | offset.offsetToLineColumn($callFrame)
-                                                        | is object ? \`:\${line}:\${column}\`
-                                                `,
-                                                whenData: true,
-                                                content: 'html:replace(/:/, `<span class=\"delim\">:</span>`)'
-                                            }
-                                            // 'call-frame-source-point{ when: no parent, data: value }'
-                                        ]
-                                    } },
-                                    { when: '#.mode="table"', content: {
-                                        view: 'table',
-                                        limit: false,
-                                        data: 'inlined.({ ..., entry: parent is number ? `F${fn}O${offset}I${parent}` : `F${fn}O${offset}` })',
-                                        cols: [
-                                            { header: '#', data: 'index' },
-                                            { header: 'Entry', sorting: 'entry ascN', content: 'text-match{ text: entry, match: /\\D+/g }' },
-                                            { header: 'F (call frame)', sorting: 'callFrame.name ascN', content: 'call-frame-badge:callFrame' },
-                                            { header: 'O', data: 'offset' },
-                                            { header: 'I', data: 'parent' }
-                                        ]
-                                    } },
-                                    { content: {
-                                        view: 'block',
-                                        className: 'view-call-frame-codes-table__raw-positions',
-                                        content: [
-                                            {
-                                                view: 'source',
-                                                data: 'code.inlined',
-                                                lineNum: false,
-                                                ranges: `=
-                                                    $match: ($rx, $kind) => @.match($rx, true).({ className: $kind, range: [start, end] });
-                                                    /F\\d+/.$match('def') +
-                                                    /O\\d+/.$match('') +
-                                                    /I\\d+/.$match('ref') +
-                                                    /F[^F]+/.$match('entry')
-                                                `
-                                            },
-                                            {
-                                                view: 'struct',
-                                                expanded: 1,
-                                                data: 'code.fns'
-                                            }
-                                        ]
-                                    } }
-                                ]
-                            }
-                        }
+                        details: 'code-inline-table-viewer:code'
                     },
                     {
                         header: 'Inline cache',

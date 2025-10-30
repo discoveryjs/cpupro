@@ -1,0 +1,22 @@
+.code-raw-table-block {
+    contain: inline-size;
+}
+.code-raw-table-block > .view-source {
+    border-radius: 0;
+    margin: 0;
+}
+.code-raw-table-block > .view-source .view-source__content {
+    white-space: normal;
+    word-break: break-word;
+}
+.code-raw-table-block > .view-source .view-source__content .spotlight {
+    padding-right: 2px;
+    background: none;
+}
+.code-raw-table-block > .view-source .view-source__content .entry {
+    white-space: nowrap;
+    padding-right: 3px;
+}
+.code-raw-table-block > .view-struct {
+    margin: 1px 0 0;
+}

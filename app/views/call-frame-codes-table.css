@@ -24,28 +24,6 @@
 .view-call-frame-codes-table .view-tree {
     margin: 2px 4px;
 }
-.view-call-frame-codes-table__raw-positions {
-    contain: inline-size;
-}
-.view-call-frame-codes-table__raw-positions > .view-source {
-    border-radius: 0;
-    margin: 0;
-}
-.view-call-frame-codes-table__raw-positions > .view-source .view-source__content {
-    white-space: normal;
-    word-break: break-word;
-}
-.view-call-frame-codes-table__raw-positions > .view-source .view-source__content .spotlight {
-    padding-right: 2px;
-    background: none;
-}
-.view-call-frame-codes-table__raw-positions > .view-source .view-source__content .entry {
-    white-space: nowrap;
-    padding-right: 3px;
-}
-.view-call-frame-codes-table__raw-positions > .view-struct {
-    margin: 1px 0 0;
-}
 
 .view-call-frame-codes-table .view-table-cell.deopt .inlining-deopt {
     --discovery-view-badge-color: light-dark(#d3e7fb, #3a5066);

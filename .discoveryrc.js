@@ -86,6 +86,8 @@ module.exports = {
             './views/source/call-frame-source.js',
             './views/source/code-disassemble.css',
             './views/source/code-disassemble.js',
+            './views/source/code-inline-table.js',
+            './views/source/code-positions-table.js',
             './views/source/location-source.css',
             './views/source/location-source.js',
             './views/source/script-source.js',
