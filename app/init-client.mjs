@@ -79,6 +79,18 @@ discovery.on('data', () => {
     }
 });
 
+// discovery.action.call('setSamplesConvolutionRule', (self) => {
+//     const { kind } = self.entry;
+
+//     return (
+//         kind === 'ic' ||
+//         kind === 'bytecode' ||
+//         kind === 'builtin' ||
+//         kind === 'cpp' ||
+//         kind === 'lib'
+//     );
+// });
+
 discovery.action.call('setStructViewAnnotations', [
     '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
 ]);

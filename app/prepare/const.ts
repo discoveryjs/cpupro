@@ -1,4 +1,4 @@
-import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8CallFrameCodeType, CpuProCallFrameCodes, ModuleType } from './types';
+import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8CallFrameCodeType, CpuProCallFrameCodes, ModuleType, CpuProCallFrameKind } from './types';
 import { packageRegistryEndpoints } from './utils';
 
 export const TIMINGS = false;
@@ -9,6 +9,20 @@ export const FEATURE_INLINE_CACHE = false;
 
 export const EMPTY_ARRAY = Object.freeze([]);
 export const maxRegExpLength = 48;
+export const callFrameKinds: Record<CpuProCallFrameKind, number> = {
+    /* eslint-disable key-spacing */
+    'root':     0x0001,
+    'vm-state': 0x0002,
+    'script':   0x0004,
+    'function': 0x0008,
+    'regexp':   0x0010,
+    'cpp':      0x0020,
+    'lib':      0x0040,
+    'builtin':  0x0080,
+    'bytecode': 0x0100,
+    'ic':       0x0200
+    /* eslint-enable key-spacing */
+};
 export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
     ['(root)', 'root'],
     ['(program)', 'program'],
