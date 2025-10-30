@@ -72,8 +72,8 @@ export class Dictionary {
     #packageNameByOriginMap: Map<string, string>;
 
     constructor() {
-        this.scripts = [];
         this.callFrames = Object.assign([], { wellKnownIndex: Object.create(null) });
+        this.scripts = [];
         this.modules = [];
         this.packages = [];
         this.categories = [];

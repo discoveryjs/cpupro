@@ -1,6 +1,6 @@
 import type { CallNode, CodePositionTable, V8LogTick } from './types.js';
 import { findPositionsCodeIndex } from './positions.js';
-import { VM_STATE_GC, VM_STATE_IDLE } from './const.js';
+import { VM_STATE_GC, VM_STATE_IDLE, VM_STATE_OTHER } from './const.js';
 
 const parentOffsetBase = 0x0010_0000;
 const useMapForChildren = 8;
@@ -41,7 +41,7 @@ export function processTicks(
     callFrameIndexByCode: number[] | Uint32Array,
     positionTableByCode: (CodePositionTable | null)[]
 ) {
-    const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_IDLE];
+    const programCallFrameIndex = callFrameIndexByVmState[VM_STATE_OTHER];
     const maxCodeCallFrameIndex = callFrameIndexByCode.length - 1;
     const rootNode = createNode(1, 0);
     const nodes: CallNode<number>[] = [rootNode];
