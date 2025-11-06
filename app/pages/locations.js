@@ -2,8 +2,8 @@ import { timingCols } from './common.js';
 
 discovery.page.define('locations', {
     view: 'context',
-    context: '{ ...#, currentProfile }',
-    data: 'currentProfile.callFramePositionsTimingsFiltered.entries.sort(selfTime desc, totalTime desc)',
+    context: '{ ...#, scopeProfile: #.primaryProfile }',
+    data: 'scopeLine().dict.callFramePositions.filtered.entries.sort(selfValue desc, totalValue desc)',
     modifiers: [
     ],
     content: {

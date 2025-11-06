@@ -1,21 +1,60 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
-import type { V8CpuProfile, V8CpuProfileSet } from '../types.js';
+import type { SourceMap, V8CpuProfile, V8CpuProfileGcEvent, V8CpuProfileScript, V8CpuProfileSet } from '../types.js';
 
 export type ChromiumTraceEventsProfile = {
-    traceEvents: ChromiumTraceEvent[]
-} & {
-    [key: string]: unknown;
+    traceEvents: ChromiumTraceEvent[];
+    metadata?: {
+        sourceMaps?: ProfileSourceMap[];
+    };
 };
 
-type ChromiumTraceProfileData = {
+type ProfileSourceMap = {
+    url: string;
+    sourceMapUrl: string;
+    sourceMap: SourceMap;
+}
+type ScriptCatchupEventData = {
+    scriptId: number;
+    url: string;
+    sourceText: string;
+    sourceMapUrl: string;
+}
+type AllocationSamples = {
+    ids: number[];
+    sizes?: number[];
+    types?: number[];
+    typesDict?: Record<string, string>;
+    spaces?: number[];
+    spacesDict?: Record<string, string>;
+    gc?: number[];
+};
+type ChromiumTraceProfileChunkEventData = {
     cpuProfile: V8CpuProfile;
     timeDeltas: number[];
     lines: number[];
     columns: number[];
     startTime: number;
     endTime: number;
+    // Combined profile allocation data
+    allocationSampleIds?: number[];
+    allocationSamples?: AllocationSamples;
 };
+type ChromiumTraceProfileData = {
+    name: string | null;
+    pid: number;
+    tid: number;
+    startTime: number;
+    endTime: number;
+    scripts: Map<number, V8CpuProfileScript>;
+    events: V8CpuProfileGcEvent[];
+    chunks: ChromiumTraceProfileChunkEventData[];
+    samples: number;
+    hasLineColumns: boolean;
+    hasAllocationsMapping: boolean;
+    allocations: number;
+    allocationChunks: AllocationSamples[];
+}
 
 interface ChromiumTraceEvent {
     pid: number;
@@ -58,14 +97,19 @@ export function extractFromChromiumPerformanceProfile(
 ): V8CpuProfileSet {
     // It seems like sometimes Chrome timeline files contain multiple CpuProfiles?
     // For now, choose the first one in the list.
-    const cpuProfileById = new Map<string, V8CpuProfile>();
+    const profileById = new Map<string, V8CpuProfile>();
+    const profileDataById = new Map<string, ChromiumTraceProfileData>();
+    const profileDataByTid = new Map<string, ChromiumTraceProfileData>();
+    const profileByTid = new Map<string, V8CpuProfile>();
 
     // Maps pid/tid pairs to thread names
     const processNameId = new Map<number, string>();
     const threadNameId = new Map<number, string>();
+    let sourceMaps: ProfileSourceMap[] = [];
 
     // JSON Object Format
     if ('traceEvents' in events) {
+        sourceMaps = events.metadata?.sourceMaps || [];
         events = events.traceEvents;
     }
 
@@ -76,111 +120,249 @@ export function extractFromChromiumPerformanceProfile(
             e.name === 'CpuProfile' ||
             e.name === 'Profile' ||
             e.name === 'ProfileChunk' ||
+            e.name === 'ScriptCatchup' ||
+            e.name === 'LargeScriptCatchup' ||
+            e.name === 'MinorGC' ||
+            e.name === 'MajorGC' ||
             e.name === 'process_name' ||
             e.name === 'thread_name'
         )
         .sort((a, b) => a.ts - b.ts);
 
     for (const event of events) {
-        if (event.name === 'CpuProfile') {
-            // Create an arbitrary profile id.
-            const profileId = `${event.pid}:0x1`;
-            const profile = event.args.data.cpuProfile as V8CpuProfile;
+        switch (event.name) {
+            case 'CpuProfile': {
+                // Create an arbitrary profile id.
+                const profileId = `${event.pid}:0x1`;
+                const profile = event.args.data.cpuProfile as V8CpuProfile;
 
-            cpuProfileById.set(profileId, profile);
-            // profile.threadId = event.tid;
-        }
-
-        if (event.name === 'Profile') {
-            const profileId = `${event.pid}:${event.id}`;
-            const profile: V8CpuProfile = {
-                _name: threadNameId.get(event.tid) || null,
-                startTime: 0,
-                endTime: 0,
-                nodes: [],
-                samples: [],
-                timeDeltas: [],
-                trace_ids: {},
-                lines: [],
-                columns: [],
-                ...event.args.data as Partial<V8CpuProfile>
-            };
-            // profile.threadId = event.tid;
-
-            cpuProfileById.set(profileId, profile);
-        }
-
-        if (event.name === 'thread_name') {
-            threadNameId.set(event.tid, event.args.name);
-        }
-
-        if (event.name === 'process_name') {
-            processNameId.set(event.pid, event.args.name);
-        }
-
-        if (event.name === 'ProfileChunk') {
-            const profileId = `${event.pid}:${event.id}`;
-            const cpuProfile = cpuProfileById.get(profileId);
-            const chunk: ChromiumTraceProfileData = event.args.data;
-
-            if (!cpuProfile) {
-                console.warn(`Ignoring ProfileChunk for undeclared Profile with id ${profileId}`);
-                continue;
+                profileById.set(profileId, profile);
+                // profile.threadId = event.tid;
+                break;
             }
 
-            for (const chunkKey of Object.keys(chunk) as (keyof ChromiumTraceProfileData)[]) {
-                switch (chunkKey) {
-                    case 'cpuProfile': {
-                        const { nodes, samples, trace_ids: traceIds } = chunk.cpuProfile;
+            case 'Profile': {
+                const profileId = `${event.pid}:${event.id}`;
+                const profile: V8CpuProfile = {
+                    _name: threadNameId.get(event.tid) || null,
+                    _pid: event.pid,
+                    _tid: event.tid,
+                    startTime: 0,
+                    endTime: 0,
+                    nodes: [],
+                    samples: [],
+                    timeDeltas: [],
+                    trace_ids: {},
+                    lines: [],
+                    columns: [],
+                    _cpuproGcs: [],
+                    ...event.args.data as Partial<V8CpuProfile>
+                };
+                // profile.threadId = event.tid;
+                profileById.set(profileId, profile);
+                profileByTid.set(`${event.pid}:${event.tid}`, profile);
 
-                        if (Array.isArray(nodes)) {
-                            (cpuProfile.nodes as unknown[]).push(...nodes);
+                const profileData: ChromiumTraceProfileData = {
+                    name: threadNameId.get(event.tid) || null,
+                    pid: event.pid,
+                    tid: event.tid,
+                    startTime: (event.args.data as Partial<V8CpuProfile>).startTime || 0,
+                    endTime: 0,
+                    scripts: new Map(),
+                    events: [],
+                    chunks: [],
+                    samples: 0,
+                    hasLineColumns: false,
+                    hasAllocationsMapping: false,
+                    allocations: 0,
+                    allocationChunks: []
+                };
+
+                profileDataById.set(profileId, profileData);
+                profileDataByTid.set(`${event.pid}:${event.tid}`, profileData);
+                break;
+            }
+
+            case 'thread_name': {
+                threadNameId.set(event.tid, event.args.name);
+                break;
+            }
+
+            case 'process_name': {
+                processNameId.set(event.pid, event.args.name);
+                break;
+            }
+
+            case 'ScriptCatchup':
+            case 'LargeScriptCatchup': {
+                const profileData = profileDataByTid.get(`${event.pid}:${event.tid}`);
+
+                if (!profileData) {
+                    console.warn(`Ignoring ${event.name} for undeclared Profile (pid: ${event.pid}, tid: ${event.tid})`);
+                    break;
+                }
+
+                const scripts = profileData.scripts;
+                const props = event.args.data as unknown as ScriptCatchupEventData;
+                const scriptId = Number(props.scriptId);
+                let script = scripts.get(scriptId);
+
+                if (!script) {
+                    scripts.set(scriptId, script = {
+                        id: scriptId,
+                        url: null as unknown as string,
+                        source: null as unknown as string,
+                        sourceMapUrl: null,
+                        sourceMap: null
+                    });
+                }
+
+                for (const key of Object.keys(props)) {
+                    switch (key) {
+                        case 'url':
+                            script[key] = props[key];
+                            break;
+                        case 'sourceMapUrl': {
+                            script.sourceMapUrl = props.sourceMapUrl;
+                            break;
                         }
-
-                        if (Array.isArray(samples)) {
-                            cpuProfile.samples.push(...samples);
-                        }
-
-                        if (traceIds) {
-                            Object.assign(cpuProfile.trace_ids!, traceIds);
-                        }
-
-                        break;
+                        case 'sourceText':
+                            script.source = script.source === null
+                                ? props.sourceText
+                                : script.source + props.sourceText;
+                            break;
                     }
+                }
+                break;
+            }
 
-                    case 'timeDeltas':
-                        cpuProfile.timeDeltas.push(...chunk.timeDeltas);
-                        break;
+            case 'MinorGC':
+            case 'MajorGC': {
+                const profileData = profileDataByTid.get(`${event.pid}:${event.tid}`);
 
-                    case 'lines':
-                        cpuProfile.lines!.push(...chunk.lines);
-                        break;
+                if (!profileData) {
+                    console.warn(`Ignoring ${event.name} for undeclared Profile (pid: ${event.pid}, id: ${event.id})`);
+                    continue;
+                }
 
-                    case 'columns':
-                        cpuProfile.columns!.push(...chunk.columns);
-                        break;
+                profileData.events.push({
+                    type: event.name === 'MinorGC' ? 'minor' : 'major',
+                    tm: event.ts,
+                    duration: event.dur,
+                    reason: event.args?.type || '',
+                    usedHeapSizeBefore: event.args?.usedHeapSizeBefore || 0,
+                    usedHeapSizeAfter: event.args?.usedHeapSizeAfter || 0
+                });
+                break;
+            }
 
-                    case 'startTime':
-                    case 'endTime':
-                        cpuProfile[chunkKey] = chunk[chunkKey];
-                        break;
+            case 'ProfileChunk': {
+                const chunk: ChromiumTraceProfileChunkEventData = event.args.data;
+                const profileData = profileDataById.get(`${event.pid}:${event.id}`);
+
+                if (!profileData) {
+                    console.warn(`Ignoring ProfileChunk for undeclared Profile (pid: ${event.pid}, id: ${event.id})`);
+                    continue;
+                }
+
+                profileData.chunks.push(chunk);
+                profileData.hasLineColumns ||= Array.isArray(chunk.lines) && Array.isArray(chunk.columns);
+                profileData.hasAllocationsMapping ||= Array.isArray(chunk.allocationSampleIds) && chunk.allocationSampleIds.length > 0;
+
+                const { cpuProfile, allocationSamples, endTime } = chunk;
+
+                if (cpuProfile) {
+                    profileData.samples += cpuProfile.samples?.length ?? 0;
+                }
+
+                if (allocationSamples) {
+                    profileData.allocations += allocationSamples.ids.length;
+                    profileData.allocationChunks.push(allocationSamples);
+                }
+
+                if (endTime && endTime > profileData.endTime) {
+                    profileData.endTime = endTime;
                 }
             }
         }
     }
 
-    if (cpuProfileById.size === 0) {
+    if (profileById.size === 0) {
         throw new Error('Could not find CPU profile in Timeline');
     }
 
     const profiles: V8CpuProfile[] = [];
     let indexToView = -1;
 
-    for (const [profileId, profile] of cpuProfileById) {
+    for (const [profileId, profileData] of profileDataById) {
         const processName: string | null = processNameId.get(parseInt(profileId)) || 'Unknown';
+        const { name, pid, tid, startTime, endTime, scripts, chunks, samples, allocationChunks } = profileData;
+        const profile: V8CpuProfile = {
+            _name: name,
+            _pid: pid,
+            _tid: tid,
+            startTime,
+            endTime,
+            nodes: [],
+            samples: buildChunkedArray('samples', chunks, samples),
+            timeDeltas: buildChunkedArray('timeDeltas', chunks, samples),
+            trace_ids: {},
+            lines: undefined,
+            columns: undefined,
+            _cpuproGcs: profileData.events
+        };
 
         if (processName === 'CrRendererMain') {
             indexToView = profiles.length;
+        }
+
+        if (scripts) {
+            profile._scripts = Array.from(scripts.values());
+
+            for (const script of profile._scripts) {
+                // Attach source map from trace file if available
+                if (script.sourceMapUrl) {
+                    try {
+                        const sourceMapUrl = new URL(script.sourceMapUrl, script.url || undefined).toString();
+                        const sourceMap = sourceMaps.find(sm => sm.sourceMapUrl === sourceMapUrl)?.sourceMap;
+                        if (sourceMap && typeof sourceMap === 'object') {
+                            script.sourceMap = sourceMap;
+                        }
+                    } catch (error) {
+                        console.error('Error processing source map for script:', script, error);
+                    }
+                }
+            }
+        }
+
+        for (const chunk of chunks) {
+            if (chunk.cpuProfile) {
+                if (chunk.cpuProfile.nodes) {
+                    (profile.nodes as unknown[]).push(...chunk.cpuProfile.nodes);
+                }
+                if (chunk.cpuProfile.trace_ids) {
+                    Object.assign(profile.trace_ids!, chunk.cpuProfile.trace_ids);
+                }
+            }
+        }
+
+        if (profileData.hasLineColumns) {
+            profile.lines = buildChunkedArray('lines', chunks, samples);
+            profile.columns = buildChunkedArray('columns', chunks, samples);
+        }
+
+        if (profileData.hasAllocationsMapping) {
+            profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples);
+        }
+
+        if (allocationChunks.length > 0) {
+            profile._cpuproAllocationIds = buildChunkedVector(allocationChunks, 'ids');
+            profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes');
+            profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types');
+            profile._cpuproAllocationTypeNames = buildChunkedMap(profile._cpuproAllocationTypes, allocationChunks, 'typesDict');
+            profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces');
+            profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
+            profile._cpuproAllocationGc = buildChunkedVector(allocationChunks, 'gc');
         }
 
         profiles.push(profile);
@@ -197,4 +379,60 @@ export function extractFromChromiumPerformanceProfile(
         indexToView,
         profiles
     };
+}
+
+function buildChunkedVector(chunks: AllocationSamples[], key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict'>): number[] | undefined {
+    const vector = chunks.flatMap(chunk => chunk[key] || []);
+    return vector.length ? vector : undefined;
+}
+
+function buildChunkedMap(
+    vector: number[] | undefined,
+    chunks: AllocationSamples[],
+    key: 'typesDict' | 'spacesDict'
+): Record<string, string> | undefined {
+    if (!vector || vector.length === 0) {
+        return undefined;
+    }
+
+    const result: Record<string, string> = {};
+
+    for (const chunk of chunks) {
+        const dict = chunk[key];
+
+        if (dict) {
+            Object.assign(result, dict);
+        }
+    }
+
+    return result;
+}
+
+function buildChunkedArray(
+    key: 'samples' | 'timeDeltas' | 'lines' | 'columns' | 'allocationSampleIds',
+    chunks: ChromiumTraceProfileChunkEventData[],
+    totalLength: number
+): number[] {
+    const result: number[] = new Array(totalLength);
+    let offset = 0;
+
+    for (const chunk of chunks) {
+        const array = key === 'samples'
+            ? chunk.cpuProfile?.[key]
+            : chunk[key];
+
+        if (Array.isArray(array)) {
+            for (let i = 0; i < array.length; i++) {
+                result[offset++] = array[i];
+            }
+        } else {
+            if (chunk.timeDeltas) {
+                for (let i = 0; i < chunk.timeDeltas.length; i++) {
+                    result[offset++] = 0;
+                }
+            }
+        }
+    }
+
+    return result;
 }

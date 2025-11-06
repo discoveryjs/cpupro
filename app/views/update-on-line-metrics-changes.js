@@ -1,7 +1,7 @@
 const { utils } = require('@discoveryjs/discovery');
 
-discovery.view.define('update-on-timings-change', function(el, config, data, context) {
-    const { timings = data, debounce, beforeContent, content } = config;
+discovery.view.define('update-on-line-metrics-changes', function(el, config, data, context) {
+    const { metrics = data, debounce, beforeContent, content } = config;
     let scheduledRender = null;
     const updateRender = () => {
         if (scheduledRender !== null) {
@@ -17,7 +17,7 @@ discovery.view.define('update-on-timings-change', function(el, config, data, con
         });
     };
 
-    const unsubscribeSource = timings.subscribe(
+    const unsubscribeSource = metrics.subscribe(
         debounce
             ? utils.debounce(updateRender, debounce !== true ? debounce : { wait: 16, maxWait: 48 })
             : updateRender
@@ -29,9 +29,9 @@ discovery.view.define('update-on-timings-change', function(el, config, data, con
 
     beforeContent?.(data, context);
     return this.render(el, content, data, context);
-}, { tag: 'update-on-timings-change' });
+}, { tag: 'update-on-line-metrics-changes' });
 
-class UpdateOnTimingsChange extends HTMLElement {
+class UpdateOnLineValuesChanges extends HTMLElement {
     connectedCallback() {
         this.onConnect?.();
         this.onConnect = null;
@@ -42,4 +42,4 @@ class UpdateOnTimingsChange extends HTMLElement {
     }
 }
 
-customElements.define('update-on-timings-change', UpdateOnTimingsChange);
+customElements.define('update-on-line-metrics-changes', UpdateOnLineValuesChanges);

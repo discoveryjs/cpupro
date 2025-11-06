@@ -1,19 +1,20 @@
-import { selectProfile, toggleProfile } from './prepare/profile.mts';
+import { toggleProfile } from './prepare/profile.mts';
 import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule, topLevelConvolutionRule } from './prepare/computations/samples-convolution.mjs';
-import { allocTimespan, allocTypes, FEATURE_MULTI_PROFILES } from './prepare/const.js';
+import { FEATURE_MULTI_PROFILES } from './prepare/const.js';
 
-const demos = discovery.context?.model?.meta?.demos;
+const model = discovery;
+const demos = model.context?.model?.meta?.demos;
 
 if (demos) {
-    discovery.action.define('demos', () => demos);
+    model.action.define('demos', () => demos);
 }
 
-discovery.nav.primary.append({
+model.nav.primary.append({
     name: 'github',
     href: 'https://github.com/discoveryjs/cpupro',
     external: true
 });
-discovery.nav.menu.append({
+model.nav.menu.append({
     when: '#.datasets and #.actions.unloadData',
     content: 'text:"Unload cpuprofile"',
     onClick(_, ctx) {
@@ -24,14 +25,14 @@ discovery.nav.menu.append({
 });
 
 if (FEATURE_MULTI_PROFILES) {
-    discovery.nav.before('discovery-page', {
+    model.nav.before('discovery-page', {
         when: '#.data.profiles.size() > 1 and #.page != "profiles-matrix"',
         text: 'Matrix',
         href: '#profiles-matrix'
     });
 }
 
-discovery.action.define('getSessionSetting', (name, defaultValue) => {
+model.action.define('getSessionSetting', (name, defaultValue) => {
     const value = sessionStorage.getItem(name);
 
     try {
@@ -39,41 +40,65 @@ discovery.action.define('getSessionSetting', (name, defaultValue) => {
             return JSON.parse(value);
         }
     } catch (e) {
-        discovery.logger.error(`getSessionSetting: ${e}`);
+        model.logger.error(`getSessionSetting: ${e}`);
     }
 
     return defaultValue;
 });
-discovery.action.define('setSessionSetting', (name, value) => {
+model.action.define('setSessionSetting', (name, value) => {
     sessionStorage.setItem(name, JSON.stringify(value) || null);
 });
-discovery.action.define('selectProfile', (profile) => {
-    if (selectProfile(discovery, profile)) {
-        discovery.scheduleRender();
-    }
+model.action.define('selectPrimaryLine', (lineType) => {
+    model.setContext({
+        primaryLineType: lineType
+    });
 });
-discovery.action.define('toggleProfile', (profile) => {
-    if (toggleProfile(discovery, profile)) {
-        discovery.scheduleRender();
+model.action.define('selectProfile', (profile) => {
+    model.setContext({
+        primaryProfile: profile
+    });
+});
+model.action.define('toggleProfile', (profile) => {
+    if (toggleProfile(model, profile)) {
+        model.scheduleRender();
     }
 });
 
-discovery.action.define('setSamplesConvolutionRule', (newRule) => {
-    const { profiles, callFramesProfilePresence } = discovery.data || {};
+model.action.define('setSamplesConvolutionRule', (newRule) => {
+    const { profiles, callFramesProfilePresence } = model.data || {};
     const rule = typeof newRule === 'function' ? newRule : null;
 
-    discovery.setContext({ currentSamplesConvolutionRule: rule });
+    model.setContext({ currentSamplesConvolutionRule: rule });
 
     if (Array.isArray(profiles)) {
         setSamplesConvolutionRule(profiles, callFramesProfilePresence, rule);
-        discovery.scheduleRender();
+        model.scheduleRender();
     }
 });
-discovery.on('data', () => {
-    const { currentSamplesConvolutionRule } = discovery.context;
+model.on('unloadData', () => {
+    model.setContext({
+        // primaryLineType: null, // keep selected line type
+        primaryProfile: null
+    });
+});
+model.on('data', () => {
+    const { defaultLineType, currentSamplesConvolutionRule } = model.context;
+    const { defaultProfile, profiles } = model.data;
+    let primaryLineType = defaultLineType || null;
+
+    if (!primaryLineType || !profiles.some(profile => profile.lines.includes(primaryLineType))) {
+        primaryLineType = defaultProfile?.defaultLineType;
+    }
+
+    model.setContext({
+        primaryProfile: defaultProfile,
+        primaryLineType,
+        scopeProfile: null, // always null by default, views can override it
+        scopeLine: null     // always null by default, views can override it
+    });
 
     if (currentSamplesConvolutionRule) {
-        const { profiles, callFramesProfilePresence } = discovery.data;
+        const { profiles, callFramesProfilePresence } = model.data;
 
         setSamplesConvolutionRule(profiles, callFramesProfilePresence, currentSamplesConvolutionRule);
     }
@@ -91,13 +116,11 @@ discovery.on('data', () => {
 //     );
 // });
 
-discovery.action.call('setStructViewAnnotations', [
-    '#.key in ["selfTime", "nestedTime", "totalTime"] and $ and { text: duration() }'
+model.action.call('setStructViewAnnotations', [
+    '#.key in ["selfValue", "nestedValue", "totalValue"] and $ and { text: duration() }'
 ]);
 
-discovery.setContext({
-    allocationTimespanNames: allocTimespan,
-    allocationTypeNames: allocTypes,
+model.setContext({
     samplesConvolutionRules: {
         all: allConvolutionRule,
         module: moduleConvolutionRule,

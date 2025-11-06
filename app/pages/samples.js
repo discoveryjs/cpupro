@@ -2,14 +2,15 @@ discovery.page.define('samples', {
     view: 'context',
     context: '{ ...#, currentProfile }',
     data: `{
-        $totalTime: currentProfile.totalTime;
+        $line: scopeLine();
+        $totalValue: $line.axisTotal;
         $binCount: 500;
         $sampleBins: $binCount.countSamples();
         $sampleDiscreteBins: $binCount.countSamplesDiscrete();
         $xbins: $binCount.sampleXBins();
 
-        currentProfile,
-        $totalTime,
+        $line,
+        $totalValue,
         $binCount,
         $sampleBins,
         $sampleDiscreteBins,
@@ -23,18 +24,18 @@ discovery.page.define('samples', {
         {
             view: 'block',
             content: [
-                'text:"Samples: " + currentProfile.samples.size()',
+                'text:"Samples: " + scopeLine().samples.size()',
                 'text:" / Bins: " + binCount',
-                'text:" / Bin size: " + (totalTime / binCount).toFixed(1)',
-                'text:" / Expected samples per bin: " + (currentProfile.samples.size() / binCount).toFixed(1)',
+                'text:" / Bin size: " + (totalValue / binCount).toFixed(1)',
+                'text:" / Expected samples per bin: " + (scopeLine().samples.size() / binCount).toFixed(1)',
                 'text:" / Actual samples per bin: " + (sampleDiscreteBins | { min(), max() } | `${min} ... ${max}`)',
-                'struct:currentProfile.timeDeltas'
+                'struct:scopeLine().values'
             ]
         },
         {
             view: 'block',
             content: [
-                'text:"Sampling interval: " + currentProfile.sourceInfo.samplesInterval',
+                'text:"Sampling interval: " + scopeLine().sourceInfo.samplesInterval',
                 'html:"<br>"'
                 // 'text:"Estimated sampling interval: " + currentProfile.timeDeltas.estimateSamplingInterval().toFixed(0)'
             ]
@@ -46,15 +47,15 @@ discovery.page.define('samples', {
                 {
                     view: 'time-ruler',
                     labels: 'top',
-                    duration: '=totalTime',
+                    duration: '=totalValue',
                     segments: '=binCount',
-                    selectionStart: '=#.currentProfile.samplesTimingsFiltered.rangeStart',
-                    selectionEnd: '=#.currentProfile.samplesTimingsFiltered.rangeEnd',
-                    onChange: (state, name, el, data, context) => {
+                    selectionStart: '=line.samplesTimingsFiltered.rangeStart',
+                    selectionEnd: '=line.samplesTimingsFiltered.rangeEnd',
+                    onChange: (state, name, el, data) => {
                         if (state.timeStart !== null) {
-                            context.currentProfile.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
+                            data.line.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
                         } else {
-                            context.currentProfile.samplesTimingsFiltered.resetRange();
+                            data.line.samplesTimingsFiltered.resetRange();
                         }
                     },
                     details: [
@@ -70,7 +71,7 @@ discovery.page.define('samples', {
                 //     ]
                 // },
                 // {
-                //     view: 'timeline-segments-bin',
+                //     view: 'sample-histogram',
                 //     bins: '=sampleBins',
                 //     max: '=sampleBinsMax',
                 //     // binsMax: true,
@@ -84,7 +85,7 @@ discovery.page.define('samples', {
                     ]
                 },
                 {
-                    view: 'timeline-segments-bin',
+                    view: 'sample-histogram',
                     bins: '=sampleDiscreteBins',
                     max: '=sampleBinsMax',
                     // binsMax: true,
@@ -116,7 +117,7 @@ discovery.page.define('samples', {
                     ]
                 },
                 {
-                    view: 'timeline-segments-bin',
+                    view: 'sample-histogram',
                     bins: '=sampleXBins',
                     color: '="#8db2f8a0"',
                     height: 160

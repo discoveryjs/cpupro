@@ -8,7 +8,7 @@ const metricView = {
     view: 'context',
     when: 'sum',
     content: [
-        'text-with-unit{ value: sum > 999 ? sum.unit() : sum + "b", unit: true }',
+        'text-with-unit{ value: sum > 999 ? sum.unit("memline") : sum + "b", unit: true }',
         {
             view: 'block',
             className: 'metric-stat',

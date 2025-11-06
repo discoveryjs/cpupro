@@ -229,6 +229,24 @@
 .page-default .category-timelines > .view-time-ruler .interval-marker:first-child {
     margin-left: -1px;
 }
+.page-default .category-timelines > .events-x {
+    grid-column: 3 / 4;
+    box-sizing: border-box;
+    margin: 0 1px;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+.page-default .category-timelines > .events-x > .event-x.gc-event-x {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--start);
+    width: var(--duration);
+    pointer-events: none;
+    background: var(--color, #8888);
+    opacity: 0.35;
+}
 
 .page-default .category-timelines > .view-expand {
     display: contents;
@@ -270,7 +288,7 @@
     color: inherit;
     display: contents;
 }
-.page-default .category-timelines-item .view-timeline-segments {
+.page-default .category-timelines-item .view-sample-histogram {
     margin: 0 1px;
 }
 .page-default .category-timelines-item:has(+ .category-timelines-list) > * {
@@ -437,8 +455,8 @@
 .page-default .hierarchical-components > .content .view-section .view-table .view-table-cell.main {
     width: 100%;
 }
-.page-default .hierarchical-components > .content .view-section .view-table .view-duration .time {
-    min-width: calc(var(--total-time-digits) * 1ex + 3.5ex);
+.page-default .hierarchical-components > .content .view-section .view-table .view-metric .value {
+    min-width: calc(var(--total-value-digits) * 1ex + 3.5ex);
 }
 
 .page-default .welcome-page .view-markdown .view-ul {

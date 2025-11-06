@@ -1,14 +1,15 @@
 import type { Model } from '@discoveryjs/discovery';
-import { convertToInt32Array, convertToUint32Array } from './utils.js';
-import { mergeSamples, computeTimings, remapTreeSamples } from './preprocessing/samples.js';
+import { convertToInt32Array, convertToUint32Array } from './misc/utils.js';
+import { mergeSamples } from './preprocessing/samples.js';
 import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
+import { createTimeline, createMemline } from './lines/index.mjs';
 import { extractCallFrames } from './preprocessing/call-frames.js';
 import { processNodes } from './preprocessing/nodes.js';
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
-import { processCallFramePositions } from './preprocessing/call-frame-positions.js';
-import { detectRuntime } from './detect-runtime.js';
+import { processLocations } from './preprocessing/locations.js';
+import { detectRuntime } from './misc/detect-runtime.js';
 import { buildTrees } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
@@ -16,7 +17,10 @@ import { Usage } from './usage.js';
 import { GeneratedNodes, V8CpuProfile } from './types.js';
 import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
+import { createLineMapping } from './computations/line-mapping.js';
 import { MERGE_SAMPLES } from './const.js';
+import { ProfileLine } from './lines/types.js';
+import { createLineBoundaries } from './misc/line-boundaries.js';
 
 const experimentalFeatures = false;
 
@@ -25,26 +29,13 @@ export type CreateProfileApi = {
     work<T>(name: string, fn: () => T): Promise<T>;
 }
 
-export function selectProfile(discovery: Model, profile: Profile) {
-    if (profile.disabled === false && discovery.data.currentProfile !== profile) {
-        discovery.data = {
-            ...discovery.data,
-            currentProfile: profile
-        };
-
-        return true;
-    }
-
-    return false;
-}
-
-export function toggleProfile(discovery: Model, profile: Profile) {
-    const { currentSamplesConvolutionRule } = discovery.context;
+export function toggleProfile(model: Model, profile: Profile) {
+    const { currentSamplesConvolutionRule } = model.context;
     const {
-        currentProfile,
+        primaryProfile,
         profiles,
         callFramesProfilePresence
-    } = discovery.data;
+    } = model.data;
     const disable = !profile.disabled;
     const enabledProfiles = profiles.filter((p: Profile) => p === profile
         ? p.disabled // for the profile to toggle, the disabled property will be inverted
@@ -55,13 +46,16 @@ export function toggleProfile(discovery: Model, profile: Profile) {
         return false;
     }
 
+    const newPrimaryProfile = disable && profile === primaryProfile
+        ? enabledProfiles[0] || null
+        : primaryProfile;
+
     profile.disabled = !profile.disabled;
-    discovery.data = {
-        ...discovery.data,
+    model.data = {
+        ...model.data,
         totalTime: enabledProfiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
-        currentProfile: disable && profile === currentProfile
-            ? enabledProfiles[0] || null
-            : currentProfile
+        primaryProfile: newPrimaryProfile,
+        currentProfile: newPrimaryProfile
     };
 
     computeCrossProfileUsage(enabledProfiles, callFramesProfilePresence);
@@ -70,15 +64,72 @@ export function toggleProfile(discovery: Model, profile: Profile) {
     return true;
 }
 
-export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work }: CreateProfileApi) {
+// FIXME: quick & dirty implementation
+function positionsFromScriptsLineColumns(
+    nodes: V8CpuProfile['nodes'],
+    callFrames: V8CpuProfile['_callFrames'],
+    scripts: V8CpuProfile['_scripts'],
+    samples: V8CpuProfile['samples'],
+    lines?: V8CpuProfile['lines'],
+    columns?: V8CpuProfile['columns']
+): number[] | null {
+    if (!Array.isArray(lines) || !Array.isArray(columns) || lines.length !== columns.length || lines.length === 0) {
+        return null;
+    }
+
+    if (!scripts) {
+        return null;
+    }
+
+    const scriptLineBoundaries = Object.create(null) as Record<number, ReturnType<typeof createLineBoundaries>>;
+    for (let i = 0; i < scripts.length; i++) {
+        const script = scripts[i];
+        if (script && script.source) {
+            scriptLineBoundaries[script.id] = createLineBoundaries(script.source);
+            scriptLineBoundaries[script.id].script = script;
+        }
+    }
+
+    const nodeById = Object.create(null) as Record<number, V8CpuProfile['nodes'][0]>;
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        nodeById[node.id] = node;
+    }
+
+    const result = new Array<number>(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+        const callFrameRaw = nodeById[samples[i]].callFrame;
+        const callFrame = typeof callFrameRaw === 'number' ? callFrames![callFrameRaw] : callFrameRaw;
+        const scriptId = Number(callFrame.scriptId);
+        const scriptEntry = scriptLineBoundaries[scriptId];
+        let offset = -1;
+
+        if (scriptEntry && lines[i]) {
+            debugger;
+            offset = scriptEntry.getOffset(lines[i], columns[i]);
+            console.log(lines[i], columns[i], '=>', offset, callFrame);
+        }
+
+        result[i] = offset;
+    }
+
+    return result;
+}
+
+export async function createProfile(data: V8CpuProfile, dictionary: Dictionary, { work }: CreateProfileApi) {
+    // TODO Phase 5: Support multiple sources
+    // Future signature: createProfile(sources: { time?, memory?, gc? }, dict, api)
+    // For now, treat single source as primary line
+
     // store source's initial metrics
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
 
+    const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
     const skipSampleMerge = profileType === 'memory' || !MERGE_SAMPLES;
     const generateNodes: GeneratedNodes = {
-        dict,
+        dict: dictionary,
         nodeIdSeed: data.nodes.length + 1,
         noSamplesNodeId: -1,
         callFrames: [],
@@ -88,6 +139,16 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
             return this.nodeParentId.length;
         }
     };
+
+    const _dataPositions = data._positions ||
+        positionsFromScriptsLineColumns(
+            data.nodes,
+            data._callFrames,
+            data._scripts,
+            data.samples,
+            data.lines,
+            data.columns
+        );
 
     //
     // Process profile samples & time stamps
@@ -109,7 +170,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
                 data.endTime,
                 data.timeDeltas,
                 data.samples,
-                data._samplePositions,
+                _dataPositions,
                 data._samplesInterval // could be computed on V8 log convertation into cpuprofile
             )
         )
@@ -127,7 +188,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
                 samplesInterval,
                 data.timeDeltas,
                 data.samples,
-                data._samplePositions,
+                _dataPositions,
                 generateNodes
             )
         );
@@ -138,12 +199,12 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const {
         rawSamples,
         rawTimeDeltas,
-        rawSamplePositions
+        rawSampleLocations
     } = await work('convert samples & timeDeltas into TypedArrays', () => ({
         rawSamples: convertToUint32Array(data.samples),
         rawTimeDeltas: convertToUint32Array(data.timeDeltas),
-        rawSamplePositions: Array.isArray(data._samplePositions)
-            ? convertToInt32Array(data._samplePositions)
+        rawSampleLocations: Array.isArray(_dataPositions)
+            ? convertToInt32Array(_dataPositions)
             : null
     }));
 
@@ -151,15 +212,15 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     const {
         samples,
         sampleCounts,
-        samplePositions,
+        sampleLocations,
         timeDeltas
     } = await work('process samples', () =>
         !skipSampleMerge
-            ? mergeSamples(rawSamples, rawTimeDeltas, rawSamplePositions)
+            ? mergeSamples(rawSamples, rawTimeDeltas, rawSampleLocations)
             : {
                 samples: rawSamples,
                 sampleCounts: new Uint32Array(rawSamples.length).fill(1),
-                samplePositions: rawSamplePositions,
+                sampleLocations: rawSampleLocations,
                 timeDeltas: rawTimeDeltas
             }
     );
@@ -172,7 +233,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
             generateNodes,
             data._callFrames || null,
             samples,
-            samplePositions
+            sampleLocations
         )
     );
 
@@ -185,10 +246,10 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         callFrameByNodeIndex
     } = await work('extract call frames', () =>
         extractCallFrames(
-            dict,
+            dictionary,
             data.nodes,
             data._callFrames,
-            new ProfileScriptsMap(dict, data._scripts),
+            new ProfileScriptsMap(dictionary, data._scripts),
             generateNodes
         )
     );
@@ -202,7 +263,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         processCallFrameCodes(
             data._callFrameCodes,
             callFrameByIndex,
-            dict.callFrames,
+            dictionary.callFrames,
             startTime,
             endTime
         )
@@ -213,7 +274,7 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     //
 
     const usage = await work('usage', () =>
-        new Usage(dict, callFrameByNodeIndex)
+        new Usage(dictionary, callFrameByNodeIndex)
     );
 
     //
@@ -225,18 +286,15 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
     );
 
     // call frame positions
-    const {
-        // samplePositions,
-        positionsTreeSource
-    } = await work('process call frame positions', () =>
-        processCallFramePositions(
+    const { locationsTreeSource } = await work('process locations', () =>
+        processLocations(
             nodeIndexById,
             nodeParent,
             nodePositions,
-            dict.callFrames,
+            dictionary.callFrames,
             callFrameByNodeIndex,
             samples,
-            samplePositions
+            sampleLocations
         )
     );
 
@@ -246,97 +304,122 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
 
     const {
         treeSource,
-        callFramePositionsTree,
+        locationsTree,
         callFramesTree,
         modulesTree,
         packagesTree,
         categoriesTree
     } = await work('build trees', () =>
         buildTrees(
-            dict,
+            dictionary,
             nodeParent,
             nodeIndexById,
             callFrameByNodeIndex,
-            positionsTreeSource,
+            locationsTreeSource,
             usage
         )
     );
-    const callTrees = [
-        callFramePositionsTree,
+
+    // Create timeline (CPU time profiling line)
+    const timeline = await createTimeline(
+        // Source metadata
+        { nodes: nodesCount, samples: samplesCount, samplesInterval },
+        // Axis info
+        { start: startTime, startNoSamples: startNoSamplesTime, end: endTime, endNoSamples: endNoSamplesTime, total: totalTime },
+        // Samples data
+        { samples, sampleCounts, sampleLocations, values: timeDeltas },
+        // Trees
+        { locationsTreeSource, treeSource, locationsTree, callFramesTree, modulesTree, packagesTree, categoriesTree },
+        { work }
+    );
+    if (timeline) {
+        lines.push(timeline);
+    }
+
+    // Create memline from allocation data if present (combined profile)
+    const memline = await createMemline(
+        data,
+        timeline ? timeline.samplesMetrics.samples : data.samples,
+        locationsTree,
         callFramesTree,
         modulesTree,
         packagesTree,
-        categoriesTree
-    ].filter(tree => tree !== null);
-
-    // re-map samples
-    // FIXME: remap callFramesTree only, before buildTrees()?
-    await work('remap samples', () =>
-        remapTreeSamples(
-            samples,
-            positionsTreeSource?.sourceIdToNode || treeSource.sourceIdToNode,
-            ...callTrees
-        )
+        categoriesTree,
+        { work }
     );
 
-    // build samples lists & trees
-    const {
-        recomputeTimings,
-        samplesTimings,
-        samplesTimingsFiltered,
-        callFramePositionsTimings,
-        callFramePositionsTimingsFiltered,
-        callFramePositionsTreeTimings,
-        callFramePositionsTreeTimingsFiltered,
-        callFramePositionsTreeTimestamps,
-        callFramesTimings,
-        callFramesTimingsFiltered,
-        callFramesTreeTimings,
-        callFramesTreeTimingsFiltered,
-        callFramesTreeTimestamps,
-        modulesTimings,
-        modulesTimingsFiltered,
-        modulesTreeTimings,
-        modulesTreeTimingsFiltered,
-        modulesTreeTimestamps,
-        packagesTimings,
-        packagesTimingsFiltered,
-        packagesTreeTimings,
-        packagesTreeTimingsFiltered,
-        packagesTreeTimestamps,
-        categoriesTimings,
-        categoriesTimingsFiltered,
-        categoriesTreeTimings,
-        categoriesTreeTimingsFiltered,
-        categoriesTreeTimestamps
-    } = await work('process samples', () =>
-        computeTimings(
-            samples,
-            timeDeltas,
-            callFramesTree,
-            modulesTree,
-            packagesTree,
-            categoriesTree,
-            callFramePositionsTree
-        )
-    );
+    if (memline) {
+        lines.push(memline);
+    }
+
+    const primaryLine = memline || timeline;
+
+    // Create mappings between lines if both exist
+    if (memline && timeline && memline.mappings && timeline.mappings) {
+        memline.mappings.timeline = createLineMapping(
+            memline.samplesMetrics,
+            timeline.samplesMetrics
+        );
+        timeline.mappings.memline = createLineMapping(
+            timeline.samplesMetrics,
+            memline.samplesMetrics
+        );
+
+        if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
+            timeline.mappings.memline._mapping.set(data._cpuproAllocationMapping);
+
+            const mapping = timeline.mappings.memline._mapping;
+            const memlineSamples = data._cpuproAllocationIds!; // [0, 1, 2, 3, 4, ...]
+            const memlineToTimelineMap = memline.mappings.timeline._mapping;
+            // [0, 0, 1, 1, 1, 3, 3, ...] -> timeline sample ids
+            // we attach memline sample id to the cpu sample id it was recorded after
+
+            const lastCpuSampleIndex = mapping.length - 1;
+            for (let i = 0, k = 0; i < memlineSamples.length; i++) {
+                const allocId = memlineSamples[i];
+                let cpuSampleLastSeen = mapping[k];
+
+                while (k < lastCpuSampleIndex && allocId > cpuSampleLastSeen) {
+                    cpuSampleLastSeen = mapping[++k];
+                }
+
+                memlineToTimelineMap[i] = k;
+            }
+        }
+    }
+
+    type Timeline = typeof timeline;
+    const getters = transitionTimelineGetters<Timeline>({}, timeline!);
 
     const profile = {
         name: data._name,
-        type: profileType,
         disabled: false,
         runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
-        sourceInfo: {
-            nodes: nodesCount,
-            samples: samplesCount,
-            samplesInterval
-        },
 
-        startTime,
-        startNoSamplesTime,
-        endTime,
-        endNoSamplesTime,
-        totalTime,
+        ...usage,
+        codes,
+        codesByCallFrame,
+        codesByScript,
+
+        locationsTreeSource, // FIXME: do we need to expose source?
+        locationsTree,
+        callFramesTree,
+        modulesTree,
+        packagesTree,
+        categoriesTree,
+
+        // lines
+        timeline,
+        memline,
+        gcline: null as ProfileLine | null,
+        lines,
+
+        // primaryLine reference (currently selected line in UI)
+        defaultLineType: primaryLine?.type || null,
+
+        gcs: data._cpuproGcs || [],
+
+        // ---- legacy fields ----
 
         // FIXME: experimental
         _commonTree: null as unknown,
@@ -355,59 +438,156 @@ export async function createProfile(data: V8CpuProfile, dict: Dictionary, { work
         _memorySpace: data._memorySpace ? new Uint8Array(data._memorySpace) : null,
         _memorySpaceNames: data._memorySpaceNames || [],
 
-        samples: samplesTimings.samples,
-        sampleCounts,
-        sampleCountsByProfile: new Uint32Array(),
-        samplePositions,
-        samplesTimings,
-        samplesTimingsFiltered,
-        timeDeltas: samplesTimings.timeDeltas,
-        timeDeltasByProfile: new Uint32Array(),
-        recomputeTimings,
+        heap: data._heap || null,
 
-        ...usage,
-        codes,
-        codesByCallFrame,
-        codesByScript,
-
-        positionsTreeSource,
-        callFramePositionsTimings,
-        callFramePositionsTimingsFiltered,
-        callFramePositionsTree,
-        callFramePositionsTreeTimings,
-        callFramePositionsTreeTimingsFiltered,
-        callFramePositionsTreeTimestamps,
-
-        callFramesTimings,
-        callFramesTimingsFiltered,
-        callFramesTree,
-        callFramesTreeTimings,
-        callFramesTreeTimingsFiltered,
-        callFramesTreeTimestamps,
-
-        modulesTimings,
-        modulesTimingsFiltered,
-        modulesTree,
-        modulesTreeTimings,
-        modulesTreeTimingsFiltered,
-        modulesTreeTimestamps,
-
-        packagesTimings,
-        packagesTimingsFiltered,
-        packagesTree,
-        packagesTreeTimings,
-        packagesTreeTimingsFiltered,
-        packagesTreeTimestamps,
-
-        categoriesTimings,
-        categoriesTimingsFiltered,
-        categoriesTree,
-        categoriesTreeTimings,
-        categoriesTreeTimingsFiltered,
-        categoriesTreeTimestamps,
-
-        heap: data._heap || null
+        ...getters
     };
 
+    transitionTimelineGetters(profile, timeline);
+
+    for (const line of [timeline, memline]) {
+        if (line) {
+            line.profile = profile;
+        }
+    }
+
     return profile;
+}
+
+// define timeline getters/setters for legacy fields
+// during transition period
+function transitionTimelineGetters<T>(result: unknown, timeline: T) {
+    const timelineTransitionGetters = {
+        sourceInfo: true,
+        type: 'kind',
+
+        startTime: 'axisStart',
+        startNoSamplesTime: 'axisStartNoSamples',
+        endTime: 'axisEnd',
+        endNoSamplesTime: 'axisEndNoSamples',
+        totalTime: 'axisTotal',
+
+        samples: true,
+        sampleCounts: true,
+        sampleCountsByProfile: true,
+        samplePositions: true,
+
+        timeDeltas: 'values',
+        timeDeltasByProfile: 'valuesByProfile',
+        samplesTimings: 'samplesMetrics',
+        samplesTimingsFiltered: 'samplesMetricsFiltered',
+        recomputeTimings: 'recomputeValues',
+
+        callFramePositionsTimings: 'dict.locations.all',
+        callFramePositionsTimingsFiltered: 'dict.locations.filtered',
+        callFramePositionsTreeTimings: 'tree.locations.all',
+        callFramePositionsTreeTimingsFiltered: 'tree.locations.filtered',
+        callFramePositionsTreeTimestamps: 'tree.locations.bounds',
+
+        callFramesTimings: 'dict.callFrames.all',
+        callFramesTimingsFiltered: 'dict.callFrames.filtered',
+        callFramesTreeTimings: 'tree.callFrames.all',
+        callFramesTreeTimingsFiltered: 'tree.callFrames.filtered',
+        callFramesTreeTimestamps: 'tree.callFrames.bounds',
+
+        modulesTimings: 'dict.modules.all',
+        modulesTimingsFiltered: 'dict.modules.filtered',
+        modulesTreeTimings: 'tree.modules.all',
+        modulesTreeTimingsFiltered: 'tree.modules.filtered',
+        modulesTreeTimestamps: 'tree.modules.bounds',
+
+        packagesTimings: 'dict.packages.all',
+        packagesTimingsFiltered: 'dict.packages.filtered',
+        packagesTreeTimings: 'tree.packages.all',
+        packagesTreeTimingsFiltered: 'tree.packages.filtered',
+        packagesTreeTimestamps: 'tree.packages.bounds',
+
+        categoriesTimings: 'dict.categories.all',
+        categoriesTimingsFiltered: 'dict.categories.filtered',
+        categoriesTreeTimings: 'tree.categories.all',
+        categoriesTreeTimingsFiltered: 'tree.categories.filtered',
+        categoriesTreeTimestamps: 'tree.categories.bounds'
+    };
+
+    for (const [key, value] of Object.entries(timelineTransitionGetters)) {
+        let target = timeline;
+        let targetKey: string = key;
+
+        if (typeof value === 'string') {
+            const path = value.split('.');
+            targetKey = path.pop()!;
+
+            for (let i = 0; i < path.length; i++) {
+                target = target![path[i]];
+            }
+        }
+
+        Object.defineProperty(result, key, {
+            configurable: true,
+            enumerable: true,
+            get() {
+                // TODO: warn about legacy field usage
+                return target ? target[targetKey] : null;
+            },
+            set(newValue) {
+                if (!target) {
+                    throw new Error('Cannot set value on undefined target');
+                }
+
+                target[targetKey] = newValue;
+            }
+        });
+    }
+
+    return result as {
+        // @ts-expect-error migration
+        sourceInfo: T['sourceInfo'], // @ts-expect-error migration
+
+        startTime: T['axisStart'], // @ts-expect-error migration
+        startNoSamplesTime: T['axisStartNoSamples'], // @ts-expect-error migration
+        endTime: T['axisEnd'], // @ts-expect-error migration
+        endNoSamplesTime: T['axisEndNoSamples'], // @ts-expect-error migration
+        totalTime: T['axisTotal'], // @ts-expect-error migration
+
+        samples: T['samples'], // @ts-expect-error migration
+        sampleCounts: T['sampleCounts'], // @ts-expect-error migration
+        sampleCountsByProfile: T['sampleCountsByProfile'], // @ts-expect-error migration
+        samplePositions: T['samplePositions'], // @ts-expect-error migration
+
+        timeDeltas: T['values'], // @ts-expect-error migration
+        timeDeltasByProfile: T['valuesByProfile'], // @ts-expect-error migration
+        samplesTimings: T['samplesMetrics'], // @ts-expect-error migration
+        samplesTimingsFiltered: T['samplesMetricsFiltered'], // @ts-expect-error migration
+        recomputeTimings: T['recomputeValues'], // @ts-expect-error migration
+
+        callFramePositionsTimings: T['dict']['locations']['all'], // @ts-expect-error migration
+        callFramePositionsTimingsFiltered: T['dict']['locations']['filtered'], // @ts-expect-error migration
+        callFramePositionsTreeTimings: T['tree']['locations']['all'], // @ts-expect-error migration
+        callFramePositionsTreeTimingsFiltered: T['tree']['locations']['filtered'], // @ts-expect-error migration
+        callFramePositionsTreeTimestamps: T['tree']['locations']['bounds'], // @ts-expect-error migration
+
+        callFramesTimings: T['dict']['callFrames']['all'], // @ts-expect-error migration
+        callFramesTimingsFiltered: T['dict']['callFrames']['filtered'], // @ts-expect-error migration
+        callFramesTreeTimings: T['tree']['callFrames']['all'], // @ts-expect-error migration
+        callFramesTreeTimingsFiltered: T['tree']['callFrames']['filtered'], // @ts-expect-error migration
+        callFramesTreeTimestamps: T['tree']['callFrames']['bounds'], // @ts-expect-error migration
+
+        modulesTimings: T['dict']['modules']['all'], // @ts-expect-error migration
+        modulesTimingsFiltered: T['dict']['modules']['filtered'], // @ts-expect-error migration
+        modulesTreeTimings: T['tree']['modules']['all'], // @ts-expect-error migration
+        modulesTreeTimingsFiltered: T['tree']['modules']['filtered'], // @ts-expect-error migration
+        modulesTreeTimestamps: T['tree']['modules']['bounds'], // @ts-expect-error migration
+
+        packagesTimings: T['dict']['packages']['all'], // @ts-expect-error migration
+        packagesTimingsFiltered: T['dict']['packages']['filtered'], // @ts-expect-error migration
+        packagesTreeTimings: T['tree']['packages']['all'], // @ts-expect-error migration
+        packagesTreeTimingsFiltered: T['tree']['packages']['filtered'], // @ts-expect-error migration
+        packagesTreeTimestamps: T['tree']['packages']['bounds'], // @ts-expect-error migration
+
+        categoriesTimings: T['dict']['categories']['all'], // @ts-expect-error migration
+        categoriesTimingsFiltered: T['dict']['categories']['filtered'], // @ts-expect-error migration
+        categoriesTreeTimings: T['tree']['categories']['all'], // @ts-expect-error migration
+        categoriesTreeTimingsFiltered: T['tree']['categories']['filtered'], // @ts-expect-error migration
+        categoriesTreeTimestamps: T['tree']['categories']['bounds']
+    };
 }

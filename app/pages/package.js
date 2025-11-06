@@ -1,26 +1,27 @@
-import { callFramesCol, sessionExpandState, timingCols } from './common.js';
+import { callFramesCol, primaryLineSwitcher, sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
         view: 'page-header',
         prelude: [
             'badge{ className: "type-badge", text: "Package" }',
-            'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }'
+            'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }',
+            primaryLineSwitcher
         ],
         content: 'h1:name'
     },
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: #.currentProfile.packagesTree }'
+        data: '{ subject: @, tree: #.scopeProfile.packagesTree }'
     },
 
     {
-        view: 'update-on-timings-change',
-        timings: '=#.currentProfile.packagesTimingsFiltered',
-        content: `page-indicator-timings:{
-            full: #.currentProfile.packagesTimings.entries[=>entry = @],
-            filtered: #.currentProfile.packagesTimingsFiltered.entries[=>entry = @]
+        view: 'update-on-line-metrics-changes',
+        metrics: '=scopeLine().dict.packages.filtered',
+        content: `page-indicator-metrics:scopeLine().dict.packages | {
+            full: all.entries[=>entry = @],
+            filtered: filtered.entries[=>entry = @]
         }`
     },
 
@@ -29,18 +30,18 @@ const pageContent = [
         ...sessionExpandState('package-nested-time-distribution', true),
         className: 'trigger-outside',
         header: [
-            'text:"Nested time distribution"',
+            'text:`${"nestedValue".metricName()} distribution`',
             { view: 'block', className: 'text-divider' },
             {
-                view: 'update-on-timings-change',
-                timings: '=#.currentProfile.packagesTimingsFiltered',
-                content: 'duration:#.currentProfile.packagesTimingsFiltered.entries[=>entry=@].nestedTime'
+                view: 'update-on-line-metrics-changes',
+                metrics: '=scopeLine().dict.packages.filtered',
+                content: 'metric:scopeLine().dict.packages.filtered.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:{
+        content: `nested-timings-tree:scopeLine() | {
             subject: @,
-            tree: #.currentProfile.packagesTree,
-            timings: #.currentProfile.packagesTimingsFiltered
+            tree: profile.packagesTree,
+            metrics: dict.packages.filtered
         }`
     },
 
@@ -51,36 +52,36 @@ const pageContent = [
         header: [
             'text:"Modules "',
             {
-                view: 'update-on-timings-change',
-                data: '#.currentProfile.modulesTimingsFiltered.entries.[entry.package = @]',
-                timings: '=#.currentProfile.modulesTimingsFiltered',
-                content: 'sampled-count-total{ count(=> totalTime?), total: size() }'
+                view: 'update-on-line-metrics-changes',
+                data: 'scopeLine().dict.modules.filtered.entries.[entry.package = @]',
+                metrics: '=scopeLine().dict.modules.filtered',
+                content: 'sampled-count-total{ count(=> totalValue?), total: size() }'
             }
         ],
         content: {
             view: 'content-filter',
             data: `
-                #.currentProfile.callFramesTimingsFiltered.entries
+                scopeLine().dict | callFrames.filtered.entries
                     .[entry.package = @]
                     .group(=> entry.module)
-                    .zip(=> key, #.currentProfile.modulesTimingsFiltered.entries, => entry)
+                    .zip(=> key, modules.filtered.entries, => entry)
                     .({ module: right, name: right.entry | packageRelPath or name, callFrames: left.value })
             `,
             className: 'table-content-filter',
             content: {
-                view: 'update-on-timings-change',
+                view: 'update-on-line-metrics-changes',
                 data: '.[name ~= #.filter]',
-                timings: '=#.currentProfile.modulesTimingsFiltered',
+                metrics: '=scopeLine().dict.modules.filtered',
                 content: {
                     view: 'table',
                     data: `
                         .({
                             ...,
-                            selfTime: module.selfTime,
-                            nestedTime: module.nestedTime,
-                            totalTime: module.totalTime
+                            selfValue: module.selfValue,
+                            nestedValue: module.nestedValue,
+                            totalValue: module.totalValue
                         })
-                        .sort(selfTime desc, totalTime desc)
+                        .sort(selfValue desc, totalValue desc)
                     `,
                     cols: [
                         ...timingCols,
@@ -90,11 +91,11 @@ const pageContent = [
                             sorting: 'name ascN',
                             content: 'module-badge:module.entry'
                         },
-                        callFramesCol('callFrames.sort(selfTime desc, totalTime desc, entry.name ascN)')
+                        callFramesCol('callFrames.sort(selfValue desc, totalValue desc, entry.name ascN)')
                         // { header: 'Histogram', content: {
-                        //     view: 'timeline-segments-bin',
+                        //     view: 'sample-histogram',
                         //     bins: '=#.data.modulesTree.binCalls(entry, 100)',
-                        //     max: '=#.data.totalTime / 100',
+                        //     max: '=#.data.totalValue / 100',
                         //     binsMax: true,
                         //     color: '=entry.category.name.color()',
                         //     height: 22
@@ -108,16 +109,15 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('package-flame-graphs', true),
-        tree: '=#.currentProfile.packagesTree',
-        timings: '=#.currentProfile.packagesTreeTimingsFiltered',
+        tree: '=#.scopeProfile.packagesTree',
         value: '='
     }
 ];
 
 discovery.page.define('package', {
     view: 'switch',
-    context: '{ ...#, currentProfile }',
-    data: 'currentProfile.packages[=>id = +#.id]',
+    context: '{ ...#, scopeProfile: #.primaryProfile }',
+    data: '#.scopeProfile.packages[=>id = +#.id]',
     content: [
         { when: 'no $', content: {
             view: 'alert-warning',

@@ -23,6 +23,7 @@ import {
     WellKnownType
 } from './types.js';
 import { scriptFromScriptId } from './preprocessing/scripts.js';
+import { getFunctionEndFromScriptLineColumn, getPosFromScriptLineColumn } from './misc/parse-source.js';
 
 const callFrameKindPrefixes: [prefix: string, kind: CpuProCallFrameKind][] = [
     ['(builtin) ', 'builtin'],
@@ -156,14 +157,15 @@ export class Dictionary {
 
         let callFrameIndex = resultMap.get(columnNumber);
         if (callFrameIndex === undefined) {
-            const start = normalizeLoc(inputCallFrame.start);
-            const end = normalizeLoc(inputCallFrame.end);
-            const module = this.resolveModule(script, functionName);
+            const sourceScript = script;
+            const end = normalizeLoc(inputCallFrame.end ?? getFunctionEndFromScriptLineColumn(sourceScript, lineNumber, columnNumber, functionName));
+            const start = end !== -1 ? normalizeLoc(inputCallFrame.start ?? getPosFromScriptLineColumn(sourceScript, lineNumber, columnNumber)) : -1;
+            const module = this.resolveModule(sourceScript, functionName);
             const { name, kind, regexp } = this.#resolveFunctionName(functionName, lineNumber, columnNumber);
             const callFrame: CpuProCallFrame = {
                 id: this.callFrames.length + 1,
-                script,
-                kind: kind || resolveCallFrameKind(script, name, regexp),
+                script: sourceScript,
+                kind: kind || resolveCallFrameKind(sourceScript, name, regexp),
                 name,
                 origName: functionName,
                 line: lineNumber,
@@ -449,7 +451,7 @@ export class Dictionary {
         let name: string | null = null;
         let path: string | null = null;
 
-        // Edge produces call frames with extensions::SafeBuiltins as url for some reasons,
+        // Chromium produces call frames with extensions::SafeBuiltins as url for some reasons,
         // ignore such urls - treat as internals
         if (url === 'extensions::SafeBuiltins') {
             url = '';

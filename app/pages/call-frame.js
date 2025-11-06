@@ -1,6 +1,6 @@
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
-const { SubsetTreeTimings } = require('../prepare/computations/timings');
-const { sessionExpandState } = require('./common.js');
+const { SubsetTreeMetrics } = require('../prepare/computations/metrics.js');
+const { sessionExpandState, primaryLineSwitcher } = require('./common.js');
 
 const descendantTree = {
     view: 'block',
@@ -9,21 +9,21 @@ const descendantTree = {
         {
             view: 'tree',
             className: 'call-tree',
-            context: `{ ...#, timingTree: #.consolidateCallFrames
-                ? #.subsetTreeTimings
-                : #.currentProfile.callFramesTreeTimingsFiltered
+            context: `{ ...#, consolidatedValueTree: #.consolidateCallFrames
+                ? #.subsetTreeValues
+                : scopeLine().tree.callFrames.filtered
             }`,
             data: `
-                #.timingTree
+                #.consolidatedValueTree
                     .select('nodes', @, not #.consolidateCallFrames)
-                    .[totalTime]
-                    .sort(totalTime desc, selfTime desc)
+                    .[totalValue]
+                    .sort(totalValue desc, selfValue desc)
             `,
             children: `
-                #.timingTree
+                #.consolidatedValueTree
                     .select('children', node.nodeIndex)
-                    .[totalTime]
-                    .sort(totalTime desc, selfTime desc, node.value.name ascN)
+                    .[totalValue]
+                    .sort(totalValue desc, selfValue desc, node.value.name ascN)
             `,
             item: {
                 view: 'context',
@@ -51,14 +51,14 @@ const descendantTree = {
                         content: 'text:"×" + $'
                     },
                     {
-                        view: 'self-time'
+                        view: 'self-value'
                     },
                     {
-                        view: 'nested-time',
-                        data: 'nestedTime',
+                        view: 'nested-value',
+                        data: 'nestedValue',
                         whenData: true
                     },
-                    // { view: 'total-time', when: 'children', data: 'totalTime' },
+                    // { view: 'total-time', when: 'children', data: 'totalValue' },
                     {
                         view: 'context',
                         when: 'node.value.id != +#.id',
@@ -81,17 +81,27 @@ const ancestorsTree = {
             view: 'tree',
             className: 'call-tree',
             expanded: 3,
+            context: `{
+                $secondaryLine: secondaryLine(#.primaryLineType = "timeline" ? "memline" : "timeline");
+
+                ...#,
+                primaryTree: #.scopeProfile.primaryLine()
+                    .tree.callFrames.filtered,
+                $secondaryLine,
+                secondaryTree: $secondaryLine 
+                    .tree.callFrames.filtered
+            }`,
             data: `
-                #.currentProfile.callFramesTreeTimingsFiltered
+                #.primaryTree
                     .select('nodes', $, true)
-                    .[totalTime]
-                    .sort(totalTime desc)
+                    .[totalValue]
+                    .sort(totalValue desc)
             `,
             children: `
-                node.parent ? #.currentProfile.callFramesTreeTimingsFiltered
+                node.parent ? #.primaryTree
                     .select('parent', node.nodeIndex)
-                    .[totalTime]
-                    .sort(totalTime desc)
+                    .[totalValue]
+                    .sort(totalValue desc)
             `,
             item: {
                 view: 'context',
@@ -118,7 +128,12 @@ const ancestorsTree = {
                         content: 'text:"×" + $'
                     },
                     {
-                        view: 'total-time'
+                        view: 'total-value'
+                    },
+                    {
+                        view: 'total-value',
+                        data: '#.secondaryTree.getMetrics(node.nodeIndex)',
+                        line: '=#.secondaryLine'
                     },
                     {
                         view: 'context',
@@ -143,12 +158,13 @@ const pageContent = [
             'badge{ className: "category-badge", text: module.category.name, href: module.category.marker().href, color: module.category.name.color() }',
             'package-badge',
             'badge{ text: module | packageRelPath or path or "module", href: module.marker().href }',
-            'call-frame-loc-badge'
+            'call-frame-loc-badge',
+            primaryLineSwitcher
         ],
         content: [
             {
                 view: 'code-hotness-icon',
-                data: '#.currentProfile.codesByCallFrame[=> callFrame = @]',
+                data: 'scopeProfile().codesByCallFrame[=> callFrame = @]',
                 whenData: 'hotness in ["hot", "warm"]',
                 tier: '=topTier'
             },
@@ -165,32 +181,31 @@ const pageContent = [
     {
         view: 'timeline-profiles',
         data: '#.data.profiles',
-        startTime: '=.[not disabled].startTime.min()',
-        endTime: '=.[not disabled].endTime.max()',
+        startTime: '=.[not disabled].primaryLine().axisStart.min()',
+        endTime: '=.[not disabled].primaryLine().axisEnd.max()',
         whenData: 'size() > 1'
     },
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: #.currentProfile.callFramesTree }'
+        data: '{ subject: @, tree: #.scopeProfile.callFramesTree }'
     },
 
     {
-        view: 'update-on-timings-change',
-        timings: '=#.currentProfile.callFramesTimingsFiltered',
-        content: `page-indicator-timings:{
-            full: #.currentProfile.callFramesTimings.entries[=>entry = @],
-            filtered: #.currentProfile.callFramesTimingsFiltered.entries[=>entry = @]
+        view: 'update-on-line-metrics-changes',
+        metrics: '=scopeLine().dict.callFrames.filtered',
+        content: `page-indicator-metrics:{
+            full: scopeLine().dict.callFrames.all.entries[=>entry = @],
+            filtered: scopeLine().dict.callFrames.filtered.entries[=>entry = @]
         }`
     },
 
     {
         view: 'expand',
-        when: '#.currentProfile | type != "memory"',
+        when: 'primaryLine().type = "timeline"',
         className: 'trigger-outside call-frame-codes',
-        data: '#.currentProfile.codesByCallFrame[=> callFrame = @].codes',
-        expanded: '=bool() and "getSessionSetting".callAction("cpupro-callframe-codes", true)',
-        onToggle: '=($state, $ctx)=> $ctx.data.bool() ? "setSessionSetting".callAction("cpupro-callframe-codes", $state)',
+        data: 'scopeProfile().codesByCallFrame[=> callFrame = @].codes',
+        ...sessionExpandState('callframe-codes', true, '$'),
         header: [
             'text:"Codes"',
             { view: 'block', className: 'text-divider' },
@@ -207,18 +222,18 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: '#.currentProfile | type = "memory" and _memoryGc and _memoryType',
+        when: '#.scopeProfile | memline | valueLifespans and valueTypes',
         className: 'trigger-outside',
-        data: '{ callFrame: @, matrix: #.currentProfile | callFramesTree.allocationsMatrix(samplesTimings, @) }',
-        expanded: '=',
+        data: '{ callFrame: @, matrix: #.scopeProfile.memline | tree.callFrames.all.tree.allocationsMatrix(samplesMetrics, @) }',
+        ...sessionExpandState('callframe-allocations-matrix', true, '$'),
         header: 'text:"Allocation types"',
         content: {
-            view: 'update-on-timings-change',
-            timings: '=#.currentProfile.callFramesTimingsFiltered',
+            view: 'update-on-line-metrics-changes',
+            metrics: '=#.scopeProfile.memline.dict.callFrames.filtered',
             content: {
                 view: 'allocation-samples-matrix',
                 data: `
-                    $filtered: #.currentProfile | callFramesTree.allocationsMatrix(samplesTimingsFiltered, @.callFrame);
+                    $filtered: #.scopeProfile.memline | tree.callFrames.all.tree.allocationsMatrix(samplesMetricsFiltered, @.callFrame);
 
                     matrix.($type; $filtered[=>type = $type] or { $type })
                 `
@@ -249,18 +264,18 @@ const pageContent = [
         ...sessionExpandState('callframe-nested-time-distribution', true),
         className: 'trigger-outside',
         header: [
-            'text:"Nested time distribution"',
+            'text:`${"nestedValue".metricName()} distribution`',
             { view: 'block', className: 'text-divider' },
             {
-                view: 'update-on-timings-change',
-                timings: '=#.currentProfile.callFramesTimingsFiltered',
-                content: 'duration:#.currentProfile.callFramesTimingsFiltered.entries[=>entry=@].nestedTime'
+                view: 'update-on-line-metrics-changes',
+                metrics: '=scopeLine().dict.callFrames.filtered',
+                content: 'metric:scopeLine().dict.callFrames.filtered.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:{
+        content: `nested-timings-tree:scopeLine() | {
             subject: @,
-            tree: #.currentProfile.callFramesTree,
-            timings: #.currentProfile.callFramesTimingsFiltered
+            tree: profile.callFramesTree,
+            metrics: dict.callFrames.filtered
         }`
     },
 
@@ -290,12 +305,12 @@ const pageContent = [
                     }
                 ],
                 content: {
-                    view: 'update-on-timings-change',
-                    timings: '=#.currentProfile.callFramesTimingsFiltered',
+                    view: 'update-on-line-metrics-changes',
+                    metrics: '=scopeLine().dict.callFrames.filtered',
                     debounce: 150,
                     beforeContent(data, context) {
                         if (context.consolidateCallFrames) {
-                            context.subsetTreeTimings.recompute();
+                            context.subsetTreeValues.recompute();
                         }
                     },
                     content: {
@@ -314,15 +329,15 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('callframe-flame-graphs', true),
-        tree: '=#.currentProfile.callFramesTree',
-        subsetTimings: '=#.subsetTreeTimings'
+        tree: '=#.scopeProfile.callFramesTree',
+        subsetTreeValues: '=#.subsetTreeValues'
     }
 ];
 
 discovery.page.define('call-frame', {
     view: 'switch',
-    context: '{ ...#, currentProfile }',
-    data: 'currentProfile.callFrames[=>id = +#.id]',
+    context: '{ ...#, scopeProfile: #.primaryProfile, scopeLine: #.scopeProfile.primaryLine() }',
+    data: '#.scopeProfile.callFrames[=>id = +#.id]',
     content: [
         { when: 'no $', content: {
             view: 'alert-warning',
@@ -332,12 +347,12 @@ discovery.page.define('call-frame', {
             view: 'context',
             context: (data, context) => ({
                 ...context,
-                subsetTreeTimings: new SubsetTreeTimings(
+                subsetTreeValues: new SubsetTreeMetrics(
                     new SubsetCallTree(
-                        context.currentProfile.callFramesTree,
+                        context.scopeProfile.callFramesTree,
                         data
                     ),
-                    context.currentProfile.samplesTimingsFiltered
+                    context.scopeLine.samplesMetricsFiltered
                 )
             }),
             content: pageContent

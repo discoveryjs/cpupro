@@ -1,5 +1,5 @@
 /* eslint-env browser */
-import { decodeBase64 } from '../utils';
+import { decodeBase64 } from '../misc/utils';
 import computeTimingsWasmSourceBase64 from './timings.wasm';
 import { CallTree } from './call-tree';
 import { CpuProNode } from '../types';

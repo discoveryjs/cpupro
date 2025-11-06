@@ -89,21 +89,19 @@ discovery.view.define('call-frame-codes-table', {
                                         {
                                             view: 'time-ruler',
                                             labels: 'top',
-                                            duration: '=#.data.currentProfile.totalTime'
+                                            duration: '=scopeProfile().timeline.axisTotal'
                                         },
                                         {
                                             view: 'list',
-                                            data: '$color: code.tier.color(true); (code.segments or code).({ ..., $color })',
+                                            data: '$color: code.tier.color(true); $total: scopeProfile().timeline.axisTotal; (code.segments or code).({ ..., $color })',
                                             itemConfig: {
                                                 view: 'block',
                                                 className: 'segment',
                                                 postRender(el, _, data, context) {
-                                                    const total = context.data.currentProfile.totalTime;
-
                                                     el.style.setProperty('--index', context.index);
                                                     el.style.setProperty('--color', data.color);
-                                                    el.style.setProperty('--tm', data.tm / total);
-                                                    el.style.setProperty('--duration', data.duration / total);
+                                                    el.style.setProperty('--tm', data.tm / data.total);
+                                                    el.style.setProperty('--duration', data.duration / data.total);
                                                 }
                                             }
                                         }

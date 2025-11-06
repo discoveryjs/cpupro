@@ -17,6 +17,8 @@ export type V8CpuProfile = {
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
     _name?: string | null; // some profiles has a name
+    _pid?: number;
+    _tid?: number;
     _type?: 'memory' | 'time';
     _runtime?: RuntimeCode;
     _samplesInterval?: number;
@@ -37,6 +39,25 @@ export type V8CpuProfileCpuproExtensions = {
         capacity: null | number;
         events: V8HeapEvent[];
     };
+    // Combined profile extensions (CPU + memory allocation data)
+    _cpuproAllocationMapping?: number[]; // maps CPU sample index -> last allocation ID in range
+    _cpuproAllocationIds?: number[]; // allocation IDs (ordinal)
+    _cpuproAllocationSizes?: number[]; // allocation sizes
+    _cpuproAllocationGc?: number[]; // GC state (lower 2 bits) + epoch (upper bits)
+    _cpuproAllocationTypes?: number[]; // V8 map type IDs
+    _cpuproAllocationTypeNames?: Record<number, string>; // human-readable type names
+    _cpuproAllocationSpaces?: number[]; // V8 map space IDs
+    _cpuproAllocationSpaceNames?: Record<number, string>; // human-readable space names
+    _cpuproAllocationLocations?: number[]; // allocation positions
+    _cpuproGcs?: V8CpuProfileGcEvent[];
+}
+export type V8CpuProfileGcEvent = {
+    type: 'minor' | 'major';
+    tm: number;
+    duration: number;
+    reason: string;
+    usedHeapSizeBefore: number;
+    usedHeapSizeAfter: number;
 }
 export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     id: number;
@@ -60,7 +81,9 @@ export type V8CpuProfileExecutionContext = {
 export type V8CpuProfileScript = {
     id: number;
     url: string;
+    sourceMapUrl: string | null;
     source: string;
+    sourceMap: SourceMap | null;
 }
 export type V8CpuProfileFunction = {
     scriptId: number;
@@ -163,7 +186,7 @@ export type WellKnownType = // alphabetical order
     | 'root'
     ;
 
-export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory | CpuProCallFramePosition;
+export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory | CpuProCallFrameLocation;
 
 export type GeneratedNodes = {
     count: number;
@@ -173,6 +196,16 @@ export type GeneratedNodes = {
     callFrames: number[];
     nodeParentId: number[];
     parentScriptOffsets: number[];
+}
+
+export type SourceMap = {
+    version: string;
+    mappings: string;
+    sources: string[];
+    names: string[];
+    file: string;
+    sourceRoot?: string;
+    sourcesContent?: (string | null)[];
 }
 
 export type CpuProCallFrameKind = // alphabetical order
@@ -204,9 +237,11 @@ export type CpuProCallFrame = {
     category: CpuProCategory;
 }
 
-export type CpuProCallFramePosition = {
+export type CpuProCallFrameLocation = {
     callFrame: CpuProCallFrame;
-    scriptOffset: number;
+    scriptOffset: number; // -1 if not available
+    line: number;          // -1 if not available
+    column: number;        // -1 if not available
 }
 
 export type ModuleType = // alphabetical order
@@ -307,8 +342,10 @@ export type CpuProCategory = {
 export type CpuProScript = {
     id: number;
     url: string;
-    module: CpuProModule;
     source: string | null;
+    sourceMapUrl: string | null;
+    sourceMap: SourceMap | null;
+    module: CpuProModule;
     callFrames: CpuProCallFrame[];
 }
 export interface IProfileScriptsMap {
@@ -330,7 +367,7 @@ export type CpuProCallFrameCode = {
     tm: number;
     callFrame: CpuProCallFrame;
     callFrameCodes: CpuProCallFrameCodes;
-    tier: string;
+    tier: V8CallFrameCodeType;
     duration: number;
     segments: { tm: number; duration: number }[] | null;
     positions: string;

@@ -1,4 +1,4 @@
-import { CpuProCategory, CpuProPackage, RuntimeCode } from './types.js';
+import { CpuProCategory, CpuProPackage, RuntimeCode } from '../types.js';
 
 const runtimes = {
     chromium: 'Chromium',

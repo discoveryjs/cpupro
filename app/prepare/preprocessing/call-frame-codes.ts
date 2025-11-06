@@ -31,15 +31,6 @@ export function processCallFrameCodes(
         let currentCode: CpuProCallFrameCode | null = null;
         let lastTm = startTime;
 
-        // attach codes to a script
-        // if (fn.script !== null) {
-        //     if (fn.start === 0 && fn.end === script.source.length) {
-        //         script.compilation = fn;
-        //     } else {
-        //         script.callFrames.push(fn);
-        //     }
-        // }
-
         // group by a script, attach codes to a script
         const script = callFrame.script;
 
@@ -122,28 +113,4 @@ export function processCallFrameCodes(
         codesByCallFrame,
         codesByScript: [...codesByScript.values()]
     };
-
-    // process script function states
-    // for (const fn of scriptFunctions) {
-    //     for (let i = 0; i < fn.states.length; i++) {
-    //         const state = fn.states[i];
-
-    //         if (state.fns?.length > 0) {
-    //             for (let j = 0; j < state.fns.length; j++) {
-    //                 const inlineFnId = state.fns[j];
-    //                 const inlinedFn = functionById.get(inlineFnId);
-
-    //                 state.fns[j] = inlinedFn;
-
-    //                 if (!inlinedFn) {
-    //                     console.error('Inlined function is not resolved, function:', fn, `, state (#${i}):`, state, `, reference (#${j}):`, inlineFnId);
-    //                 } else if (!inlinedFn.inlinedInto) {
-    //                     inlinedFn.inlinedInto = [fn];
-    //                 } else if (!inlinedFn.inlinedInto.includes(fn)) {
-    //                     inlinedFn.inlinedInto.push(fn);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 }

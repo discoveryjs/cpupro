@@ -1,19 +1,19 @@
 import type { GeneratedNodes, V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
 
-// The distribution of GC samples based on their position in the previous call frame appears too arbitrary.
+// The distribution of GC samples based on their location in the previous call frame appears too arbitrary.
 // As a result, GC samples (typically the smaller ones) are allocated within the function code as nested operations,
 // which creates noise and can be misleading. This is because the placement of GC samples within a function is speculative
 // (GC might have triggered outside the function, and certainly not at the last recorded location).
-// The optimal solution at present is to assign GC samples to the call frame without considering their position.
-// Tracking of positions can be enabled via this flag for future experiments.
-const useSamplePositions = false;
+// The optimal solution at present is to assign GC samples to the call frame without considering their location.
+// Tracking of locations can be enabled via this flag for future experiments.
+const useSampleLocations = false;
 
 export function reparentGcNodes(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     generatedNodes: GeneratedNodes,
     callFrames: V8CpuProfileCallFrame[] | null,
     samples: Uint32Array,
-    samplePositions: Int32Array | null
+    sampleLocations: Int32Array | null
 ) {
     const rootGcNodeId = callFrames !== null
         ? findRootGcNodeIdWithCallFrames(nodes, callFrames)
@@ -23,8 +23,8 @@ export function reparentGcNodes(
         return;
     }
 
-    if (useSamplePositions && samplePositions !== null) {
-        remapGcSamplesWithPositions(rootGcNodeId, generatedNodes, samples, samplePositions);
+    if (useSampleLocations && sampleLocations !== null) {
+        remapGcSamplesWithLocations(rootGcNodeId, generatedNodes, samples, sampleLocations);
     } else {
         remapGcSamples(rootGcNodeId, generatedNodes, samples);
     }
@@ -65,11 +65,11 @@ function remapGcSamples(
     }
 }
 
-function remapGcSamplesWithPositions(
+function remapGcSamplesWithLocations(
     gcNodeId: number,
     generatedNodes: GeneratedNodes,
     samples: Uint32Array,
-    samplePositions: Int32Array
+    sampleLocations: Int32Array
 ) {
     const maxNodeId = generatedNodes.nodeIdSeed;
     const nodeIdToGcNodeId = new Map<number, number>();
@@ -83,7 +83,7 @@ function remapGcSamplesWithPositions(
             if (prevNodeId === gcNodeId) {
                 samples[i] = samples[i - 1];
             } else if (prevNodeId !== noSamplesNodeId) {
-                const prevNodeScriptOffset = samplePositions[i - 1];
+                const prevNodeScriptOffset = sampleLocations[i - 1];
                 const prevNodeRef = prevNodeScriptOffset * maxNodeId + prevNodeId;
                 let newGcNodeId = nodeIdToGcNodeId.get(prevNodeRef);
 
@@ -141,4 +141,3 @@ function findRootGcNodeId(nodes: V8CpuProfileNode[]) {
 
     return -1;
 }
-

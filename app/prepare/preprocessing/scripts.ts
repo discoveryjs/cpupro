@@ -1,33 +1,40 @@
+import { SourceMapConsumer } from 'source-map-js';
 import type { Dictionary } from '../dictionary.js';
 import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfileScript } from '../types.js';
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
-    scriptById: Map<number | string, CpuProScript>;
+    #scriptById: Map<number | string, CpuProScript>;
     #scriptIdFromString: Map<string, number>;
-    byUrl: Map<string, number[]>;
+    $scriptIndexByUrl: Map<string, number[]>;
     #scriptByUrl: Map<string, CpuProScript[]>;
 
     constructor(dict: Dictionary, scripts?: V8CpuProfileScript[] | null) {
         this.dict = dict;
-        this.scriptById = new Map();
+        this.#scriptById = new Map();
         this.#scriptIdFromString = new Map();
-        this.byUrl = new Map();
-        this.#scriptByUrl = new Map();
+        this.$scriptIndexByUrl = new Map();
+        this.#scriptByUrl = this.#createScriptByUrlMap(dict.scripts);
 
-        for (const script of dict.scripts) {
+        this.#addScripts(scripts);
+    }
+
+    #createScriptByUrlMap(scripts: CpuProScript[]) {
+        const scriptByUrlMap = new Map<string, CpuProScript[]>();
+
+        for (const script of scripts) {
             const { url } = script; // FIXME: use script.source
-            let scriptByUrl = this.#scriptByUrl.get(url || '');
+            let scriptByUrl = scriptByUrlMap.get(url || '');
 
             if (scriptByUrl === undefined) {
                 scriptByUrl = [script];
-                this.#scriptByUrl.set(url || '', scriptByUrl);
+                scriptByUrlMap.set(url || '', scriptByUrl);
             } else {
                 scriptByUrl.push(script);
             }
         }
 
-        this.#addScripts(scripts);
+        return scriptByUrlMap;
     }
 
     #addScripts(scripts?: V8CpuProfileScript[] | null) {
@@ -35,33 +42,55 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
             return;
         }
 
-        for (const { id, url, source } of scripts) {
-            this.set(id, this.resolveScript(id, url, source) as CpuProScript);
+        for (const { id, url, source, sourceMap, sourceMapUrl } of scripts) {
+            const script: CpuProScript = this.resolveScript(id, url, source)!;
+
+            this.set(id, script);
+
+            script.sourceMapUrl = sourceMapUrl ?? null;
+            script.sourceMap = sourceMap ?? null;
+            if (sourceMap && sourceMap.sourcesContent) {
+                try {
+                    const sourceMapConsumer = new SourceMapConsumer(sourceMap);
+
+                    script._sourceMap = sourceMapConsumer;
+                    script._originalScripts = Object.create(null);
+                    for (let i = 0; i < sourceMap.sourcesContent.length; i++) {
+                        const smc = sourceMap.sourcesContent[i];
+                        const smUrl = sourceMap.sourceRoot
+                            ? new URL(sourceMap.sources[i], sourceMap.sourceRoot || '').toString()
+                            : sourceMap.sources[i];
+                        script._originalScripts[smUrl] = createScript(-1, smUrl, smc);
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse source map for script', url, e);
+                }
+            }
         }
     }
 
     get(scriptId: number | string) {
-        return this.scriptById.get(scriptId);
+        return this.#scriptById.get(scriptId);
     }
     has(scriptId: number | string) {
-        return this.scriptById.has(scriptId);
+        return this.#scriptById.has(scriptId);
     }
     set(scriptId: number | string, script: CpuProScript) {
-        this.scriptById.set(scriptId, script);
+        this.#scriptById.set(scriptId, script);
         return this;
     }
     entries() {
-        return this.scriptById.entries();
+        return this.#scriptById.entries();
     }
 
     #getScriptIndexByUrl(scriptId: number, url: string): number {
-        let byUrl = this.byUrl.get(url);
+        let byUrl = this.$scriptIndexByUrl.get(url);
         let seed = -1;
 
         if (byUrl === undefined) {
             seed = 0;
             byUrl = [scriptId];
-            this.byUrl.set(url, byUrl);
+            this.$scriptIndexByUrl.set(url, byUrl);
         } else {
             seed = byUrl.indexOf(scriptId);
 
@@ -165,6 +194,8 @@ export function createScript(id: number, url: string, source: string | null = nu
         id,
         url,
         source,
+        sourceMapUrl: null,
+        sourceMap: null,
         module: null as unknown as CpuProModule,
         callFrames: []
     };

@@ -1,4 +1,7 @@
-function countSamples(n, values, total, continues = false) {
+import { ProfileLine, ProfileLineType } from '../prepare/lines/types.js';
+import { resolveScopeProfileLine } from './profile.js';
+
+function countSamples(n: number, values: number[] | Uint32Array, total: number, continues = false) {
     const bins = new Uint32Array(n);
     const step = total / n;
     let end = step;
@@ -28,25 +31,25 @@ function countSamples(n, values, total, continues = false) {
 }
 
 export const methods = {
-    countSamples(n = 500, profile = this.context.currentProfile) {
-        const { timeDeltas, totalTime } = profile;
+    countSamples(n = 500, line?: ProfileLine | ProfileLineType) {
+        const { values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
 
-        return countSamples(n, timeDeltas, totalTime, true);
+        return countSamples(n, values, axisTotal, true);
     },
 
-    countSamplesDiscrete(n = 500, profile = this.context.currentProfile) {
-        const { timeDeltas, totalTime } = profile;
+    countSamplesDiscrete(n = 500, line: unknown) {
+        const { values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
 
-        return countSamples(n, timeDeltas, totalTime);
+        return countSamples(n, values, axisTotal, false);
     },
 
-    sampleXBins(n = 500, profile = this.context.currentProfile) {
-        const { timeDeltas } = profile;
-        let max = 1500; // Math.min(timeDeltas.reduce((m, i) => i > m ? i : m, 0), 2000);
+    sampleXBins(n = 500, line?: ProfileLine | ProfileLineType) {
+        const { values } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const max = 1500; // Math.min(timeDeltas.reduce((m, i) => i > m ? i : m, 0), 2000);
         const step = max / n;
         const bins = new Uint32Array(n);
 
-        for (const d of timeDeltas) {
+        for (const d of values) {
             const x = Math.min(Math.floor(d / step), n - 1);
             bins[x]++;
         }

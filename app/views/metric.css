@@ -1,0 +1,37 @@
+.view-metric {
+    max-width: 18ex;
+    height: 19.5px;
+    display: flex;
+    text-align: right;
+    align-items: baseline;
+    gap: .65ex;
+}
+.view-tree-leaf .view-metric,
+.view-expand > .header .view-metric {
+    display: inline-flex;
+}
+
+.view-metric .num-delim {
+    padding-left: .12em;
+}
+
+.view-metric > .value {
+    flex: 1;
+}
+.view-metric > .value::after {
+    content: attr(data-unit);
+    color: #787878;
+    font-size: 90%;
+    padding-left: 1px;
+}
+
+.view-metric > .fraction {
+    width: 3em;
+    opacity: .65;
+    font-size: 83%;
+}
+
+.view-metric[data-metric-name]::before {
+    content: attr(data-metric-name) ': ';
+    white-space: pre;
+}

@@ -29,7 +29,7 @@
     display: flex;
     gap: 8px;
 }
-.view-flamechart .flamechart .root-content > .view-duration::before {
+.view-flamechart .flamechart .root-content > .view-metric::before {
     content: '›';
     padding-right: 2px;
     color: #888;
@@ -45,10 +45,10 @@
     content: '›';
     color: #888;
 }
-.view-flamechart .flamechart .root-content .zoom-timings .view-duration {
+.view-flamechart .flamechart .root-content .zoom-timings .view-metric {
     margin-left: 1ex;
 }
-.view-flamechart .flamechart .root-content .zoom-timings .view-duration::before {
+.view-flamechart .flamechart .root-content .zoom-timings .view-metric::before {
     content: 'zoom:';
     color: #888;
 }
@@ -97,27 +97,20 @@
 .view-flamechart__details .view-badge.function-loc {
     padding-block: .5px;
 }
-.view-flamechart__details .view-duration {
+.view-flamechart__details .view-metric {
     align-items: baseline;
 }
-.view-flamechart__details .view-duration.total::before,
-.view-flamechart__details .view-duration.self::before {
+.view-flamechart__details .view-metric::before {
     white-space: pre;
-    font-size: 80%;
+    font-size: 90%;
     color: #888;
     min-width: 10ex;
     text-align: right;
 }
-.view-flamechart__details .view-duration.total::before {
-    content: 'Total time: ';
-}
-.view-flamechart__details .view-duration.self::before {
-    content: 'Self time: ';
-}
-.view-flamechart__details .view-duration > .time {
+.view-flamechart__details .view-metric > .time {
     flex: 0;
 }
-.view-flamechart__details .view-duration > .fraction {
+.view-flamechart__details .view-metric > .fraction {
     width: auto;
 }
 
@@ -172,24 +165,17 @@
 .flamechart-tooltip .view-badge.function-loc {
     padding-block: .5px;
 }
-.flamechart-tooltip .view-duration {
+.flamechart-tooltip .view-metric {
     align-items: baseline;
 }
-.flamechart-tooltip .view-duration.total::before {
-    content: 'Total time: ';
+.flamechart-tooltip .view-metric::before {
     white-space: pre;
-    font-size: 80%;
+    font-size: 90%;
     color: #888;
 }
-.flamechart-tooltip .view-duration.self::before {
-    content: 'Self time: ';
-    white-space: pre;
-    font-size: 80%;
-    color: #888;
-}
-.flamechart-tooltip .view-duration > .time {
+.flamechart-tooltip .view-metric > .time {
     flex: 0;
 }
-.flamechart-tooltip .view-duration > .fraction {
+.flamechart-tooltip .view-metric > .fraction {
     width: auto;
 }

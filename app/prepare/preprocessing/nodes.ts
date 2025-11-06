@@ -1,6 +1,6 @@
 import type { V8CpuProfileNode, V8CpuProfileCallFrame, IProfileScriptsMap, GeneratedNodes } from '../types';
 import type { Dictionary } from '../dictionary';
-import { findMaxId } from '../utils';
+import { findMaxId } from '../misc/utils';
 
 export function mapNodes(
     dict: Dictionary,
@@ -49,28 +49,6 @@ export function createNodeIndexById(
     return nodeIndexById;
 }
 
-export function createNodePositions(
-    nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
-    generatedNodes: GeneratedNodes | null = null
-) {
-    const generatedNodePositions: number[] = generatedNodes?.parentScriptOffsets || [];
-    const nodePositions = new Int32Array(nodes.length + generatedNodePositions.length).fill(-1);
-
-    // nodes
-    for (let i = 0; i < nodes.length; i++) {
-        const { parentScriptOffset } = nodes[i];
-
-        if (typeof parentScriptOffset === 'number') {
-            nodePositions[i] = parentScriptOffset;
-        }
-    }
-
-    // generated nodes
-    nodePositions.set(generatedNodePositions, nodes.length);
-
-    return nodePositions;
-}
-
 export function createNodeParent(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     nodeIndexById: Int32Array,
@@ -96,6 +74,28 @@ export function createNodeParent(
     }
 
     return nodeParent;
+}
+
+export function createNodePositions(
+    nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
+    generatedNodes: GeneratedNodes | null = null
+) {
+    const generatedNodePositions: number[] = generatedNodes?.parentScriptOffsets || [];
+    const nodePositions = new Int32Array(nodes.length + generatedNodePositions.length).fill(-1);
+
+    // nodes
+    for (let i = 0; i < nodes.length; i++) {
+        const { parentScriptOffset } = nodes[i];
+
+        if (typeof parentScriptOffset === 'number') {
+            nodePositions[i] = parentScriptOffset;
+        }
+    }
+
+    // generated nodes
+    nodePositions.set(generatedNodePositions, nodes.length);
+
+    return nodePositions;
 }
 
 export function processNodes(

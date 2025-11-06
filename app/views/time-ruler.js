@@ -1,5 +1,6 @@
 const { utils } = require('@discoveryjs/discovery');
-const { formatMicrosecondsTime } = require('../prepare/time-utils.js');
+const { formatMicrosecondsTime } = require('../prepare/misc/time-utils.js');
+const { resolveScopeProfileLine } = require('../jora/profile.js');
 const usage = require('./time-ruler.usage.js').default;
 
 const SELECTION_NONE = 'none';
@@ -363,13 +364,13 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         segments: segmentsRaw,
         selectionStart = null,
         selectionEnd = null,
-        valueType = context.currentProfile?.type || 'time',
         labels = 'top',
         name = 'ruler',
         details,
         onInit,
         onChange
     } = options;
+    const line = resolveScopeProfileLine(options.line, context);
     const segments = Number.isFinite(segmentsRaw) ? Math.min(segmentsRaw, duration) : null;
 
     // create state
@@ -417,9 +418,11 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
 
         intervalMarkerEl.className = 'interval-marker';
         intervalMarkerEl.style.setProperty('--offset', time / duration);
-        intervalMarkerEl.dataset.title = valueType === 'memory'
+        intervalMarkerEl.dataset.title = line.type === 'memline'
             ? formatMemory(time, duration)
-            : formatMicrosecondsTime(time, duration);
+            : line.type === 'timeline'
+                ? formatMicrosecondsTime(time, duration)
+                : time;
     }
 
     // overlay element

@@ -45,7 +45,9 @@ export function extractFromDevToolsEnhancedTraces(data: DevToolsEnchandedTraceEv
             scripts.push({
                 id: Number(script.scriptId),
                 url: script.url,
-                source: script.sourceText
+                source: script.sourceText,
+                sourceMapUrl: null,
+                sourceMap: null
             });
         }
     }

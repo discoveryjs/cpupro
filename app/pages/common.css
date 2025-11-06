@@ -246,7 +246,7 @@ h2 .logo {
     color: #888;
 }
 
-.view-table-cell > .view-timeline-segments-bin {
+.view-table-cell > .view-sample-histogram {
     margin: -1px -6px -2px;
     width: 250px;
 }
@@ -255,7 +255,7 @@ h2 .logo {
     padding-bottom: 4px;
     opacity: .8;
 }
-.view-time-ruler-tooltip .timeline-segment-info .view-duration {
+.view-time-ruler-tooltip .timeline-segment-info .view-metric {
     display: inline-flex;
 }
 
@@ -307,7 +307,7 @@ h2 .logo {
     color: #666;
     --color: #8884 !important;
 }
-.view-time-ruler-tooltip .category-timings-list .no-time .view-duration,
+.view-time-ruler-tooltip .category-timings-list .no-time .view-metric,
 .view-time-ruler-tooltip .category-timings-list .no-value .view-value-fraction {
     opacity: 0;
 }

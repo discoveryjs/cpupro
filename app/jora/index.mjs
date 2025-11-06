@@ -3,9 +3,10 @@ import { methods as binMethods } from './bin.js';
 import { methods as callTreeMethods, makeSamplesMask } from './call-tree.js';
 import { methods as disassembleMethods } from './disassemble.js';
 import { methods as positionTableMethods } from './position-table.js';
+import { methods as profileMethods, assertions as profileAssertions, getProfileOrScopeProfile } from './profile.js';
 import { methods as samplesMethods } from './samples.js';
 import { methods as sourceMethods } from './source.js';
-import { formatMicrosecondsTime } from '../prepare/time-utils.js';
+import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 
 const sessionColorComponents = new Map();
 const sessionColor = new Map();
@@ -36,13 +37,18 @@ function shortNum(current, units, base = 1000) {
     return value + units[unitIdx];
 }
 
-const methods = {
+export const assertions = {
+    ...profileAssertions
+};
+export const methods = {
     ...binMethods,
     ...callTreeMethods,
     ...disassembleMethods,
     ...positionTableMethods,
     ...samplesMethods,
     ...sourceMethods,
+    ...profileMethods,
+
     order(value) {
         return typeOrder[value] || 100;
     },
@@ -91,9 +97,6 @@ const methods = {
     kb(value) {
         return (value / 1000).toFixed(1) + 'Kb';
     },
-    unit(value, unit = this.context.currentProfile?.type) {
-        return (value / 1000).toFixed(1) + (unit === 'memory' ? 'Kb' : 'ms');
-    },
     bytes(current, bytes = 'b', base = 1000) {
         return shortNum(current, [bytes || '', 'Kb', 'Mb', 'Gb'], base);
     },
@@ -122,11 +125,17 @@ const methods = {
             return source.getEntry(subject);
         }
     },
-    allocationsMatrix(tree, sampleTimings, subject, profile = this.context.data.currentProfile) {
-        const { _memoryGc, _memoryType, _memoryTypeNames: allocTypes } = profile;
-        const { samples, timeDeltas } = sampleTimings;
+    allocationsMatrix(tree, sampleTimings, subject, profile) {
+        profile = getProfileOrScopeProfile(profile, this.context);
+
+        if (!profile || !profile.memline) {
+            return [];
+        }
+
+        const { valueLifespans, valueTypes, valueTypesDict } = profile.memline;
+        const { samples, values } = sampleTimings;
         const timespanCount = allocTimespan.length;
-        const typeCount = allocTypes.length;
+        const typeCount = valueTypesDict.length;
         const counts = new Uint32Array(timespanCount * typeCount);
         const sums = new Uint32Array(timespanCount * typeCount);
         const mins = new Uint32Array(timespanCount * typeCount);
@@ -136,10 +145,10 @@ const methods = {
 
         for (let i = 0; i < samples.length; i++) {
             if (samplesMask[samples[i]] !== 0) {
-                const value = timeDeltas[i];
+                const value = values[i];
 
                 if (value !== 0) {
-                    const index = _memoryType[i] * timespanCount + _memoryGc[i];
+                    const index = valueTypes[i] * timespanCount + valueLifespans[i];
 
                     counts[index]++;
                     sums[index] += value;
@@ -149,9 +158,9 @@ const methods = {
             }
         }
 
-        for (let i = 0; i < allocTypes.length; i++) {
+        for (let i = 0; i < valueTypesDict.length; i++) {
             const entry = {
-                type: allocTypes[i],
+                type: valueTypesDict[i],
                 total: {
                     count: 0,
                     sum: 0,
@@ -187,7 +196,5 @@ const methods = {
     }
 };
 
-export default methods;
-
 // import { trackExecutionTime } from './jora-methods-bench.js';
-// TIMINGS && trackExecutionTime(methods, ['select', 'selectBy', 'subtreeSamples', 'nestedTimings', 'binCalls']);
+// TIMINGS && trackExecutionTime(methods, ['select', 'selectBy', 'subtreeSamples', 'nestedValues', 'binCalls']);

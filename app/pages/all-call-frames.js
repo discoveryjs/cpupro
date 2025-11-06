@@ -1,40 +1,40 @@
-import { fixDetailsScroll } from './common.js';
+import { fixDetailsScroll, primaryLineSwitcher } from './common.js';
 
 const experimentalFeatures = false;
 const table = {
     view: 'table',
     className: 'all-page-table',
     limit: 100,
-    data: 'sort(selfTime desc, totalTime desc)',
+    data: 'sort(selfValue desc, totalValue desc)',
     postRender(el) {
         fixDetailsScroll(el);
     },
     cols: [
-        { header: { className: 'timings', text: 'Self time' },
+        { header: { className: 'timings', text: '="selfValue".metricName()' },
             className: 'timings',
-            sorting: 'selfTime desc, totalTime desc',
-            colSpan: '=totalTime ? 1 : 3',
-            contentWhen: 'selfTime or no totalTime',
+            sorting: 'selfValue desc, totalValue desc',
+            colSpan: '=totalValue ? 1 : 3',
+            contentWhen: 'selfValue or no totalValue',
             content: {
                 view: 'switch',
                 content: [
-                    { when: 'totalTime', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                    { when: 'totalValue', content: 'metric:selfValue' },
                     { content: 'no-samples' }
                 ]
             }
         },
-        { header: { className: 'timings', text: 'Nested time' },
+        { header: { className: 'timings', text: '="nestedValue".metricName()' },
             className: 'timings',
-            sorting: 'nestedTime desc, totalTime desc',
-            when: 'totalTime',
-            contentWhen: 'nestedTime',
-            content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
+            sorting: 'nestedValue desc, totalValue desc',
+            when: 'totalValue',
+            contentWhen: 'nestedValue',
+            content: 'metric:nestedValue'
         },
-        { header: { className: 'timings', text: 'Total time' },
+        { header: { className: 'timings', text: '="totalValue".metricName()' },
             className: 'timings',
-            sorting: 'totalTime desc, selfTime desc',
-            when: 'totalTime',
-            content: 'duration:{ time: totalTime, total: #.data.totalTime }'
+            sorting: 'totalValue desc, selfValue desc',
+            when: 'totalValue',
+            content: 'metric:totalValue'
         },
 
         // hotness
@@ -127,17 +127,17 @@ const summary = {
     className: 'app-page-summary',
     content: [
         { view: 'block', content: ['text:"Call frames:"', 'text-numeric:size()'] },
-        { view: 'block', content: ['text:"Total time:"', 'duration:{ time: sum(=>selfTime), total: #.data.totalTime }'] }
+        { view: 'block', content: ['text:`${"totalValue".metricName()}:`', 'metric:sum(=>selfValue)'] }
     ]
 };
 
 discovery.page.define('call-frames', [
     {
         view: 'context',
-        context: '{ ...#, currentProfile }',
+        context: '{ ...#, scopeProfile: #.primaryProfile }',
         data: `
-            #.currentProfile
-            | callFramesTimingsFiltered.entries.zip(=> entry, codesByCallFrame, => callFrame)
+            scopeLine() | dict.callFrames.all.entries
+                .zip(=> entry, profile.codesByCallFrame, => callFrame)
                 .({
                     $entry: left.entry;
 
@@ -155,7 +155,11 @@ discovery.page.define('call-frames', [
                 prelude: [
                     'badge{ text: "Packages", className: #.page = "packages" ? "selected", href: #.page != "packages" ? "#packages" }',
                     'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
-                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }'
+                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }',
+                    {
+                        view: 'context',
+                        content: primaryLineSwitcher
+                    }
                 ],
                 content: [
                     'h1:"All call frames"',
@@ -172,15 +176,15 @@ discovery.page.define('call-frames', [
             view: 'context',
             data: '.[name ~= #.filter]',
             content: {
-                view: 'update-on-timings-change',
-                timings: '=#.currentProfile.callFramesTimingsFiltered',
+                view: 'update-on-line-metrics-changes',
+                metrics: '=scopeLine().dict.callFrames.filtered',
                 content: {
                     view: 'context',
                     data: `.({
                         ...,
-                        selfTime: left.selfTime,
-                        nestedTime: left.nestedTime,
-                        totalTime: left.totalTime
+                        selfValue: left.selfValue,
+                        nestedValue: left.nestedValue,
+                        totalValue: left.totalValue
                     })`,
                     content: [
                         table,

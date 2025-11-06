@@ -1,4 +1,5 @@
 const { utils } = require('@discoveryjs/discovery');
+const { resolveScopeProfileLine } = require('../jora/profile.ts');
 
 function generateSmoothPath(points, height) {
     const chartWidth = points.length;
@@ -47,7 +48,13 @@ function generateSmoothPath(points, height) {
     return pathData.join(' ');
 }
 
-function generateSquarePath(points, height, maxValue, presence) {
+const scaleFunctions = {
+    linear: (value, maxValue) => value / maxValue,
+    log: (value, maxValue) => (value > 0 ? Math.log(1 + value) / Math.log(1 + maxValue) : 0),
+    sqrt: (value, maxValue) => Math.sqrt(value) / Math.sqrt(maxValue)
+};
+
+function generateSquarePath(points, height, maxValue, presence, scaleFn = scaleFunctions.linear) {
     const chartWidth = points.length;
     const stepX = chartWidth / points.length;
     const pathData = [];
@@ -57,11 +64,12 @@ function generateSquarePath(points, height, maxValue, presence) {
     pathData.push('M', 0, height);
 
     for (let i = 0; i < points.length; ++i) {
-        const y = (points[i] || (presence?.[i] || 0)) / maxValue;
+        const rawValue = points[i];
+        const y = scaleFn(rawValue, maxValue);
 
-        if (y > 0) {
+        if (y > 0 || presence?.[i] > 0) {
             pathData.push(
-                'V', height - Math.max((points[i] / maxValue) * height, minNonZeroHeight),
+                'V', height - Math.max(y * height, minNonZeroHeight),
                 'h', stepX - gap,
                 'V', height,
                 'h', gap
@@ -80,13 +88,16 @@ function generateSquarePath(points, height, maxValue, presence) {
 discovery.view.define('timeline-segments', function(el, config, data, context) {
     data = ensureArray(data);
 
+    el.classList.add('view-sample-histogram');
+
+    const line = resolveScopeProfileLine(config.line, context);
+    const totalValue = line.axisTotal || 1;
     const count = 500;
-    const totalTime = context.data.totalTime;
-    const step = totalTime / count;
+    const step = totalValue / count;
     const stat = new Uint32Array(count);
     for (const [segStart, segEnd] of data) {
-        let start = Math.floor(segStart * count / totalTime);
-        let end = Math.floor(segEnd * count / totalTime);
+        let start = Math.floor(segStart * count / totalValue);
+        let end = Math.floor(segEnd * count / totalValue);
 
         // console.log('segment', [segStart, segEnd], [segStart, segEnd], [start, end]);
 
@@ -122,13 +133,12 @@ function ensureArray(value) {
     return utils.isArray(value) ? value : [];
 }
 
-discovery.view.define('timeline-segments-bin', function(el, config, data) {
+discovery.view.define('sample-histogram', function(el, config, data) {
     const presence = config.presence;
     const bins = ensureArray(config.bins || data);
     const height = config.height || 20;
-    const maxValue = Math.max(...bins);
-
-    el.classList.add('view-timeline-segments');
+    const scaleFn = scaleFunctions[config.scale || 'linear']; // 'linear', 'log', 'sqrt'
+    let maxValue = Math.max(...bins);
 
     if (config.color) {
         el.style.setProperty('--color', config.color);
@@ -138,7 +148,7 @@ discovery.view.define('timeline-segments-bin', function(el, config, data) {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-    pathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, config.max || maxValue, presence));
+    pathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, config.max || maxValue, presence, scaleFn));
     svgEl.setAttribute('viewBox', `0 0 ${bins.length} ${height}`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');
@@ -150,7 +160,7 @@ discovery.view.define('timeline-segments-bin', function(el, config, data) {
     if (config.binsMax && config.max && maxValue < config.max * 0.9) {
         const relPathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         relPathEl.classList.add('rel-path');
-        relPathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, maxValue));
+        relPathEl.setAttribute('d', generateSquarePath(Array.from(bins), height, maxValue, undefined, scaleFn));
         svgEl.prepend(relPathEl);
     }
 });

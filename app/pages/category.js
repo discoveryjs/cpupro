@@ -1,25 +1,26 @@
-import { callFramesCol, sessionExpandState, timingCols } from './common.js';
+import { callFramesCol, primaryLineSwitcher, sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
         view: 'page-header',
         prelude: [
-            'badge{ className: "type-badge", text: "Category" }'
+            'badge{ className: "type-badge", text: "Category" }',
+            primaryLineSwitcher
         ],
         content: 'h1:name'
     },
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: #.currentProfile.categoriesTree }'
+        data: '{ subject: @, tree: scopeProfile().categoriesTree }'
     },
 
     {
-        view: 'update-on-timings-change',
-        timings: '=#.currentProfile.categoriesTimingsFiltered',
-        content: `page-indicator-timings:{
-            full: #.currentProfile.categoriesTimings.entries[=>entry = @],
-            filtered: #.currentProfile.categoriesTimingsFiltered.entries[=>entry = @]
+        view: 'update-on-line-metrics-changes',
+        metrics: '=scopeLine().dict.categories.filtered',
+        content: `page-indicator-metrics:scopeLine().dict.categories | {
+            full: all.entries[=>entry = @],
+            filtered: filtered.entries[=>entry = @]
         }`
     },
 
@@ -28,18 +29,18 @@ const pageContent = [
         ...sessionExpandState('category-nested-time-distribution', false),
         className: 'trigger-outside',
         header: [
-            'text:"Nested time distribution"',
+            'text:`${"nestedValue".metricName()} distribution`',
             { view: 'block', className: 'text-divider' },
             {
-                view: 'update-on-timings-change',
-                timings: '=#.currentProfile.categoriesTimingsFiltered',
-                content: 'duration:#.currentProfile.categoriesTimingsFiltered.entries[=>entry=@].nestedTime'
+                view: 'update-on-line-metrics-changes',
+                metrics: '=scopeLine().dict.categories.filtered',
+                content: 'metric:scopeLine().dict.categories.filtered.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:{
+        content: `nested-timings-tree:scopeLine() | {
             subject: @,
-            tree: #.currentProfile.categoriesTree,
-            timings: #.currentProfile.callFramesTimingsFiltered
+            tree: profile.categoriesTree,
+            metrics: dict.callFrames.filtered
         }`
     },
 
@@ -53,39 +54,39 @@ const pageContent = [
             header: [
                 'text:"Packages "',
                 {
-                    view: 'update-on-timings-change',
-                    data: '#.currentProfile.packagesTimingsFiltered.entries.[entry.category = @]',
-                    timings: '=#.currentProfile.packagesTimingsFiltered',
-                    content: 'sampled-count-total{ count(=> totalTime?), total: size() }'
+                    view: 'update-on-line-metrics-changes',
+                    data: 'scopeLine().dict.packages.filtered.entries.[entry.category = @]',
+                    metrics: '=scopeLine().dict.packages.filtered',
+                    content: 'sampled-count-total{ count(=> totalValue?), total: size() }'
                 }
             ],
             content: {
                 view: 'content-filter',
                 className: 'table-content-filter',
                 data: `
-                    #.currentProfile.callFramesTimingsFiltered.entries
+                    scopeLine() | dict.callFrames.filtered.entries
                         .[entry.category = @]
                         .group(=> entry.module)
-                        .zip(=> key, #.currentProfile.modulesTimingsFiltered.entries, => entry)
+                        .zip(=> key, dict.modules.filtered.entries, => entry)
                         .({ module: right, callFrames: left.value })
                         .group(=> module.entry.package)
-                        .zip(=> key, #.currentProfile.packagesTimingsFiltered.entries, => entry)
+                        .zip(=> key, dict.packages.filtered.entries, => entry)
                         .({ package: right, modules: left.value })
                 `,
                 content: {
-                    view: 'update-on-timings-change',
+                    view: 'update-on-line-metrics-changes',
                     data: '.[package.entry.name ~= #.filter]',
-                    timings: '=#.currentProfile.packagesTimingsFiltered',
+                    metrics: '=scopeLine().dict.packages.filtered',
                     content: {
                         view: 'table',
                         data: `.({
                                 ...,
                                 name: package.entry.name,
-                                selfTime: package.selfTime,
-                                totalTime: package.totalTime,
-                                nestedTime: package.nestedTime
+                                selfValue: package.selfValue,
+                                totalValue: package.totalValue,
+                                nestedValue: package.nestedValue
                             })
-                            .sort(selfTime desc, totalTime desc)
+                            .sort(selfValue desc, totalValue desc)
                         `,
                         cols: [
                             ...timingCols,
@@ -98,13 +99,13 @@ const pageContent = [
                             {
                                 header: 'Modules',
                                 className: 'number sampled-numbers',
-                                data: 'modules.sort(module.selfTime desc, module.totalTime desc)',
-                                content: 'sampled-count-total{ hideZeroCount: true, count: module.count(=> totalTime?), total: size() }',
+                                data: 'modules.sort(module.selfValue desc, module.totalValue desc)',
+                                content: 'sampled-count-total{ hideZeroCount: true, count: module.count(=> totalValue?), total: size() }',
                                 details: [
                                     {
                                         view: 'table',
                                         className: 'full-width-table',
-                                        data: '.({ ..., selfTime: module.selfTime, nestedTime: module.nestedTime, totalTime: module.totalTime })',
+                                        data: '.({ ..., selfValue: module.selfValue, nestedValue: module.nestedValue, totalValue: module.totalValue })',
                                         cols: [
                                             ...timingCols,
                                             {
@@ -113,12 +114,12 @@ const pageContent = [
                                                 sorting: 'module.entry.name ascN',
                                                 content: 'module-badge:module.entry'
                                             },
-                                            callFramesCol('callFrames.sort(selfTime desc, totalTime desc)')
+                                            callFramesCol('callFrames.sort(selfValue desc, totalValue desc)')
                                         ]
                                     }
                                 ]
                             },
-                            callFramesCol('modules.callFrames.sort(selfTime desc, totalTime desc)', true)
+                            callFramesCol('modules.callFrames.sort(selfValue desc, totalValue desc)', true)
                         ]
                     }
                 }
@@ -133,37 +134,37 @@ const pageContent = [
         header: [
             'text:"Modules "',
             {
-                view: 'update-on-timings-change',
-                data: '#.currentProfile.modulesTimingsFiltered.entries.[entry.category = @]',
-                timings: '=#.currentProfile.modulesTimingsFiltered',
-                content: 'sampled-count-total{ count(=> totalTime?), total: size() }'
+                view: 'update-on-line-metrics-changes',
+                data: 'scopeLine().dict.modules.filtered.entries.[entry.category = @]',
+                metrics: '=scopeLine().dict.modules.filtered',
+                content: 'sampled-count-total{ count(=> totalValue?), total: size() }'
             }
         ],
         content: {
             view: 'content-filter',
             className: 'table-content-filter',
             data: `
-                #.currentProfile.callFramesTimingsFiltered.entries
+                scopeLine() | dict.callFrames.filtered.entries
                     .[entry.category = @]
                     .group(=> entry.module)
-                    .zip(=> key, #.currentProfile.modulesTimingsFiltered.entries, => entry)
+                    .zip(=> key, dict.modules.filtered.entries, => entry)
                     .({ module: right, name: right.entry.name, callFrames: left.value })
                     .sort(name ascN)
             `,
             content: {
-                view: 'update-on-timings-change',
+                view: 'update-on-line-metrics-changes',
                 data: '.[name ~= #.filter]',
-                timings: '=#.currentProfile.modulesTimingsFiltered',
+                metrics: '=scopeLine().dict.modules.filtered',
                 content: {
                     view: 'table',
                     data: `
                         .({
                             ...,
-                            selfTime: module.selfTime,
-                            totalTime: module.totalTime,
-                            nestedTime: module.nestedTime
+                            selfValue: module.selfValue,
+                            totalValue: module.totalValue,
+                            nestedValue: module.nestedValue
                         })
-                        .sort(selfTime desc, totalTime desc)
+                        .sort(selfValue desc, totalValue desc)
                     `,
                     cols: [
                         ...timingCols,
@@ -173,7 +174,7 @@ const pageContent = [
                             sorting: 'name ascN',
                             content: 'module-badge:module.entry'
                         },
-                        callFramesCol('callFrames.sort(selfTime desc, totalTime desc)')
+                        callFramesCol('callFrames.sort(selfValue desc, totalValue desc)')
                     ]
                 }
             }
@@ -183,16 +184,15 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('category-flame-graphs', true),
-        tree: '=#.currentProfile.categoriesTree',
-        timings: '=#.currentProfile.categoriesTreeTimingsFiltered',
+        tree: '=scopeProfile().categoriesTree',
         value: '='
     }
 ];
 
 discovery.page.define('category', {
     view: 'switch',
-    context: '{ ...#, currentProfile }',
-    data: 'currentProfile.categories[=>name = #.id]',
+    context: '{ ...#, scopeProfile: #.primaryProfile }',
+    data: '#.scopeProfile.categories[=>name = #.id]',
     content: [
         { when: 'no $', content: {
             view: 'alert-warning',

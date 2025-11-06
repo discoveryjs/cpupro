@@ -1,32 +1,40 @@
+export const primaryLineSwitcher = {
+    view: 'toggle-group',
+    data: '#.data.profiles.lines.type',
+    whenData: 'size() > 1',
+    value: '=#.primaryLineType',
+    onChange: '==>"selectPrimaryLine".callAction($)'
+};
+
 export const timingCols = [
     {
-        header: 'Self time',
+        header: '="selfValue".metricName()',
         className: 'timings self-time',
-        sorting: 'selfTime desc, totalTime desc',
-        colSpan: '=totalTime ? 1 : 3',
-        contentWhen: 'selfTime or no totalTime',
+        sorting: 'selfValue desc, totalValue desc',
+        colSpan: '=totalValue ? 1 : 3',
+        contentWhen: 'selfValue or no totalValue',
         content: {
             view: 'switch',
             content: [
-                { when: 'totalTime', content: 'duration:{ time: selfTime, total: #.data.totalTime }' },
+                { when: 'totalValue', content: 'metric:selfValue' },
                 { content: 'no-samples' }
             ]
         }
     },
     {
-        header: 'Nested time',
+        header: '="nestedValue".metricName()',
         className: 'timings',
-        sorting: 'nestedTime desc, totalTime desc',
-        when: 'totalTime',
-        contentWhen: 'nestedTime',
-        content: 'duration:{ time: nestedTime, total: #.data.totalTime }'
+        sorting: 'nestedValue desc, totalValue desc',
+        when: 'totalValue',
+        contentWhen: 'nestedValue',
+        content: 'metric:nestedValue'
     },
     {
         header: 'Total time',
         className: 'timings',
-        sorting: 'totalTime desc, selfTime desc',
-        when: 'totalTime',
-        content: 'duration:{ time: totalTime, total: #.data.totalTime }'
+        sorting: 'totalValue desc, selfValue desc',
+        when: 'totalValue',
+        content: 'metric:totalValue'
     }
 ];
 
@@ -34,16 +42,16 @@ export const callFramesCol = (data, moduleCol = false) => ({
     header: 'Call frames',
     className: 'number sampled-numbers',
     data,
-    content: 'sampled-count-total{ hideZeroCount: true, count(=> totalTime?), total: size() }',
+    content: 'sampled-count-total{ hideZeroCount: true, count(=> totalValue?), total: size() }',
     details: [
         {
             view: 'table',
             data: `
-                zip(=> entry, #.data.currentProfile.codesByCallFrame, => callFrame)
+                zip(=> entry, scopeProfile().codesByCallFrame, => callFrame)
                 .({
-                    selfTime: left.selfTime,
-                    nestedTime: left.nestedTime,
-                    totalTime: left.totalTime,
+                    selfValue: left.selfValue,
+                    nestedValue: left.nestedValue,
+                    totalValue: left.totalValue,
                     entry: left.entry,
                     right
                 })

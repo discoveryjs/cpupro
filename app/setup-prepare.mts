@@ -7,6 +7,7 @@ import { Dictionary } from './prepare/dictionary.js';
 import { createProfile, Profile } from './prepare/profile.mjs';
 import { computeCrossProfileUsage } from './prepare/computations/cross-profile-usage.mjs';
 import { processCrossProfileAllocations } from './prepare/preprocessing/memory-allocations.mjs';
+import { ProfileLineType } from './prepare/lines/types.js';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
     const work = async function<T>(name: string, fn: () => T): Promise<T> {
@@ -36,6 +37,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // Process profiles
     //
     const profiles: Profile[] = [];
+    const availableLineTypes: Set<ProfileLineType> = new Set([]);
 
     for (let i = 0; i < profileSet.profiles.length; i++) {
         // if (i === 0) continue;
@@ -63,9 +65,13 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             profile.name = 'Profile #' + (i + 1);
         }
 
-        // FIXME: callFramePositions should be shared
-        profile.callFramePositionsTree?.dictionary.forEach(markers['call-frame-position']);
+        // FIXME: locations should be shared
+        profile.locationsTree?.dictionary.forEach(markers['call-frame-position']);
         profile.codesByCallFrame.forEach(markers['call-frame-codes']);
+
+        for (const line of profile.lines) {
+            availableLineTypes.add(line.type);
+        }
 
         profiles.push(profile);
     }
@@ -83,7 +89,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         computeCrossProfileUsage(profiles, callFramesProfilePresence);
     });
 
-    if (profiles.some(profile => profile.type === 'memory')) {
+    if (availableLineTypes.has('memline')) {
         await work('compute stable memory allocations', () =>
             processCrossProfileAllocations(dict, profiles)
         );
@@ -108,9 +114,8 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         dict.scripts.forEach(markers.script);
     });
 
-    const currentProfile = profiles[profileSet.indexToView || 0] || profiles[0];
+    const primaryProfile = profiles[profileSet.indexToView || 0] || profiles[0];
     const result = {
-        totalTime: profiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
         shared: {
             scripts: dict.scripts,
             callFrames: dict.callFrames,
@@ -121,7 +126,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
         callFramesProfilePresence,
 
-        currentProfile,
+        defaultProfile: primaryProfile,
+        defaultLineType: primaryProfile.defaultLineType || null,
+        availableLineTypes: Array.from(availableLineTypes),
+
         profiles
     };
 

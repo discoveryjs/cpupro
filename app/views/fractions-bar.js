@@ -1,3 +1,5 @@
+import { resolveScopeProfileLine } from '../jora/profile.js';
+
 discovery.view.define('fractions-bar', function(el, config, data, context) {
     const { limit, segment } = config;
 
@@ -18,11 +20,12 @@ discovery.view.define('fractions-bar', function(el, config, data, context) {
     );
 });
 
-discovery.view.define('fractions-bar-segment', function(el, config, data) {
-    const { total, formatValue, content } = config;
+discovery.view.define('fractions-bar-segment', function(el, config, data, context) {
+    const line = resolveScopeProfileLine(config.line, context);
+    const { total, formatValue = line.formatValue, content } = config;
     const { text = '?', value, href, color } = data || {};
     const valueText = typeof formatValue === 'function'
-        ? formatValue(value, total)
+        ? formatValue(value)
         : value;
     const percentText = `${(100 * value / total).toFixed(1)}%`;
     const title = `${text} - ${valueText} - ${percentText}`;

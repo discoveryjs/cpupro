@@ -1,14 +1,44 @@
 import { TIMINGS } from '../const.js';
 import { CallTree } from './call-tree.js';
-import type { CpuProCallFrame, CpuProCallFramePosition, CpuProNode } from '../types.js';
+import type { CpuProCallFrame, CpuProCallFrameLocation, CpuProCategory, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Usage } from '../usage.js';
+
+// TODO Phase 5: Combined Tree Building
+// When multiple lines have call graphs (e.g., time + memory profile),
+// we need to build unified trees that merge nodes from both sources:
+//
+// export function buildCombinedTrees(
+//     dict: Dictionary,
+//     sources: Array<{
+//         kind: 'time' | 'memory' | 'gc';
+//         nodeParent: Uint32Array;
+//         nodeIndexById: Map<number, number>;
+//         callFrameByNodeIndex: Uint32Array;
+//         locationsTreeSource?: TreeSource;
+//         usage: Usage;
+//     }>
+// ): { locationsTree?, callFramesTree, modulesTree, packagesTree, categoriesTree }
+//
+// Steps:
+// 1. Merge node graphs (remap node IDs to avoid conflicts)
+// 2. Build combined trees with union of all nodes
+// 3. Each line will map its samples to combined tree nodes
 
 interface BuildTreeSource<S> {
     dictionary: S[];
     parent: Uint32Array;
     nodes: Uint32Array;
 }
+
+export type BuildTreeResult = {
+    treeSource: TreeSource<CpuProCallFrame>;
+    locationsTree: CallTree<CpuProCallFrameLocation> | null;
+    callFramesTree: CallTree<CpuProCallFrame>;
+    modulesTree: CallTree<CpuProModule>;
+    packagesTree: CallTree<CpuProPackage>;
+    categoriesTree: CallTree<CpuProCategory>;
+};
 
 interface TreeSource<S> extends BuildTreeSource<S> {
     sourceIdToNode: Int32Array;
@@ -452,9 +482,9 @@ export function buildTrees(
     nodeParent: Uint32Array,
     nodeIndexById: Int32Array,
     callFrameByNodeIndex: Uint32Array,
-    callFramePositionsTreeSource: TreeSource<CpuProCallFramePosition> | null = null,
+    locationsTreeSource: TreeSource<CpuProCallFrameLocation> | null = null,
     usage: Usage | Dictionary = dict
-) {
+): BuildTreeResult {
     const treeSource = buildTreeSource(
         nodeParent,
         nodeIndexById,
@@ -462,11 +492,11 @@ export function buildTrees(
         dict.callFrames
     );
 
-    const callFramePositionsTree = callFramePositionsTreeSource !== null
-        ? buildCallTree('callFramePositions', callFramePositionsTreeSource)
+    const locationsTree = locationsTreeSource !== null
+        ? buildCallTree('callFramePositions', locationsTreeSource)
         : null;
-    const callFramesTree = callFramePositionsTree !== null
-        ? buildCallTree('callFrames', callFramePositionsTree, pos => pos.callFrame, usage.callFrames)
+    const callFramesTree = locationsTree !== null
+        ? buildCallTree('callFrames', locationsTree, pos => pos.callFrame, usage.callFrames)
         : buildCallTree('callFrames', treeSource);
     const modulesTree = buildCallTree('modules', callFramesTree, dict.callFrameToModule, usage.modules);
     const packagesTree = buildCallTree('packages', modulesTree, dict.moduleToPackage, usage.packages);
@@ -474,7 +504,7 @@ export function buildTrees(
 
     return {
         treeSource,
-        callFramePositionsTree,
+        locationsTree,
         callFramesTree,
         modulesTree,
         packagesTree,

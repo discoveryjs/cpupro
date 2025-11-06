@@ -1,10 +1,10 @@
 import { PackageType, PackageRegistry, WellKnownName, WellKnownType, PackageProvider, V8CallFrameCodeType, CpuProCallFrameCodes, ModuleType, CpuProCallFrameKind } from './types';
-import { packageRegistryEndpoints } from './utils';
+import { packageRegistryEndpoints } from './misc/utils';
 
 export const TIMINGS = false;
 export const USE_WASM = true;
 export const MERGE_SAMPLES = false;
-export const FEATURE_MULTI_PROFILES = true;
+export const FEATURE_MULTI_PROFILES = false;
 export const FEATURE_INLINE_CACHE = false;
 
 export const EMPTY_ARRAY = Object.freeze([]);
@@ -155,17 +155,21 @@ export const allocSpaces = [
     'old_space',
     'code_space',
     'shared_space',
+    'trusted_space',
+    'shared_trusted_space',
     'lo_space',
     'new_lo_space',
     'code_lo_space',
-    'shared_lo_space'
+    'shared_lo_space',
+    'trusted_lo_space',
+    'shared_trusted_lo_space'
 ] as const;
-type AllocationTimespan = (typeof allocTimespan)[number];
+export type AllocationLifespan = (typeof allocTimespan)[number];
 type AllocationType = (typeof allocTypes)[number];
 type AllocationSpace = (typeof allocSpaces)[number];
 
 // colors in order of apperiance in a list
-export const typeColor: Record<PackageType | PackageRegistry | V8CallFrameCodeType | AllocationType | AllocationTimespan | AllocationSpace, string> = {
+export const typeColor: Record<PackageType | PackageRegistry | V8CallFrameCodeType | AllocationType | AllocationLifespan | AllocationSpace, string> = {
     // FIXME: place part of alloc types here, because regexp alloc type clash with package type
     'object-shape': '#ffffffa0',
     'object': '#fee29ca0',
@@ -231,6 +235,10 @@ export const typeColor: Record<PackageType | PackageRegistry | V8CallFrameCodeTy
     'lo_space': '#f2a376a0',
     'shared_space': '#fcb69aa0',
     'shared_lo_space': '#fcb69aa0',
+    'trusted_space': '#9feaf9a0',
+    'trusted_lo_space': '#9feaf9a0',
+    'shared_trusted_space': '#7dfacda0',
+    'shared_trusted_lo_space': '#7dfacda0',
     'read_only_space': '#fee29ca0'
 };
 export const typeColorComponents = Object.fromEntries(Object.entries(typeColor)

@@ -39,12 +39,12 @@ export function setSamplesConvolutionRule(
         profile.callFramesTree.setSamplesConvolutionRule(
             rule || (() => false),
             {
-                treeSamplesCount: profile.callFramesTreeTimings.samplesCount,
-                dictSamplesCount: profile.callFramesTimings.samplesCount,
+                treeSamplesCount: profile.primaryLine?.tree.callFrames?.all.samplesCount || new Uint32Array(),
+                dictSamplesCount: profile.primaryLine?.dict.callFrames?.all.samplesCount || new Uint32Array(),
                 profilePresence: callFramesProfilePresence
             }
         );
-        profile.recomputeTimings();
+        profile.primaryLine?.recomputeValues();
     }
 
     computeCrossProfileStableAllocations(profiles);

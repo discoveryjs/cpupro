@@ -1,30 +1,30 @@
 import type { Profile } from '../profile.mjs';
 
 export function computeCrossProfileStableAllocations(profiles: Profile[]) {
-    const memoryProfiles = profiles.filter(profile =>
-        !profile.disabled && profile.type === 'memory'
-    );
+    const memlines = profiles.map(profile =>
+        !profile.disabled ? profile.memline : null
+    ).filter(memline => memline !== null);
 
-    if (memoryProfiles.length < 2) {
+    if (memlines.length < 2) {
         return;
     }
 
-    const { _callFramesStable, _samplesStable, _uniqueValuesArray } = memoryProfiles[0];
+    const { _callFramesStable, _samplesStable, _uniqueValuesArray } = memlines[0];
     const uniqueValuesCount = _uniqueValuesArray.length;
     const MAX_COUNT = 0xffff_ffff;
 
     _callFramesStable.fill(0);
     _samplesStable.fill(MAX_COUNT);
 
-    for (const profile of memoryProfiles) {
+    for (const memline of memlines) {
         const {
             samples,
-            timeDeltas,
+            values: timeDeltas,
             _samplesAll,
             _uniqueValuesMap,
             _callFramesMap
-        } = profile;
-        const { sampleIdToNode, nodes, dictionary } = profile.callFramesTree;
+        } = memline;
+        const { sampleIdToNode, nodes, dictionary } = memline.profile.callFramesTree;
         const _samplesSum = new Uint32Array(_callFramesStable.length);
         // const _samplesCheck = new Uint32Array(_callFramesStable.length);
 

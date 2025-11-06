@@ -1,4 +1,4 @@
-import { sessionExpandState, timingCols } from './common.js';
+import { primaryLineSwitcher, sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
@@ -6,22 +6,23 @@ const pageContent = [
         prelude: [
             'badge{ className: "type-badge", text: "Module" }',
             'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }',
-            'package-badge'
+            'package-badge',
+            primaryLineSwitcher
         ],
         content: 'h1:packageRelPath or name or path'
     },
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: #.currentProfile.modulesTree }'
+        data: '{ subject: @, tree: #.scopeProfile.modulesTree }'
     },
 
     {
-        view: 'update-on-timings-change',
-        timings: '=#.currentProfile.modulesTimingsFiltered',
-        content: `page-indicator-timings:{
-            full: #.currentProfile.modulesTimings.entries[=>entry = @],
-            filtered: #.currentProfile.modulesTimingsFiltered.entries[=>entry = @]
+        view: 'update-on-line-metrics-changes',
+        metrics: '=scopeLine().dict.modules.filtered',
+        content: `page-indicator-metrics:scopeLine().dict.modules | {
+            full: all.entries[=>entry = @],
+            filtered: filtered.entries[=>entry = @]
         }`
     },
 
@@ -29,8 +30,7 @@ const pageContent = [
         view: 'expand',
         className: 'trigger-outside script-source',
         context: '{ ...#, currentScript: script }',
-        expanded: '=#.currentScript.hasSource() and "getSessionSetting".callAction("cpupro-module-source", false)',
-        onToggle: '==>#.currentScript.hasSource() and "setSessionSetting".callAction("cpupro-module-source", $)',
+        ...sessionExpandState('module-source', false),
         header: [
             'text:"Source"',
             { view: 'block', className: 'text-divider' },
@@ -47,18 +47,18 @@ const pageContent = [
         ...sessionExpandState('module-nested-time-distribution', false),
         className: 'trigger-outside',
         header: [
-            'text:"Nested time distribution"',
+            'text:`${"nestedValue".metricName()} distribution`',
             { view: 'block', className: 'text-divider' },
             {
-                view: 'update-on-timings-change',
-                timings: '=#.currentProfile.modulesTimingsFiltered',
-                content: 'duration:#.currentProfile.modulesTimingsFiltered.entries[=>entry=@].nestedTime'
+                view: 'update-on-line-metrics-changes',
+                metrics: '=scopeLine().dict.modules.filtered',
+                content: 'duration:scopeLine().dict.modules.filtered.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:{
+        content: `nested-timings-tree:scopeLine() | {
             subject: @,
-            tree: #.currentProfile.modulesTree,
-            timings: #.currentProfile.modulesTimingsFiltered
+            tree: profile.modulesTree,
+            metrics: dict.modules.filtered
         }`
     },
 
@@ -69,18 +69,19 @@ const pageContent = [
         header: [
             'text:"Call frames "',
             {
-                view: 'update-on-timings-change',
-                data: '#.currentProfile.callFramesTimingsFiltered.entries.[entry.module = @]',
-                timings: '=#.currentProfile.callFramesTimingsFiltered',
-                content: 'sampled-count-total{ count(=> totalTime?), total: size() }'
+                view: 'update-on-line-metrics-changes',
+                data: 'scopeLine().dict.callFrames.filtered.entries.[entry.module = @]',
+                metrics: '=scopeLine().dict.callFrames.filtered',
+                content: 'sampled-count-total{ count(=> totalValue?), total: size() }'
             }
         ],
         content: {
             view: 'content-filter',
             className: 'table-content-filter',
             data: `
-                #.currentProfile.callFramesTimingsFiltered.entries.[entry.module = @]
-                    .zip(=> entry, #.currentProfile.codesByCallFrame, => callFrame)
+                scopeLine() | dict.callFrames.filtered.entries
+                    .[entry.module = @]
+                    .zip(=> entry, profile.codesByCallFrame, => callFrame)
                     .({
                         $entry: left.entry;
 
@@ -92,19 +93,19 @@ const pageContent = [
                     })
             `,
             content: {
-                view: 'update-on-timings-change',
-                timings: '=#.currentProfile.callFramesTimingsFiltered',
+                view: 'update-on-line-metrics-changes',
+                metrics: '=scopeLine().dict.callFrames.filtered',
                 content: {
                     view: 'table',
                     data: `
                         .[name ~= #.filter]
                         .({
                             ...,
-                            selfTime: left.selfTime,
-                            nestedTime: left.nestedTime,
-                            totalTime: left.totalTime
+                            selfValue: left.selfValue,
+                            nestedValue: left.nestedValue,
+                            totalValue: left.totalValue
                         })
-                        .sort(selfTime desc, totalTime desc, loc ascN)
+                        .sort(selfValue desc, totalValue desc, loc ascN)
                     `,
                     cols: [
                         ...timingCols,
@@ -142,16 +143,15 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('module-flame-graphs', true),
-        tree: '=#.currentProfile.modulesTree',
-        timings: '=#.currentProfile.modulesTreeTimingsFiltered',
+        tree: '=#.scopeProfile.modulesTree',
         value: '='
     }
 ];
 
 discovery.page.define('module', {
     view: 'switch',
-    context: '{ ...#, currentProfile }',
-    data: 'currentProfile.modules[=>id = +#.id]',
+    context: '{ ...#, scopeProfile: #.primaryProfile }',
+    data: '#.scopeProfile.modules[=>id = +#.id]',
     content: [
         { when: 'no $', content: {
             view: 'alert-warning',

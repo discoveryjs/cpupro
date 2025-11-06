@@ -1,5 +1,5 @@
 import { GeneratedNodes, WellKnownType } from '../types.js';
-import { sum } from '../utils.js';
+import { sum } from '../misc/utils.js';
 
 const NoSamplesType: WellKnownType = 'no-samples';
 
@@ -121,7 +121,7 @@ export function processLongTimeDeltas(
     samplesInterval: number,
     timeDeltas: number[],
     samples: number[],
-    samplePositions: number[] | null = null,
+    sampleLocations: number[] | null = null,
     generatedNodes: GeneratedNodes
 ) {
     // CPUpro uses two factors to truncate long samples.
@@ -163,8 +163,8 @@ export function processLongTimeDeltas(
         timeDeltas.length += longTimeDeltasCount;
         samples.length += longTimeDeltasCount;
 
-        if (samplePositions !== null) {
-            samplePositions.length += longTimeDeltasCount;
+        if (sampleLocations !== null) {
+            sampleLocations.length += longTimeDeltasCount;
         }
 
         // enrich arrays with new elements
@@ -177,9 +177,9 @@ export function processLongTimeDeltas(
                 samples[i - 1] = samples[j];
                 samples[i] = noSamplesNodeId;
 
-                if (samplePositions !== null) {
-                    samplePositions[i - 1] = samplePositions[j];
-                    samplePositions[i] = -1;
+                if (sampleLocations !== null) {
+                    sampleLocations[i - 1] = sampleLocations[j];
+                    sampleLocations[i] = -1;
                 }
 
                 // additional decrement since we write 2 elements
@@ -188,8 +188,8 @@ export function processLongTimeDeltas(
                 timeDeltas[i] = delta;
                 samples[i] = samples[j];
 
-                if (samplePositions !== null) {
-                    samplePositions[i] = samplePositions[j];
+                if (sampleLocations !== null) {
+                    sampleLocations[i] = sampleLocations[j];
                 }
             }
         }

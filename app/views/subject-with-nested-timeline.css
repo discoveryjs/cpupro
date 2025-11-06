@@ -29,7 +29,7 @@
 .view-subject-with-nested-timeline .view-time-ruler .interval-marker:first-child {
     margin-left: -1px;
 }
-.view-subject-with-nested-timeline .view-timeline-segments {
+.view-subject-with-nested-timeline .view-sample-histogram {
     border-top: 1px solid #0004;
     margin-left: 1px;
 }
@@ -45,18 +45,18 @@
     opacity: .5;
     pointer-events: none;
 }
-.view-subject-with-nested-timeline .nested-work .view-timeline-segments {
+.view-subject-with-nested-timeline .nested-work .view-sample-histogram {
     border-top: none;
     transform: scaleY(-1);
     margin-block: 0;
 }
-.view-subject-with-nested-timeline .view-timeline-segments-bin.nested-time {
+.view-subject-with-nested-timeline .view-sample-histogram.nested-time {
     transform: scaleY(-1);
     margin-top: -1px;
     border-bottom: none;
     border-top: none;
 }
-.view-subject-with-nested-timeline > .view-timeline-segments-bin::before {
+.view-subject-with-nested-timeline > .view-sample-histogram::before {
     content: "SELF";
     display: block;
     position: absolute;
@@ -72,10 +72,10 @@
     color: #888;
     background-color: color-mix(in srgb, var(--discovery-color) 10%, var(--discovery-background-color));
 }
-.view-subject-with-nested-timeline > .view-timeline-segments-bin.self-time::before {
+.view-subject-with-nested-timeline > .view-sample-histogram.self-time::before {
     padding-left: .5px;
 }
-.view-subject-with-nested-timeline > .view-timeline-segments-bin.nested-time::before {
+.view-subject-with-nested-timeline > .view-sample-histogram.nested-time::before {
     content: "NEST";
     transform: rotate(-90deg) scaleX(-1) translate(-100%);
 }

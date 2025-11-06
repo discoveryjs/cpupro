@@ -1,6 +1,7 @@
 import { utils } from '@discoveryjs/discovery';
 
-discovery.view.define('value-fraction', function(el, { value, unit, total, fraction }) {
+discovery.view.define('value-fraction', function(el, config) {
+    const { value, unit, total, fraction } = config;
     const valueEl = document.createElement('span');
     const match = unit ? null : String(value).match(/^([+-]?\d+(?:\.\d+(?:e[+-]?\d+)?)?)\s*(\S+)?$/);
     const normValue = match?.[1] || value;
@@ -16,7 +17,9 @@ discovery.view.define('value-fraction', function(el, { value, unit, total, fract
     el.append(valueEl);
 
     const fractionEl = document.createElement('span');
-    const normFraction = Number.isFinite(fraction) ? 100 * fraction : 100 * normValue / total;
+    const normFraction = Number.isFinite(fraction)
+        ? 100 * fraction
+        : 100 * normValue / total;
 
     fractionEl.className = 'fraction';
     fractionEl.innerText = normFraction === 0

@@ -11,16 +11,16 @@ discovery.view.define('location-source', {
         $sourceSliceEnd: $source.indexOf('\\n', $scriptOffset) | $ != -1 ?: $source.size();
         $lineNum: $source.slice(0, $scriptOffset).match(/\\r\\n?|\\n/g).size();
 
-        $selfValueTooltipView: #.currentProfile | type = 'memory' and _memoryGc and _memoryType
-            ? 'allocation-samples-matrix:#.currentProfile | callFramePositionsTree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
+        $selfValueTooltipView: scopeLine() | type = 'memline' and valueLifespans and valueTypes
+            ? 'allocation-samples-matrix:#.currentProfile.memline | tree.(locations or callFrames).filtered.tree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
         $unit: #.currentProfile.type = 'memory' ? 'Kb' : 'ms';
-        $values: #.currentProfile
+        $values: scopeLine()
             | #.nonFilteredTimings
-                ? callFramePositionsTimings or callFramesTimings
-                : callFramePositionsTimingsFiltered or callFramesTimingsFiltered;
+                ? dict.locations.all or dict.callFrames.all
+                : dict.locations.filtered or dict.callFrames.filtered;
         $sampleMarkContent: {
-            view: 'update-on-timings-change',
-            timings: $values,
+            view: 'update-on-line-metrics-changes',
+            metrics: $values,
             content: {
                 view: 'text-numeric',
                 data: 'value[prop] / 1000 | $ > 0 ? toFixed(1) : ""',

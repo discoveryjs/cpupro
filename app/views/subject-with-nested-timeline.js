@@ -1,25 +1,29 @@
 discovery.view.define('subject-with-nested-timeline', {
     view: 'context',
     data: `
+        $line: scopeLine();
+        $profile: $line.profile;
         $subject;
         $tree;
         $subtree: $tree.subtreeSamples($subject);
         $getCategory: $subject.marker('category') ? =>$ : =>category;
-        $totalTime: #.data.totalTime;
+        $totalValue: $line.axisTotal;
         $binCount: 500;
-        $binTime: $totalTime / $binCount;
+        $binSize: $totalValue / $binCount;
         $binSamples: $binCount.countSamples();
-        $totalTimeBins: $subtree.mask.binCallsFromMask($binCount);
+        $totalValueBins: $subtree.mask.binCallsFromMask($binCount);
 
         {
+            $profile,
+            $line,
             $subject,
             $subtree,
             bins: $tree.binCalls($subject, $binCount),
             $binCount,
-            $binTime,
+            $binSize,
             $binSamples,
-            $totalTime,
-            $totalTimeBins,
+            $totalValue,
+            $totalValueBins,
             color: $subject.$getCategory().name.color(),
             nested: (
                 $selector: $subtree.sampleSelector;
@@ -27,9 +31,9 @@ discovery.view.define('subject-with-nested-timeline', {
                     $category: $;
                     $category,
                     color: name.color(),
-                    $binTime,
-                    bins: #.currentProfile.categoriesTree.binCalls(=>($=$category and $selector($$)), $binCount),
-                    $totalTimeBins
+                    $binSize,
+                    bins: $profile.categoriesTree.binCalls(=>($=$category and $selector($$)), $binCount),
+                    $totalValueBins
                 })
             )
         }
@@ -38,18 +42,18 @@ discovery.view.define('subject-with-nested-timeline', {
         {
             view: 'time-ruler',
             labels: 'top',
-            duration: '=totalTime',
+            duration: '=totalValue',
             segments: '=binCount',
-            selectionStart: '=#.currentProfile.samplesTimingsFiltered.rangeStart',
-            selectionEnd: '=#.currentProfile.samplesTimingsFiltered.rangeEnd',
-            onChange: (state, name, el, data, context) => {
+            selectionStart: '=profile.samplesMetricsFiltered.rangeStart',
+            selectionEnd: '=profile.samplesMetricsFiltered.rangeEnd',
+            onChange: (state, name, el, data) => {
                 // console.log('change', state);
                 // const t = Date.now();
 
                 if (state.timeStart !== null) {
-                    context.currentProfile.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
+                    data.line.samplesMetricsFiltered.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    context.currentProfile.samplesTimingsFiltered.resetRange();
+                    data.line.samplesMetricsFiltered.resetRange();
                 }
 
                 // console.log('compute timings', Date.now() - t);
@@ -59,17 +63,17 @@ discovery.view.define('subject-with-nested-timeline', {
                     view: 'block',
                     className: 'timeline-segment-info',
                     content: [
-                        { view: 'block', content: 'text:`Range: ${#.timeStart.formatMicrosecondsTime(totalTime)} – ${#.timeEnd.formatMicrosecondsTime(totalTime)}`' },
+                        { view: 'block', content: 'text:`Range: ${#.timeStart.formatMicrosecondsTime(totalValue)} – ${#.timeEnd.formatMicrosecondsTime(totalValue)}`' },
                         { view: 'block', content: 'text:`Samples: ${binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' },
-                        { view: 'block', content: ['text:"Duration: "', 'duration:{ time: #.timeEnd - #.timeStart, total: totalTime }'] }
+                        { view: 'block', content: ['text:"Duration: "', 'metric:{ value: #.timeEnd - #.timeStart, total: totalValue }'] }
                     ]
                 },
                 {
                     view: 'block',
                     className: 'timeline-segment-info',
                     content: [
-                        { view: 'block', content: ['text:"Self time: "', 'duration:{ time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalTime }'] },
-                        { view: 'block', content: ['text:"Nested time: "', 'duration:{ time: totalTimeBins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalTime }'] }
+                        { view: 'block', content: 'metric:{ metricName: "selfValue", value: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalValue }' },
+                        { view: 'block', content: 'metric:{ metricName: "nestedValue", value: totalValueBins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalValue }' }
                     ]
                 },
                 {
@@ -81,7 +85,7 @@ discovery.view.define('subject-with-nested-timeline', {
                         postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                         content: [
                             'block{ className: "category-name", content: "text:category.name" }',
-                            'duration{ data: { time: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalTimeBins[#.segmentStart:#.segmentEnd + 1].sum() } }'
+                            'metric{ value: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalValueBins[#.segmentStart:#.segmentEnd + 1].sum() }'
                         ]
                     }
                 }
@@ -94,10 +98,11 @@ discovery.view.define('subject-with-nested-timeline', {
             context: '{ ...#, binCount }',
             data: `
                 $type: subject.marker().type;
-                $totalTime: #.currentProfile.totalTime;
-                $step: $totalTime / #.binCount;
+                $profile: scopeProfile();
+                $totalValue: $profile.timeline.axisTotal;
+                $step: $totalValue / #.binCount;
 
-                #.currentProfile
+                $profile
                     | $type = "module"     ? codesByScript[=> script = @.subject.script].compilation.codes :
                       $type = "call-frame" ? codesByCallFrame[=> callFrame = @.subject].codes :
                     | .($code: $; segments or [{ tm, duration }] | .({ ..., $code, segment: $ }))
@@ -110,7 +115,7 @@ discovery.view.define('subject-with-nested-timeline', {
                         duration: duration
                             or ($lastSeen: code | module or callFrame | timestamps($type).lastSeen;
                                 $lastSeen > tm ? $step * ($lastSeen / $step).ceil() - tm)
-                            or $totalTime - tm
+                            or $totalValue - tm
                     })
             `,
             whenData: true,
@@ -132,10 +137,10 @@ discovery.view.define('subject-with-nested-timeline', {
                 },
                 postRender(el, _, data, ctx) {
                     const { tm, duration, color } = data;
-                    const totalTime = ctx.currentProfile.totalTime;
+                    const totalValue = ctx.currentProfile.totalValue;
 
-                    el.style.setProperty('--pos', tm / totalTime);
-                    el.style.setProperty('--duration', duration / totalTime);
+                    el.style.setProperty('--pos', tm / totalValue);
+                    el.style.setProperty('--duration', duration / totalValue);
                     el.style.setProperty('--tier-color', 'rgb(' + color + ', .68)');
                     // el.addEventListener('click', () => {
                     //     ctx.currentProfile.samplesTimingsFiltered.setRange(code.tm, code.tm + duration);
@@ -144,20 +149,20 @@ discovery.view.define('subject-with-nested-timeline', {
             }
         },
         {
-            view: 'timeline-segments-bin',
+            view: 'sample-histogram',
             className: 'self-time',
             bins: '=bins',
-            presence: '=totalTimeBins',
-            max: '=binTime',
+            presence: '=totalValueBins',
+            max: '=binSize',
             binsMax: true,
             color: '=color',
             height: 30
         },
         {
-            view: 'timeline-segments-bin',
+            view: 'sample-histogram',
             className: 'nested-time',
-            bins: '=totalTimeBins',
-            max: '=binTime',
+            bins: '=totalValueBins',
+            max: '=binSize',
             binsMax: true,
             color: '=nested.size() > 1 ? color : nested[].color',
             height: 30
@@ -168,9 +173,9 @@ discovery.view.define('subject-with-nested-timeline', {
             data: 'nested',
             whenData: 'size() > 1',
             item: {
-                view: 'timeline-segments-bin',
+                view: 'sample-histogram',
                 bins: '=bins',
-                max: '=binTime',
+                max: '=binSize',
                 binsMax: true,
                 color: '=color',
                 height: 20

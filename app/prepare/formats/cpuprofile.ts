@@ -1,5 +1,5 @@
-import type { V8CpuProfile, V8CpuProfileNode, V8CpuProfileScript } from '../types.js';
-import { ALLOCATION_SPACES, ALLOCATION_TIMESPANS, ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
+import type { V8CpuProfile, V8CpuProfileNode, V8CpuProfileScript, V8CpuProfileCpuproExtensions } from '../types.js';
+import { ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
 
 type SizeSample = {
     size: number;
@@ -172,7 +172,7 @@ export function unrollHeadToNodesIfNeeded(profile: V8CpuProfile & { head?: V8Cpu
 
 function extractVectorIfExists(samples: SizeSample[], property: keyof SizeSample) {
     if (samples.length > 0 && property in samples[0]) {
-        return samples.map(sample => sample[property] as number);
+        return Array.from(samples, sample => sample[property] as number);
     }
 }
 
@@ -193,36 +193,123 @@ function extractRemapVectorIfExists(samples: SizeSample[], vectorName: keyof Siz
     return { vector, names };
 }
 
+/**
+ * Extract allocation data from combined CPU+memory profile.
+ * Combined profiles have:
+ * - cpuProfile: standard CPU profile with samples/timeDeltas
+ * - allocationSampleIds: maps CPU sample index -> last allocation ID in that sample's time range
+ * - allocationSamples: allocation data (ids, sizes, gc, types, etc.)
+ */
+function extractCombinedAllocationData(data: {
+    allocationSampleIds?: unknown;
+    allocationSamples?: {
+        ids?: unknown;
+        sizes?: unknown;
+        gc?: unknown;
+        types?: unknown;
+        typesDict?: Record<string, string>;
+        spaces?: unknown;
+        spacesDict?: Record<string, string>;
+    };
+}): V8CpuProfileCpuproExtensions | null {
+    // Check if this is a combined profile
+    if (!data.allocationSampleIds || !data.allocationSamples) {
+        return null;
+    }
+
+    const { allocationSampleIds, allocationSamples } = data;
+    const { ids, sizes, gc, types, typesDict, spaces, spacesDict } = allocationSamples;
+
+    if (!Array.isArray(ids) || !Array.isArray(sizes) || !Array.isArray(allocationSampleIds)) {
+        return null;
+    }
+
+    return {
+        _cpuproAllocationMapping: allocationSampleIds,
+        _cpuproAllocationIds: ids,
+        _cpuproAllocationSizes: sizes,
+        _cpuproAllocationGc: Array.isArray(gc) ? gc : undefined,
+        _cpuproAllocationTypes: Array.isArray(types) ? types : undefined,
+        _cpuproAllocationTypeNames: typesDict,
+        _cpuproAllocationSpaces: Array.isArray(spaces) ? spaces : undefined,
+        _cpuproAllocationSpaceNames: spacesDict
+    };
+}
+
+
 export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
     samples: number[] | SizeSample[];
+    sizes?: number[];
     scripts?: V8CpuProfileScript[];
+    allocationSampleIds?: number[];
+    allocationSamples?: {
+        ids?: unknown;
+        sizes?: unknown;
+        gc?: unknown;
+        types?: unknown;
+        typesDict?: Record<string, string>;
+    };
+    cpuProfile?: {
+        samples: number[];
+        timeDeltas?: number[];
+        nodes: V8CpuProfileNode[];
+    };
 }): V8CpuProfile {
-    if (isArrayOfIntegers(profile.samples)) {
+    // Handle combined profile format (ProfileChunk with cpuProfile + allocationSamples)
+    const combinedAllocationData = extractCombinedAllocationData(profile);
+    if (combinedAllocationData) {
+        // Extract CPU profile data
+        const cpuProfile = profile.cpuProfile || profile;
+        const cpuSamples = cpuProfile.samples;
+        const cpuTimeDeltas = cpuProfile.timeDeltas || profile.timeDeltas;
+
+        return {
+            ...profile,
+            nodes: cpuProfile.nodes || profile.nodes,
+            samples: cpuSamples,
+            timeDeltas: cpuTimeDeltas,
+            ...combinedAllocationData
+        };
+    }
+
+    // Handle legacy allocation profile format (with sizes field)
+    if (isArrayOfIntegers(profile.samples) && !profile.sizes) {
         return profile;
     }
 
-    let source = profile.samples as SizeSample[];
+    const samples = profile.samples as SizeSample[];
+    let source = samples as SizeSample[];
 
-    // allocation samples can be in a random order, sort it by ordinal
+    // allocation samples can be in any order, sort it by ordinal
     // Note: used slice() to avoid mutation of an input array
     source = source.slice().sort((a, b) => a.ordinal - b.ordinal);
 
-    const { vector: typeVector, names: typeNames } = extractRemapVectorIfExists(source, 'type', ALLOCATION_INSTANCE_TYPES, true);
-    const { vector: spaceVector, names: spaceNames } = extractRemapVectorIfExists(source, 'space', ALLOCATION_SPACES);
-    const { vector: gcVector, names: gcNames } = extractRemapVectorIfExists(source, 'gc', ALLOCATION_TIMESPANS);
+    const typeVector = extractVectorIfExists(source, 'type');
+    // const { vector: spaceVector, names: spaceNames } = extractRemapVectorIfExists(source, 'space', ALLOCATION_SPACES);
+    const gcVector = extractVectorIfExists(source, 'gc');
+    const locationVector = extractVectorIfExists(source, 'pos');
+
+    // return {
+    //     _cpuproAllocationMapping: allocationSampleIds,
+    //     _cpuproAllocationIds: ids,
+    //     _cpuproAllocationSizes: sizes,
+    //     _cpuproAllocationGc: Array.isArray(gc) ? gc : undefined,
+    //     _cpuproAllocationTypes: Array.isArray(types) ? types : undefined,
+    //     _cpuproAllocationTypeNames: typesDict
+    // };
 
     return {
         ...profile,
         _type: 'memory',
-        _memoryGc: gcVector,
-        _memoryGcNames: gcNames,
-        _memoryType: typeVector,
-        _memoryTypeNames: typeNames,
-        _memorySpace: spaceVector,
-        _memorySpaceNames: spaceNames,
-        _samplePositions: extractVectorIfExists(source, 'pos'),
+        _cpuproAllocationGc: gcVector,
+        // _memoryGcNames: gcNames,
+        _cpuproAllocationTypes: typeVector,
+        _cpuproAllocationTypeNames: ALLOCATION_INSTANCE_TYPES,
+        // _memorySpace: spaceVector,
+        // _memorySpaceNames: spaceNames,
+        _cpuproAllocationLocations: locationVector,
         _scripts: profile._scripts || profile.scripts || undefined,
         samples: source.map(sample => sample.nodeId),
-        timeDeltas: source.map(sample => sample.size)
+        _cpuproAllocationSizes: source.map(sample => sample.size)
     };
 }

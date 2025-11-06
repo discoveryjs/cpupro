@@ -1,5 +1,5 @@
 import { CallTree } from '../prepare/computations/call-tree.js';
-import { TreeTimings } from '../prepare/computations/timings.js';
+import { TreeMetrics } from '../prepare/computations/metrics.js';
 
 export function makeDictMask(tree, test) {
     const { dictionary } = tree;
@@ -53,7 +53,7 @@ export const methods = {
     select(tree, type, ...args) {
         let treeTimings = null;
 
-        if (tree instanceof TreeTimings) {
+        if (tree instanceof TreeMetrics) {
             treeTimings = tree;
             tree = tree.tree;
         }
@@ -86,14 +86,14 @@ export const methods = {
                     const result = [];
 
                     for (const node of tree.map(iterator)) {
-                        const selfTime = treeTimings.selfTimes[node.nodeIndex];
-                        const nestedTime = treeTimings.nestedTimes[node.nodeIndex];
+                        const selfValue = treeTimings.selfValues[node.nodeIndex];
+                        const nestedValue = treeTimings.nestedValues[node.nodeIndex];
 
                         result.push({
                             node,
-                            selfTime,
-                            nestedTime,
-                            totalTime: selfTime + nestedTime
+                            selfValue,
+                            nestedValue,
+                            totalValue: selfValue + nestedValue
                         });
                     }
 
@@ -142,23 +142,22 @@ export const methods = {
         };
     },
 
-    getTimings(treeTimings, subject) {
+    getMetrics(treeTimings, subject) {
         if (typeof subject !== 'number') {
             subject = treeTimings.tree.dictionary.indexOf(subject);
         }
 
-        return treeTimings.getTimings(subject);
+        return treeTimings.getMetrics(subject);
     },
 
-    getValueTimings(treeTimings, value) {
-        return treeTimings.getValueTimings(value);
+    getValueMetrics(treeTimings, value) {
+        return treeTimings.getValueMetrics(value);
     },
 
-    nestedTimings(treeTimings, subject, structureTree) {
-        const timingsTree = treeTimings.tree;
-        const tree = structureTree || timingsTree;
+    nestedValues(treeMetrics, subject, structureTree) {
+        const tree = structureTree || treeMetrics.tree;
         const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
-        const dictTimings = new Uint32Array(timingsTree.dictionary.length);
+        const dictMetrics = new Uint32Array(tree.dictionary.length);
         const nodes = tree.nodes;
         const sampleIdToNode = tree.sampleIdToNode;
         const nodesMask = new Uint32Array(tree.nodes.length);
@@ -175,20 +174,20 @@ export const methods = {
 
         for (let i = 0; i < sampleIdToNode.length; i++) {
             if (nodesMask[sampleIdToNode[i]]) {
-                const nodeIndex = timingsTree.sampleIdToNode[i];
+                const nodeIndex = tree.sampleIdToNode[i];
 
                 if (!visited.has(nodeIndex)) {
-                    dictTimings[timingsTree.nodes[nodeIndex]] += treeTimings.selfTimes[nodeIndex];
+                    dictMetrics[tree.nodes[nodeIndex]] += treeMetrics.selfValues[nodeIndex];
                     visited.add(nodeIndex);
                 }
             }
         }
 
-        for (let i = 0; i < dictTimings.length; i++) {
-            if (dictTimings[i] > 0) {
+        for (let i = 0; i < dictMetrics.length; i++) {
+            if (dictMetrics[i] > 0) {
                 result.push({
-                    entry: timingsTree.dictionary[i],
-                    selfTime: dictTimings[i]
+                    entry: tree.dictionary[i],
+                    selfValue: dictMetrics[i]
                 });
             }
         }

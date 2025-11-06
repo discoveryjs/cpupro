@@ -2,7 +2,7 @@ import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import { computeCrossProfileStableAllocations } from '../computations/cross-profile-allocations.mjs';
 import type { Dictionary } from '../dictionary.js';
 import type { Profile } from '../profile.mjs';
-import { min, sum } from '../utils.js';
+import { min, sum } from '../misc/utils.js';
 
 export function processMemoryAllocations(
     allocations: number[],
@@ -26,22 +26,22 @@ export function processMemoryAllocations(
 }
 
 export function processCrossProfileAllocations(dict: Dictionary, profiles: Profile[]) {
-    const memoryProfiles = profiles.filter(profile => profile.type === 'memory');
+    const memlines = profiles.map(profile => profile.memline).filter(memline => memline !== null);
     const uniqueValues = new Set<number>();
 
-    if (memoryProfiles.length === 0) {
+    if (memlines.length === 0) {
         return;
     }
 
-    for (const profile of memoryProfiles) {
+    for (const memline of memlines) {
         const sampleSizeCounts = Object.create(null);
 
-        for (const size of profile.timeDeltas) {
+        for (const size of memline.values) {
             uniqueValues.add(size);
             sampleSizeCounts[size] = (sampleSizeCounts[size] || 0) + 1;
         }
 
-        profile._sampleSizeCounts = Object.fromEntries(Object.entries(sampleSizeCounts)
+        memline.profile._sampleSizeCounts = Object.fromEntries(Object.entries(sampleSizeCounts)
             .sort((a, b) => Number(a[0]) - Number(b[0])));
     }
 
@@ -53,10 +53,11 @@ export function processCrossProfileAllocations(dict: Dictionary, profiles: Profi
     const callFramesStable = new Uint32Array(callFramesCount);
     const samplesStable = new Uint32Array(callFramesCount * uniqueValuesCount);
 
-    const commonTree = buildCommonTree(dict, memoryProfiles);
+    const memlineProfiles = memlines.map(memline => memline.profile);
+    const commonTree = buildCommonTree(dict, memlineProfiles);
 
-    for (const profile of memoryProfiles) {
-        Object.assign(profile, {
+    for (const memline of memlines) {
+        Object.assign(memline, {
             _commonTree: commonTree,
             _uniqueValuesMap: uniqueValuesMap,
             _uniqueValuesArray: uniqueValuesArray,
@@ -68,7 +69,7 @@ export function processCrossProfileAllocations(dict: Dictionary, profiles: Profi
         });
     }
 
-    computeCrossProfileStableAllocations(memoryProfiles);
+    computeCrossProfileStableAllocations(memlineProfiles);
 }
 
 function buildCommonTree(dict: Dictionary, profiles: Profile[]) {

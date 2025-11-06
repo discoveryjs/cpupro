@@ -4,7 +4,13 @@ export function computeCrossProfileUsage(profiles: Profile[], callFramesProfileP
     callFramesProfilePresence.fill(0);
 
     for (const profile of profiles) {
-        const samplesCount = profile.callFramesTimings.samplesCount;
+        const callFramesMetrics = profile.primaryLine?.dict.callFrames?.all;
+
+        if (!callFramesMetrics) {
+            continue;
+        }
+
+        const samplesCount = callFramesMetrics.samplesCount;
 
         for (let i = 0; i < samplesCount.length; i++) {
             if (samplesCount[i] > 0) {
@@ -15,7 +21,13 @@ export function computeCrossProfileUsage(profiles: Profile[], callFramesProfileP
 
     for (const profile of profiles) {
         const { timeDeltasByProfile, sampleCountsByProfile} = profile;
-        const { samplesCount, selfTimes } = profile.callFramesTimings;
+        const callFramesMetrics = profile.primaryLine?.dict.callFrames?.all;
+
+        if (!callFramesMetrics) {
+            continue;
+        }
+
+        const { samplesCount, selfValues } = callFramesMetrics;
 
         timeDeltasByProfile.fill(0);
         sampleCountsByProfile.fill(0);
@@ -23,7 +35,7 @@ export function computeCrossProfileUsage(profiles: Profile[], callFramesProfileP
         for (let i = 0; i < samplesCount.length; i++) {
             const profilesCount = callFramesProfilePresence[i] - 1;
 
-            timeDeltasByProfile[profilesCount] += selfTimes[i];
+            timeDeltasByProfile[profilesCount] += selfValues[i];
             sampleCountsByProfile[profilesCount] += samplesCount[i];
         }
     }

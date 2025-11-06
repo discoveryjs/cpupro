@@ -16,12 +16,12 @@ discovery.view.define('call-frame-source', {
                 $line: line or 1;
                 $start;
                 $end;
-                $unit: #.currentProfile.type = 'memory' ? 'Kb' : 'ms';
+                $unit: 0.valueAndUnit().unit;
                 $callFrameCodes: #.currentProfile.codesByCallFrame[=> callFrame = @];
-                $values: #.currentProfile
+                $values: scopeLine()
                     | #.nonFilteredTimings
-                        ? callFramePositionsTimings or callFramesTimings
-                        : callFramePositionsTimingsFiltered or callFramesTimingsFiltered;
+                        ? dict.locations.all or dict.callFrames.all
+                        : dict.locations.filtered or dict.callFrames.filtered;
 
                 $nestedScriptCodes: #.currentProfile
                     | codesByScript[=> script = $script].callFrameCodes or $script.callFrames.({
@@ -55,7 +55,7 @@ discovery.view.define('call-frame-source', {
                         itemConfig: 'deopt-card'
                     }
                 };
-                $deoptMarks: $callFrameCodes.codes
+                $deoptMarks: $callFrameCodes.codes or [] |
                     .(deopt and {
                         $callFrame;
                         $deopt;
@@ -85,7 +85,7 @@ discovery.view.define('call-frame-source', {
                         tooltip: $deoptTooltip
                     });
 
-                $icMarks: $callFrameCodes.codes
+                $icMarks: $callFrameCodes.codes or [] |
                     .(ic and (
                         $callFrame;
                         $ic;
@@ -120,44 +120,44 @@ discovery.view.define('call-frame-source', {
                     });
 
                 $sampleMarkContent: {
-                    view: 'update-on-timings-change',
-                    timings: $values,
+                    view: 'update-on-line-metrics-changes',
+                    metrics: $values,
                     content: {
                         view: 'text-numeric',
                         data: 'value[prop] / 1000 | $ > 0 ? toFixed(1) : ""',
                         className: => ?: 'empty-content'
                     }
                 };
-                $selfValueTooltipView: #.currentProfile | type = 'memory' and _memoryGc and _memoryType
-                    ? 'allocation-samples-matrix:#.currentProfile | callFramePositionsTree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
+                $selfValueTooltipView: scopeLine() | type = 'memline' and valueLifespans and valueTypes
+                    ? 'allocation-samples-matrix:scopeLine() | tree.(locations or callFrames).filtered.tree.allocationsMatrix(samplesMetricsFiltered, @.value.entry)';
                 $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table)"' };
                 $selfValueMisattributedTooltipView: {
                     className: 'view-call-frame-source__tooltip',
                     content: $misattributedMessage
                 };
-                $nestedValueTooltipView: #.currentProfile | type != 'memory'
+                $nestedValueTooltipView: scopeLine() | type != 'memline'
                     ? {
                         className: 'view-call-frame-source__tooltip',
                         content: [$misattributedMessage, {
                             view: 'table',
                             data: \`
-                                $tree: #.currentProfile.callFramePositionsTreeTimingsFiltered;
+                                $tree: scopeLine().tree | positions or callFrames | filtered;
                                 $tree
                                     .select("nodes", value.entry).node.nodeIndex
                                     .($tree.select("children", $))
-                                    .group(=>node.value.callFrame)
+                                    .group(=>node.value | callFrame or $)
                                     .({
                                         callFrame: key,
-                                        selfTime: value.sum(=>selfTime),
-                                        nestedTime: value.sum(=>nestedTime),
-                                        totalTime: value.sum(=>totalTime)
+                                        selfValue: value.sum(=>selfValue),
+                                        nestedValue: value.sum(=>nestedValue),
+                                        totalValue: value.sum(=>totalValue)
                                     })
-                                    .sort(totalTime desc)
+                                    .sort(totalValue desc)
                             \`,
                             cols: [
-                                { header: 'Self time', content: 'duration:selfTime' },
-                                { header: 'Nested time', content: 'duration:nestedTime' },
-                                { header: 'Total time', content: 'duration:totalTime' },
+                                { header: 'Self time', content: 'metric:selfValue' },
+                                { header: 'Nested time', content: 'metric:nestedValue' },
+                                { header: 'Total time', content: 'metric:totalValue' },
                                 { header: 'Kind', content: 'call-frame-kind-badge:callFrame.kind' },
                                 { header: 'Call frame', content: 'call-frame-badge' }
                             ]
@@ -168,25 +168,25 @@ discovery.view.define('call-frame-source', {
                         ? .[entry.callFrame = @]
                         : $[=> entry = @]
                     |? .($noloc: entry.scriptOffset = -1; $offset: entry.scriptOffset | (is number and $ != -1 ?: $start) - $sourceSliceStart; [
-                        selfTime ? {
+                        selfValue ? {
                             $offset,
                             $noloc,
                             kind: 'self',
                             className: $noloc ? 'noloc',
                             content: $sampleMarkContent,
                             value: $values.entries[entryIndex],
-                            prop: 'selfTime',
+                            prop: 'selfValue',
                             postfix: $unit,
                             tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)
                         },
-                        nestedTime ? {
+                        nestedValue ? {
                             $offset,
                             $noloc,
                             kind: 'nested',
                             className: $noloc ? 'noloc',
                             content: $sampleMarkContent,
                             value: $values.entries[entryIndex],
-                            prop: 'nestedTime',
+                            prop: 'nestedValue',
                             postfix: $unit,
                             tooltip: $nestedValueTooltipView
                         },
@@ -199,7 +199,7 @@ discovery.view.define('call-frame-source', {
                 //             kind: 'self',
                 //             content: $sampleMarkContent,
                 //             value: $values.entries[entryIndex],
-                //             prop: 'selfTime',
+                //             prop: 'selfValue',
                 //             postfix: 'Kb'
                 //         });
 

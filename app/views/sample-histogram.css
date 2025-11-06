@@ -1,16 +1,16 @@
-.view-timeline-segments {
+.view-sample-histogram {
     position: relative;
     border-bottom: 1px solid #0004;
     margin: 1px 0;
 }
 
-.view-timeline-segments svg {
+.view-sample-histogram svg {
     display: block;
 }
 
-.view-timeline-segments path {
+.view-sample-histogram path {
     fill: var(--color, #888);
 }
-.view-timeline-segments path.rel-path {
+.view-sample-histogram path.rel-path {
     opacity: .4;
 }

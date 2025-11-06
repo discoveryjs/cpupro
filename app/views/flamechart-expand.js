@@ -1,5 +1,6 @@
+const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
-const { SubsetTreeTimings } = require('../prepare/computations/timings.js');
+const { SubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 
 discovery.view.define('flamechart-expand', function(el, config, data, context) {
     const {
@@ -7,14 +8,14 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
         expanded = true,
         onToggle,
         tree,
-        subsetTimings: rawTimings,
-        profile = context.data.currentProfile,
-        samplesTimings = profile.samplesTimingsFiltered,
+        subsetTreeValues: computedValues,
         value
     } = config;
-    const subsetTimings = rawTimings || new SubsetTreeTimings(
+    const line = resolveScopeProfileLine(config.line, context);
+    const samplesMetrics = line.samplesMetricsFiltered;
+    const subsetTreeValues = computedValues || new SubsetTreeMetrics(
         value ? new SubsetCallTree(tree, value) : tree,
-        samplesTimings
+        samplesMetrics
     );
 
     return this.render(el, {
@@ -33,18 +34,18 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
                         view: 'toggle-group',
                         name: 'dataset',
                         data: [
-                            { text: 'Categories', value: 'categoriesTree', active: tree === profile.categoriesTree },
-                            { text: 'Packages', value: 'packagesTree', active: tree === profile.packagesTree },
-                            { text: 'Modules', value: 'modulesTree', active: tree === profile.modulesTree },
-                            { text: 'Call frames', value: 'callFramesTree', active: tree === profile.callFramesTree }
+                            { text: 'Categories', value: 'categoriesTree', active: tree === line.profile.categoriesTree },
+                            { text: 'Packages', value: 'packagesTree', active: tree === line.profile.packagesTree },
+                            { text: 'Modules', value: 'modulesTree', active: tree === line.profile.modulesTree },
+                            { text: 'Call frames', value: 'callFramesTree', active: tree === line.profile.callFramesTree }
                         ]
                     }
                 ]
             },
             content: {
                 view: 'flamechart',
-                tree: subsetTimings.tree,
-                timings: subsetTimings,
+                tree: subsetTreeValues.tree,
+                timings: subsetTreeValues,
                 // timingsMap: focusTree.timingsMap,
                 lockScrolling: true,
                 postRender(el) {

@@ -17,12 +17,12 @@ const defaultRootContent = {
     className: 'root-content',
     content: [
         'text:root.name',
-        'duration:{ time: rootValue, total: #.data.totalTime }',
+        'metric:rootValue',
         {
             view: 'block',
             className: 'zoom-timings',
             when: 'zoomedNode.node != rootNode.node',
-            content: 'duration:{ time: zoomedNode.totalTime, total: #.data.totalTime }'
+            content: 'metric:zoomedNode.totalValue'
         }
     ]
 };
@@ -44,7 +44,7 @@ const defaultTooltipContent = [
                 { view: 'block', content: [
                     {
                         view: 'context',
-                        data: '#.data.currentProfile.codesByCallFrame[=> callFrame = @]',
+                        data: 'scopeProfile().codesByCallFrame[=> callFrame = @]',
                         whenData: 'hotness = "hot" or hotness = "warm"',
                         content: ['code-hotness-icon:topTier', 'text:" "']
                     },
@@ -56,16 +56,8 @@ const defaultTooltipContent = [
             ] }
         ]
     },
-    {
-        view: 'duration',
-        className: 'total',
-        data: '{ time: totalTime, total: #.data.totalTime }'
-    },
-    {
-        view: 'duration',
-        className: 'self',
-        data: '{ time: selfTime, total: #.data.totalTime }'
-    }
+    'metric:{ value: totalValue, metricName: "totalValue" }',
+    'metric:{ value: selfValue,  metricName: "selfValue" }'
 ];
 
 const defaultDetailsContent = [
@@ -95,16 +87,8 @@ const defaultDetailsContent = [
     {
         view: 'block',
         content: [
-            {
-                view: 'duration',
-                className: 'total',
-                data: '{ time: totalTime, total: #.data.totalTime }'
-            },
-            {
-                view: 'duration',
-                className: 'self',
-                data: '{ time: selfTime, total: #.data.totalTime }'
-            }
+            'metric:{ value: totalValue, metricName: "totalValue" }',
+            'metric:{ value: selfValue,  metricName: "selfValue" }'
         ]
     }
 ];
@@ -121,7 +105,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     } = config;
     const contentEl = utils.createElement('div', 'view-flamechart__content');
     const destroyEl = utils.createElement('destroy-flamechart');
-    const getNodeTimings = (nodeIndex) => timings.getTimings(timingsMap ? timingsMap[nodeIndex] : nodeIndex);
+    const getNodeMetrics = (nodeIndex) => timings.getMetrics(timingsMap ? timingsMap[nodeIndex] : nodeIndex);
     const enableScrolling = (e) => {
         if (e.which !== 3 && el.classList.contains('fully-visible')) {
             setTimeout(() => el.classList.remove('disable-scrolling'), 0);
@@ -136,7 +120,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     const updateHasScroll = () => el.classList.toggle('has-scroll', contentElHeight < chartElHeight);
 
     const tooltip = new Tooltip(discovery, (el, nodeIndex) =>
-        this.render(el, tooltipContent, getNodeTimings(nodeIndex), context)
+        this.render(el, tooltipContent, getNodeMetrics(nodeIndex), context)
     );
 
     let detailsNodeIndex = -1;
@@ -161,8 +145,8 @@ discovery.view.define('flamechart', function(el, config, data, context) {
                     detailsEl,
                     detailsContent,
                     selectedNodeIndex !== -1
-                        ? timings.getValueTimings(tree.nodes[detailsNodeIndex])
-                        : getNodeTimings(detailsNodeIndex),
+                        ? timings.getValueMetrics(tree.nodes[detailsNodeIndex])
+                        : getNodeMetrics(detailsNodeIndex),
                     context
                 );
             } else {
@@ -178,8 +162,8 @@ discovery.view.define('flamechart', function(el, config, data, context) {
                 this.render(rootEl, rootContent, {
                     root: rootFrame,
                     rootValue,
-                    rootNode: getNodeTimings(0),
-                    zoomedNode: getNodeTimings(zoomedNodeIndex !== -1 ? zoomedNodeIndex : 0)
+                    rootNode: getNodeMetrics(0),
+                    zoomedNode: getNodeMetrics(zoomedNodeIndex !== -1 ? zoomedNodeIndex : 0)
                 }, context);
             }
         })
@@ -200,7 +184,7 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         | color(true)
     `);
 
-    const { selfTimes, nestedTimes } = timings;
+    const { selfValues, nestedValues } = timings;
     const unsubscribeTimings = timings.subscribe(utils.debounce(() => {
         timings.recompute?.();
         chart.resetValues();
@@ -216,8 +200,8 @@ discovery.view.define('flamechart', function(el, config, data, context) {
             ? `${value.name} ${value.module.packageRelPath || value.module.path}`
             : value.name || value.packageRelPath,
         value: timingsMap
-            ? nodeIndex => selfTimes[timingsMap[nodeIndex]] + nestedTimes[timingsMap[nodeIndex]]
-            : nodeIndex => selfTimes[nodeIndex] + nestedTimes[nodeIndex],
+            ? nodeIndex => selfValues[timingsMap[nodeIndex]] + nestedValues[timingsMap[nodeIndex]]
+            : nodeIndex => selfValues[nodeIndex] + nestedValues[nodeIndex],
         childrenSort: true
     });
 
