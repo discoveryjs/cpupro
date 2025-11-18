@@ -43,9 +43,9 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
     data = data || {};
 
     if (isDevToolsEnhancedTraces(data)) {
-        const { traceEvents, runtime, scripts, executionContexts } = extractFromDevToolsEnhancedTraces(data);
+        const { traceEvents, allocationProfile, runtime, scripts, executionContexts } = extractFromDevToolsEnhancedTraces(data);
 
-        data = traceEvents;
+        data = traceEvents || allocationProfile;
         extensions = {
             _runtime: runtime,
             _scripts: scripts,
