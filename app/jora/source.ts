@@ -1,4 +1,15 @@
 import type { CpuProCallFrame } from '../prepare/types.js';
+import jsBeautify from 'js-beautify/js/src/javascript/index.js';
+
+function performJSBeautify(source: string, options): string {
+    return jsBeautify(source, {
+        indent_size: 4,
+        space_in_empty_paren: true,
+        jslint_happy: true,
+        end_with_newline: false,
+        ...options
+    });
+}
 
 export const methods = {
     hasSource: `
@@ -61,6 +72,40 @@ export const methods = {
         }
 
         return { line, column };
+    },
+
+    jsBeautify: performJSBeautify,
+    jsBeautifyRanges(source: string, options) {
+        const ranges: { range: [number, number], content: string }[] = [];
+        const beautified = performJSBeautify(source, options);
+
+        for (let i = 0, j = 0; i < source.length && j < beautified.length; i++, j++) {
+            if (source[i] !== beautified[j]) {
+                if (/\s/.test(source[i])) {
+                    const start = i;
+                    while (i < source.length && source[i] !== beautified[j] && /\s/.test(source[i])) {
+                        i++;
+                    }
+                    ranges.push({
+                        range: [start, i],
+                        content: ''
+                    });
+                } else {
+                    const start = j;
+
+                    j++;
+                    while (j < beautified.length && source[i] !== beautified[j]) {
+                        j++;
+                    }
+                    ranges.push({
+                        range: [i, i],
+                        content: beautified.slice(start, j)
+                    });
+                }
+            }
+        }
+
+        return ranges;
     },
 
     sourceFragment: `

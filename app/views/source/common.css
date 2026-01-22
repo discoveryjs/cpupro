@@ -27,6 +27,10 @@
 .view-source.cpupro-source .view-source__source .mark.discovery-view-has-tooltip:hover {
     outline: 1px solid currentcolor;
 }
+.view-source.cpupro-source .view-source__source .mark.formatting {
+    all: inherit;
+    display: inline;
+}
 
 .view-source.cpupro-source .spotlight {
     border: .5px solid #353535;
