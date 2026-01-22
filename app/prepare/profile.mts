@@ -105,9 +105,7 @@ function positionsFromScriptsLineColumns(
         let offset = -1;
 
         if (scriptEntry && lines[i]) {
-            debugger;
             offset = scriptEntry.getOffset(lines[i], columns[i]);
-            console.log(lines[i], columns[i], '=>', offset, callFrame);
         }
 
         result[i] = offset;
@@ -417,26 +415,9 @@ export async function createProfile(data: V8CpuProfile, dictionary: Dictionary, 
         // primaryLine reference (currently selected line in UI)
         defaultLineType: primaryLine?.type || null,
 
-        gcs: data._cpuproGcs || [],
+        traceEvents: data._cpuproTraceEvents || [],
 
         // ---- legacy fields ----
-
-        // FIXME: experimental
-        _commonTree: null as unknown,
-        _uniqueValuesMap: new Map(),
-        _uniqueValuesArray: new Array<number>(),
-        _callFramesMap: new Map(),
-        _callFramesVariance: new Uint32Array(),
-        _callFramesStable: new Uint32Array(),
-        _samplesAll: new Uint32Array(),
-        _samplesStable: new Uint32Array(),
-        _sampleSizeCounts: {},
-        _memoryType: data._memoryType ? new Uint8Array(data._memoryType) : null,
-        _memoryTypeNames: data._memoryTypeNames || [],
-        _memoryGc: data._memoryGc ? new Uint8Array(data._memoryGc) : null,
-        _memoryGcNames: data._memoryGcNames || [],
-        _memorySpace: data._memorySpace ? new Uint8Array(data._memorySpace) : null,
-        _memorySpaceNames: data._memorySpaceNames || [],
 
         heap: data._heap || null,
 

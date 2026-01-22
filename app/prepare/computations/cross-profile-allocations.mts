@@ -78,7 +78,7 @@ export function computeCrossProfileStableAllocations(profiles: Profile[]) {
     // const allSamplesSum = sum((profiles[1] || profiles[0])._samplesSum);
 
     // profile variance
-    for (const p of memoryProfiles) {
+    for (const p of memlines) {
         const { _samplesAll, _callFramesVariance } = p;
 
         _callFramesVariance.fill(0);

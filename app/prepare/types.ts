@@ -49,15 +49,15 @@ export type V8CpuProfileCpuproExtensions = {
     _cpuproAllocationSpaces?: number[]; // V8 map space IDs
     _cpuproAllocationSpaceNames?: Record<number, string>; // human-readable space names
     _cpuproAllocationLocations?: number[]; // allocation positions
-    _cpuproGcs?: V8CpuProfileGcEvent[];
+    _cpuproTraceEvents?: CpuProTraceEvent[];
 }
-export type V8CpuProfileGcEvent = {
-    type: 'minor' | 'major';
+export type CpuProTraceEvent = {
+    name: string;
+    cat: string;
     tm: number;
     duration: number;
-    reason: string;
-    usedHeapSizeBefore: number;
-    usedHeapSizeAfter: number;
+    sampleTraceId: number | null;
+    data: unknown;
 }
 export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     id: number;

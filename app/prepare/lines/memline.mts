@@ -237,6 +237,16 @@ export async function createMemline(
         valueLifespans: allocationLifespans,
         valueLifespansDict: allocationLifespanDict,
         valueSpaces: allocationSpaces,
-        valueSpacesDict: allocationSpaceNames
+        valueSpacesDict: allocationSpaceNames,
+
+        // experimental cross-profile properties
+        // _commonTree: null as unknown,
+        _uniqueValuesMap: new Map(),
+        _uniqueValuesArray: new Array<number>(),
+        _callFramesMap: new Map(),
+        _callFramesVariance: new Uint32Array(),
+        _callFramesStable: new Uint32Array(),
+        _samplesAll: new Uint32Array(),
+        _samplesStable: new Uint32Array()
     };
 }

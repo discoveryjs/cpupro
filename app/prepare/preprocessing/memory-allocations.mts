@@ -40,9 +40,6 @@ export function processCrossProfileAllocations(dict: Dictionary, profiles: Profi
             uniqueValues.add(size);
             sampleSizeCounts[size] = (sampleSizeCounts[size] || 0) + 1;
         }
-
-        memline.profile._sampleSizeCounts = Object.fromEntries(Object.entries(sampleSizeCounts)
-            .sort((a, b) => Number(a[0]) - Number(b[0])));
     }
 
     const uniqueValuesArray = [...uniqueValues].sort();

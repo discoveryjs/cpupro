@@ -131,9 +131,9 @@ export async function extractTimelineData(
     // process samples
     const {
         samples,
-        sampleCounts,
-        sampleLocations,
-        timeDeltas
+        // sampleCounts,
+        sampleLocations
+        // timeDeltas
     } = await work('process samples', () =>
         !skipSampleMerge
             ? mergeSamples(rawSamples, rawTimeDeltas, rawSampleLocations)

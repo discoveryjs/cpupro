@@ -1,6 +1,6 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
-import type { SourceMap, V8CpuProfile, V8CpuProfileGcEvent, V8CpuProfileScript, V8CpuProfileSet } from '../types.js';
+import type { SourceMap, CpuProTraceEvent, V8CpuProfile, V8CpuProfileScript, V8CpuProfileSet } from '../types.js';
 
 export type ChromiumTraceEventsProfile = {
     traceEvents: ChromiumTraceEvent[];
@@ -47,7 +47,7 @@ type ChromiumTraceProfileData = {
     startTime: number;
     endTime: number;
     scripts: Map<number, V8CpuProfileScript>;
-    events: V8CpuProfileGcEvent[];
+    traceEvents: CpuProTraceEvent[];
     chunks: ChromiumTraceProfileChunkEventData[];
     samples: number;
     hasLineColumns: boolean;
@@ -116,17 +116,18 @@ export function extractFromChromiumPerformanceProfile(
     // Filter only necessary events and sort them since the events do not have
     // to be in timestamp-sorted order
     events = events
-        .filter(e =>
-            e.name === 'CpuProfile' ||
-            e.name === 'Profile' ||
-            e.name === 'ProfileChunk' ||
-            e.name === 'ScriptCatchup' ||
-            e.name === 'LargeScriptCatchup' ||
-            e.name === 'MinorGC' ||
-            e.name === 'MajorGC' ||
-            e.name === 'process_name' ||
-            e.name === 'thread_name'
-        )
+        .slice()
+        // .filter(e =>
+        //     e.name === 'CpuProfile' ||
+        //     e.name === 'Profile' ||
+        //     e.name === 'ProfileChunk' ||
+        //     e.name === 'ScriptCatchup' ||
+        //     e.name === 'LargeScriptCatchup' ||
+        //     e.name === 'MinorGC' ||
+        //     e.name === 'MajorGC' ||
+        //     e.name === 'process_name' ||
+        //     e.name === 'thread_name'
+        // )
         .sort((a, b) => a.ts - b.ts);
 
     for (const event of events) {
@@ -155,7 +156,6 @@ export function extractFromChromiumPerformanceProfile(
                     trace_ids: {},
                     lines: [],
                     columns: [],
-                    _cpuproGcs: [],
                     ...event.args.data as Partial<V8CpuProfile>
                 };
                 // profile.threadId = event.tid;
@@ -169,7 +169,7 @@ export function extractFromChromiumPerformanceProfile(
                     startTime: (event.args.data as Partial<V8CpuProfile>).startTime || 0,
                     endTime: 0,
                     scripts: new Map(),
-                    events: [],
+                    traceEvents: [],
                     chunks: [],
                     samples: 0,
                     hasLineColumns: false,
@@ -245,14 +245,19 @@ export function extractFromChromiumPerformanceProfile(
                     continue;
                 }
 
-                profileData.events.push({
-                    type: event.name === 'MinorGC' ? 'minor' : 'major',
+                profileData.traceEvents.push({
+                    name: event.name,
+                    cat: event.cat,
                     tm: event.ts,
                     duration: event.dur,
-                    reason: event.args?.type || '',
-                    usedHeapSizeBefore: event.args?.usedHeapSizeBefore || 0,
-                    usedHeapSizeAfter: event.args?.usedHeapSizeAfter || 0
+                    sampleTraceId: null,
+                    data: {
+                        reason: event.args?.type || '',
+                        usedHeapSizeBefore: event.args?.usedHeapSizeBefore || 0,
+                        usedHeapSizeAfter: event.args?.usedHeapSizeAfter || 0
+                    }
                 });
+
                 break;
             }
 
@@ -284,6 +289,40 @@ export function extractFromChromiumPerformanceProfile(
                     profileData.endTime = endTime;
                 }
             }
+
+            default: {
+                let sampleTraceId: number | null = null;
+                let data: unknown = null;
+
+                if ('sampleTraceId' in event.args) {
+                    sampleTraceId = event.args.sampleTraceId;
+                    data = event.args;
+                } else if (typeof event.args.data?.sampleTraceId === 'number') {
+                    sampleTraceId = event.args.data.sampleTraceId;
+                    data = event.args.data;
+                } else if (typeof event.args.beginData?.sampleTraceId === 'number') {
+                    sampleTraceId = event.args.beginData.sampleTraceId;
+                    data = event.args.beginData;
+                }
+
+                if (sampleTraceId !== null) {
+                    const profileData = profileDataByTid.get(`${event.pid}:${event.tid}`);
+
+                    if (!profileData) {
+                        console.warn(`Ignoring ${event.name} for undeclared Profile (pid: ${event.pid}, tid: ${event.tid})`);
+                        break;
+                    }
+
+                    profileData.traceEvents.push({
+                        name: event.name,
+                        cat: event.cat,
+                        tm: event.ts,
+                        duration: event.dur || 0,
+                        sampleTraceId,
+                        data
+                    });
+                }
+            }
         }
     }
 
@@ -309,7 +348,7 @@ export function extractFromChromiumPerformanceProfile(
             trace_ids: {},
             lines: undefined,
             columns: undefined,
-            _cpuproGcs: profileData.events
+            _cpuproTraceEvents: profileData.traceEvents
         };
 
         if (processName === 'CrRendererMain') {
@@ -345,6 +384,10 @@ export function extractFromChromiumPerformanceProfile(
                 }
             }
         }
+        console.log({
+            traceEvents: profileData.traceEvents,
+            trace_ids: profile.trace_ids
+        });
 
         if (profileData.hasLineColumns) {
             profile.lines = buildChunkedArray('lines', chunks, samples);

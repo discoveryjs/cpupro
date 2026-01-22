@@ -88,6 +88,16 @@ export type ProfileMemline = ProfileLine & {
     valueLifespansDict: string[] | null;
     valueSpaces: Uint32Array | null;
     valueSpacesDict: string[] | null;
+
+    // experimental fields for cross-profile stable allocations
+    // _commonTree: TreeSource<CpuProCallFrame>;
+    _uniqueValuesMap: Map<number, number>;
+    _uniqueValuesArray: Array<number>;
+    _callFramesMap: Map<number, number>;
+    _callFramesVariance: Uint32Array;
+    _callFramesStable: Uint32Array;
+    _samplesAll: Uint32Array;
+    _samplesStable: Uint32Array;
 };
 
 export type GcEpochDictEntry = {
