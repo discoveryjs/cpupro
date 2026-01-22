@@ -19,7 +19,7 @@ const metricView = {
 const metricCells = metrics.map(({ key, header }) => ({
     header,
     className: 'metric-cell lifespan-' + key,
-    sorting: `$["${key}"].sum desc`,
+    sorting: `$["${key}"].sum or 0 desc`,
     data: `$["${key}"]`,
     content: metricView,
     footer: {

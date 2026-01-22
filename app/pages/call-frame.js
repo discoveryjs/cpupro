@@ -132,6 +132,7 @@ const ancestorsTree = {
                     },
                     {
                         view: 'total-value',
+                        when: '$.secondaryTree',
                         data: '#.secondaryTree.getMetrics(node.nodeIndex)',
                         line: '=#.secondaryLine'
                     },
@@ -180,7 +181,7 @@ const pageContent = [
 
     {
         view: 'timeline-profiles',
-        data: '#.data.profiles',
+        data: '#.profiles',
         startTime: '=.[not disabled].primaryLine().axisStart.min()',
         endTime: '=.[not disabled].primaryLine().axisEnd.max()',
         whenData: 'size() > 1'

@@ -287,7 +287,7 @@ const categoriesTimeline = {
             view: 'list',
             className: 'events-x',
             when: 'scopeLine().type = "timeline"',
-            data: 'scopeProfile("timeline") | $start: timeline | axisStart + axisStartNoSamples; $total: timeline.axisTotal; gcs.({ start: tm - $start, $total, ... })',
+            data: 'scopeProfile("timeline") | $start: timeline | axisStart + axisStartNoSamples; $total: timeline.axisTotal; traceEvents.[name in ["MinorGC", "MajorGC"]].({ start: tm - $start, $total, ... })',
             whenData: true,
             limit: false,
             itemConfig: {
@@ -296,7 +296,7 @@ const categoriesTimeline = {
                 postRender: (el, _, data) => {
                     el.style.setProperty('--start', (100 * data.start / data.total).toFixed(4) + '%');
                     el.style.setProperty('--duration', (100 * data.duration / data.total).toFixed(4) + '%');
-                    el.style.setProperty('--color', data.type === 'minor' ? '#f7b26ba0' : '#f78c6ba0');
+                    el.style.setProperty('--color', data.name === 'MinorGC' ? '#f7b26ba0' : '#f78c6ba0');
                 }
             }
         },
@@ -384,8 +384,8 @@ const categoriesTimeline = {
                 ]
             }
         },
-        // histCodes,
-        // histHeapTotal,
+        histCodes,
+        histHeapTotal,
         histAllocationTypes,
         histAllocationLifespan,
         histAllocationGcs,
