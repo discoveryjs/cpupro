@@ -29,34 +29,52 @@ export type CreateProfileApi = {
     work<T>(name: string, fn: () => T): Promise<T>;
 }
 
+type BucketProfileEntry = {
+    profile: Profile;
+    disabled: boolean;
+};
 export function toggleProfile(model: Model, profile: Profile) {
-    const { currentSamplesConvolutionRule } = model.context;
     const {
+        currentSamplesConvolutionRule,
         primaryProfile,
-        profiles,
+        profiles
+    } = model.context;
+    const {
         callFramesProfilePresence
     } = model.data;
-    const disable = !profile.disabled;
-    const enabledProfiles = profiles.filter((p: Profile) => p === profile
-        ? p.disabled // for the profile to toggle, the disabled property will be inverted
-        : !p.disabled
-    );
+    const bucketProfileEntry = profiles.find((entry: BucketProfileEntry) => entry.profile === profile);
 
-    if ((disable && enabledProfiles.length < 2) || !profiles.includes(profile)) {
+    if (!bucketProfileEntry) {
         return false;
     }
 
-    const newPrimaryProfile = disable && profile === primaryProfile
+    const disable = !bucketProfileEntry.disabled;
+    const enabledProfiles = profiles.filter((entry: BucketProfileEntry) => entry === bucketProfileEntry
+        ? entry.disabled // for the profile to toggle, the disabled property will be inverted
+        : !entry.disabled
+    ).map(({ profile }) => profile);
+
+    if (disable && enabledProfiles.length < 2) {
+        return false;
+    }
+
+    const newPrimaryProfile = disable && bucketProfileEntry.profile === primaryProfile
         ? enabledProfiles[0] || null
         : primaryProfile;
 
-    profile.disabled = !profile.disabled;
     model.data = {
         ...model.data,
         totalTime: enabledProfiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
         primaryProfile: newPrimaryProfile,
         currentProfile: newPrimaryProfile
     };
+    model.setContext({
+        primaryProfile: newPrimaryProfile,
+        profiles: profiles.map((entry: BucketProfileEntry) => ({
+            ...entry,
+            disabled: entry === bucketProfileEntry ? disable : entry.disabled
+        }))
+    });
 
     computeCrossProfileUsage(enabledProfiles, callFramesProfilePresence);
     setSamplesConvolutionRule(enabledProfiles, callFramesProfilePresence, currentSamplesConvolutionRule);

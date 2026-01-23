@@ -11,14 +11,16 @@ function makeSampleBins(
     mask: Uint8Array,
     samples: number[] | Uint32Array,
     values: number[] | Uint32Array,
-    total: number
+    total: number,
+    skip = 0
 ) {
     const bins = new Float64Array(n);
     const step = total / n;
-    let end = step;
-    let binIdx = 0;
+    let binIdx = Math.floor(skip / step);
+    let end = (binIdx + 1) * step;
+    let offset = skip;
 
-    for (let i = 0, offset = 0; i < samples.length; i++) {
+    for (let i = 0; i < samples.length; i++) {
         const accept = mask[samples[i]];
         const delta = values[i];
 
@@ -55,12 +57,35 @@ function makeSampleBins(
     return bins;
 }
 
+type BinOptions = {
+    test?: unknown;
+    n?: number;
+    skip?: number;
+    total?: number;
+    line?: ProfileLine | ProfileLineType;
+}
+
 export const methods = {
     binCallsFromMask(mask: Uint8Array, n = 500, line?: ProfileLine | ProfileLineType) {
         const { samples, values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
         return Array.from(bins);
+    },
+
+    binSignals(tree, options: BinOptions) {
+        const {
+            test = () => true,
+            n = 500,
+            skip = 0,
+            total,
+            line
+        } = options || {};
+        const { samples, values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const mask = makeSamplesMask(tree, test);
+        const bins = makeSampleBins(n, mask, samples, values, total ?? axisTotal, skip);
+
+        return bins;
     },
 
     binCalls(tree, test, n = 500, line?: ProfileLine | ProfileLineType) {
@@ -75,7 +100,7 @@ export const methods = {
         // }
         // bins[0] = step;
 
-        return Array.from(bins); // TODO: remove when jora has support for TypedArrays
+        return bins;
     },
 
     binHeapEvents(

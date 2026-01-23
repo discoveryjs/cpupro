@@ -2,16 +2,19 @@
     position: relative;
     border-bottom: 1px solid #0004;
     margin: 1px 0;
+    margin-right: calc(-1 * var(--discovery-page-padding-right));
 }
 
 .view-timeline-profiles .toggle-disabled-button {
     position: absolute;
     left: -21px;
     width: 20px;
-    height: 8px;
+    height: 16px;
     box-sizing: border-box;
     padding: 0;
-    margin: .5px 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    /* margin: .5px 0; */
     font-size: 1px;
 }
 .view-timeline-profiles .toggle-disabled-button:has(+ .profile.disabled):not(:hover) {
@@ -20,14 +23,39 @@
 
 .view-timeline-profiles > .profile {
     position: relative;
-    margin-left: calc(100% * var(--x1));
-    width: calc(100% * (var(--x2) - var(--x1)));
-    height: 8px;
-    background-color: #54a6eea6;
-    border: .5px solid black;
+    margin: .5px 0;
+    background-color: #54a6ee11;
+}
+.view-timeline-profiles > .profile > .caption {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    z-index: 1;
+    left: 2px;
+    top: 1px;
+    bottom: 1px;
+    padding: 0 4px;
+    border-radius: 3px;
+    opacity: .5;
+    font-size: 10px;
+    background-color: #0008;
+    pointer-events: none;
+    user-select: none;
+}
+.view-timeline-profiles > .profile > .viewport {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(100% * var(--x1));
+    right: calc(100% * (1 - var(--x2)));
+    background-color: #54a6ee57;
+}
+.view-timeline-profiles > .profile > .view-sample-histogram {
+    border: none;
+    padding: 1px 0 0;
 }
 
-.view-timeline-profiles > .profile > .profiles-presence {
+.view-timeline-profiles > .profile > .viewport > .profiles-presence {
     --border-width: .5px;
     position: absolute;
     top: 0;
@@ -37,27 +65,35 @@
     border-left: var(--border-width) solid color-mix(in srgb, var(--discovery-background-color) 50%, transparent);
     background-color: rgb(0, 0, 0, calc(.1 + .4 * (1 - var(--presence))));
 }
-.view-timeline-profiles > .profile > .profiles-presence:first-child {
+.view-timeline-profiles > .profile > .viewport > .profiles-presence:first-child {
     display: none;
 }
-.view-timeline-profiles > .profile > .profiles-presence:last-child {
+.view-timeline-profiles > .profile > .viewport > .profiles-presence:last-child {
     --color: #9b6262;
     background-image: linear-gradient(to right, var(--color), var(--color));
     background-size: 16px;
 }
 
 .view-timeline-profiles > .profile.selected {
-    background-color: orange;
+    background-color: #ffd80015;
+}
+.view-timeline-profiles > .profile.selected > .viewport {
+    background-color: #ffd80069;
 }
 .view-timeline-profiles > .profile.disabled {
-    background-color: #888;
     opacity: .25;
 }
-.view-timeline-profiles > .profile.disabled > .profiles-presence {
+.view-timeline-profiles > .profile.disabled > .viewport {
+    background-color: #888;
+}
+.view-timeline-profiles > .profile.disabled > .viewport > .profiles-presence {
     display: none;
+}
+.view-timeline-profiles > .profile:hover > .caption {
+    opacity: 1;
 }
 .view-timeline-profiles .toggle-disabled-button:hover + .profile:not(.selected),
 .view-timeline-profiles > .profile:not(.selected, .disabled):hover {
-    background-color: #6d9ec9;
+    background-color: #6d9ec988;
     cursor: pointer;
 }

@@ -553,7 +553,7 @@ const pageContent = [
     {
         view: 'timeline-profiles',
         when: experimentalFeatures,
-        data: '#.data.profiles',
+        data: '#.profiles',
         whenData: 'size() > 1'
     },
 

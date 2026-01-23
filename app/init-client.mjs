@@ -90,7 +90,24 @@ model.on('data', () => {
         primaryLineType = defaultProfile?.defaultLineType;
     }
 
+    const primaryBucket = {
+        name: 'primary',
+        mode: 'unknown',
+        lines: []
+    };
+    const secondaryBucket = {
+        name: 'secondary',
+        mode: 'unknown',
+        lines: []
+    };
+
     model.setContext({
+        buckets: [primaryBucket, secondaryBucket],
+        profiles: Array.from(profiles || [], profile => ({
+            disabled: false,
+            bucket: primaryBucket,
+            profile
+        })),
         primaryProfile: defaultProfile,
         primaryLineType,
         scopeProfile: null, // always null by default, views can override it
