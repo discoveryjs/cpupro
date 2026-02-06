@@ -1,9 +1,9 @@
 import * as allocationSamplesMatrix from './allocation-samples-matrix.js';
-import * as duration from './duration.js';
+import * as metric from './metric.js';
 import * as sources from './sources.js';
 
 discovery.apply([
     allocationSamplesMatrix,
-    duration,
+    metric,
     sources
 ]);
