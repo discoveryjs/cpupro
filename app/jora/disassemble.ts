@@ -1,7 +1,6 @@
 import type { CpuProCallFrame, CpuProCallFrameCode } from '../prepare/types.js';
 import { InlineTreeEntry, PositionTableEntry, methods as positionTableMethods } from './position-table.js';
 import { bytecodeHandlersDict } from '../dicts/bytecode-handlers.js';
-import { hasOwn } from '@discoveryjs/discovery/utils';
 
 const bytecodeLineRx = /^(\s*\d+\s+[SE]>)?(\s+0[x0][a-f0-9]+\s+)(@\s*\d+\s*:)((?:\s+[a-f0-9]{2})+\s+)(\S+)((?:\s+[\[#<a-z]\S+\s*,)*\s*[\[#<a-z]\S+)?(\s*\([^)]+\))?(\s*;;;.+)?/i;
 const machineCodeLineRx = /^(\s*0[x0][a-f0-9]+\s+)([a-f0-9]+\s+)([a-f0-9]+\s+)(REX\.\S+\s+)?(\S+(?: pool begin)?)((?:\s+(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?)\s*,)*\s*(?:[#<a-z\d]\S+(?:\s+#[a-f0-9]+)?|\[[^\]]+(?:,\s*\S+)?\]!?))?(\s*\(addr [^)]+\))?(\s*(?:\(root \([^)]+\)\)|\([^)]+\)|<\S+>))?(\s*;;.+)?/i;
@@ -26,7 +25,7 @@ export type DisassembleBlockRange = {
 };
 
 function getBytecodeDefinition(name: string) {
-    if (hasOwn(bytecodeHandlersDict, name)) {
+    if (Object.hasOwn(bytecodeHandlersDict, name)) {
         return bytecodeHandlersDict[name];
     }
 

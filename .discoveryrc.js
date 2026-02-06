@@ -19,11 +19,13 @@ module.exports = {
     },
     script: {
         modules: [
+            './init-core.mjs',
             './text-views/index.js'
         ]
     },
     view: {
         assets: [
+            './init-core.mjs',
             './init-client.mjs',
             './pages/all-call-frames.js',
             './pages/all-modules.js',
