@@ -173,7 +173,7 @@
 .page-default .view-expand.unavailable > .header .expand-label {
     min-width: 0;
 }
-.page-default .view-expand.expanded > .header .labeled-value-groups {
+.page-default .view-expand.expanded > .header .labeled-value-groups:not(.persistent) {
     /* display: none; */
     opacity: 0;
 }
@@ -265,6 +265,12 @@
 }
 .page-default .category-timelines > .view-expand > .content > .category-timelines-item:first-child > * {
     margin-top: 1px;
+}
+.page-default .category-timelines > .view-expand .view-cpupro-chart {
+    grid-column: 3 / 4;
+}
+.page-default .category-timelines > .user-timings-timeline .view-track-timeline {
+    grid-column: 3 / 4;
 }
 .page-default .category-timelines .data-unavailable {
     grid-column: 1 / 4;

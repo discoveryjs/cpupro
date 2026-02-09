@@ -21,7 +21,10 @@ const abbr = {
 };
 
 function shortNum(current, units, base = 1000) {
+    const sign = current < 0 ? '-' : '';
     let unitIdx = 0;
+
+    current = Math.abs(current);
 
     while (current > base && unitIdx < units.length - 1) {
         current /= base;
@@ -34,7 +37,7 @@ function shortNum(current, units, base = 1000) {
             ? current.toFixed(1).replace(/\.0/, '')
             : Math.round(current);
 
-    return value + units[unitIdx];
+    return sign + value + units[unitIdx];
 }
 
 export const assertions = {
@@ -124,6 +127,27 @@ export const methods = {
         if (typeof source?.getEntry === 'function') {
             return source.getEntry(subject);
         }
+    },
+    updownSum(values, getValue = value => value) {
+        let up = 0;
+        let down = 0;
+
+        if (Array.isArray(values) && values.length > 1) {
+            let prev = getValue(values[0]);
+            for (let i = 1; i < values.length; i++) {
+                const value = getValue(values[i]);
+
+                if (value > prev) {
+                    up += value - prev;
+                } else if (value < prev) {
+                    down += prev - value;
+                }
+
+                prev = value;
+            }
+        }
+
+        return { up, down };
     },
     allocationsMatrix(tree, sampleTimings, subject, profile) {
         profile = getProfileOrScopeProfile(profile, this.context);

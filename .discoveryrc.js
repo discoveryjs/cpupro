@@ -59,6 +59,8 @@ module.exports = {
             './views/call-frame-loc-badge.js',
             './views/cards/deopt-card.css',
             './views/cards/deopt-card.js',
+            './views/chart.css',
+            './views/chart.js',
             './views/code-tier-badge.css',
             './views/code-tier-badge.js',
             './views/code-hotness-icon.css',

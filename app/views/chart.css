@@ -1,0 +1,29 @@
+.view-cpupro-chart {
+    position: relative;
+}
+.view-cpupro-chart svg {
+    display: block;
+}
+.view-cpupro-chart path {
+    fill: var(--color, #888);
+}
+.view-cpupro-chart .y-tick {
+    stroke: #555;
+}
+.view-cpupro-chart .y-tick-label {
+    position: absolute;
+    top: var(--top);
+    right: 100%;
+    color: #777;
+    font-size: 10px;
+    padding-right: 4px;
+    transform: translateY(-50%);
+}
+.view-cpupro-chart .y-tick-label:nth-child(1 of .y-tick-label) {
+    padding-bottom: 4px;
+    color: #aaa;
+}
+.view-cpupro-chart .y-tick-label:nth-last-child(1 of .y-tick-label) {
+    padding-top: 4px;
+    color: #aaa;
+}

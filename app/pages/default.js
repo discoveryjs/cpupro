@@ -3,6 +3,7 @@ const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { supportedFormats } = require('../prepare/index.js');
 const { sessionExpandState, primaryLineSwitcher } = require('./common.js');
 const { categoriesFractionBars } = require('./default-page/categories-fraction-bar.js');
+const { chartUsedHeap } = require('./default-page/chart-used-heap.js');
 const { histAllocationGcs } = require('./default-page/hist-allocation-gcs.js');
 const { histAllocationLifespan } = require('./default-page/hist-allocation-lifespan.js');
 const { histAllocationSpaces } = require('./default-page/hist-allocation-spaces.js');
@@ -287,7 +288,7 @@ const categoriesTimeline = {
             view: 'list',
             className: 'events-x',
             when: 'scopeLine().type = "timeline"',
-            data: 'scopeProfile("timeline") | $start: timeline | axisStart + axisStartNoSamples; $total: timeline.axisTotal; traceEvents.[name in ["MinorGC", "MajorGC"]].({ start: tm - $start, $total, ... })',
+            data: 'scopeProfile() | $start: timeline | axisStart + axisStartNoSamples; $total: timeline.axisTotal; traceEvents.[name in ["MinorGC", "MajorGC"]].({ start: tm - $start, $total, ... })',
             whenData: true,
             limit: false,
             itemConfig: {
@@ -389,7 +390,8 @@ const categoriesTimeline = {
         histAllocationTypes,
         histAllocationLifespan,
         histAllocationGcs,
-        histAllocationSpaces
+        histAllocationSpaces,
+        chartUsedHeap
     ]
 };
 
