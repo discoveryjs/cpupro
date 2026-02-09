@@ -158,8 +158,8 @@ export class Dictionary {
         let callFrameIndex = resultMap.get(columnNumber);
         if (callFrameIndex === undefined) {
             const sourceScript = script;
-            const end = normalizeLoc(inputCallFrame.end ?? getFunctionEndFromScriptLineColumn(sourceScript, lineNumber, columnNumber, functionName));
-            const start = end !== -1 ? normalizeLoc(inputCallFrame.start ?? getPosFromScriptLineColumn(sourceScript, lineNumber, columnNumber)) : -1;
+            const end = normalizeLoc(inputCallFrame.end);
+            const start = normalizeLoc(inputCallFrame.start);
             const module = this.resolveModule(sourceScript, functionName);
             const { name, kind, regexp } = this.#resolveFunctionName(functionName, lineNumber, columnNumber);
             const callFrame: CpuProCallFrame = {
@@ -178,6 +178,16 @@ export class Dictionary {
                 package: module.package,
                 module
             };
+
+            setLazyStartEndIfNeeded(
+                callFrame,
+                lineNumber,
+                columnNumber,
+                sourceScript,
+                functionName,
+                start,
+                end
+            );
 
             callFrameIndex = this.callFrames.push(callFrame) - 1;
             resultMap.set(columnNumber, callFrameIndex);
@@ -658,4 +668,35 @@ function resolveCallFrameKind(script: CpuProScript | null, name: string, regexp:
     }
 
     return 'function';
+}
+
+function setLazyStartEndIfNeeded(
+    callFrame: CpuProCallFrame,
+    lineNumber: number,
+    columnNumber: number,
+    sourceScript: CpuProScript | null,
+    functionName: string,
+    start: number,
+    end: number
+) {
+    if (lineNumber !== -1 && columnNumber !== -1 && sourceScript && typeof sourceScript.source === 'string') {
+        if (start === -1) {
+            Object.defineProperty(callFrame, 'start', {
+                get() {
+                    const offset = getPosFromScriptLineColumn(sourceScript, lineNumber, columnNumber);
+                    Object.defineProperty(this, 'start', { value: offset });
+                    return offset;
+                }
+            });
+        }
+        if (end === -1) {
+            Object.defineProperty(callFrame, 'end', {
+                get() {
+                    const offset = getFunctionEndFromScriptLineColumn(sourceScript, lineNumber, columnNumber, functionName);
+                    Object.defineProperty(this, 'end', { value: offset });
+                    return offset;
+                }
+            });
+        }
+    }
 }

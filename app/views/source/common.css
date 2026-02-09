@@ -30,6 +30,7 @@
 .view-source.cpupro-source .view-source__source .mark.formatting {
     all: inherit;
     display: inline;
+    visibility: hidden;
 }
 
 .view-source.cpupro-source .spotlight {

@@ -104,7 +104,6 @@ function positionsFromScriptsLineColumns(
         const script = scripts[i];
         if (script && script.source) {
             scriptLineBoundaries[script.id] = createLineBoundaries(script.source);
-            scriptLineBoundaries[script.id].script = script;
         }
     }
 
