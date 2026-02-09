@@ -12,7 +12,8 @@ export const categoriesFractionBars = {
         }).sort(value desc)`,
     tooltip: {
         view: 'labeled-value-list',
-        item: 'labeled-value{ value: "metric:{ value, total }" }'
+        value: 'metric',
+        kind: 'grid'
     },
     segment: {
         // formatValue: '==> unit()'

@@ -2,7 +2,7 @@ const props = `is not array? | {
     color,
     text: #.props has no 'content' ? is (string or number or boolean) ?: text,
     content: undefined,
-    value is number
+    value is not number ?: { view: 'text', data: @.value }
 } | overrideProps()`;
 
 discovery.view.define('labeled-value', function(el, props, data, context) {
@@ -31,8 +31,3 @@ discovery.view.define('labeled-value', function(el, props, data, context) {
 
     return Promise.all(renders);
 }, { tag: 'span', props });
-
-
-discovery.view.define('labeled-value-list', function(el, props, data, context) {
-    return this.render(el, this.composeConfig('list', props), data, context);
-});

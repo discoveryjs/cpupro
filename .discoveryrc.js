@@ -71,6 +71,8 @@ module.exports = {
             './views/flamechart-expand.js',
             './views/fractions-bar.css',
             './views/fractions-bar.js',
+            './views/labeled-value-list.css',
+            './views/labeled-value-list.js',
             './views/labeled-value.css',
             './views/labeled-value.js',
             './views/metric.css',

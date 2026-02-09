@@ -1,17 +1,3 @@
-.view-labeled-value-list {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: baseline;
-}
-.view-labeled-value-list > .view-list,
-.view-labeled-value-list > .view-list > .view-list-item,
-.view-labeled-value-list > .view-list > .view-list-item > .view-labeled-value {
-    display: contents;
-}
-.view-labeled-value-list > .view-list > .view-list-item > .view-labeled-value > .labeled-value__label {
-    padding-right: 2ex;
-}
-
 .view-labeled-value {
     --color: #888;
     display: inline-flex;
