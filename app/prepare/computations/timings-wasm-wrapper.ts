@@ -1,5 +1,5 @@
 /* eslint-env browser */
-import { decodeBase64 } from '../misc/utils';
+import { base64 } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
 import computeTimingsWasmSourceBase64 from './timings.wasm';
 import { CallTree } from './call-tree';
 import { CpuProNode } from '../types';
@@ -94,7 +94,7 @@ export type ComputeTimingsApi = {
 };
 
 function createWasmModule(source: string, imports = {}) {
-    const sourceBytes = decodeBase64(source);
+    const sourceBytes = base64.decodeBytes(source);
     const importObject = { imports };
     const module = new WebAssembly.Module(sourceBytes);
 
