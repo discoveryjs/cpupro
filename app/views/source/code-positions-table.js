@@ -12,7 +12,7 @@ discovery.view.define('code-positions-table-viewer', {
         content: [
             { when: '#.mode="table"', content: {
                 view: 'table',
-                data: 'positions.({ ..., entry: inline is number ? `C${code}O${offset}I${inline}` : `C${code}O${offset}` })',
+                data: 'positions | is not string ?: parsePositions(@.size) | .({ ..., entry: inline is number ? `C${code}O${offset}I${inline}` : `C${code}O${offset}` })',
                 cols: [
                     { header: '#', data: 'index' },
                     { header: 'Entry', sorting: 'entry ascN', content: 'text-match{ text: entry, match: /\\D+/g }' },

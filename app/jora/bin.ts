@@ -309,7 +309,7 @@ export const methods = {
         return bins;
     },
 
-    binScriptFunctionCodesTotal(functionCodes: CpuProCallFrameCode[], n = 500, profile = this.context.currentProfile) {
+    binScriptFunctionCodesTotal(functionCodes: CpuProCallFrameCode[], n = 500, profile?: Profile) {
         const { axisTotal } = getProfileOrScopeProfile(profile, this.context)?.timeline as ProfileLine;
         const step = axisTotal / n;
         const binByTier = new Map<V8CallFrameCodeType, Uint32Array>();

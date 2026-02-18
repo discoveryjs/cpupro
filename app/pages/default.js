@@ -137,7 +137,7 @@ const categoriesTimeline = {
             segments: '=samples[].binCount',
             selectionStart: '=line.samplesMetricsFiltered.rangeStart',
             selectionEnd: '=line.samplesMetricsFiltered.rangeEnd',
-            rangeManager: '=scopeLine().samplesMetricsFiltered',
+            rangeManager: '=line.samplesMetricsFiltered',
             onChange(state, name, el, data, context) {
                 // console.log('change', state);
                 // const t = Date.now();

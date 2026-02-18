@@ -1,3 +1,5 @@
+const { resolveScopeProfileLine } = require('../jora/profile.ts');
+
 discovery.view.define('subject-with-nested-timeline', {
     view: 'context',
     data: `
@@ -113,7 +115,7 @@ discovery.view.define('subject-with-nested-timeline', {
                         color: code.tier.color(true),
                         tm,
                         duration: duration
-                            or ($lastSeen: code | module or callFrame | timestamps($type).lastSeen;
+                            or ($lastSeen: code | module or callFrame | bounds($type).lastSeen;
                                 $lastSeen > tm ? $step * ($lastSeen / $step).ceil() - tm)
                             or $totalValue - tm
                     })
@@ -135,12 +137,12 @@ discovery.view.define('subject-with-nested-timeline', {
                         ] }
                     ]
                 },
-                postRender(el, _, data, ctx) {
+                postRender(el, _, data, context) {
                     const { tm, duration, color } = data;
-                    const totalValue = ctx.currentProfile.totalValue;
+                    const { axisTotal, samplesMetricsFiltered } = resolveScopeProfileLine(null, context);
 
-                    el.style.setProperty('--pos', tm / totalValue);
-                    el.style.setProperty('--duration', duration / totalValue);
+                    el.style.setProperty('--pos', tm / axisTotal);
+                    el.style.setProperty('--duration', duration / axisTotal);
                     el.style.setProperty('--tier-color', 'rgb(' + color + ', .68)');
                     // el.addEventListener('click', () => {
                     //     ctx.currentProfile.samplesTimingsFiltered.setRange(code.tm, code.tm + duration);

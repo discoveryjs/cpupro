@@ -1,8 +1,8 @@
 export default function({ textView }) {
     textView.define('call-frame-source', {
         view: 'source',
-        context: '{ ..., currentProfile: #.data.currentProfile }',
         data: `{
+            $profile: scopeProfile();
             $script;
             $source: $script.source;
             $sourceSliceStart: $source.lastIndexOf('\\n', start) + 1;
@@ -11,10 +11,10 @@ export default function({ textView }) {
             $line: line or 1;
             $start;
             $end;
-            $unit: #.currentProfile.type = 'memory' ? 'Kb' : 'ms';
-            $scriptFunction: #.currentProfile.codesByCallFrame[=> callFrame = @];
-            $values: #.currentProfile
-                | #.nonFilteredTimings
+            $unit: $profile.type = 'memory' ? 'Kb' : 'ms';
+            $scriptFunction: $profile.codesByCallFrame[=> callFrame = @];
+            $values: $profile
+                | $profile.nonFilteredTimings
                     ? callFramePositionsTimings or callFramesTimings
                     : callFramePositionsTimingsFiltered or callFramesTimingsFiltered;
 

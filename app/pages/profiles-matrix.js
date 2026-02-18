@@ -387,7 +387,6 @@ const pageContent = [
 
 discovery.page.define('profiles-matrix', {
     view: 'switch',
-    context: '{ ...#, currentProfile }',
     content: [
         { when: 'profiles.size() <= 1', content: {
             view: 'alert-warning',

@@ -1,6 +1,5 @@
 discovery.page.define('samples', {
     view: 'context',
-    context: '{ ...#, currentProfile }',
     data: `{
         $line: scopeLine();
         $totalValue: $line.axisTotal;
@@ -37,7 +36,7 @@ discovery.page.define('samples', {
             content: [
                 'text:"Sampling interval: " + scopeLine().sourceInfo.samplesInterval',
                 'html:"<br>"'
-                // 'text:"Estimated sampling interval: " + currentProfile.timeDeltas.estimateSamplingInterval().toFixed(0)'
+                // 'text:"Estimated sampling interval: " + scopeLine().timeDeltas.estimateSamplingInterval().toFixed(0)'
             ]
         },
         {

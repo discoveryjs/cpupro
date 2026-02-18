@@ -1,5 +1,6 @@
 import { CallTree } from '../prepare/computations/call-tree.js';
 import { TreeMetrics } from '../prepare/computations/metrics.js';
+import { getProfileOrScopeProfile } from './profile.js';
 
 export function makeDictMask(tree, test) {
     const { dictionary } = tree;
@@ -209,14 +210,15 @@ export const methods = {
         return result;
     },
 
-    timestamps(entry, type, profile = this.context.currentProfile) {
+    bounds(entry, type, profile) {
+        const { tree } = getProfileOrScopeProfile(profile, this.context)?.timeline;
         let map;
 
         switch (type) {
-            case 'call-frame': map = profile?.callFramesTreeTimestamps.entriesMap; break;
-            case 'module':     map = profile?.modulesTreeTimestamps.entriesMap; break;
-            case 'package':    map = profile?.packagesTreeTimestamps.entriesMap; break;
-            case 'category':   map = profile?.categoriesTreeTimestamps.entriesMap; break;
+            case 'call-frame': map = tree.callFrames.bounds.entriesMap; break;
+            case 'module':     map = tree.modules.bounds.entriesMap; break;
+            case 'package':    map = tree.packages.bounds.entriesMap; break;
+            case 'category':   map = tree.categories.bounds.entriesMap; break;
         }
 
         if (map) {

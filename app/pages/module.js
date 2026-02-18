@@ -57,7 +57,7 @@ const pageContent = [
         ],
         content: `nested-timings-tree:scopeLine() | {
             subject: @,
-            tree: profile.modulesTree,
+            tree: tree.modules.filtered.tree,
             metrics: dict.modules.filtered
         }`
     },

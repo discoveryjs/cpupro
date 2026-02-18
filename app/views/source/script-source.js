@@ -8,7 +8,7 @@ discovery.view.define('script-source', {
             className: 'cpupro-source',
             data: `{
                 $callFrames;
-                $callFrameCodes: #.currentProfile.codesByScript[=> script = @].callFrameCodes or callFrames.({
+                $callFrameCodes: scopeProfile().codesByScript[=> script = @].callFrameCodes or callFrames.({
                     callFrame: $,
                     codes: []
                 });

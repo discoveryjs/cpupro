@@ -14,8 +14,8 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
     const bucketProfiles = props.profiles || (Array.isArray(data) ? data : []);
     const min = props.startTime || props.startTime === 0
         ? props.startTime
-        : discovery.query('profile.startTime.min() or 0', bucketProfiles);
-    const max = props.endTime || discovery.query('profile.endTime.max() or 0', bucketProfiles);
+        : discovery.query('profile.timeline.axisStart.min() or 0', bucketProfiles);
+    const max = props.endTime || discovery.query('profile.timeline.axisEnd.max() or 0', bucketProfiles);
     const range = max - min;
     const activeProfiles = bucketProfiles.filter(profile => !profile.disabled);
 
@@ -36,8 +36,8 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         captionEl.textContent = profile.name || '(unnamed profile)';
 
         barEl.className = `profile${disabled ? ' disabled' : ''}`;
-        barEl.style.setProperty('--x1', (profile.startTime - min) / range);
-        barEl.style.setProperty('--x2', (profile.endTime - min) / range);
+        barEl.style.setProperty('--x1', (profile.timeline?.axisStart - min) / range);
+        barEl.style.setProperty('--x2', (profile.timeline?.axisEnd - min) / range);
 
         viewportEl.className = 'viewport';
 
@@ -78,12 +78,13 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
                 $binCount: 750;
                 $min: profiles.profile.timeline.axisStart.min();
                 $max: profiles.profile.timeline.axisEnd.max();
-                $skip: profile.timeline | axisStart - $min + axisStartNoSamples;
+                $skip: profile.timeline | axisStart + axisStartNoSamples - $min;
 
                 {
                     profiles,
                     pmin: profile.timeline.axisStart,
-                    min: profiles.profile.timeline.axisStart.min(),
+                    $min,
+                    $max,
                     $skip,
                     total: $max - $min,
                     bins: $tree.binSignals({
