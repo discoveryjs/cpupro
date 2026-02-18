@@ -158,9 +158,14 @@ export class SamplesMetricsFiltered extends SamplesMetrics {
         this.notify();
     }
 
-    setRange(start: number, end: number) {
+    setRange(start: number | null, end: number | null) {
         const { values, cumulative } = this;
         let { originalValues } = this;
+
+        if (start === null || end === null) {
+            this.resetRange();
+            return;
+        }
 
         if (values === originalValues) {
             // Store the state of values before the first changes to be able to fill it according

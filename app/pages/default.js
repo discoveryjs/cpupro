@@ -137,16 +137,17 @@ const categoriesTimeline = {
             segments: '=samples[].binCount',
             selectionStart: '=line.samplesMetricsFiltered.rangeStart',
             selectionEnd: '=line.samplesMetricsFiltered.rangeEnd',
+            rangeManager: '=scopeLine().samplesMetricsFiltered',
             onChange(state, name, el, data, context) {
                 // console.log('change', state);
                 // const t = Date.now();
                 const scopeLine = resolveScopeProfileLine(null, context);
-                const timings = scopeLine.samplesMetricsFiltered;
+                const samplesMetrics = scopeLine.samplesMetricsFiltered;
 
                 if (state.timeStart !== null) {
-                    timings.setRange(state.timeStart, state.timeEnd);
+                    samplesMetrics.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    timings.resetRange();
+                    samplesMetrics.resetRange();
                 }
 
                 // console.log('compute timings', Date.now() - t);
