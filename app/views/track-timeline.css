@@ -1,0 +1,65 @@
+.view-track-timeline {
+    position: relative;
+    z-index: 100;
+    height: 400px;
+    cursor: default;
+}
+
+.view-track-timeline__canvas,
+.view-track-timeline__overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* .view-track-timeline__tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 1000;
+    display: none;
+    border: 1px solid #444;
+} */
+
+ .view-track-timeline__tooltip {
+    padding: 5px 10px;
+    min-width: 250px;
+    border: none;
+    border-radius: 3px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, .75);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+}
+.discovery-root-darkmode .view-track-timeline__tooltip {
+    background: rgba(36, 36, 36, .8);
+} /*
+.view-track-timeline__tooltip .view-badge {
+    display: inline-block;
+    margin: 0 0 3px -5px;
+    padding-top: 0;
+    padding-bottom: 1px;
+    line-height: 19px;
+}
+.view-track-timeline__tooltip .view-badge.function-loc {
+    padding-block: .5px;
+}
+.view-track-timeline__tooltip .view-metric {
+    align-items: baseline;
+}
+.view-track-timeline__tooltip .view-metric::before {
+    white-space: pre;
+    font-size: 90%;
+    color: #888;
+}
+.view-track-timeline__tooltip .view-metric > .time {
+    flex: 0;
+}
+.view-track-timeline__tooltip .view-metric > .fraction {
+    width: auto;
+} */

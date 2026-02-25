@@ -111,6 +111,8 @@ module.exports = {
             './views/time-ruler.js',
             './views/timeline-profiles.css',
             './views/timeline-profiles.js',
+            './views/track-timeline.css',
+            './views/track-timeline.js',
             './views/update-on-line-metrics-changes.css',
             './views/update-on-line-metrics-changes.js',
             './views/value-fraction.css',
