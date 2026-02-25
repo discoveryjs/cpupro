@@ -82,7 +82,6 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
 
                 {
                     profiles,
-                    pmin: profile.timeline.axisStart,
                     $min,
                     $max,
                     $skip,

@@ -48,6 +48,7 @@ discovery.view.define('subject-with-nested-timeline', {
             segments: '=binCount',
             selectionStart: '=line.samplesMetricsFiltered.rangeStart',
             selectionEnd: '=line.samplesMetricsFiltered.rangeEnd',
+            rangeManager: '=line.samplesMetricsFiltered',
             onChange: (state, name, el, data) => {
                 // console.log('change', state);
                 // const t = Date.now();
@@ -144,9 +145,9 @@ discovery.view.define('subject-with-nested-timeline', {
                     el.style.setProperty('--pos', tm / axisTotal);
                     el.style.setProperty('--duration', duration / axisTotal);
                     el.style.setProperty('--tier-color', 'rgb(' + color + ', .68)');
-                    // el.addEventListener('click', () => {
-                    //     ctx.currentProfile.samplesTimingsFiltered.setRange(code.tm, code.tm + duration);
-                    // });
+                    el.addEventListener('click', () => {
+                        samplesMetricsFiltered.setRange(tm, tm + duration);
+                    });
                 }
             }
         },
