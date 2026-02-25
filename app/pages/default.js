@@ -336,16 +336,17 @@ const categoriesTimeline = {
 
         {
             view: 'expand',
-            when: 'lineMappingControl',
+            when: 'lineMappingControl | size() > 1',
             ...sessionExpandState('default-timelines-line-mapping-control', false, '$'),
             data: 'lineMappingControl',
-            className: '=no $ ? "unavailable"',
+            className: 'unavailable',
             header: [
                 {
                     view: 'block',
                     className: 'expand-label',
                     content: 'text:"Line mapping control"'
-                }
+                },
+                'html:` <span style=\"color: #888\">(debug)</span>`'
             ],
             content: {
                 view: 'switch',
