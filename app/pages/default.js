@@ -12,6 +12,7 @@ const { histCodes } = require('./default-page/hist-codes.js');
 const { histHeapTotal } = require('./default-page/hist-heap-total.js');
 const { pageIndicators } = require('./default-page/page-indicators.js');
 const { hierarchicalComponentsTables } = require('./default-page/tables.js');
+const { userTimingsTimeline } = require('./default-page/user-timings-timeline.js');
 
 const experimentalFeatures = false;
 
@@ -392,7 +393,8 @@ const categoriesTimeline = {
         histAllocationLifespan,
         histAllocationGcs,
         histAllocationSpaces,
-        chartUsedHeap
+        chartUsedHeap,
+        userTimingsTimeline
     ]
 };
 

@@ -269,7 +269,8 @@
 .page-default .category-timelines > .view-expand .view-cpupro-chart {
     grid-column: 3 / 4;
 }
-.page-default .category-timelines > .user-timings-timeline .view-track-timeline {
+.page-default .category-timelines > .user-timings-timeline .view-track-timeline,
+.page-default .category-timelines > .compile-timeline .view-track-timeline {
     grid-column: 3 / 4;
 }
 .page-default .category-timelines .data-unavailable {
