@@ -290,7 +290,11 @@ const categoriesTimeline = {
             view: 'list',
             className: 'events-x',
             when: 'scopeLine().type = "timeline"',
-            data: 'scopeProfile() | $start: timeline | axisStart + axisStartNoSamples; $total: timeline.axisTotal; traceEvents.[name in ["MinorGC", "MajorGC"]].({ start: tm - $start, $total, ... })',
+            data: `scopeProfile() |
+                $start: timeline | axisStart + axisStartNoSamples;
+                $total: timeline.axisTotal;
+                thread.events.[name in ["MinorGC", "MajorGC"]].({ start: tm - $start, $total, ... })
+            `,
             whenData: true,
             limit: false,
             itemConfig: {

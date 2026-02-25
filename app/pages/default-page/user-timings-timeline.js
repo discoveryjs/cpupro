@@ -2,7 +2,6 @@ import { sessionExpandState } from '../common.js';
 
 export const userTimingsTimeline = {
     view: 'expand',
-    className: 'user-timings-timeline',
     ...sessionExpandState('default-user-timings-timeline', false, '$'),
     data: `scopeProfile() | {
         $min: timeline.axisStart + timeline.axisStartNoSamples; // $timingEvents.start.min();
@@ -17,11 +16,17 @@ export const userTimingsTimeline = {
             .[start is number]
             + [0, 500000].({ offset: $, name: "Timeline", color: '#6666' })
     }`,
+    className: '=`user-timings-timeline ${no spans ? "unavailable" : ""}`',
     header: [
         {
             view: 'block',
             className: 'expand-label',
-            content: 'text:"User timings timeline"'
+            content: 'text:"User timings"'
+        },
+        {
+            view: 'context',
+            when: 'no spans',
+            content: 'html:` <span style=\"color: #888\">(unavailable)</span>`'
         }
     ],
     content: {
