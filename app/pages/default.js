@@ -14,7 +14,7 @@ const { pageIndicators } = require('./default-page/page-indicators.js');
 const { hierarchicalComponentsTables } = require('./default-page/tables.js');
 const { userTimingsTimeline } = require('./default-page/user-timings-timeline.js');
 
-const experimentalFeatures = false;
+const experimentalFeatures = true;
 
 discovery.nav.primary.append({
     className: 'full-page-mode',
