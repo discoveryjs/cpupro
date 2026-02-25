@@ -24,10 +24,15 @@ model.nav.menu.append({
 
 if (FEATURE_MULTI_PROFILES) {
     model.nav.before('discovery-page', {
-        when: '#.data.profiles.size() > 1 and #.page != "profiles-matrix"',
-        text: 'Matrix',
-        href: '#profiles-matrix'
+        when: '#.data.profiles.size() > 1 and #.page != "threads"',
+        text: 'Threads',
+        href: '#threads'
     });
+    // model.nav.before('discovery-page', {
+    //     when: '#.data.profiles.size() > 1 and #.page != "profiles-matrix"',
+    //     text: 'Matrix',
+    //     href: '#profiles-matrix'
+    // });
 }
 
 model.action.define('getSessionSetting', (name, defaultValue) => {
