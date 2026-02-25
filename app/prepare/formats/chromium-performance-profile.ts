@@ -1,14 +1,27 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
-import type { SourceMap, CpuProTraceEvent, V8CpuProfile, V8CpuProfileScript, V8CpuProfileSet } from '../types.js';
+import type { SourceMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import { UniformProcess, UniformProfilingSession, UniformThread, UniformTraceEvent } from './types.js';
 
-export type ChromiumTraceEventsProfile = {
+export type ChromiumTraceEventsMetadata = {
+    startTime?: string;
+    source?: string;
+    dataOrigin?: string;
+    sourceMaps?: ProfileSourceMap[];
+};
+export type ChromiumTraceEventsSource = {
     traceEvents: ChromiumTraceEvent[];
-    metadata?: {
-        sourceMaps?: ProfileSourceMap[];
-    };
+    metadata?: ChromiumTraceEventsMetadata;
 };
 
+type EventChannel = {
+    thread: UniformThread;
+    events: UniformThread['events'];
+    userTimings: UniformThread['userTimings'];
+    traceEventsBE: Map<string | number, UniformTraceEvent>;
+    traceEventsSF: Map<string | number, UniformTraceEvent>;
+    scripts: Map<number, V8CpuProfileScript>;
+}
 type ProfileSourceMap = {
     url: string;
     sourceMapUrl: string;
@@ -41,13 +54,11 @@ type ChromiumTraceProfileChunkEventData = {
     allocationSamples?: AllocationSamples;
 };
 type ChromiumTraceProfileData = {
-    name: string | null;
     pid: number;
     tid: number;
+    eventChannel: EventChannel;
     startTime: number;
     endTime: number;
-    scripts: Map<number, V8CpuProfileScript>;
-    traceEvents: CpuProTraceEvent[];
     chunks: ChromiumTraceProfileChunkEventData[];
     samples: number;
     hasLineColumns: boolean;
@@ -57,21 +68,22 @@ type ChromiumTraceProfileData = {
 }
 
 interface ChromiumTraceEvent {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    args: { [key: string]: any };
+    name: string;
+    cat: string;
     pid: number;
     tid: number;
     ts: number;
     ph: string;
-    cat: string;
-    name: string;
-    dur: number;
-    tdur: number;
-    tts: number;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    args: { [key: string]: any };
-    id?: string;
+    dur?: number;
+    tdur?: number;
+    tts?: number;
+    id?: string | number;
+    id2?: { local: string | number };
 }
 
-export function isChromiumPerformanceProfile(data: unknown): data is ChromiumTraceEventsProfile {
+export function isChromiumPerformanceProfile(data: unknown): data is ChromiumTraceEventsSource {
     if (!Array.isArray(data)) {
         // JSON Object Format
         return typeof data === 'object' && data !== null && 'traceEvents' in data
@@ -92,24 +104,146 @@ export function isChromiumPerformanceProfile(data: unknown): data is ChromiumTra
     return true;
 }
 
+function getEventThreadId(event: { pid: number; tid: number }): string {
+    return `${event.pid}:${event.tid}`;
+}
+
+function getOrCreateProcess(event: ChromiumTraceEvent, processes: Map<number, UniformProcess>): UniformProcess {
+    let process = processes.get(event.pid);
+
+    if (!process) {
+        processes.set(event.pid, process = {
+            pid: event.pid,
+            name: null
+        });
+    }
+
+    return process;
+};
+
+function getOrCreateEventChannel(event: { pid: number; tid: number }, eventChannels: Map<string, EventChannel>): EventChannel {
+    const threadId = getEventThreadId(event);
+    let eventChannel = eventChannels.get(threadId);
+
+    if (!eventChannel) {
+        const events = [];
+        const userTimings = [];
+
+        eventChannels.set(threadId, eventChannel = {
+            thread: {
+                pid: event.pid,
+                tid: event.tid,
+                name: null,
+                scripts: [],
+                events,
+                userTimings
+            },
+            events,
+            userTimings,
+            traceEventsBE: new Map(),
+            traceEventsSF: new Map(),
+            scripts: new Map()
+        });
+    }
+
+    return eventChannel;
+};
+
+function getEventId(event: ChromiumTraceEvent): string | number | null {
+    if (event.ph === 'b' || event.ph === 'e') {
+        const id = event.id ?? event.id2?.local ?? null;
+        return id !== null ? `${event.name}:${id}` : null;
+    }
+
+    if (event.ph === 's' || event.ph === 'f') {
+        return event.id ?? null;
+    }
+
+    return null;
+}
+
+function addTraceEventToThread(
+    threadsMap: Map<string, EventChannel>,
+    event: ChromiumTraceEvent,
+    data: unknown,
+    sampleTraceId: number | null = null
+) {
+    const thread = getOrCreateEventChannel(event, threadsMap);
+    const eventId = getEventId(event);
+    const eventMap = event.ph === 'b' || event.ph === 'e'
+        ? thread.traceEventsBE
+        : thread.traceEventsSF;
+    let tm = event.ts;
+    let duration = event.dur || 0;
+
+    if (event.ph === 'e' || event.ph === 'f') {
+        if (eventId === null) {
+            console.warn(`Ignoring ${event.cat}/${event.name} end event without id (pid: ${event.pid}, tid: ${event.tid})`);
+            return;
+        }
+
+        const startEvent = eventMap.get(eventId);
+
+        if (startEvent) {
+            startEvent.duration = tm - startEvent.tm;
+            eventMap.delete(eventId);
+            return;
+        } else {
+            console.warn(`Could not find start event for end event with id ${eventId}`, event);
+            duration = tm;
+            tm = -1;
+        }
+    }
+
+    const traceEvent: UniformTraceEvent = {
+        name: event.name,
+        cat: event.cat,
+        tm,
+        duration,
+        eventId,
+        sampleTraceId,
+        data
+    };
+    // traceEvent.event = event;
+
+    if (event.ph === 'b' || event.ph === 's') {
+        if (eventId === null) {
+            console.warn(`Ignoring ${event.cat}/${event.name} begin event without id (pid: ${event.pid}, tid: ${event.tid})`);
+            return;
+        }
+
+        eventMap.set(eventId, traceEvent);
+        traceEvent.duration = -1;
+    }
+
+    if (event.cat === 'blink.user_timing') {
+        thread.userTimings.push(traceEvent);
+    } else {
+        thread.events.push(traceEvent);
+    }
+}
+
 export function extractFromChromiumPerformanceProfile(
-    events: ChromiumTraceEventsProfile | ChromiumTraceEvent[]
-): V8CpuProfileSet {
-    // It seems like sometimes Chrome timeline files contain multiple CpuProfiles?
-    // For now, choose the first one in the list.
+    events: ChromiumTraceEventsSource | ChromiumTraceEventsSource['traceEvents']
+): UniformProfilingSession {
+    // Chrome tracing contain multiple CpuProfile events
     const profileById = new Map<string, V8CpuProfile>();
-    const profileDataById = new Map<string, ChromiumTraceProfileData>();
     const profileDataByTid = new Map<string, ChromiumTraceProfileData>();
-    const profileByTid = new Map<string, V8CpuProfile>();
+    const profileDataById = new Map<string, ChromiumTraceProfileData>();
+    const profiles: V8CpuProfile[] = [];
 
     // Maps pid/tid pairs to thread names
-    const processNameId = new Map<number, string>();
-    const threadNameId = new Map<number, string>();
+    const processesMap = new Map<number, UniformProcess>();
+    const eventChannels = new Map<string, EventChannel>();
+
+    // Metadata and source maps
+    let metadata: ChromiumTraceEventsMetadata = {};
     let sourceMaps: ProfileSourceMap[] = [];
 
     // JSON Object Format
     if ('traceEvents' in events) {
-        sourceMaps = events.metadata?.sourceMaps || [];
+        metadata = events.metadata || {};
+        sourceMaps = metadata.sourceMaps || [];
         events = events.traceEvents;
     }
 
@@ -117,17 +251,6 @@ export function extractFromChromiumPerformanceProfile(
     // to be in timestamp-sorted order
     events = events
         .slice()
-        // .filter(e =>
-        //     e.name === 'CpuProfile' ||
-        //     e.name === 'Profile' ||
-        //     e.name === 'ProfileChunk' ||
-        //     e.name === 'ScriptCatchup' ||
-        //     e.name === 'LargeScriptCatchup' ||
-        //     e.name === 'MinorGC' ||
-        //     e.name === 'MajorGC' ||
-        //     e.name === 'process_name' ||
-        //     e.name === 'thread_name'
-        // )
         .sort((a, b) => a.ts - b.ts);
 
     for (const event of events) {
@@ -144,8 +267,10 @@ export function extractFromChromiumPerformanceProfile(
 
             case 'Profile': {
                 const profileId = `${event.pid}:${event.id}`;
+                const eventChannel = getOrCreateEventChannel(event, eventChannels);
+                const threadId = getEventThreadId(event);
                 const profile: V8CpuProfile = {
-                    _name: threadNameId.get(event.tid) || null,
+                    _name: null,
                     _pid: event.pid,
                     _tid: event.tid,
                     startTime: 0,
@@ -158,18 +283,14 @@ export function extractFromChromiumPerformanceProfile(
                     columns: [],
                     ...event.args.data as Partial<V8CpuProfile>
                 };
-                // profile.threadId = event.tid;
-                profileById.set(profileId, profile);
-                profileByTid.set(`${event.pid}:${event.tid}`, profile);
+                profileById.set(threadId, profile);
 
                 const profileData: ChromiumTraceProfileData = {
-                    name: threadNameId.get(event.tid) || null,
+                    eventChannel,
                     pid: event.pid,
                     tid: event.tid,
                     startTime: (event.args.data as Partial<V8CpuProfile>).startTime || 0,
                     endTime: 0,
-                    scripts: new Map(),
-                    traceEvents: [],
                     chunks: [],
                     samples: 0,
                     hasLineColumns: false,
@@ -179,30 +300,24 @@ export function extractFromChromiumPerformanceProfile(
                 };
 
                 profileDataById.set(profileId, profileData);
-                profileDataByTid.set(`${event.pid}:${event.tid}`, profileData);
+                profileDataByTid.set(threadId, profileData);
                 break;
             }
 
             case 'thread_name': {
-                threadNameId.set(event.tid, event.args.name);
+                getOrCreateEventChannel(event, eventChannels).thread.name = event.args.name;
                 break;
             }
 
             case 'process_name': {
-                processNameId.set(event.pid, event.args.name);
+                getOrCreateProcess(event, processesMap).name = event.args.name;
                 break;
             }
 
             case 'ScriptCatchup':
             case 'LargeScriptCatchup': {
-                const profileData = profileDataByTid.get(`${event.pid}:${event.tid}`);
-
-                if (!profileData) {
-                    console.warn(`Ignoring ${event.name} for undeclared Profile (pid: ${event.pid}, tid: ${event.tid})`);
-                    break;
-                }
-
-                const scripts = profileData.scripts;
+                const eventChannel = getOrCreateEventChannel(event, eventChannels);
+                const scripts = eventChannel.scripts;
                 const props = event.args.data as unknown as ScriptCatchupEventData;
                 const scriptId = Number(props.scriptId);
                 let script = scripts.get(scriptId);
@@ -215,6 +330,7 @@ export function extractFromChromiumPerformanceProfile(
                         sourceMapUrl: null,
                         sourceMap: null
                     });
+                    eventChannel.thread.scripts.push(script);
                 }
 
                 for (const key of Object.keys(props)) {
@@ -238,18 +354,12 @@ export function extractFromChromiumPerformanceProfile(
 
             case 'MinorGC':
             case 'MajorGC': {
-                const profileData = profileDataByTid.get(`${event.pid}:${event.tid}`);
-
-                if (!profileData) {
-                    console.warn(`Ignoring ${event.name} for undeclared Profile (pid: ${event.pid}, id: ${event.id})`);
-                    continue;
-                }
-
-                profileData.traceEvents.push({
+                getOrCreateEventChannel(event, eventChannels).events.push({
                     name: event.name,
                     cat: event.cat,
                     tm: event.ts,
-                    duration: event.dur,
+                    duration: event.dur ?? 0,
+                    eventId: null,
                     sampleTraceId: null,
                     data: {
                         reason: event.args?.type || '',
@@ -294,6 +404,17 @@ export function extractFromChromiumPerformanceProfile(
                 let sampleTraceId: number | null = null;
                 let data: unknown = null;
 
+                // FIXME: skip s/f events for now
+                if (event.ph === 's' || event.ph === 'f') {
+                    continue;
+                }
+
+                if (event.cat === 'disabled-by-default-devtools.timeline' &&
+                    event.name === 'UpdateCounters') {
+                    addTraceEventToThread(eventChannels, event, event.args.data);
+                    break;
+                }
+
                 if ('sampleTraceId' in event.args) {
                     sampleTraceId = event.args.sampleTraceId;
                     data = event.args;
@@ -306,21 +427,14 @@ export function extractFromChromiumPerformanceProfile(
                 }
 
                 if (sampleTraceId !== null) {
-                    const profileData = profileDataByTid.get(`${event.pid}:${event.tid}`);
-
-                    if (!profileData) {
-                        console.warn(`Ignoring ${event.name} for undeclared Profile (pid: ${event.pid}, tid: ${event.tid})`);
-                        break;
+                    addTraceEventToThread(eventChannels, event, data, sampleTraceId);
+                } else if (event.cat === 'blink.user_timing') {
+                    if (event.ph === 'b' || event.ph === 'e') {
+                        addTraceEventToThread(eventChannels, event, event.args, event.args?.traceId || null);
                     }
-
-                    profileData.traceEvents.push({
-                        name: event.name,
-                        cat: event.cat,
-                        tm: event.ts,
-                        duration: event.dur || 0,
-                        sampleTraceId,
-                        data
-                    });
+                } else if (event.cat === 'disabled-by-default-v8.compile' ||
+                    event.ph === 'X' || event.ph === 'b' || event.ph === 'e') {
+                    addTraceEventToThread(eventChannels, event, event.args);
                 }
             }
         }
@@ -330,14 +444,11 @@ export function extractFromChromiumPerformanceProfile(
         throw new Error('Could not find CPU profile in Timeline');
     }
 
-    const profiles: V8CpuProfile[] = [];
-    let indexToView = -1;
-
-    for (const [profileId, profileData] of profileDataById) {
-        const processName: string | null = processNameId.get(parseInt(profileId)) || 'Unknown';
-        const { name, pid, tid, startTime, endTime, scripts, chunks, samples, allocationChunks } = profileData;
+    for (const profileData of profileDataById.values()) {
+        const { pid, tid, eventChannel, startTime, endTime, chunks, samples, allocationChunks } = profileData;
+        const { thread } = eventChannel;
         const profile: V8CpuProfile = {
-            _name: name,
+            _name: thread.name,
             _pid: pid,
             _tid: tid,
             startTime,
@@ -347,16 +458,11 @@ export function extractFromChromiumPerformanceProfile(
             timeDeltas: buildChunkedArray('timeDeltas', chunks, samples),
             trace_ids: {},
             lines: undefined,
-            columns: undefined,
-            _cpuproTraceEvents: profileData.traceEvents
+            columns: undefined
         };
 
-        if (processName === 'CrRendererMain') {
-            indexToView = profiles.length;
-        }
-
-        if (scripts) {
-            profile._scripts = Array.from(scripts.values());
+        if (thread.scripts) {
+            profile._scripts = Array.from(thread.scripts.values());
 
             for (const script of profile._scripts) {
                 // Attach source map from trace file if available
@@ -384,10 +490,6 @@ export function extractFromChromiumPerformanceProfile(
                 }
             }
         }
-        console.log({
-            traceEvents: profileData.traceEvents,
-            trace_ids: profile.trace_ids
-        });
 
         if (profileData.hasLineColumns) {
             profile.lines = buildChunkedArray('lines', chunks, samples);
@@ -411,20 +513,30 @@ export function extractFromChromiumPerformanceProfile(
         profiles.push(profile);
     }
 
-    if (indexToView === -1) {
-        indexToView = profiles.reduce(
-            (res, profile, idx, array) => array[res].nodes.length < profile.nodes.length ? idx : res,
-            0
-        );
-    }
-
     return {
-        indexToView,
+        name: null,
+        runtime: 'unknown',
+        startTime: metadata.startTime ?? null,
+        source: metadata.source ?? null,
+        dataOrigin: metadata.dataOrigin ?? null,
+
+        buildId: null,
+        setupId: null,
+        scenarioId: null,
+
+        processes: [...processesMap.values()],
+        threads: [...eventChannels.values()]
+            .map(({ thread }) => thread)
+            .sort((a, b) => a.pid - b.pid || a.tid - b.tid),
+
         profiles
     };
 }
 
-function buildChunkedVector(chunks: AllocationSamples[], key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict'>): number[] | undefined {
+function buildChunkedVector(
+    chunks: AllocationSamples[],
+    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict'>
+): number[] | undefined {
     const vector = chunks.flatMap(chunk => chunk[key] || []);
     return vector.length ? vector : undefined;
 }

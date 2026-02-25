@@ -1,9 +1,7 @@
 import { Dictionary } from './dictionary.js';
+import { UniformTraceEvent } from './formats/types.js';
+import { Profile } from './profile.mjs';
 
-export type V8CpuProfileSet = {
-    indexToView?: number;
-    profiles: V8CpuProfile[];
-}
 export type V8CpuProfile = {
     startTime: number;
     endTime: number;
@@ -49,15 +47,6 @@ export type V8CpuProfileCpuproExtensions = {
     _cpuproAllocationSpaces?: number[]; // V8 map space IDs
     _cpuproAllocationSpaceNames?: Record<number, string>; // human-readable space names
     _cpuproAllocationLocations?: number[]; // allocation positions
-    _cpuproTraceEvents?: CpuProTraceEvent[];
-}
-export type CpuProTraceEvent = {
-    name: string;
-    cat: string;
-    tm: number;
-    duration: number;
-    sampleTraceId: number | null;
-    data: unknown;
 }
 export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     id: number;
@@ -196,6 +185,40 @@ export type GeneratedNodes = {
     callFrames: number[];
     nodeParentId: number[];
     parentScriptOffsets: number[];
+}
+
+export type CpuProSession = {
+    name: string | null;
+    runtime: RuntimeCode | null;
+    startTime: string | null;
+    source: string | null;
+    dataOrigin: string | null;
+    processes: CpuProProcess[];
+    defaultProcess: CpuProProcess | null;
+    profiles: Profile[];
+    defaultProfile: Profile | null;
+    shared: {
+        scripts: Dictionary['scripts'];
+        callFrames: Dictionary['callFrames'];
+        modules: Dictionary['modules'];
+        packages: Dictionary['packages'];
+        categories: Dictionary['categories'];
+    };
+}
+export type CpuProProcess = {
+    pid: number | null;
+    name: string | null;
+    session: CpuProSession;
+    threads: CpuProThread[];
+}
+export type CpuProThread = {
+    pid: number | null;
+    tid: number | null;
+    name: string | null;
+    process: CpuProProcess | null;
+    profiles: Profile[];
+    events: UniformTraceEvent[];
+    userTimings: UniformTraceEvent[]; // subset of user defined events, e.g. cat="blink.user_timing" in Chromium traces
 }
 
 export type SourceMap = {

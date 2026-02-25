@@ -14,7 +14,7 @@ import { buildTrees } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { GeneratedNodes, V8CpuProfile } from './types.js';
+import { CpuProThread, GeneratedNodes, V8CpuProfile } from './types.js';
 import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
 import { createLineMapping } from './computations/line-mapping.js';
@@ -62,12 +62,6 @@ export function toggleProfile(model: Model, profile: Profile) {
         ? enabledProfiles[0] || null
         : primaryProfile;
 
-    model.data = {
-        ...model.data,
-        totalTime: enabledProfiles.reduce((max, profile) => Math.max(profile.totalTime, max), 0),
-        primaryProfile: newPrimaryProfile,
-        currentProfile: newPrimaryProfile
-    };
     model.setContext({
         primaryProfile: newPrimaryProfile,
         profiles: profiles.map((entry: BucketProfileEntry) => ({
@@ -131,11 +125,11 @@ function positionsFromScriptsLineColumns(
     return result;
 }
 
-export async function createProfile(data: V8CpuProfile, dictionary: Dictionary, { work }: CreateProfileApi) {
-    // TODO Phase 5: Support multiple sources
-    // Future signature: createProfile(sources: { time?, memory?, gc? }, dict, api)
-    // For now, treat single source as primary line
-
+export async function createProfile(
+    data: V8CpuProfile,
+    dictionary: Dictionary,
+    { work }: CreateProfileApi
+) {
     // store source's initial metrics
     const nodesCount = data.nodes.length;
     const samplesCount = data.samples.length;
@@ -155,7 +149,7 @@ export async function createProfile(data: V8CpuProfile, dictionary: Dictionary, 
         }
     };
 
-    const _dataPositions = data._positions ||
+    const _dataPositions = data._samplePositions ||
         positionsFromScriptsLineColumns(
             data.nodes,
             data._callFrames,
@@ -403,13 +397,10 @@ export async function createProfile(data: V8CpuProfile, dictionary: Dictionary, 
         }
     }
 
-    type Timeline = typeof timeline;
-    const getters = transitionTimelineGetters<Timeline>({}, timeline!);
-
     const profile = {
         name: data._name,
-        disabled: false,
         runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
+        thread: null as unknown as CpuProThread, // to be set by caller
 
         ...usage,
         codes,
@@ -432,16 +423,10 @@ export async function createProfile(data: V8CpuProfile, dictionary: Dictionary, 
         // primaryLine reference (currently selected line in UI)
         defaultLineType: primaryLine?.type || null,
 
-        traceEvents: data._cpuproTraceEvents || [],
-
         // ---- legacy fields ----
 
-        heap: data._heap || null,
-
-        ...getters
+        heap: data._heap || null
     };
-
-    transitionTimelineGetters(profile, timeline);
 
     for (const line of [timeline, memline]) {
         if (line) {
@@ -450,142 +435,4 @@ export async function createProfile(data: V8CpuProfile, dictionary: Dictionary, 
     }
 
     return profile;
-}
-
-// define timeline getters/setters for legacy fields
-// during transition period
-function transitionTimelineGetters<T>(result: unknown, timeline: T) {
-    const timelineTransitionGetters = {
-        sourceInfo: true,
-        type: 'kind',
-
-        startTime: 'axisStart',
-        startNoSamplesTime: 'axisStartNoSamples',
-        endTime: 'axisEnd',
-        endNoSamplesTime: 'axisEndNoSamples',
-        totalTime: 'axisTotal',
-
-        samples: true,
-        sampleCounts: true,
-        sampleCountsByProfile: true,
-        samplePositions: true,
-
-        timeDeltas: 'values',
-        timeDeltasByProfile: 'valuesByProfile',
-        samplesTimings: 'samplesMetrics',
-        samplesTimingsFiltered: 'samplesMetricsFiltered',
-        recomputeTimings: 'recomputeValues',
-
-        callFramePositionsTimings: 'dict.locations.all',
-        callFramePositionsTimingsFiltered: 'dict.locations.filtered',
-        callFramePositionsTreeTimings: 'tree.locations.all',
-        callFramePositionsTreeTimingsFiltered: 'tree.locations.filtered',
-        callFramePositionsTreeTimestamps: 'tree.locations.bounds',
-
-        callFramesTimings: 'dict.callFrames.all',
-        callFramesTimingsFiltered: 'dict.callFrames.filtered',
-        callFramesTreeTimings: 'tree.callFrames.all',
-        callFramesTreeTimingsFiltered: 'tree.callFrames.filtered',
-        callFramesTreeTimestamps: 'tree.callFrames.bounds',
-
-        modulesTimings: 'dict.modules.all',
-        modulesTimingsFiltered: 'dict.modules.filtered',
-        modulesTreeTimings: 'tree.modules.all',
-        modulesTreeTimingsFiltered: 'tree.modules.filtered',
-        modulesTreeTimestamps: 'tree.modules.bounds',
-
-        packagesTimings: 'dict.packages.all',
-        packagesTimingsFiltered: 'dict.packages.filtered',
-        packagesTreeTimings: 'tree.packages.all',
-        packagesTreeTimingsFiltered: 'tree.packages.filtered',
-        packagesTreeTimestamps: 'tree.packages.bounds',
-
-        categoriesTimings: 'dict.categories.all',
-        categoriesTimingsFiltered: 'dict.categories.filtered',
-        categoriesTreeTimings: 'tree.categories.all',
-        categoriesTreeTimingsFiltered: 'tree.categories.filtered',
-        categoriesTreeTimestamps: 'tree.categories.bounds'
-    };
-
-    for (const [key, value] of Object.entries(timelineTransitionGetters)) {
-        let target = timeline;
-        let targetKey: string = key;
-
-        if (typeof value === 'string') {
-            const path = value.split('.');
-            targetKey = path.pop()!;
-
-            for (let i = 0; i < path.length; i++) {
-                target = target![path[i]];
-            }
-        }
-
-        Object.defineProperty(result, key, {
-            configurable: true,
-            enumerable: true,
-            get() {
-                // TODO: warn about legacy field usage
-                return target ? target[targetKey] : null;
-            },
-            set(newValue) {
-                if (!target) {
-                    throw new Error('Cannot set value on undefined target');
-                }
-
-                target[targetKey] = newValue;
-            }
-        });
-    }
-
-    return result as {
-        // @ts-expect-error migration
-        sourceInfo: T['sourceInfo'], // @ts-expect-error migration
-
-        startTime: T['axisStart'], // @ts-expect-error migration
-        startNoSamplesTime: T['axisStartNoSamples'], // @ts-expect-error migration
-        endTime: T['axisEnd'], // @ts-expect-error migration
-        endNoSamplesTime: T['axisEndNoSamples'], // @ts-expect-error migration
-        totalTime: T['axisTotal'], // @ts-expect-error migration
-
-        samples: T['samples'], // @ts-expect-error migration
-        sampleCounts: T['sampleCounts'], // @ts-expect-error migration
-        sampleCountsByProfile: T['sampleCountsByProfile'], // @ts-expect-error migration
-        samplePositions: T['samplePositions'], // @ts-expect-error migration
-
-        timeDeltas: T['values'], // @ts-expect-error migration
-        timeDeltasByProfile: T['valuesByProfile'], // @ts-expect-error migration
-        samplesTimings: T['samplesMetrics'], // @ts-expect-error migration
-        samplesTimingsFiltered: T['samplesMetricsFiltered'], // @ts-expect-error migration
-        recomputeTimings: T['recomputeValues'], // @ts-expect-error migration
-
-        callFramePositionsTimings: T['dict']['locations']['all'], // @ts-expect-error migration
-        callFramePositionsTimingsFiltered: T['dict']['locations']['filtered'], // @ts-expect-error migration
-        callFramePositionsTreeTimings: T['tree']['locations']['all'], // @ts-expect-error migration
-        callFramePositionsTreeTimingsFiltered: T['tree']['locations']['filtered'], // @ts-expect-error migration
-        callFramePositionsTreeTimestamps: T['tree']['locations']['bounds'], // @ts-expect-error migration
-
-        callFramesTimings: T['dict']['callFrames']['all'], // @ts-expect-error migration
-        callFramesTimingsFiltered: T['dict']['callFrames']['filtered'], // @ts-expect-error migration
-        callFramesTreeTimings: T['tree']['callFrames']['all'], // @ts-expect-error migration
-        callFramesTreeTimingsFiltered: T['tree']['callFrames']['filtered'], // @ts-expect-error migration
-        callFramesTreeTimestamps: T['tree']['callFrames']['bounds'], // @ts-expect-error migration
-
-        modulesTimings: T['dict']['modules']['all'], // @ts-expect-error migration
-        modulesTimingsFiltered: T['dict']['modules']['filtered'], // @ts-expect-error migration
-        modulesTreeTimings: T['tree']['modules']['all'], // @ts-expect-error migration
-        modulesTreeTimingsFiltered: T['tree']['modules']['filtered'], // @ts-expect-error migration
-        modulesTreeTimestamps: T['tree']['modules']['bounds'], // @ts-expect-error migration
-
-        packagesTimings: T['dict']['packages']['all'], // @ts-expect-error migration
-        packagesTimingsFiltered: T['dict']['packages']['filtered'], // @ts-expect-error migration
-        packagesTreeTimings: T['tree']['packages']['all'], // @ts-expect-error migration
-        packagesTreeTimingsFiltered: T['tree']['packages']['filtered'], // @ts-expect-error migration
-        packagesTreeTimestamps: T['tree']['packages']['bounds'], // @ts-expect-error migration
-
-        categoriesTimings: T['dict']['categories']['all'], // @ts-expect-error migration
-        categoriesTimingsFiltered: T['dict']['categories']['filtered'], // @ts-expect-error migration
-        categoriesTreeTimings: T['tree']['categories']['all'], // @ts-expect-error migration
-        categoriesTreeTimingsFiltered: T['tree']['categories']['filtered'], // @ts-expect-error migration
-        categoriesTreeTimestamps: T['tree']['categories']['bounds']
-    };
 }

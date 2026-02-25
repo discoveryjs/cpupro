@@ -6,7 +6,7 @@ export const chartUsedHeap = {
     data: `scopeProfile() | {
         minX: timeline.axisStart + timeline.axisStartNoSamples,
         maxX: timeline.axisEnd,
-        points: traceEvents.[name="UpdateCounters" or name="MinorGC" or name="MajorGC"].(
+        points: thread.events.[name="UpdateCounters" or name="MinorGC" or name="MajorGC"].(
             name="UpdateCounters" ? { x: tm, y: data.jsHeapSizeUsed or data.usedHeapSizeAfter, event: $ }
             : [{ x: tm, y: data.usedHeapSizeBefore, event: $ }, { x: tm + duration, y: data.usedHeapSizeAfter, event: $ }]
         )
@@ -60,7 +60,6 @@ function chartUsedHeapBody() {
     return [
         {
             view: 'cpupro-chart',
-            when: 'points',
             minX: '=minX',
             maxX: '=maxX',
             points: '=points',

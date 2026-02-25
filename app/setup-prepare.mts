@@ -8,6 +8,8 @@ import { createProfile, Profile } from './prepare/profile.mjs';
 import { computeCrossProfileUsage } from './prepare/computations/cross-profile-usage.mjs';
 import { processCrossProfileAllocations } from './prepare/preprocessing/memory-allocations.mjs';
 import { ProfileLineType } from './prepare/lines/types.js';
+import { CpuProSession } from './prepare/types.js';
+import { createProfileSession } from './prepare/profile-session.mjs';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
     const work = async function<T>(name: string, fn: () => T): Promise<T> {
@@ -24,113 +26,136 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     //
     // Extract & validate profile data
     //
-    const profileSet = await work('extract profile data', () =>
+    const profilingDataset = await work('extract profiling data', () =>
         extractAndValidate(input, rejectData)
     );
 
     //
-    // Create shared dictionary
-    //
-    const dict = new Dictionary();
-
-    //
     // Process profiles
     //
+    const sessions: CpuProSession[] = [];
     const profiles: Profile[] = [];
     const availableLineTypes: Set<ProfileLineType> = new Set([]);
 
-    for (let i = 0; i < profileSet.profiles.length; i++) {
-        // if (i === 0) continue;
-        const profileData = profileSet.profiles[i];
+    for (let sessionIndex = 0; sessionIndex < profilingDataset.sessions.length; sessionIndex++) {
+        const rawSession = profilingDataset.sessions[sessionIndex];
+        const dict = new Dictionary();
+        const runSessionTask: typeof work = profilingDataset.sessions.length > 1
+            ? (name, fn) => work(`Session ${sessionIndex + 1}/${profilingDataset.sessions.length} — ${name}`, fn)
+            : work;
 
-        if (!profileData.nodes?.length) {
-            console.warn('Ignored a profile with no call tree nodes', profileData);
-            continue;
+        // create session
+        const { session, profiles: threadProfiles } = createProfileSession(rawSession, dict);
+        sessions.push(session);
+
+        // process session profiles if any
+        for (let i = 0; i < threadProfiles.length; i++) {
+            // if (i === 0) continue;
+            const { thread, profile: profileData } = threadProfiles[i];
+
+            if (!profileData.nodes?.length) {
+                console.warn('Ignored a profile with no call tree nodes', profileData);
+                continue;
+            }
+
+            // execution context goes first sice it affects package name
+            // FIXME: following profiles could affect previously loaded profiles,
+            // it should perform together with path/name processing
+            for (const { origin, name } of profileData._executionContexts || []) {
+                dict.setPackageNameForOrigin(new URL(origin).host, name);
+            }
+
+            const profile = await createProfile(profileData, dict, {
+                work: threadProfiles.length > 1
+                    ? (name, fn) => runSessionTask(`Profile ${i + 1}/${threadProfiles.length} — ${name}`, fn)
+                    : runSessionTask
+            });
+
+            if (profile.name === undefined) {
+                profile.name = 'Profile #' + (i + 1);
+            }
+
+            // FIXME: locations should be shared
+            profile.locationsTree?.dictionary.forEach(markers['call-frame-position']);
+            profile.codesByCallFrame.forEach(markers['call-frame-codes']);
+
+            for (const line of profile.lines) {
+                availableLineTypes.add(line.type);
+            }
+
+            // assign thread to profile
+            profile.thread = thread;
+            thread.profiles.push(profile);
+
+            // profiles accross all the dataset
+            profiles.push(profile);
+            session.profiles.push(profile);
+
+            if (session.defaultProfile === null && thread.name === 'CrRendererMain') {
+                session.defaultProfile = profile;
+            }
         }
 
-        // execution context goes first sice it affects package name
-        // FIXME: following profiles could affect previously loaded profiles,
-        // it should perform together with path/name processing
-        for (const { origin, name } of profileData._executionContexts || []) {
-            dict.setPackageNameForOrigin(new URL(origin).host, name);
+        // choose defaults
+        if (session.defaultProfile === null && session.profiles.length > 0) {
+            session.defaultProfile = session.profiles[0];
+            // session.profiles.reduce(
+            //     (res, profile) => res.nodes.length < profile.nodes.length ? profile : res,
+            //     session.profiles[0]
+            // );
         }
 
-        const profile = await createProfile(profileData, dict, {
-            work: profileSet.profiles.length > 1
-                ? (name, fn) => work(`Profile ${i + 1}/${profileSet.profiles.length} — ${name}`, fn)
-                : work
+        session.defaultProcess =
+            session.defaultProfile?.thread?.process ??
+            session.processes[0] ??
+            null;
+
+        // init aggregation by profile count here since we need to know the total number of profiles,
+        // that can be filtered out on preprocessing
+        for (const profile of profiles) {
+            profile.timeDeltasByProfile = new Uint32Array(profiles.length);
+            profile.sampleCountsByProfile = new Uint32Array(profiles.length);
+        }
+
+        // cross-profiles usage
+        const callFramesProfilePresence = new Float32Array(dict.callFrames.length);
+        await runSessionTask('cross-profile usage', () => {
+            computeCrossProfileUsage(profiles, callFramesProfilePresence);
         });
 
-        if (profile.name === undefined) {
-            profile.name = 'Profile #' + (i + 1);
+        if (availableLineTypes.has('memline')) {
+            await runSessionTask('compute stable memory allocations', () =>
+                processCrossProfileAllocations(dict, profiles)
+            );
         }
 
-        // FIXME: locations should be shared
-        profile.locationsTree?.dictionary.forEach(markers['call-frame-position']);
-        profile.codesByCallFrame.forEach(markers['call-frame-codes']);
-
-        for (const line of profile.lines) {
-            availableLineTypes.add(line.type);
-        }
-
-        profiles.push(profile);
-    }
-
-    // init aggregation by profile count here since we need to know the total number of profiles,
-    // that can be filtered out on preprocessing
-    for (const profile of profiles) {
-        profile.timeDeltasByProfile = new Uint32Array(profiles.length);
-        profile.sampleCountsByProfile = new Uint32Array(profiles.length);
-    }
-
-    // cross-profiles usage
-    const callFramesProfilePresence = new Float32Array(dict.callFrames.length);
-    await work('cross-profile usage', () => {
-        computeCrossProfileUsage(profiles, callFramesProfilePresence);
-    });
-
-    if (availableLineTypes.has('memline')) {
-        await work('compute stable memory allocations', () =>
-            processCrossProfileAllocations(dict, profiles)
+        // process paths
+        await runSessionTask('process module paths', () =>
+            processPaths(dict.packages, dict.modules)
         );
+
+        // process display names
+        await runSessionTask('process display names', () =>
+            processDisplayNames(dict.modules)
+        );
+
+        // apply object marker
+        await runSessionTask('mark objects', () => {
+            dict.callFrames.forEach(markers['call-frame']);
+            dict.modules.forEach(markers.module);
+            dict.packages.forEach(markers.package);
+            dict.categories.forEach(markers.category);
+            dict.scripts.forEach(markers.script);
+        });
     }
 
-    // process paths
-    await work('process module paths', () =>
-        processPaths(dict.packages, dict.modules)
-    );
-
-    // process display names
-    await work('process display names', () =>
-        processDisplayNames(dict.modules)
-    );
-
-    // apply object marker
-    await work('mark objects', () => {
-        dict.callFrames.forEach(markers['call-frame']);
-        dict.modules.forEach(markers.module);
-        dict.packages.forEach(markers.package);
-        dict.categories.forEach(markers.category);
-        dict.scripts.forEach(markers.script);
-    });
-
-    const primaryProfile = profiles[profileSet.indexToView || 0] || profiles[0];
+    const defaultSession = sessions[0] ?? null;
+    const defaultProfile = defaultSession?.defaultProfile ?? null;
     const result = {
-        shared: {
-            scripts: dict.scripts,
-            callFrames: dict.callFrames,
-            modules: dict.modules,
-            packages: dict.packages,
-            categories: dict.categories
-        },
-
-        callFramesProfilePresence,
-
-        defaultProfile: primaryProfile,
-        defaultLineType: primaryProfile.defaultLineType || null,
-        availableLineTypes: Array.from(availableLineTypes),
-
-        profiles
+        sessions,
+        defaultSession,
+        profiles,
+        defaultProfile
     };
 
     return result;
