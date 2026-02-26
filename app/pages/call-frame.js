@@ -43,14 +43,14 @@ const descendantTree = {
                             ] }
                         ]
                     },
-                    { view: 'text', when: 'subtreeSize', data: '` (${subtreeSize}) `' },
-                    {
-                        view: 'block',
-                        className: 'grouped',
-                        data: 'grouped.size()',
-                        whenData: '$ > 1',
-                        content: 'text:"×" + $'
-                    },
+                    // { view: 'text', when: 'node.subtreeSize', data: '` (${node.subtreeSize}) `' },
+                    // {
+                    //     view: 'block',
+                    //     className: 'grouped',
+                    //     data: 'grouped.size()',
+                    //     whenData: '$ > 1',
+                    //     content: 'text:"×" + $'
+                    // },
                     {
                         view: 'self-value'
                     },
@@ -96,7 +96,7 @@ const ancestorsTree = {
             }`,
             data: `
                 #.ancestorTree
-                    .select('nodes', @, not #.ancestorTree)
+                    .select('nodes', @)
                     .[totalValue]
                     .sort(totalValue desc)
             `,
@@ -123,14 +123,14 @@ const ancestorsTree = {
                             ] }
                         ]
                     },
-                    { view: 'text', when: '#.consolidateCallFrames and subtreeSize', data: '` (${subtreeSize}) `' },
-                    {
-                        view: 'block',
-                        className: 'grouped',
-                        data: 'grouped.size()',
-                        whenData: '$ > 1',
-                        content: 'text:"×" + $'
-                    },
+                    // { view: 'text', when: '#.consolidateCallFrames and node.subtreeSize', data: '` (${node.subtreeSize}) `' },
+                    // {
+                    //     view: 'block',
+                    //     className: 'grouped',
+                    //     data: 'grouped.size()',
+                    //     whenData: '$ > 1',
+                    //     content: 'text:"×" + $'
+                    // },
                     {
                         view: 'total-value'
                     },
