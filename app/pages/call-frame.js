@@ -1,6 +1,7 @@
 const { SubsetCallTree, AncestorSubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeMetrics, AncestorSubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 const { sessionExpandState, primaryLineSwitcher } = require('./common.js');
+const { resolveScopeProfileLine } = require('../jora/profile.js');
 
 const descendantTree = {
     view: 'block',
@@ -85,7 +86,7 @@ const ancestorsTree = {
                 $secondaryLine: secondaryLine(#.primaryLineType = "timeline" ? "memline" : "timeline");
 
                 ...#,
-                consolidatedAncestorTree: #.consolidateCallFrames
+                ancestorTree: #.consolidateCallFrames
                     ? #.ancestorSubsetTreeValues
                     : scopeLine().tree.callFrames.filtered,
                 $secondaryLine,
@@ -94,26 +95,16 @@ const ancestorsTree = {
                     : $secondaryLine.tree.callFrames.filtered
             }`,
             data: `
-                #.consolidateCallFrames
-                    ? #.consolidatedAncestorTree
-                        .select('nodes', @, not #.consolidateCallFrames)
-                        .[totalValue]
-                        .sort(totalValue desc)
-                    : #.consolidatedAncestorTree
-                        .select('nodes', $, true)
-                        .[totalValue]
-                        .sort(totalValue desc)
+                #.ancestorTree
+                    .select('nodes', @, not #.ancestorTree)
+                    .[totalValue]
+                    .sort(totalValue desc)
             `,
             children: `
-                #.consolidateCallFrames
-                    ? #.consolidatedAncestorTree
-                        .select('children', node.nodeIndex)
-                        .[totalValue]
-                        .sort(totalValue desc, selfValue desc, node.value.name ascN)
-                    : node.parent ? #.consolidatedAncestorTree
-                        .select('parent', node.nodeIndex)
-                        .[totalValue]
-                        .sort(totalValue desc)
+                #.ancestorTree
+                    .select(#.consolidateCallFrames ? 'children' : 'parent', node.nodeIndex)
+                    .[totalValue]
+                    .sort(totalValue desc, selfValue desc, node.value.name ascN)
             `,
             item: {
                 view: 'context',
@@ -325,9 +316,9 @@ const pageContent = [
                     beforeContent(data, context) {
                         if (context.consolidateCallFrames) {
                             context.subsetTreeValues.recompute();
+                            context.ancestorSubsetTreeValues.recompute();
+                            context.secondaryAncestorSubsetTreeValues?.recompute();
                         }
-                        context.ancestorSubsetTreeValues.recompute();
-                        context.secondaryAncestorSubsetTreeValues?.recompute();
                     },
                     content: {
                         view: 'hstack',
@@ -362,10 +353,13 @@ discovery.page.define('call-frame', {
         { content: {
             view: 'context',
             context: (data, context) => {
-                const callFramesTree = context.scopeProfile.callFramesTree;
-                const samplesMetrics = context.scopeLine.samplesMetricsFiltered;
-                const originalTreeMetrics = context.scopeLine.tree.callFrames.filtered;
-                const secondaryLine = context.scopeProfile.lines.find(
+                const scopeLine = resolveScopeProfileLine(null, context);
+                const scopeProfile = scopeLine.profile;
+
+                const callFramesTree = scopeProfile.callFramesTree;
+                const samplesMetrics = scopeLine.samplesMetricsFiltered;
+                const originalTreeMetrics = scopeLine.tree.callFrames.filtered;
+                const secondaryLine = scopeProfile.lines.find(
                     line => line.type !== context.primaryLineType
                 ) ?? null;
                 const ancestorTree = new AncestorSubsetCallTree(callFramesTree, data);
