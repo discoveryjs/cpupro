@@ -421,3 +421,141 @@ export class SubsetCallTree<T extends CpuProNode> extends CallTree<T> {
         );
     }
 }
+
+// AncestorSubsetCallTree builds an inverted tree of ancestor chains for a given
+// dictionary value. Each occurrence of the value in the source tree contributes
+// its ancestor chain (from parent up to the root, or up to the next occurrence
+// of the same value). These chains are placed as subtrees under a synthetic root,
+// then consolidated via buildCallTreeArrays so that shared ancestors merge.
+//
+// The resulting tree looks like:
+//   root (represents the focused call frame)
+//   ├── parentA (×N merged) → grandparentX → …
+//   └── parentB (×M merged) → grandparentY → …
+//
+// Metrics are computed independently per node from the ORIGINAL tree's metrics
+// via nodeOriginals (not via sample-based rollup), since overlapping subtrees
+// in the original tree make sample attribution unreliable for ancestor views.
+export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
+    nodeOriginals: Uint32Array;
+    nodeOriginalsOffset: Uint32Array;
+    nodeOriginalsCount: Uint32Array;
+
+    constructor(tree: CallTree<T>, value: number | T) {
+        const { dictionary, parent: treeParent, nodes: treeNodes } = tree;
+
+        if (typeof value !== 'number') {
+            value = dictionary.indexOf(value);
+        }
+
+        // Step 1: Collect ancestor chains for each occurrence (including nested)
+        // Chains stop when hitting another occurrence of the focused value,
+        // preventing duplication of shared ancestor segments.
+        const occurrences: number[] = [];
+        const ancestorChains: number[][] = [];
+        let totalAncestorNodes = 0;
+
+        for (const nodeIndex of tree.selectNodes(value, true)) {
+            occurrences.push(nodeIndex);
+            const chain: number[] = [];
+            let current = nodeIndex;
+            let parentIdx = treeParent[current];
+
+            while (parentIdx !== current) {
+                // Stop if the parent is another occurrence of the focused value
+                if (treeNodes[parentIdx] === value) {
+                    break;
+                }
+                chain.push(parentIdx);
+                current = parentIdx;
+                parentIdx = treeParent[current];
+            }
+
+            ancestorChains.push(chain);
+            totalAncestorNodes += chain.length;
+        }
+
+        // Step 2: Build inverted tree arrays
+        // Node 0 = synthetic root (the focused call frame)
+        // For each occurrence: its ancestor chain becomes a downward path from root
+        const outputSize = 1 + totalAncestorNodes;
+        const invertedNodes = new Uint32Array(outputSize);
+        const invertedParent = new Uint32Array(outputSize);
+        const preOriginals = new Int32Array(outputSize).fill(-1);
+
+        invertedNodes[0] = value; // root = the focused call frame
+
+        let offset = 1;
+        for (let occ = 0; occ < ancestorChains.length; occ++) {
+            const chain = ancestorChains[occ];
+            let parentInInverted = 0; // start from root
+
+            for (let i = 0; i < chain.length; i++) {
+                const origNodeIndex = chain[i];
+                const newIndex = offset++;
+
+                invertedNodes[newIndex] = treeNodes[origNodeIndex];
+                invertedParent[newIndex] = parentInInverted;
+                preOriginals[newIndex] = origNodeIndex;
+                parentInInverted = newIndex;
+            }
+        }
+
+        // Step 3: Consolidate via buildCallTreeArrays
+        const {
+            sourceNodeMap: rollupNodeMap,
+            nodes,
+            parent,
+            subtreeSize,
+            nested
+        } = buildCallTreeArrays({
+            nodes: invertedNodes,
+            parent: invertedParent,
+            dictionary
+        });
+
+        // Step 4: Build nodeOriginals as flat TypedArrays (offset/count pattern)
+        // Maps each consolidated node to ALL original tree node indices merged into it
+        const nodeOriginalsCount = new Uint32Array(nodes.length);
+        const rootIdx = rollupNodeMap[0];
+        nodeOriginalsCount[rootIdx] += occurrences.length;
+        for (let i = 1; i < preOriginals.length; i++) {
+            if (preOriginals[i] >= 0) {
+                nodeOriginalsCount[rollupNodeMap[i]]++;
+            }
+        }
+
+        const nodeOriginalsOffset = new Uint32Array(nodes.length);
+        for (let i = 0, off = 0; i < nodeOriginalsCount.length; i++) {
+            nodeOriginalsOffset[i] = off;
+            off += nodeOriginalsCount[i];
+        }
+
+        const totalOriginals = occurrences.length + totalAncestorNodes;
+        const nodeOriginals = new Uint32Array(totalOriginals);
+        // Fill using offset as a write cursor, then restore
+        for (const occNodeIndex of occurrences) {
+            nodeOriginals[nodeOriginalsOffset[rootIdx]++] = occNodeIndex;
+        }
+        for (let i = 1; i < preOriginals.length; i++) {
+            if (preOriginals[i] >= 0) {
+                const consolidated = rollupNodeMap[i];
+                nodeOriginals[nodeOriginalsOffset[consolidated]++] = preOriginals[i];
+            }
+        }
+        // Restore offsets
+        for (let i = 0; i < nodeOriginalsCount.length; i++) {
+            nodeOriginalsOffset[i] -= nodeOriginalsCount[i];
+        }
+
+        // sampleIdToNode: map everything to excluded (metrics computed differently)
+        const sampleIdToNode = new Uint32Array(tree.sampleIdToNode.length).fill(nodes.length);
+
+        super(dictionary, new Int32Array(nodes.length).fill(-1), nodes, parent, subtreeSize, nested);
+
+        this.nodeOriginals = nodeOriginals;
+        this.nodeOriginalsOffset = nodeOriginalsOffset;
+        this.nodeOriginalsCount = nodeOriginalsCount;
+        this.sampleIdToNode = sampleIdToNode;
+    }
+}

@@ -1,6 +1,6 @@
 import { USE_WASM } from '../const.js';
 import { CpuProNode } from '../types.js';
-import { CallTree } from './call-tree.js';
+import { CallTree, AncestorSubsetCallTree } from './call-tree.js';
 import {
     BufferDictionaryMetricsMap,
     BufferDimensionMap,
@@ -301,6 +301,60 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
             selfValues: this.selfValues,
             nestedValues: this.nestedValues
         }, clear);
+    }
+}
+
+// AncestorSubsetTreeMetrics computes metrics for an AncestorSubsetCallTree by
+// reading values from the original tree's filtered metrics. Each node in the
+// ancestor tree maps to one or more original tree nodes (via nodeOriginals).
+// Values are summed across all originals, giving each ancestor the total time
+// that flows through it toward the focused call frame.
+export class AncestorSubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
+    originalMetrics: TreeMetrics<T>;
+
+    constructor(tree: AncestorSubsetCallTree<T>, originalMetrics: TreeMetrics<T>) {
+        const size = tree.nodes.length + 1; // +1 for excluded slot (compatibility)
+
+        super(
+            tree,
+            new Uint32Array(size),
+            new Uint32Array(size),
+            new Uint32Array(size)
+        );
+
+        this.originalMetrics = originalMetrics;
+        this.subscribe = originalMetrics.subscribe.bind(originalMetrics);
+        this.recompute();
+    }
+
+    recompute() {
+        const { selfValues, nestedValues, samplesCount } = this;
+        const origSelf = this.originalMetrics.selfValues;
+        const origNested = this.originalMetrics.nestedValues;
+        const origSamples = this.originalMetrics.samplesCount;
+        const ancestorTree = this.tree as AncestorSubsetCallTree<T>;
+        const { nodeOriginals, nodeOriginalsOffset, nodeOriginalsCount } = ancestorTree;
+        const origNestedFlag = this.originalMetrics.tree.nested;
+
+        selfValues.fill(0);
+        nestedValues.fill(0);
+        samplesCount.fill(0);
+
+        for (let i = 0; i < nodeOriginalsCount.length; i++) {
+            const start = nodeOriginalsOffset[i];
+            const end = start + nodeOriginalsCount[i];
+            for (let j = start; j < end; j++) {
+                const origIdx = nodeOriginals[j];
+                selfValues[i] += origSelf[origIdx];
+                samplesCount[i] += origSamples[origIdx];
+                // For nodes that are occurrences of the focused value (mapped to root),
+                // skip nestedValues for recursive occurrences to avoid double-counting
+                // (same logic as getValueMetrics)
+                if (origNestedFlag[origIdx] === 0) {
+                    nestedValues[i] += origNested[origIdx];
+                }
+            }
+        }
     }
 }
 
