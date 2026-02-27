@@ -1,6 +1,7 @@
-const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
-const { SubsetTreeMetrics } = require('../prepare/computations/metrics.js');
+const { SubsetCallTree, AncestorSubsetCallTree } = require('../prepare/computations/call-tree.js');
+const { SubsetTreeMetrics, AncestorSubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 const { sessionExpandState, primaryLineSwitcher } = require('./common.js');
+const { resolveScopeProfileLine } = require('../jora/profile.js');
 
 const descendantTree = {
     view: 'block',
@@ -42,14 +43,14 @@ const descendantTree = {
                             ] }
                         ]
                     },
-                    { view: 'text', when: 'subtreeSize', data: '` (${subtreeSize}) `' },
-                    {
-                        view: 'block',
-                        className: 'grouped',
-                        data: 'grouped.size()',
-                        whenData: '$ > 1',
-                        content: 'text:"×" + $'
-                    },
+                    // { view: 'text', when: 'node.subtreeSize', data: '` (${node.subtreeSize}) `' },
+                    // {
+                    //     view: 'block',
+                    //     className: 'grouped',
+                    //     data: 'grouped.size()',
+                    //     whenData: '$ > 1',
+                    //     content: 'text:"×" + $'
+                    // },
                     {
                         view: 'self-value'
                     },
@@ -85,23 +86,25 @@ const ancestorsTree = {
                 $secondaryLine: secondaryLine(#.primaryLineType = "timeline" ? "memline" : "timeline");
 
                 ...#,
-                primaryTree: #.scopeProfile.primaryLine()
-                    .tree.callFrames.filtered,
+                ancestorTree: #.consolidateCallFrames
+                    ? #.ancestorSubsetTreeValues
+                    : scopeLine().tree.callFrames.filtered,
                 $secondaryLine,
-                secondaryTree: $secondaryLine 
-                    .tree.callFrames.filtered
+                secondaryTree: #.consolidateCallFrames
+                    ? #.secondaryAncestorSubsetTreeValues
+                    : $secondaryLine.tree.callFrames.filtered
             }`,
             data: `
-                #.primaryTree
-                    .select('nodes', $, true)
+                #.ancestorTree
+                    .select('nodes', @)
                     .[totalValue]
                     .sort(totalValue desc)
             `,
             children: `
-                node.parent ? #.primaryTree
-                    .select('parent', node.nodeIndex)
+                #.ancestorTree
+                    .select(#.consolidateCallFrames ? 'children' : 'parent', node.nodeIndex)
                     .[totalValue]
-                    .sort(totalValue desc)
+                    .sort(totalValue desc, selfValue desc, node.value.name ascN)
             `,
             item: {
                 view: 'context',
@@ -120,19 +123,20 @@ const ancestorsTree = {
                             ] }
                         ]
                     },
-                    {
-                        view: 'block',
-                        className: 'grouped',
-                        data: 'grouped.size()',
-                        whenData: '$ > 1',
-                        content: 'text:"×" + $'
-                    },
+                    // { view: 'text', when: '#.consolidateCallFrames and node.subtreeSize', data: '` (${node.subtreeSize}) `' },
+                    // {
+                    //     view: 'block',
+                    //     className: 'grouped',
+                    //     data: 'grouped.size()',
+                    //     whenData: '$ > 1',
+                    //     content: 'text:"×" + $'
+                    // },
                     {
                         view: 'total-value'
                     },
                     {
                         view: 'total-value',
-                        when: '$.secondaryTree',
+                        when: '#.secondaryTree',
                         data: '#.secondaryTree.getMetrics(node.nodeIndex)',
                         line: '=#.secondaryLine'
                     },
@@ -312,6 +316,8 @@ const pageContent = [
                     beforeContent(data, context) {
                         if (context.consolidateCallFrames) {
                             context.subsetTreeValues.recompute();
+                            context.ancestorSubsetTreeValues.recompute();
+                            context.secondaryAncestorSubsetTreeValues?.recompute();
                         }
                     },
                     content: {
@@ -346,16 +352,36 @@ discovery.page.define('call-frame', {
         } },
         { content: {
             view: 'context',
-            context: (data, context) => ({
-                ...context,
-                subsetTreeValues: new SubsetTreeMetrics(
-                    new SubsetCallTree(
-                        context.scopeProfile.callFramesTree,
-                        data
+            context: (data, context) => {
+                const scopeLine = resolveScopeProfileLine(null, context);
+                const scopeProfile = scopeLine.profile;
+
+                const callFramesTree = scopeProfile.callFramesTree;
+                const samplesMetrics = scopeLine.samplesMetricsFiltered;
+                const originalTreeMetrics = scopeLine.tree.callFrames.filtered;
+                const secondaryLine = scopeProfile.lines.find(
+                    line => line.type !== context.primaryLineType
+                ) ?? null;
+                const ancestorTree = new AncestorSubsetCallTree(callFramesTree, data);
+
+                return {
+                    ...context,
+                    subsetTreeValues: new SubsetTreeMetrics(
+                        new SubsetCallTree(callFramesTree, data),
+                        samplesMetrics
                     ),
-                    context.scopeLine.samplesMetricsFiltered
-                )
-            }),
+                    ancestorSubsetTreeValues: new AncestorSubsetTreeMetrics(
+                        ancestorTree,
+                        originalTreeMetrics
+                    ),
+                    secondaryAncestorSubsetTreeValues: secondaryLine
+                        ? new AncestorSubsetTreeMetrics(
+                            ancestorTree,
+                            secondaryLine.tree.callFrames.filtered
+                        )
+                        : null
+                };
+            },
             content: pageContent
         } }
     ]
