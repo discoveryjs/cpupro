@@ -1,7 +1,7 @@
 /* eslint-env node */
 const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { supportedFormats } = require('../prepare/index.js');
-const { sessionExpandState, primaryLineSwitcher } = require('./common.js');
+const { sessionExpandState } = require('./common.js');
 const { categoriesFractionBars } = require('./default-page/categories-fraction-bar.js');
 const { chartUsedHeap } = require('./default-page/chart-used-heap.js');
 const { histAllocationGcs } = require('./default-page/hist-allocation-gcs.js');
@@ -303,7 +303,7 @@ const categoriesTimeline = {
                 postRender: (el, _, data) => {
                     el.style.setProperty('--start', (100 * data.start / data.total).toFixed(4) + '%');
                     el.style.setProperty('--duration', (100 * data.duration / data.total).toFixed(4) + '%');
-                    el.style.setProperty('--color', data.name === 'MinorGC' ? '#f7b26ba0' : '#f78c6ba0');
+                    el.style.setProperty('--color', data.name === 'MinorGC' ? '#f7b26ba0' : data.name === 'MajorGC' ? '#f78c6ba0' : data.name === 'Layout' ? '#6ba0f7a0' : '#6bf78ca0');
                 }
             }
         },
@@ -546,20 +546,6 @@ const noDataPageContent = {
 };
 
 const pageContent = [
-    {
-        view: 'page-header',
-        content: [
-            {
-                view: 'h2',
-                content: [
-                    { view: 'block', className: 'logo' },
-                    'text:#.datasets[].resource | type = "file" ? name : "Untitled profile"'
-                ]
-            },
-            primaryLineSwitcher
-        ]
-    },
-
     {
         view: 'timeline-profiles',
         when: experimentalFeatures,

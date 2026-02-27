@@ -1,3 +1,8 @@
+.page-default .view-page-header {
+    padding: 0;
+    top: 0;
+}
+
 .page-default .flamecharts > .content {
     margin-bottom: calc(-1 * var(--discovery-page-padding-bottom));
     margin-right: calc(1px - var(--discovery-page-padding-right));

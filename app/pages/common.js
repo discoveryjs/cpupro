@@ -1,11 +1,3 @@
-export const primaryLineSwitcher = {
-    view: 'toggle-group',
-    data: '#.data.profiles.lines.type',
-    whenData: 'size() > 1',
-    value: '=#.primaryLineType',
-    onChange: '==>"selectPrimaryLine".callAction($)'
-};
-
 export const timingCols = [
     {
         header: '="selfValue".metricName()',

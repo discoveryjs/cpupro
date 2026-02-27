@@ -1,12 +1,11 @@
-import { callFramesCol, primaryLineSwitcher, sessionExpandState, timingCols } from './common.js';
+import { callFramesCol, sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
         view: 'page-header',
         prelude: [
             'badge{ className: "type-badge", text: "Package" }',
-            'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }',
-            primaryLineSwitcher
+            'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }'
         ],
         content: 'h1:name'
     },

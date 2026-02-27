@@ -1,3 +1,4 @@
+import { utils } from '@discoveryjs/discovery';
 import { FEATURE_MULTI_PROFILES } from './prepare/const.js';
 
 const model = discovery;
@@ -34,6 +35,16 @@ if (FEATURE_MULTI_PROFILES) {
     //     href: '#profiles-matrix'
     // });
 }
+
+const appbarEl = utils.createElement('div', 'discovery-appbar');
+const renderAppbar = () => {
+    appbarEl.replaceChildren();
+    model.view.render(appbarEl, 'appbar', model.data, model.getContext());
+};
+const sheduleAppbarRender = utils.debounce(renderAppbar, 100);
+model.dom.container.prepend(appbarEl);
+model.on('context', sheduleAppbarRender);
+model.on('data', sheduleAppbarRender);
 
 model.action.define('getSessionSetting', (name, defaultValue) => {
     const value = sessionStorage.getItem(name);

@@ -1,6 +1,6 @@
 const { SubsetCallTree, AncestorSubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeMetrics, AncestorSubsetTreeMetrics } = require('../prepare/computations/metrics.js');
-const { sessionExpandState, primaryLineSwitcher } = require('./common.js');
+const { sessionExpandState } = require('./common.js');
 const { resolveScopeProfileLine } = require('../jora/profile.js');
 
 const descendantTree = {
@@ -163,8 +163,7 @@ const pageContent = [
             'badge{ className: "category-badge", text: module.category.name, href: module.category.marker().href, color: module.category.name.color() }',
             'package-badge',
             'badge{ text: module | packageRelPath or path or "module", href: module.marker().href }',
-            'call-frame-loc-badge',
-            primaryLineSwitcher
+            'call-frame-loc-badge'
         ],
         content: [
             {

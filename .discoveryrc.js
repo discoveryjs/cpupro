@@ -49,6 +49,8 @@ module.exports = {
             './pages/threads.js',
             './views/misc/mode-regexp.css',
             './views/misc/mode-regexp.js',
+            './views/appbar.css',
+            './views/appbar.js',
             './views/allocation-samples-matrix.css',
             './views/allocation-samples-matrix.js',
             './views/call-frame-codes-table.css',

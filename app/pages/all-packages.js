@@ -1,5 +1,3 @@
-const { primaryLineSwitcher } = require('./common.js');
-
 discovery.page.define('packages', [
     {
         view: 'context',
@@ -11,11 +9,7 @@ discovery.page.define('packages', [
                 prelude: [
                     'badge{ text: "Packages", className: #.page = "packages" ? "selected", href: #.page != "packages" ? "#packages" }',
                     'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
-                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }',
-                    {
-                        view: 'context',
-                        content: primaryLineSwitcher
-                    }
+                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }'
                 ],
                 content: [
                     'h1:"All packages"',

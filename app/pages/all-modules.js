@@ -1,5 +1,3 @@
-import { primaryLineSwitcher } from './common.js';
-
 discovery.page.define('modules', [
     {
         view: 'context',
@@ -27,11 +25,7 @@ discovery.page.define('modules', [
                 prelude: [
                     'badge{ text: "Packages", className: #.page = "packages" ? "selected", href: #.page != "packages" ? "#packages" }',
                     'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
-                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }',
-                    {
-                        view: 'context',
-                        content: primaryLineSwitcher
-                    }
+                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }'
                 ],
                 content: [
                     'h1:"All modules"',

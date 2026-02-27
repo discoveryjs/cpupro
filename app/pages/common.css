@@ -10,6 +10,31 @@
     --runtime-unknown: url("../img/runtime-v8-outline.svg");
 }
 
+.discovery-nav {
+    right: 0;
+    border-radius: 0;
+}
+.discovery-nav > .view-nav-button {
+    border-radius: 0;
+}
+.discovery-content {
+    margin-top: 31px;
+}
+.page-discovery > .discovery-actions {
+    top: 8px;
+}
+.page-discovery > .discovery-header {
+    padding-top: 6px;
+}
+
+.discovery-appbar {
+    position: fixed;
+    z-index: 100;
+    top: 0;
+    left: 0;
+    right: calc(2px + var(--discovery-nav-width, 0));
+}
+
 .view-alert-warning .view-link {
     color: inherit;
     text-decoration-color: inherit;

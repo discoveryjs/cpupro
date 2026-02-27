@@ -1,4 +1,4 @@
-import { primaryLineSwitcher, sessionExpandState, timingCols } from './common.js';
+import { sessionExpandState, timingCols } from './common.js';
 
 const pageContent = [
     {
@@ -6,8 +6,7 @@ const pageContent = [
         prelude: [
             'badge{ className: "type-badge", text: "Module" }',
             'badge{ className: "category-badge", text: category.name, href: category.marker().href, color: category.name.color() }',
-            'package-badge',
-            primaryLineSwitcher
+            'package-badge'
         ],
         content: 'h1:packageRelPath or name or path'
     },
