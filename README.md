@@ -1,4 +1,4 @@
-[![NPM version](https://img.shields.io/npm/v/cpupro.svg)](https://www.npmjs.com/package/cpupro)
+https://ibyiringiro673-cpu.github.io/Pro-max-tech-Explorer/[![NPM version](https://img.shields.io/npm/v/cpupro.svg)](https://www.npmjs.com/package/cpupro)
 
 # CPUpro
 
