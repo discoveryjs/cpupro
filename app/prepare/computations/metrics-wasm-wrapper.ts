@@ -1,6 +1,6 @@
 /* eslint-env browser */
 import { base64 } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
-import computeMetricsWasmSourceBase64 from './timings.wasm'; // Keep using same WASM for now
+import computeMetricsWasmSourceBase64 from './metrics.wasm'; // Keep using same WASM for now
 import { CallTree } from './call-tree';
 import { CpuProNode } from '../types';
 
@@ -57,19 +57,19 @@ type ComputeMetricsWasmModuleInstance = {
             dest: number,
             map: number
         ): void;
-        accumulateTimings(
+        accumulateMetrics(
             srcSize: number,
             src: number,
             dest: number,
             map: number
         ): void;
-        rollupTreeTimings(
+        rollupTreeMetrics(
             nodesCount: number,
             parent: number,
             selfTimes: number,
             nestedTimes: number
         ): void;
-        rollupDictionaryTimings(
+        rollupDictionaryMetrics(
             totalNodesSize: number,
             totalNodes: number,
             nodeSelfTimes: number,
@@ -107,9 +107,9 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeM
     const wasmModule = createWasmModule(computeMetricsWasmSourceBase64, { memory }) as ComputeMetricsWasmModuleInstance;
     const {
         accumulateSampleCount,
-        accumulateTimings,
-        rollupTreeTimings,
-        rollupDictionaryTimings
+        accumulateMetrics,
+        rollupTreeMetrics,
+        rollupDictionaryMetrics
     } = wasmModule.exports;
 
     return {
@@ -126,7 +126,7 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeM
                 map.samplesCount.byteOffset
             );
 
-            accumulateTimings(
+            accumulateMetrics(
                 map.values.length,
                 map.values.byteOffset,
                 map.samples.byteOffset,
@@ -141,21 +141,21 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeM
                 map.nestedValues.fill(0);
             }
 
-            accumulateTimings(
+            accumulateMetrics(
                 map.sourceSamplesCount.length,
                 map.sourceSamplesCount.byteOffset,
                 map.sampleIdToNode.byteOffset,
                 map.samplesCount.byteOffset
             );
 
-            accumulateTimings(
+            accumulateMetrics(
                 map.sourceSamplesTotal.length,
                 map.sourceSamplesTotal.byteOffset,
                 map.sampleIdToNode.byteOffset,
                 map.selfValues.byteOffset
             );
 
-            rollupTreeTimings(
+            rollupTreeMetrics(
                 map.parent.byteOffset,
                 map.selfValues.length,
                 map.selfValues.byteOffset,
@@ -170,21 +170,21 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeM
                 map.totalValues.fill(0);
             }
 
-            accumulateTimings(
+            accumulateMetrics(
                 map.sourceSamplesCount.length,
                 map.sourceSamplesCount.byteOffset,
                 map.sampleIdToDict.byteOffset,
                 map.samplesCount.byteOffset
             );
 
-            accumulateTimings(
+            accumulateMetrics(
                 map.sourceSamplesTotal.length,
                 map.sourceSamplesTotal.byteOffset,
                 map.sampleIdToDict.byteOffset,
                 map.selfValues.byteOffset
             );
 
-            rollupDictionaryTimings(
+            rollupDictionaryMetrics(
                 map.totalNodes.length,
                 map.totalNodes.byteOffset,
                 map.nodeSelfValues.byteOffset,

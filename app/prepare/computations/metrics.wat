@@ -76,7 +76,7 @@
   )
 )
 
-(func $accumulateTimings (export "accumulateTimings")
+(func $accumulateMetrics (export "accumulateMetrics")
   (param $srcSize i32)
   (param $src i32)
   (param $map i32)
@@ -155,7 +155,7 @@
   )
 )
 
-(func $rollupTreeTimings (export "rollupTreeTimings")
+(func $rollupTreeMetrics (export "rollupTreeMetrics")
   (param $parent i32)
   (param $nodesCount i32)
   (param $selfTimes i32)
@@ -238,7 +238,7 @@
   )
 )
 
-(func $rollupDictionaryTimings (export "rollupDictionaryTimings")
+(func $rollupDictionaryMetrics (export "rollupDictionaryMetrics")
   (param $totalNodesSize i32)
   (param $totalNodes i32)
   (param $nodeSelfTimes i32)
