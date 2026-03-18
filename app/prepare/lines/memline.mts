@@ -3,8 +3,11 @@ import type { BuildTreeResult } from '../computations/build-trees.js';
 import type { V8CpuProfile } from '../types.js';
 import type { Metric, ProfileMemline } from './types.js';
 import { computeTimings } from '../preprocessing/samples.js';
+import { createVectorLocations } from '../preprocessing/locations.js';
 import { sum } from '../misc/utils.js';
 import { AllocationLifespan, typeColor } from '../const.js';
+import { Dictionary } from '../dictionary.js';
+import { ProfileScriptsMap } from '../preprocessing/scripts.js';
 
 const metricName: Record<Metric, string> = {
     axis: 'Memory allocated',
@@ -35,6 +38,8 @@ const metricDefinitions: Record<Metric, string> = {
  */
 export async function createMemline(
     data: V8CpuProfile,
+    dictionary: Dictionary,
+    scriptsMap: ProfileScriptsMap,
     cpuSamples: Uint32Array,
     locationsTree: BuildTreeResult['locationsTree'],
     callFramesTree: BuildTreeResult['callFramesTree'],
@@ -47,6 +52,8 @@ export async function createMemline(
         _cpuproAllocationMapping,
         _cpuproAllocationIds,
         _cpuproAllocationSizes,
+        _cpuproAllocationScriptIds = null,
+        _cpuproAllocationLocations = null,
         _cpuproAllocationGc = null,
         _cpuproAllocationTypes = null,
         _cpuproAllocationTypeNames = null
@@ -114,6 +121,17 @@ export async function createMemline(
             categoriesTree,
             locationsTree
         )
+    );
+
+    const vectorLocations = createVectorLocations(
+        dictionary,
+        scriptsMap,
+        _cpuproAllocationScriptIds,
+        _cpuproAllocationLocations,
+        samplesMetrics.samples,
+        callFramesTree,
+        samplesMetrics,
+        samplesMetricsFiltered
     );
 
     // Calculate total allocation size as axis total
@@ -226,6 +244,7 @@ export async function createMemline(
 
         dict,
         tree,
+        locations: vectorLocations?.dict || null,
 
         mappings: Object.create(null),
 

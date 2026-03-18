@@ -8,7 +8,7 @@ import {
     CpuProPackage,
     CpuProNode,
     CpuProCallFrame,
-    CpuProCallFrameLocation
+    CpuProLocation
 } from '../types.js';
 
 // Merging sequentially identical samples and coresponsing timeDeltas.
@@ -102,7 +102,7 @@ export function computeTimings(
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
     categoriesTree: CallTree<CpuProCategory>,
-    locationsTree: CallTree<CpuProCallFrameLocation> | null
+    locationsTree: CallTree<CpuProLocation> | null
 ) {
     // create metrics
     const computeTimingsStart = Date.now();
@@ -131,7 +131,7 @@ export function computeTimings(
         modules: moduleDimension.dict as DictDimension<CpuProModule>,
         packages: packageDimension.dict as DictDimension<CpuProPackage>,
         categories: categoryDimension.dict as DictDimension<CpuProCategory>,
-        locations: locationDimension?.dict as DictDimension<CpuProCallFrameLocation> || null
+        locations: locationDimension?.dict as DictDimension<CpuProLocation> || null
     };
 
     const tree = {
@@ -139,7 +139,7 @@ export function computeTimings(
         modules: moduleDimension.tree as TreeDimension<CpuProModule>,
         packages: packageDimension.tree as TreeDimension<CpuProPackage>,
         categories: categoryDimension.tree as TreeDimension<CpuProCategory>,
-        locations: locationDimension?.tree as TreeDimension<CpuProCallFrameLocation> || null
+        locations: locationDimension?.tree as TreeDimension<CpuProLocation> || null
     };
 
     TIMINGS && console.log('Compute timings:', Date.now() - computeTimingsStart);

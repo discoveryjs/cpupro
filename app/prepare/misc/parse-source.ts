@@ -75,7 +75,20 @@ export function getPosFromScriptLineColumn(script: CpuProScript | null, line: nu
     return -1;
 }
 
-export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, line: number, column: number, fn) {
+export function getLineColumnFromScriptOffset(script: CpuProScript | null, offset: number) {
+    const lines = getScriptLineBoundaries(script);
+
+    if (lines && offset >= 0) {
+        return {
+            line: lines.getLine(offset) - 1,
+            column: lines.getColumn(offset) - 1
+        };
+    }
+
+    return null;
+}
+
+export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, line: number, column: number) {
     const functionRanges = getScriptFunctionRanges(script);
 
     if (functionRanges) {

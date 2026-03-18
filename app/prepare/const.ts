@@ -24,6 +24,7 @@ export const callFrameKinds: Record<CpuProCallFrameKind, number> = {
     /* eslint-enable key-spacing */
 };
 export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
+    ['(unknown)', 'unknown'],
     ['(root)', 'root'],
     ['(program)', 'program'],
     ['(garbage collector)', 'gc'],
@@ -37,6 +38,7 @@ export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
     ['(atomics wait)', 'atomics-wait']
 ]);
 export const moduleTypeByWellKnownName = new Map<WellKnownName, ModuleType>([
+    ['(unknown)', 'unknown'],
     ['(root)', 'root'],
     ['(program)', 'program'],
     ['(garbage collector)', 'gc'],

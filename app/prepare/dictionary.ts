@@ -11,6 +11,7 @@ import {
     CpuProCallFrame,
     CpuProCategory,
     CpuProCallFrameKind,
+    CpuProLocation,
     CpuProModule,
     CpuProPackage,
     CpuProScript,
@@ -23,6 +24,7 @@ import {
     WellKnownType
 } from './types.js';
 import { scriptFromScriptId } from './preprocessing/scripts.js';
+import { createLocation } from './misc/location.js';
 import { getFunctionEndFromScriptLineColumn, getPosFromScriptLineColumn } from './misc/parse-source.js';
 
 const callFrameKindPrefixes: [prefix: string, kind: CpuProCallFrameKind][] = [
@@ -58,6 +60,7 @@ type CallFrameMap = Map<
 
 export class Dictionary {
     callFrames: CpuProCallFrame[] & { wellKnownIndex: Record<WellKnownType, number> };
+    locations: CpuProLocation[];
     scripts: CpuProScript[];
     modules: CpuProModule[];
     packages: CpuProPackage[];
@@ -68,12 +71,17 @@ export class Dictionary {
     #categoriesMap: Map<string, CpuProCategory>;
 
     #callFramesByScript: CallFrameMap;
+    #locationsByScriptOffset: WeakMap<CpuProScript, Map<number, number>>;
+    #locationsByScriptLineColumn: WeakMap<CpuProScript, Map<number, Map<number, number>>>;
+    #locationsByNoScriptCallFrame: Map<CpuProCallFrame, number>;
+    #locationUnknownNoScriptIndex: number | null;
     #anonymousFunctionNameIndex: number = 1;
     #anonymousModuleByScriptId: Map<CpuProScript, string>;
     #packageNameByOriginMap: Map<string, string>;
 
     constructor() {
         this.callFrames = Object.assign([], { wellKnownIndex: Object.create(null) });
+        this.locations = [];
         this.scripts = [];
         this.modules = [];
         this.packages = [];
@@ -84,6 +92,10 @@ export class Dictionary {
         this.#categoriesMap = new Map();
 
         this.#callFramesByScript = new Map();
+        this.#locationsByScriptOffset = new WeakMap();
+        this.#locationsByScriptLineColumn = new WeakMap();
+        this.#locationsByNoScriptCallFrame = new Map();
+        this.#locationUnknownNoScriptIndex = null;
         this.#anonymousModuleByScriptId = new Map();
         this.#packageNameByOriginMap = new Map([
             ...Object.entries(knownChromeExtensions)
@@ -199,6 +211,97 @@ export class Dictionary {
     }
     resolveCallFrame(inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number }, scriptsMap: IProfileScriptsMap) {
         return this.callFrames[this.resolveCallFrameIndex(inputCallFrame, scriptsMap)];
+    }
+
+    resolveLocationIndex(input: {
+        callFrame?: CpuProCallFrame;
+        script?: CpuProScript | null;
+        scriptOffset?: number;
+        line?: number;
+        column?: number;
+    }) {
+        const script = input.callFrame?.script ?? input.script ?? null;
+        const scriptOffset = typeof input.scriptOffset === 'number' ? input.scriptOffset : -1;
+        const line = typeof input.line === 'number' ? input.line : -1;
+        const column = typeof input.column === 'number' ? input.column : -1;
+        const unknownCallFrame = this.callFrames[this.callFrames.wellKnownIndex.unknown];
+
+        if (script === null) {
+            if (input.callFrame) {
+                let locationIndex = this.#locationsByNoScriptCallFrame.get(input.callFrame);
+
+                if (locationIndex === undefined) {
+                    locationIndex = this.locations.push(createLocation(input)) - 1;
+                    this.#locationsByNoScriptCallFrame.set(input.callFrame, locationIndex);
+                }
+
+                return locationIndex;
+            }
+
+            if (this.#locationUnknownNoScriptIndex === null) {
+                this.#locationUnknownNoScriptIndex = this.locations.push(createLocation({
+                    ...input,
+                    callFrame: unknownCallFrame
+                })) - 1;
+            }
+
+            return this.#locationUnknownNoScriptIndex;
+        }
+
+        let locationIndex: number | undefined;
+
+        if (scriptOffset !== -1) {
+            let byOffset = this.#locationsByScriptOffset.get(script);
+
+            if (byOffset === undefined) {
+                this.#locationsByScriptOffset.set(script, byOffset = new Map());
+            }
+
+            locationIndex = byOffset.get(scriptOffset);
+
+            if (locationIndex === undefined) {
+                locationIndex = this.locations.push(createLocation({ ...input, script })) - 1;
+                byOffset.set(scriptOffset, locationIndex);
+            }
+        } else {
+            let byLine = this.#locationsByScriptLineColumn.get(script);
+
+            if (byLine === undefined) {
+                this.#locationsByScriptLineColumn.set(script, byLine = new Map());
+            }
+
+            let byColumn = byLine.get(line);
+
+            if (byColumn === undefined) {
+                byLine.set(line, byColumn = new Map());
+            }
+
+            locationIndex = byColumn.get(column);
+
+            if (locationIndex === undefined) {
+                locationIndex = this.locations.push(createLocation({ ...input, script })) - 1;
+                byColumn.set(column, locationIndex);
+            }
+        }
+
+        if (input.callFrame) {
+            const location = this.locations[locationIndex];
+
+            if (location.callFrame === undefined) {
+                location.callFrame = input.callFrame;
+            }
+        }
+
+        return locationIndex;
+    }
+    resolveLocation(input: {
+        callFrame?: CpuProCallFrame;
+        script?: CpuProScript | null;
+        scriptOffset?: number;
+        line?: number;
+        column?: number;
+    }) {
+        return this.locations[this.resolveLocationIndex(input)];
     }
 
     resolveScript(

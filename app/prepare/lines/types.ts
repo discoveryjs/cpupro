@@ -1,7 +1,7 @@
 import { LineMapping } from '../computations/line-mapping';
 import { DictDimension, SamplesMetrics, SamplesMetricsFiltered, TreeDimension } from '../computations/metrics';
 import { Profile } from '../profile.mjs';
-import { CpuProCallFrame, CpuProCallFrameLocation, CpuProCategory, CpuProModule, CpuProPackage } from '../types';
+import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage } from '../types';
 
 export type ProfileLineType = 'timeline' | 'memline';
 export type LineKind = 'time' | 'memory'
@@ -39,7 +39,7 @@ export interface ProfileLine {
     samples: Uint32Array;                // sampleId -> profile.<tree>.sampleIdToNode[sampleId]
     sampleCounts: Uint32Array;
     sampleCountsByProfile: Uint32Array;
-    sampleLocations: Int32Array | null;  // sample node + script offset
+    sampleLocations: Int32Array | null;  // per-sample offsets in the line's primary sample domain
 
     // Values (generic metric)
     values: Uint32Array;
@@ -50,7 +50,7 @@ export interface ProfileLine {
 
     // Dictionary-based dimensions (aggregated by entity, no tree structure needed)
     dict: {
-        locations: DictDimension<CpuProCallFrameLocation> | null;
+        locations: DictDimension<CpuProLocation> | null;
         callFrames: DictDimension<CpuProCallFrame> | null;
         modules: DictDimension<CpuProModule> | null;
         packages: DictDimension<CpuProPackage> | null;
@@ -59,12 +59,16 @@ export interface ProfileLine {
 
     // Tree-based dimensions (requires call tree structure)
     tree: {
-        locations: TreeDimension<CpuProCallFrameLocation> | null;
+        locations: TreeDimension<CpuProLocation> | null;
         callFrames: TreeDimension<CpuProCallFrame> | null;
         modules: TreeDimension<CpuProModule> | null;
         packages: TreeDimension<CpuProPackage> | null;
         categories: TreeDimension<CpuProCategory> | null;
     };
+
+    // Optional line-owned vector locations.
+    // Tree-derived locations remain available through dict.locations and tree.locations.
+    locations: DictDimension<CpuProLocation> | null;
 
     // Mappings to other lines (key = target line kind)
     mappings: Record<ProfileLineType, LineMapping>;

@@ -1,6 +1,9 @@
-import type { CpuProCallFrame, CpuProCallFrameLocation } from '../types.js';
+import type { CpuProCallFrame, CpuProLocation, CpuProScript, IProfileScriptsMap } from '../types.js';
+import type { Dictionary } from '../dictionary.js';
 import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import { CallTree } from '../computations/call-tree.js';
+import { DictDimension, DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered } from '../computations/metrics.js';
+import { scriptFromScriptId } from './scripts.js';
 
 function positionRef(callFrameIndex: number, scriptOffset: number) {
     return scriptOffset * 0x0100_0000 + callFrameIndex;
@@ -73,6 +76,7 @@ export function ensureLocations(
  * Returns a location tree for aggregating metrics by execution point.
  */
 export function processLocations(
+    dictionary: Dictionary,
     nodeIndexById: Int32Array,
     nodeParent: Uint32Array,
     nodePositions: Int32Array,
@@ -87,7 +91,7 @@ export function processLocations(
 
     const positionsMap = new Map<number, number>();
     const positionNodeMap = new Map<number, number>();
-    const positions: CpuProCallFrameLocation[] = [];
+    const positions: CpuProLocation[] = [];
     const nodesPosition = new Uint32Array(nodeParent.length);
     const samplesPositionNodes: number[] = [];
     const samplesPositionParent: number[] = [];
@@ -101,13 +105,14 @@ export function processLocations(
         let positionIndex = positionsMap.get(ref);
 
         if (positionIndex === undefined) {
-            // Create location with all fields from callFrame
-            positionsMap.set(ref, positionIndex = positions.push({
+            const globalLocationIndex = dictionary.resolveLocationIndex({
                 callFrame,
                 scriptOffset,
                 line: callFrame.line,
                 column: callFrame.column
-            }) - 1);
+            });
+
+            positionsMap.set(ref, positionIndex = positions.push(dictionary.locations[globalLocationIndex]) - 1);
         }
 
         nodesPosition[i] = positionIndex;
@@ -124,15 +129,14 @@ export function processLocations(
             let positionIndex = positionsMap.get(ref);
 
             if (positionIndex === undefined) {
-                // Create location with all fields
-                // scriptOffset is execution point (from profile or derived from callFrame.start)
-                // line/column from callFrame definition (TODO: compute from scriptOffset if source available)
-                positionsMap.set(ref, positionIndex = positions.push({
+                const globalLocationIndex = dictionary.resolveLocationIndex({
                     callFrame,
                     scriptOffset,
                     line: callFrame.line,
                     column: callFrame.column
-                }) - 1);
+                });
+
+                positionsMap.set(ref, positionIndex = positions.push(dictionary.locations[globalLocationIndex]) - 1);
             }
 
             const nodeRef = positionNodeRef(nodeIndex, scriptOffset);
@@ -168,5 +172,111 @@ export function processLocations(
 
     return {
         locationsTreeSource
+    };
+}
+
+type RawScriptIds = ArrayLike<number | string>;
+type NumericVector = ArrayLike<number>;
+
+function recomputeLocationDictionaryMetrics(
+    locationIds: Int32Array,
+    values: Uint32Array,
+    samplesCount: Uint32Array,
+    selfValues: Uint32Array,
+    totalValues: Uint32Array
+) {
+    samplesCount.fill(0);
+    selfValues.fill(0);
+    totalValues.fill(0);
+
+    for (let i = 0; i < locationIds.length; i++) {
+        const locationIndex = locationIds[i];
+        const value = values[i];
+
+        samplesCount[locationIndex]++;
+        selfValues[locationIndex] += value;
+        totalValues[locationIndex] += value;
+    }
+}
+
+export function createVectorLocations(
+    dictionary: Dictionary,
+    scriptsMap: IProfileScriptsMap,
+    scriptIds: RawScriptIds | null,
+    scriptOffsets: NumericVector | null,
+    samples: Uint32Array,
+    callFramesTree: CallTree<CpuProCallFrame> | null,
+    samplesMetrics: SamplesMetrics,
+    samplesMetricsFiltered: SamplesMetricsFiltered
+): {
+    sampleLocations: Int32Array;
+    dict: DictDimension<CpuProLocation>;
+} | null {
+    if (scriptIds === null || scriptOffsets === null || scriptIds.length !== scriptOffsets.length) {
+        return null;
+    }
+
+    const locationIds = new Int32Array(scriptOffsets.length);
+    let prevScriptId: number | string | undefined;
+    let prevScript: CpuProScript | null = null;
+    let prevSampleId = -1;
+    let prevCallFrame: CpuProCallFrame | undefined;
+
+    for (let i = 0; i < scriptOffsets.length; i++) {
+        const rawScriptId = scriptIds[i];
+
+        if (i === 0 || rawScriptId !== prevScriptId) {
+            prevScriptId = rawScriptId;
+            prevScript = scriptFromScriptId(rawScriptId, null, scriptsMap);
+        }
+
+        let callFrame: CpuProCallFrame | undefined;
+
+        if (prevScript === null && callFramesTree !== null) {
+            const sampleId = samples[i];
+
+            if (sampleId !== prevSampleId) {
+                prevSampleId = sampleId;
+
+                const nodeIndex = callFramesTree.sampleIdToNode[sampleId];
+                prevCallFrame = callFramesTree.dictionary[callFramesTree.nodes[nodeIndex]];
+            }
+
+            callFrame = prevCallFrame;
+        }
+
+        locationIds[i] = dictionary.resolveLocationIndex({
+            callFrame,
+            script: prevScript,
+            scriptOffset: scriptOffsets[i]
+        });
+    }
+
+    const locationDictionary = dictionary.locations.slice();
+    const samplesCountAll = new Uint32Array(locationDictionary.length);
+    const selfValuesAll = new Uint32Array(locationDictionary.length);
+    const totalValuesAll = new Uint32Array(locationDictionary.length);
+    const samplesCountFiltered = new Uint32Array(locationDictionary.length);
+    const selfValuesFiltered = new Uint32Array(locationDictionary.length);
+    const totalValuesFiltered = new Uint32Array(locationDictionary.length);
+
+    recomputeLocationDictionaryMetrics(locationIds, samplesMetrics.values, samplesCountAll, selfValuesAll, totalValuesAll);
+    recomputeLocationDictionaryMetrics(locationIds, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
+
+    const all = new DictionaryMetrics(locationDictionary, samplesCountAll, selfValuesAll, totalValuesAll);
+    const filtered = new DictionaryMetrics(locationDictionary, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
+
+    samplesMetricsFiltered.subscribe(() => {
+        recomputeLocationDictionaryMetrics(locationIds, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
+        filtered.sync();
+        filtered.notify();
+    });
+
+    return {
+        sampleLocations: locationIds,
+        dict: {
+            all,
+            filtered
+        }
     };
 }

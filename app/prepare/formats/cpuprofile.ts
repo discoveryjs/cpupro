@@ -5,6 +5,7 @@ type SizeSample = {
     size: number;
     nodeId: number;
     ordinal: number;
+    scriptId?: number | string;
     gc?: number;
     pos?: number;
     type?: number;
@@ -205,6 +206,8 @@ function extractCombinedAllocationData(data: {
     allocationSamples?: {
         ids?: unknown;
         sizes?: unknown;
+        scriptIds?: unknown;
+        positions?: unknown;
         gc?: unknown;
         types?: unknown;
         typesDict?: Record<string, string>;
@@ -218,7 +221,7 @@ function extractCombinedAllocationData(data: {
     }
 
     const { allocationSampleIds, allocationSamples } = data;
-    const { ids, sizes, gc, types, typesDict, spaces, spacesDict } = allocationSamples;
+    const { ids, sizes, scriptIds, positions, gc, types, typesDict, spaces, spacesDict } = allocationSamples;
 
     if (!Array.isArray(ids) || !Array.isArray(sizes) || !Array.isArray(allocationSampleIds)) {
         return null;
@@ -228,6 +231,8 @@ function extractCombinedAllocationData(data: {
         _cpuproAllocationMapping: allocationSampleIds,
         _cpuproAllocationIds: ids,
         _cpuproAllocationSizes: sizes,
+        _cpuproAllocationScriptIds: Array.isArray(scriptIds) ? scriptIds : undefined,
+        _cpuproAllocationLocations: Array.isArray(positions) ? positions : undefined,
         _cpuproAllocationGc: Array.isArray(gc) ? gc : undefined,
         _cpuproAllocationTypes: Array.isArray(types) ? types : undefined,
         _cpuproAllocationTypeNames: typesDict,
@@ -245,6 +250,8 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
     allocationSamples?: {
         ids?: unknown;
         sizes?: unknown;
+        scriptIds?: unknown;
+        positions?: unknown;
         gc?: unknown;
         types?: unknown;
         typesDict?: Record<string, string>;
@@ -285,6 +292,7 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
     source = source.slice().sort((a, b) => a.ordinal - b.ordinal);
 
     const typeVector = extractVectorIfExists(source, 'type');
+    const scriptIdVector = extractVectorIfExists(source, 'scriptId');
     // const { vector: spaceVector, names: spaceNames } = extractRemapVectorIfExists(source, 'space', ALLOCATION_SPACES);
     const gcVector = extractVectorIfExists(source, 'gc');
     const locationVector = extractVectorIfExists(source, 'pos');
@@ -305,6 +313,7 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
         // _memoryGcNames: gcNames,
         _cpuproAllocationTypes: typeVector,
         _cpuproAllocationTypeNames: ALLOCATION_INSTANCE_TYPES,
+        _cpuproAllocationScriptIds: scriptIdVector,
         // _memorySpace: spaceVector,
         // _memorySpaceNames: spaceNames,
         _cpuproAllocationLocations: locationVector,

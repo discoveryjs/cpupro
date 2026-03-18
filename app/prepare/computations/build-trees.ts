@@ -1,6 +1,6 @@
 import { TIMINGS } from '../const.js';
 import { CallTree } from './call-tree.js';
-import type { CpuProCallFrame, CpuProCallFrameLocation, CpuProCategory, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
+import type { CpuProCallFrame, CpuProLocation, CpuProCategory, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Usage } from '../usage.js';
 
@@ -33,7 +33,7 @@ interface BuildTreeSource<S> {
 
 export type BuildTreeResult = {
     treeSource: TreeSource<CpuProCallFrame>;
-    locationsTree: CallTree<CpuProCallFrameLocation> | null;
+    locationsTree: CallTree<CpuProLocation> | null;
     callFramesTree: CallTree<CpuProCallFrame>;
     modulesTree: CallTree<CpuProModule>;
     packagesTree: CallTree<CpuProPackage>;
@@ -482,7 +482,7 @@ export function buildTrees(
     nodeParent: Uint32Array,
     nodeIndexById: Int32Array,
     callFrameByNodeIndex: Uint32Array,
-    locationsTreeSource: TreeSource<CpuProCallFrameLocation> | null = null,
+    locationsTreeSource: TreeSource<CpuProLocation> | null = null,
     usage: Usage | Dictionary = dict
 ): BuildTreeResult {
     const treeSource = buildTreeSource(

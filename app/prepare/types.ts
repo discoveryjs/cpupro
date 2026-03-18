@@ -41,12 +41,13 @@ export type V8CpuProfileCpuproExtensions = {
     _cpuproAllocationMapping?: number[]; // maps CPU sample index -> last allocation ID in range
     _cpuproAllocationIds?: number[]; // allocation IDs (ordinal)
     _cpuproAllocationSizes?: number[]; // allocation sizes
+    _cpuproAllocationScriptIds?: Array<number | string>; // allocation script ids in profile-local domain
     _cpuproAllocationGc?: number[]; // GC state (lower 2 bits) + epoch (upper bits)
     _cpuproAllocationTypes?: number[]; // V8 map type IDs
     _cpuproAllocationTypeNames?: Record<number, string>; // human-readable type names
     _cpuproAllocationSpaces?: number[]; // V8 map space IDs
     _cpuproAllocationSpaceNames?: Record<number, string>; // human-readable space names
-    _cpuproAllocationLocations?: number[]; // allocation positions
+    _cpuproAllocationLocations?: number[]; // allocation script offsets
 }
 export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     id: number;
@@ -149,6 +150,7 @@ export type V8CallFrameCodeType =
     | 'Unknown'
     ;
 export type WellKnownName =
+    | '(unknown)'
     | '(root)'
     | '(garbage collector)'
     | '(program)'
@@ -173,9 +175,10 @@ export type WellKnownType = // alphabetical order
     | 'parser'
     | 'program'
     | 'root'
+    | 'unknown'
     ;
 
-export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory | CpuProCallFrameLocation;
+export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory | CpuProLocation;
 
 export type GeneratedNodes = {
     count: number;
@@ -260,8 +263,9 @@ export type CpuProCallFrame = {
     category: CpuProCategory;
 }
 
-export type CpuProCallFrameLocation = {
+export type CpuProLocation = {
     callFrame: CpuProCallFrame;
+    script: CpuProScript | null;
     scriptOffset: number; // -1 if not available
     line: number;          // -1 if not available
     column: number;        // -1 if not available

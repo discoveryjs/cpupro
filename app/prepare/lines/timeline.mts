@@ -279,6 +279,7 @@ export async function createTimeline(
 
         dict,
         tree,
+        locations: null,
 
         mappings: Object.create(null)
     };

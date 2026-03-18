@@ -179,7 +179,7 @@ export async function createProfile(
                 data.endTime,
                 data.timeDeltas,
                 data.samples,
-                _dataPositions,
+                _dataPositions || undefined,
                 data._samplesInterval // could be computed on V8 log convertation into cpuprofile
             )
         )
@@ -197,7 +197,7 @@ export async function createProfile(
                 samplesInterval,
                 data.timeDeltas,
                 data.samples,
-                _dataPositions,
+                _dataPositions || undefined,
                 generateNodes
             )
         );
@@ -250,6 +250,8 @@ export async function createProfile(
     // Consume dictionaries
     //
 
+    const profileScriptsMap = new ProfileScriptsMap(dictionary, data._scripts);
+
     const {
         callFrameByIndex,
         callFrameByNodeIndex
@@ -258,7 +260,7 @@ export async function createProfile(
             dictionary,
             data.nodes,
             data._callFrames,
-            new ProfileScriptsMap(dictionary, data._scripts),
+            profileScriptsMap,
             generateNodes
         )
     );
@@ -297,6 +299,7 @@ export async function createProfile(
     // call frame positions
     const { locationsTreeSource } = await work('process locations', () =>
         processLocations(
+            dictionary,
             nodeIndexById,
             nodeParent,
             nodePositions,
@@ -348,7 +351,9 @@ export async function createProfile(
     // Create memline from allocation data if present (combined profile)
     const memline = await createMemline(
         data,
-        timeline ? timeline.samplesMetrics.samples : data.samples,
+        dictionary,
+        profileScriptsMap,
+        timeline ? timeline.samplesMetrics.samples : convertToUint32Array(data.samples),
         locationsTree,
         callFramesTree,
         modulesTree,
