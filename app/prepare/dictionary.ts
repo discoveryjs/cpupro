@@ -4,7 +4,8 @@ import {
     knownRegistry,
     maxRegExpLength,
     categories,
-    wellKnownCallFrameName
+    wellKnownCallFrameName,
+    wellKnownNameAliases
 } from './const.js';
 import {
     CDN,
@@ -157,7 +158,9 @@ export class Dictionary {
         inputCallFrame: V8CpuProfileCallFrame,
         script: CpuProScript | null
     ) {
-        const functionName = inputCallFrame.functionName || '';
+        const functionName = script !== null
+            ? inputCallFrame.functionName || ''
+            : wellKnownNameAliases.get(inputCallFrame.functionName as WellKnownName) || inputCallFrame.functionName || '';
         const lineNumber = script !== null ? normalizeLoc(inputCallFrame.lineNumber) : -1;
         const columnNumber = script !== null ? normalizeLoc(inputCallFrame.columnNumber) : -1;
 

@@ -48,6 +48,9 @@ export type V8CpuProfileCpuproExtensions = {
     _cpuproAllocationSpaces?: number[]; // V8 map space IDs
     _cpuproAllocationSpaceNames?: Record<number, string>; // human-readable space names
     _cpuproAllocationLocations?: number[]; // allocation script offsets
+    _cpuproAllocationContextInfo?: number[]; // vm state + builtin id
+    _cpuproAllocationBuiltinNames?: Record<number, string>; // human-readable builtin names
+    _cpuproAllocationVmStateNames?: Record<number, string>; // human-readable vm state names
 }
 export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     id: number;

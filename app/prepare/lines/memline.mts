@@ -54,6 +54,9 @@ export async function createMemline(
         _cpuproAllocationSizes,
         _cpuproAllocationScriptIds = null,
         _cpuproAllocationLocations = null,
+        _cpuproAllocationContextInfo = null,
+        _cpuproAllocationBuiltinNames = null,
+        _cpuproAllocationVmStateNames = null,
         _cpuproAllocationGc = null,
         _cpuproAllocationTypes = null,
         _cpuproAllocationTypeNames = null
@@ -128,8 +131,9 @@ export async function createMemline(
         scriptsMap,
         _cpuproAllocationScriptIds,
         _cpuproAllocationLocations,
-        samplesMetrics.samples,
-        callFramesTree,
+        _cpuproAllocationContextInfo,
+        _cpuproAllocationBuiltinNames,
+        _cpuproAllocationVmStateNames,
         samplesMetrics,
         samplesMetricsFiltered
     );

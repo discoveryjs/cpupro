@@ -38,6 +38,9 @@ type AllocationSamples = {
     sizes?: number[];
     scriptIds?: number[];
     scriptPositions?: number[];
+    contextInfo?: number[]; // vm state + builtin id
+    builtinsDict?: Record<number, string>;
+    vmStatesDict?: Record<number, string>;
     types?: number[];
     typesDict?: Record<string, string>;
     spaces?: number[];
@@ -507,6 +510,9 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes');
             profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds');
             profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptPositions');
+            profile._cpuproAllocationContextInfo = buildChunkedVector(allocationChunks, 'contextInfo');
+            profile._cpuproAllocationBuiltinNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'builtinsDict');
+            profile._cpuproAllocationVmStateNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'vmStatesDict');
             profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types');
             profile._cpuproAllocationTypeNames = buildChunkedMap(profile._cpuproAllocationTypes, allocationChunks, 'typesDict');
             profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces');
@@ -539,7 +545,7 @@ export function extractFromChromiumPerformanceProfile(
 
 function buildChunkedVector(
     chunks: AllocationSamples[],
-    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict'>
+    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict'>
 ): number[] | undefined {
     const vector = chunks.flatMap(chunk => chunk[key] || []);
     return vector.length ? vector : undefined;
@@ -548,7 +554,7 @@ function buildChunkedVector(
 function buildChunkedMap(
     vector: number[] | undefined,
     chunks: AllocationSamples[],
-    key: 'typesDict' | 'spacesDict'
+    key: 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict'
 ): Record<string, string> | undefined {
     if (!vector || vector.length === 0) {
         return undefined;

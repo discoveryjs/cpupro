@@ -197,13 +197,54 @@ function recomputeLocationDictionaryMetrics(
     }
 }
 
+function callFramesMapFromDict(dict: Record<number, string>): (CpuProCallFrame | null)[] {
+    const maxId = Object.keys(dict).reduce((max, key) => Math.max(max, Number(key)), 0);
+    return Array.from({ length: maxId + 1 }, () => null);
+}
+
+function buildContextDicts(
+    dictionary: Dictionary,
+    builtinsNames: Record<number, string>,
+    vmStateNames: Record<number, string>
+) {
+    const vmStateCallFrames = callFramesMapFromDict(vmStateNames);
+    const builtinsCallFrames = callFramesMapFromDict(builtinsNames);
+
+    for (const [code, name] of Object.entries(vmStateNames)) {
+        vmStateCallFrames[code] = dictionary.resolveCallFrame({
+            functionName: `(${name})`,
+            scriptId: 0,
+            url: null,
+            lineNumber: -1,
+            columnNumber: -1
+        }, null as unknown as IProfileScriptsMap);
+    }
+
+    for (const [code, name] of Object.entries(builtinsNames)) {
+        builtinsCallFrames[code] = dictionary.resolveCallFrame({
+            functionName: `(builtin) ${name}`,
+            scriptId: 0,
+            url: null,
+            lineNumber: -1,
+            columnNumber: -1
+        }, null as unknown as IProfileScriptsMap);
+    }
+
+    return {
+        vmStateCallFrames,
+        builtinsCallFrames
+    };
+}
+
+const emptyDict = Object.freeze({});
 export function createVectorLocations(
     dictionary: Dictionary,
     scriptsMap: IProfileScriptsMap,
     scriptIds: RawScriptIds | null,
     scriptOffsets: NumericVector | null,
-    samples: Uint32Array,
-    callFramesTree: CallTree<CpuProCallFrame> | null,
+    contextInfo: NumericVector | null,
+    builtinsNames: Record<number, string> | null,
+    vmStateNames: Record<number, string> | null,
     samplesMetrics: SamplesMetrics,
     samplesMetricsFiltered: SamplesMetricsFiltered
 ): {
@@ -214,16 +255,41 @@ export function createVectorLocations(
         return null;
     }
 
+    const { vmStateCallFrames, builtinsCallFrames } = buildContextDicts(
+        dictionary,
+        builtinsNames ?? emptyDict,
+        vmStateNames ?? emptyDict
+    );
+
     const locationIds = new Int32Array(scriptOffsets.length);
+    let prevCallFrame: CpuProCallFrame | null = null;
     let prevScriptId = scriptOffsets.length > 0 ? scriptIds[0] : 0;
     let prevScript: CpuProScript | null = scriptFromScriptId(prevScriptId, null, scriptsMap);
     let prevScriptOffset = scriptOffsets.length > 0 ? scriptOffsets[0] : 0;
+    let prevContextInfo = 0;
     let prevLocationIndex = -1;
 
     for (let i = 0; i < scriptOffsets.length; i++) {
-        const scriptId = scriptIds[i];
-        const scriptOffset = scriptOffsets[i];
+        const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
+        const scriptId = contextInfoValue === 0 ? scriptIds[i] : 0;
+        const scriptOffset = scriptId !== 0 ? scriptOffsets[i] : -1;
         let locationIndex = prevLocationIndex;
+
+        if (contextInfoValue !== prevContextInfo) {
+            prevCallFrame = null;
+            prevContextInfo = contextInfoValue;
+            locationIndex = -1; // context info changed, need to recompute location index
+
+            if (contextInfoValue !== 0) {
+                // debugger;
+                prevScriptId = 0;
+                prevScript = null;
+                prevScriptOffset = -1;
+                prevCallFrame = contextInfoValue < 0xff
+                    ? vmStateCallFrames[contextInfoValue]
+                    : builtinsCallFrames[(contextInfoValue >> 8) - 1];
+            }
+        }
 
         if (scriptId !== prevScriptId) {
             prevScriptId = scriptId;
@@ -237,14 +303,14 @@ export function createVectorLocations(
 
         if (locationIndex === -1) {
             locationIndex = dictionary.resolveLocationIndex(
-                null,
+                prevCallFrame,
                 prevScript,
-                prevScriptOffset
+                scriptOffset
             );
-            prevLocationIndex = locationIndex;
         }
 
         locationIds[i] = locationIndex;
+        prevLocationIndex = locationIndex;
     }
 
     const locationDictionary = dictionary.locations.slice();

@@ -148,7 +148,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             dict.scripts.forEach(markers.script);
         });
 
-        // dict.locations.forEach(location => location.callFrame);
+        dict.locations.forEach(location => location.callFrame);
     }
 
     const defaultSession = sessions[0] ?? null;

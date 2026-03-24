@@ -38,7 +38,7 @@ function getScriptFunctionRanges(script: CpuProScript | null) {
     let functionRanges = scriptFunctionRanges.get(script);
     if (!functionRanges) {
         // console.log('parse source for function ranges', script.url);
-        functionRanges = getFunctionRanges(script.source);
+        functionRanges = getFunctionRanges(script.source, script.url);
         scriptFunctionRanges.set(script, functionRanges);
     }
 
@@ -141,19 +141,18 @@ export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, 
     return -1;
 }
 
-export function getFunctionRanges(code: string) {
+export function getFunctionRanges(code: string, url?: string | null): FunctionRange[] {
     let ast;
-    console.trace('Parsing source for function ranges'); // FIXME: remove after debugging
 
     try {
         ast = parse(code, {
             sourceType: 'unambiguous',
-            plugins: ['typescript', 'jsx'],
+            // plugins: ['typescript', 'jsx'],
             // ranges: true,
-            errorRecovery: true
+            // errorRecovery: true
         });
     } catch (e) {
-        console.error('Failed to parse source for function ranges:', e);
+        console.error(`Failed to parse ${url ? `"${url}"` : 'source'} for function ranges:`, e);
         return [];
     }
 
@@ -236,15 +235,14 @@ export function getFunctionRanges(code: string) {
                 type: node.type,
                 name: getFunctionName(node, parent),
                 start: node.start,
+                callFrameStart,
                 // slice: code.slice(node.start, node.end),
                 end: node.end,
                 loc: node.loc
             });
-            // const fn = result.at(-1);
-            // console.log(fn, code.slice(fn?.callFrameStart, fn?.end));
         }
 
-        // очень простой универсальный обход:
+        // simple recursive walk
         for (const key of Object.keys(node)) {
             const v = node[key];
             if (!v) {

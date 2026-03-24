@@ -51,6 +51,20 @@ export const moduleTypeByWellKnownName = new Map<WellKnownName, ModuleType>([
     ['(compiler)', 'compilation'],
     ['(atomics wait)', 'blocking']
 ]);
+export const wellKnownNameAliases = new Map<string, WellKnownName>([
+    ['(GC)', '(garbage collector)'],
+    ['(OTHER)', '(program)'],
+    ['(EXTERNAL)', '(program)'],
+    ['(V8 API)', '(program)'],
+    ['(IDLE)', '(idle)'],
+    ['(IDLE_EXTERNAL)', '(idle)'],
+    ['(LOGGING)', '(logging)'],
+    ['(PARSER)', '(parser)'],
+    ['(BYTECODE_COMPILER)', '(bytecode compiler)'],
+    ['(COMPILER)', '(compiler)'],
+    ['(ATOMICS_WAIT)', '(atomics wait)']
+]);
+
 export const categories: Exclude<PackageType, 'webpack/runtime'>[] = [
     'script',
     'wasm',
