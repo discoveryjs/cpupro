@@ -29,6 +29,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         defaultProfile: null,
         shared: {
             scripts: dict.scripts,
+            locations: dict.locations,
             callFrames: dict.callFrames,
             modules: dict.modules,
             packages: dict.packages,

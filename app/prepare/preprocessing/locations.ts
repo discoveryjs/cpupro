@@ -6,11 +6,11 @@ import { DictDimension, DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltere
 import { scriptFromScriptId } from './scripts.js';
 
 function positionRef(callFrameIndex: number, scriptOffset: number) {
-    return scriptOffset * 0x0100_0000 + callFrameIndex;
+    return (scriptOffset + 1) * 0x0100_0000 + callFrameIndex;
 }
 
 function positionNodeRef(nodeIndex: number, scriptOffset: number) {
-    return scriptOffset * 0x0100_0000 + nodeIndex;
+    return (scriptOffset + 1) * 0x0100_0000 + nodeIndex;
 }
 
 /**
@@ -105,12 +105,11 @@ export function processLocations(
         let positionIndex = positionsMap.get(ref);
 
         if (positionIndex === undefined) {
-            const globalLocationIndex = dictionary.resolveLocationIndex({
+            const globalLocationIndex = dictionary.resolveLocationIndex(
                 callFrame,
-                scriptOffset,
-                line: callFrame.line,
-                column: callFrame.column
-            });
+                callFrame.script,
+                scriptOffset
+            );
 
             positionsMap.set(ref, positionIndex = positions.push(dictionary.locations[globalLocationIndex]) - 1);
         }
@@ -129,12 +128,11 @@ export function processLocations(
             let positionIndex = positionsMap.get(ref);
 
             if (positionIndex === undefined) {
-                const globalLocationIndex = dictionary.resolveLocationIndex({
+                const globalLocationIndex = dictionary.resolveLocationIndex(
                     callFrame,
-                    scriptOffset,
-                    line: callFrame.line,
-                    column: callFrame.column
-                });
+                    callFrame.script,
+                    scriptOffset
+                );
 
                 positionsMap.set(ref, positionIndex = positions.push(dictionary.locations[globalLocationIndex]) - 1);
             }
@@ -217,39 +215,36 @@ export function createVectorLocations(
     }
 
     const locationIds = new Int32Array(scriptOffsets.length);
-    let prevScriptId: number | string | undefined;
-    let prevScript: CpuProScript | null = null;
-    let prevSampleId = -1;
-    let prevCallFrame: CpuProCallFrame | undefined;
+    let prevScriptId = scriptOffsets.length > 0 ? scriptIds[0] : 0;
+    let prevScript: CpuProScript | null = scriptFromScriptId(prevScriptId, null, scriptsMap);
+    let prevScriptOffset = scriptOffsets.length > 0 ? scriptOffsets[0] : 0;
+    let prevLocationIndex = -1;
 
     for (let i = 0; i < scriptOffsets.length; i++) {
-        const rawScriptId = scriptIds[i];
+        const scriptId = scriptIds[i];
+        const scriptOffset = scriptOffsets[i];
+        let locationIndex = prevLocationIndex;
 
-        if (i === 0 || rawScriptId !== prevScriptId) {
-            prevScriptId = rawScriptId;
-            prevScript = scriptFromScriptId(rawScriptId, null, scriptsMap);
+        if (scriptId !== prevScriptId) {
+            prevScriptId = scriptId;
+            prevScript = scriptFromScriptId(scriptId, null, scriptsMap);
+            prevScriptOffset = scriptOffset;
+            locationIndex = -1;
+        } else if (scriptOffset !== prevScriptOffset) {
+            prevScriptOffset = scriptOffset;
+            locationIndex = -1;
         }
 
-        let callFrame: CpuProCallFrame | undefined;
-
-        if (prevScript === null && callFramesTree !== null) {
-            const sampleId = samples[i];
-
-            if (sampleId !== prevSampleId) {
-                prevSampleId = sampleId;
-
-                const nodeIndex = callFramesTree.sampleIdToNode[sampleId];
-                prevCallFrame = callFramesTree.dictionary[callFramesTree.nodes[nodeIndex]];
-            }
-
-            callFrame = prevCallFrame;
+        if (locationIndex === -1) {
+            locationIndex = dictionary.resolveLocationIndex(
+                null,
+                prevScript,
+                prevScriptOffset
+            );
+            prevLocationIndex = locationIndex;
         }
 
-        locationIds[i] = dictionary.resolveLocationIndex({
-            callFrame,
-            script: prevScript,
-            scriptOffset: scriptOffsets[i]
-        });
+        locationIds[i] = locationIndex;
     }
 
     const locationDictionary = dictionary.locations.slice();

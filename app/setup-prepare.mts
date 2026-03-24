@@ -76,7 +76,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             }
 
             // FIXME: locations should be shared
-            profile.locationsTree?.dictionary.forEach(markers['call-frame-position']);
             profile.codesByCallFrame.forEach(markers['call-frame-codes']);
 
             for (const line of profile.lines) {
@@ -141,12 +140,15 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
         // apply object marker
         await runSessionTask('mark objects', () => {
+            dict.locations.forEach(markers['call-frame-position']);
             dict.callFrames.forEach(markers['call-frame']);
             dict.modules.forEach(markers.module);
             dict.packages.forEach(markers.package);
             dict.categories.forEach(markers.category);
             dict.scripts.forEach(markers.script);
         });
+
+        // dict.locations.forEach(location => location.callFrame);
     }
 
     const defaultSession = sessions[0] ?? null;

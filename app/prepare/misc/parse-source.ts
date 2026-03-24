@@ -4,6 +4,8 @@ import { createLineBoundaries } from './line-boundaries';
 
 type FunctionRange = {
     type: string;
+    name: string;
+    callFrameStart: number;
     start: number;
     end: number;
     loc: {
@@ -35,28 +37,41 @@ function getScriptFunctionRanges(script: CpuProScript | null) {
 
     let functionRanges = scriptFunctionRanges.get(script);
     if (!functionRanges) {
+        // console.log('parse source for function ranges', script.url);
         functionRanges = getFunctionRanges(script.source);
         scriptFunctionRanges.set(script, functionRanges);
     }
+
     return functionRanges;
 }
 
 export function findFunctionAtPosition(functionRanges: FunctionRange[], position: number) {
+    let candidate: FunctionRange | null = null;
+    let candidateLength = Infinity;
+
     for (const range of functionRanges) {
         if (range.start <= position && position <= range.end) {
-            return range;
+            const rangeLength = range.end - range.start;
+
+            if (rangeLength < candidateLength) {
+                candidate = range;
+                candidateLength = rangeLength;
+            }
         }
     }
 
-    return null;
+    return candidate;
 }
 
 export function findFunctionAtLineColumn(functionRanges: FunctionRange[], line: number, column: number) {
     let candidate: FunctionRange | null = null;
 
     for (const range of functionRanges) {
-        if (range.loc.start.line === line) {
-            if (range.loc.start.column <= column) {
+        const startsBefore = range.loc.start.line < line || (range.loc.start.line === line && range.loc.start.column <= column);
+        const endsAfter = range.loc.end.line > line || (range.loc.end.line === line && range.loc.end.column >= column);
+
+        if (startsBefore && endsAfter) {
+            if (candidate === null || range.end - range.start < candidate.end - candidate.start) {
                 candidate = range;
             }
         }
@@ -65,7 +80,15 @@ export function findFunctionAtLineColumn(functionRanges: FunctionRange[], line: 
     return candidate;
 }
 
-export function getPosFromScriptLineColumn(script: CpuProScript | null, line: number, column: number) {
+export function getFunctionAtScriptOffset(script: CpuProScript | null, offset: number) {
+    const functionRanges = getScriptFunctionRanges(script);
+
+    return functionRanges !== null
+        ? findFunctionAtPosition(functionRanges, offset)
+        : null;
+}
+
+export function getScriptOffsetFromLineColumn(script: CpuProScript | null, line: number, column: number) {
     const lines = getScriptLineBoundaries(script);
 
     if (lines) {
@@ -75,7 +98,7 @@ export function getPosFromScriptLineColumn(script: CpuProScript | null, line: nu
     return -1;
 }
 
-export function getLineColumnFromScriptOffset(script: CpuProScript | null, offset: number) {
+export function getScriptLineColumnFromOffset(script: CpuProScript | null, offset: number) {
     const lines = getScriptLineBoundaries(script);
 
     if (lines && offset >= 0) {
@@ -120,12 +143,13 @@ export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, 
 
 export function getFunctionRanges(code: string) {
     let ast;
+    console.trace('Parsing source for function ranges'); // FIXME: remove after debugging
 
     try {
         ast = parse(code, {
             sourceType: 'unambiguous',
             plugins: ['typescript', 'jsx'],
-            ranges: true,
+            // ranges: true,
             errorRecovery: true
         });
     } catch (e) {
@@ -139,30 +163,85 @@ export function getFunctionRanges(code: string) {
         if (!n || typeof n.type !== 'string') {
             return false;
         }
+
         return (
             n.type === 'FunctionDeclaration' ||
             n.type === 'FunctionExpression' ||
             n.type === 'ArrowFunctionExpression' ||
-            n.type === 'ObjectMethod' ||
+            n.type === 'ClassDeclaration' ||
+            n.type === 'ClassExpression' ||
             n.type === 'ClassMethod' ||
             n.type === 'ClassPrivateMethod' ||
+            n.type === 'ObjectMethod' ||
             n.type === 'TSDeclareFunction'
         );
     }
 
-    function walk(node) {
+    function findCallFrameStart(node) {
+        if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') {
+            return code.indexOf('(', node.start);
+        }
+        if (node.type === 'ClassMethod' || node.type === 'ClassPrivateMethod' || node.type === 'ObjectMethod') {
+            return code.indexOf('(', node.key.end);
+        }
+    }
+
+    function getFunctionName(node, parent) {
+        if (node.id && typeof node.id.name === 'string') {
+            return node.id.name;
+        }
+
+        if (node.key) {
+            if (typeof node.key.name === 'string') {
+                return node.key.name;
+            }
+
+            if (typeof node.key.value === 'string') {
+                return node.key.value;
+            }
+        }
+
+        if (parent) {
+            if (parent.id && typeof parent.id.name === 'string') {
+                return parent.id.name;
+            }
+
+            if (parent.key) {
+                if (typeof parent.key.name === 'string') {
+                    return parent.key.name;
+                }
+
+                if (typeof parent.key.value === 'string') {
+                    return parent.key.value;
+                }
+            }
+
+            if (parent.left && typeof parent.left.name === 'string') {
+                return parent.left.name;
+            }
+        }
+
+        return '';
+    }
+
+    function walk(node, parent = null) {
         if (!node || typeof node !== 'object') {
             return;
         }
 
         if (isFunctionNode(node)) {
+            const callFrameStart = findCallFrameStart(node) || node.start;
+
             result.push({
                 type: node.type,
+                name: getFunctionName(node, parent),
                 start: node.start,
                 // slice: code.slice(node.start, node.end),
                 end: node.end,
                 loc: node.loc
             });
+            // const fn = result.at(-1);
+            // console.log(fn, code.slice(fn?.callFrameStart, fn?.end));
         }
 
         // очень простой универсальный обход:
@@ -174,14 +253,15 @@ export function getFunctionRanges(code: string) {
 
             if (Array.isArray(v)) {
                 for (const item of v) {
-                    walk(item);
+                    walk(item, node);
                 }
             } else if (v && typeof v.type === 'string') {
-                walk(v);
+                walk(v, node);
             }
         }
     }
 
     walk(ast);
+    result.sort((a, b) => a.start - b.start || a.end - b.end);
     return result;
 }

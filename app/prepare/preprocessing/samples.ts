@@ -90,8 +90,8 @@ export function remapTreeSamples(
     let sampleIdToNode = remapSamples(samples, sampleIdToEntryTreeNode);
 
     for (const tree of trees) {
-        tree.sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
-        sampleIdToNode = tree.sampleIdToNode;
+        sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
+        tree.sampleIdToNode = sampleIdToNode;
     }
 }
 

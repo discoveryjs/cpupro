@@ -202,6 +202,7 @@ export type CpuProSession = {
     defaultProfile: Profile | null;
     shared: {
         scripts: Dictionary['scripts'];
+        locations: Dictionary['locations'];
         callFrames: Dictionary['callFrames'];
         modules: Dictionary['modules'];
         packages: Dictionary['packages'];
@@ -258,12 +259,14 @@ export type CpuProCallFrame = {
     start: number;
     end: number;
     regexp: string | null;
+    location: CpuProLocation | null;
     module: CpuProModule;
     package: CpuProPackage;
     category: CpuProCategory;
 }
 
 export type CpuProLocation = {
+    id: number;
     callFrame: CpuProCallFrame;
     script: CpuProScript | null;
     scriptOffset: number; // -1 if not available

@@ -1,6 +1,10 @@
 import { regexpSourceView, unavailableSourceView } from './common.js';
 
 const sourceQuery = `{
+    $line: scopeLine();
+    $locations: $line | tree.locations and locations
+        ? #.locationsSource = "tree" ? dict.locations : locations
+        : dict.locations or locations;
     $script;
     $source: $script.source;
     $sourceSliceLineStart: $source.lastIndexOf('\\n', start) + 1;
@@ -9,15 +13,15 @@ const sourceQuery = `{
     $sourceSliceStart: $sourceSliceLineStart | @.start - $ < 40 ?: $sourceSliceFnPrefix;
     $sourceSliceEnd: $sourceSliceLineEnd | $sourceSliceStart = $sourceSliceLineStart ?: @.end;
     $sourceSlice: $source[$sourceSliceStart:$sourceSliceEnd].replace(/\\n$/, '');
-    $line: line or 1;
+    $lineNum: line or 1;
     $start;
     $end;
     $unit: 0.valueAndUnit().unit;
     $callFrameCodes: #.currentProfile.codesByCallFrame[=> callFrame = @];
-    $values: scopeLine()
-        | #.nonFilteredTimings
-            ? dict.locations.all or dict.callFrames.all
-            : dict.locations.filtered or dict.callFrames.filtered;
+    $locationValues: $line | #.nonFilteredTimings
+        ? $locations.all
+        : $locations.filtered;
+    $values: $locationValues or ($line | #.nonFilteredTimings ? dict.callFrames.all : dict.callFrames.filtered);
 
     $formatting: #.sourceFormatting = 'beautified' ? $sourceSlice.jsBeautifyRanges().(
         content
@@ -167,7 +171,7 @@ const sourceQuery = `{
         };
     $sampleMarks: $values.entries
         | $[].entry.callFrame
-            ? .[entry.callFrame = @]
+            ? .[entry | script = $script and (callFrame = @ or (scriptOffset >= $start and scriptOffset <= $end))]
             : $[=> entry = @]
         |? .($noloc: entry.scriptOffset = -1; $offset: entry.scriptOffset | (is number and $ != -1 ?: $start) - $sourceSliceStart; [
             selfValue ? {
@@ -192,6 +196,7 @@ const sourceQuery = `{
                 postfix: $unit,
                 tooltip: $nestedValueTooltipView
             },
+            [{ t: $ }]
         ]).[];
 
     // $allocationMarks: #.currentProfile | type = 'memory'
@@ -247,7 +252,7 @@ const sourceQuery = `{
 
     syntax: "js",
     source: $sourceSlice,
-    lineNum: => $ + $line,
+    lineNum: => $ + $lineNum,
     callFrame: @,
     $callFrameCodes,
     $codePoints,
@@ -289,6 +294,22 @@ discovery.view.define('call-frame-source', {
                                     text: 'Beautified'
                                 }
                             ]
+                        },
+                        {
+                            view: 'toggle-group',
+                            name: 'locationsSource',
+                            whenData: 'scopeLine() | dict.locations and locations',
+                            value: '="getSessionSetting".callAction("call-frame-source__line-locations", "tree")',
+                            data: [
+                                {
+                                    value: 'tree',
+                                    text: 'Tree locations'
+                                },
+                                {
+                                    value: 'vector',
+                                    text: 'Vector locations'
+                                }
+                            ]
                         }
                     ]
                 }
@@ -299,6 +320,9 @@ discovery.view.define('call-frame-source', {
                 data: sourceQuery,
                 postRender(el, config, data, context) {
                     context.actions.setSessionSetting?.('call-frame-source__formatting', context.sourceFormatting);
+                    if (context.locationsSource) {
+                        context.actions.setSessionSetting?.('call-frame-source__line-locations', context.locationsSource);
+                    }
 
                     const contentEl = el.querySelector('.view-source__content');
                     contentEl.addEventListener('click', (event) => {

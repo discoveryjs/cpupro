@@ -3,6 +3,10 @@ discovery.view.define('location-source', {
     className: '=syntax = "js" ? "cpupro-source" : "cpupro-source unavailable"',
     actionCopySource: false,
     data: `{
+        $line: scopeLine();
+        $locations: $line | tree.locations and locations
+            ? #.locationsSource = "tree" ? dict.locations : locations
+            : dict.locations or locations;
         $source: callFrame.script.source or '';
         $hasSource: $source.bool();
         $scriptOffset: scriptOffset | $hasSource and $ > 0 ? $ : 0;
@@ -14,10 +18,11 @@ discovery.view.define('location-source', {
         $selfValueTooltipView: scopeLine() | type = 'memline' and valueLifespans and valueTypes
             ? 'allocation-samples-matrix:#.currentProfile.memline | tree.(locations or callFrames).filtered.tree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
         $unit: #.currentProfile.type = 'memory' ? 'Kb' : 'ms';
-        $values: scopeLine()
+        $locationValues: $line
             | #.nonFilteredTimings
-                ? dict.locations.all or dict.callFrames.all
-                : dict.locations.filtered or dict.callFrames.filtered;
+                ? $locations.all
+                : $llocations.filtered;
+        $values: $locationValues or ($line | #.nonFilteredTimings ? dict.callFrames.all : dict.callFrames.filtered);
         $sampleMarkContent: {
             view: 'update-on-line-metrics-changes',
             metrics: $values,

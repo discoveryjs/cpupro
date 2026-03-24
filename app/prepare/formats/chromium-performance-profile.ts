@@ -37,7 +37,7 @@ type AllocationSamples = {
     ids: number[];
     sizes?: number[];
     scriptIds?: number[];
-    scriptOffsets?: number[];
+    scriptPositions?: number[];
     types?: number[];
     typesDict?: Record<string, string>;
     spaces?: number[];
@@ -506,7 +506,7 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationIds = buildChunkedVector(allocationChunks, 'ids');
             profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes');
             profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds');
-            profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets');
+            profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptPositions');
             profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types');
             profile._cpuproAllocationTypeNames = buildChunkedMap(profile._cpuproAllocationTypes, allocationChunks, 'typesDict');
             profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces');

@@ -24,8 +24,7 @@ import {
     WellKnownType
 } from './types.js';
 import { scriptFromScriptId } from './preprocessing/scripts.js';
-import { createLocation } from './misc/location.js';
-import { getFunctionEndFromScriptLineColumn, getPosFromScriptLineColumn } from './misc/parse-source.js';
+import { getFunctionAtScriptOffset, getFunctionEndFromScriptLineColumn, getScriptLineColumnFromOffset, getScriptOffsetFromLineColumn } from './misc/parse-source.js';
 
 const callFrameKindPrefixes: [prefix: string, kind: CpuProCallFrameKind][] = [
     ['(builtin) ', 'builtin'],
@@ -71,10 +70,13 @@ export class Dictionary {
     #categoriesMap: Map<string, CpuProCategory>;
 
     #callFramesByScript: CallFrameMap;
+    #scriptCallFrames: WeakMap<CpuProScript, number>;
     #locationsByScriptOffset: WeakMap<CpuProScript, Map<number, number>>;
     #locationsByScriptLineColumn: WeakMap<CpuProScript, Map<number, Map<number, number>>>;
     #locationsByNoScriptCallFrame: Map<CpuProCallFrame, number>;
-    #locationUnknownNoScriptIndex: number | null;
+    #locationsResolved: number = 0;
+    #unknownCallFrame: CpuProCallFrame;
+    #unknownLocationIndex: number;
     #anonymousFunctionNameIndex: number = 1;
     #anonymousModuleByScriptId: Map<CpuProScript, string>;
     #packageNameByOriginMap: Map<string, string>;
@@ -92,10 +94,10 @@ export class Dictionary {
         this.#categoriesMap = new Map();
 
         this.#callFramesByScript = new Map();
+        this.#scriptCallFrames = new WeakMap();
         this.#locationsByScriptOffset = new WeakMap();
         this.#locationsByScriptLineColumn = new WeakMap();
         this.#locationsByNoScriptCallFrame = new Map();
-        this.#locationUnknownNoScriptIndex = null;
         this.#anonymousModuleByScriptId = new Map();
         this.#packageNameByOriginMap = new Map([
             ...Object.entries(knownChromeExtensions)
@@ -116,6 +118,9 @@ export class Dictionary {
                 columnNumber: -1
             }, null as unknown as IProfileScriptsMap);
         }
+
+        this.#unknownCallFrame = this.callFrames[this.callFrames.wellKnownIndex.unknown];
+        this.#unknownLocationIndex = this.resolveLocationIndex(this.#unknownCallFrame, null, -1, -1, -1);
     }
 
     callFrameToModule(callFrame: CpuProCallFrame) {
@@ -145,9 +150,14 @@ export class Dictionary {
         inputCallFrame: V8CpuProfileCallFrame,
         scriptsMap: IProfileScriptsMap
     ) {
+        const script = scriptFromScriptId(inputCallFrame.scriptId, inputCallFrame.url, scriptsMap);
+        return this.#resolveScriptCallFrameIndex(inputCallFrame, script);
+    }
+    #resolveScriptCallFrameIndex(
+        inputCallFrame: V8CpuProfileCallFrame,
+        script: CpuProScript | null
+    ) {
         const functionName = inputCallFrame.functionName || '';
-        const url = inputCallFrame.url || null;
-        const script = scriptFromScriptId(inputCallFrame.scriptId, url, scriptsMap);
         const lineNumber = script !== null ? normalizeLoc(inputCallFrame.lineNumber) : -1;
         const columnNumber = script !== null ? normalizeLoc(inputCallFrame.columnNumber) : -1;
 
@@ -186,6 +196,7 @@ export class Dictionary {
                 start,
                 end,
                 regexp,
+                location: null,
                 category: module.category,
                 package: module.package,
                 module
@@ -203,105 +214,244 @@ export class Dictionary {
 
             callFrameIndex = this.callFrames.push(callFrame) - 1;
             resultMap.set(columnNumber, callFrameIndex);
+            callFrame.location = this.resolveLocation(callFrame, null, -1, -1, -1);
 
-            script?.callFrames.push(callFrame);
+            if (sourceScript) {
+                sourceScript.callFrames.push(callFrame);
+
+                const callFrameStartLocation = this.resolveLocation(callFrame, sourceScript, start, lineNumber, columnNumber);
+                if (callFrameStartLocation.scriptOffset !== start) {
+                    Object.defineProperty(callFrame, 'start', {
+                        value: callFrameStartLocation.scriptOffset
+                    });
+                }
+            }
         }
 
         return callFrameIndex;
     }
-    resolveCallFrame(inputCallFrame: V8CpuProfileCallFrame & { start?: number, end?: number }, scriptsMap: IProfileScriptsMap) {
+    resolveCallFrame(inputCallFrame: V8CpuProfileCallFrame, scriptsMap: IProfileScriptsMap) {
         return this.callFrames[this.resolveCallFrameIndex(inputCallFrame, scriptsMap)];
     }
 
-    resolveLocationIndex(input: {
-        callFrame?: CpuProCallFrame;
-        script?: CpuProScript | null;
-        scriptOffset?: number;
-        line?: number;
-        column?: number;
-    }) {
-        const script = input.callFrame?.script ?? input.script ?? null;
-        const scriptOffset = typeof input.scriptOffset === 'number' ? input.scriptOffset : -1;
-        const line = typeof input.line === 'number' ? input.line : -1;
-        const column = typeof input.column === 'number' ? input.column : -1;
-        const unknownCallFrame = this.callFrames[this.callFrames.wellKnownIndex.unknown];
+    resolveScriptCallFrameIndex(script: CpuProScript) {
+        let callFrameIndex = this.#scriptCallFrames.get(script);
 
-        if (script === null) {
-            if (input.callFrame) {
-                let locationIndex = this.#locationsByNoScriptCallFrame.get(input.callFrame);
-
-                if (locationIndex === undefined) {
-                    locationIndex = this.locations.push(createLocation(input)) - 1;
-                    this.#locationsByNoScriptCallFrame.set(input.callFrame, locationIndex);
-                }
-
-                return locationIndex;
-            }
-
-            if (this.#locationUnknownNoScriptIndex === null) {
-                this.#locationUnknownNoScriptIndex = this.locations.push(createLocation({
-                    ...input,
-                    callFrame: unknownCallFrame
-                })) - 1;
-            }
-
-            return this.#locationUnknownNoScriptIndex;
+        if (callFrameIndex === undefined) {
+            callFrameIndex = this.#resolveScriptCallFrameIndex({
+                scriptId: -1,
+                url: script.url,
+                functionName: '',
+                lineNumber: 0,
+                columnNumber: 0,
+                start: 0,
+                end: script.source?.length || 0
+            }, script);
+            this.#scriptCallFrames.set(script, callFrameIndex);
         }
 
-        let locationIndex: number | undefined;
+        return callFrameIndex;
+    }
+
+    resolveLocationCallFrame(
+        script: CpuProScript,
+        scriptOffset: number,
+        line: number,
+        column: number
+    ) {
+        let candidate: CpuProCallFrame | null = null;
 
         if (scriptOffset !== -1) {
+            const functionRange = getFunctionAtScriptOffset(script, scriptOffset);
+
+            if (functionRange !== null) {
+                return this.callFrames[this.#resolveScriptCallFrameIndex({
+                    scriptId: -1,
+                    url: script.url,
+                    functionName: functionRange.name,
+                    lineNumber: functionRange.loc.start.line - 1,
+                    columnNumber: functionRange.loc.start.column,
+                    start: functionRange.callFrameStart,
+                    end: functionRange.end
+                }, script)];
+            }
+
+            for (const callFrame of script.callFrames) {
+                if (callFrame.start !== -1 && callFrame.end !== -1 && callFrame.start <= scriptOffset && scriptOffset <= callFrame.end) {
+                    if (candidate === null || callFrame.end - callFrame.start < candidate.end - candidate.start) {
+                        candidate = callFrame;
+                    }
+                }
+            }
+
+            if (candidate !== null) {
+                return candidate;
+            }
+        }
+
+        if (line !== -1 && column !== -1) {
+            candidate = script.callFrames.find(callFrame => callFrame.line === line && callFrame.column === column) || null;
+
+            return candidate || this.callFrames[this.#resolveScriptCallFrameIndex({
+                scriptId: -1,
+                url: script.url,
+                functionName: '',
+                lineNumber: line,
+                columnNumber: column,
+                start: 0,
+                end: typeof script.source === 'string' ? script.source.length : Math.max(scriptOffset, 0)
+            }, script)];
+        }
+
+        return this.resolveScriptCallFrameIndex(script);
+    }
+
+    #addLocation(
+        callFrame: CpuProCallFrame,
+        script: CpuProScript | null,
+        scriptOffset: number,
+        line: number,
+        column: number
+    ) {
+        let hasLoc = false;
+        const locationIndex = this.locations.length;
+        const location: CpuProLocation = {
+            id: locationIndex + 1,
+            callFrame,
+            script,
+            scriptOffset,
+            line,
+            column
+        };
+
+        this.locations.push(location);
+
+        if (callFrame === this.#unknownCallFrame && script !== null) {
+            Object.defineProperty(location, 'callFrame', {
+                get: () => {
+                    const callFrame = this.resolveLocationCallFrame(
+                        script,
+                        scriptOffset,
+                        line,
+                        column
+                    );
+
+                    Object.defineProperty(location, 'callFrame', { value: callFrame });
+
+                    return callFrame;
+                }
+            });
+        }
+
+        if (scriptOffset !== -1 && script !== null) {
             let byOffset = this.#locationsByScriptOffset.get(script);
 
             if (byOffset === undefined) {
                 this.#locationsByScriptOffset.set(script, byOffset = new Map());
             }
 
-            locationIndex = byOffset.get(scriptOffset);
+            byOffset.set(scriptOffset, locationIndex);
+            hasLoc = true;
+        }
 
-            if (locationIndex === undefined) {
-                locationIndex = this.locations.push(createLocation({ ...input, script })) - 1;
-                byOffset.set(scriptOffset, locationIndex);
-            }
-        } else {
+        if (line !== -1 && column !== -1 && script !== null) {
             let byLine = this.#locationsByScriptLineColumn.get(script);
-
             if (byLine === undefined) {
                 this.#locationsByScriptLineColumn.set(script, byLine = new Map());
             }
 
             let byColumn = byLine.get(line);
-
             if (byColumn === undefined) {
                 byLine.set(line, byColumn = new Map());
             }
 
-            locationIndex = byColumn.get(column);
-
-            if (locationIndex === undefined) {
-                locationIndex = this.locations.push(createLocation({ ...input, script })) - 1;
-                byColumn.set(column, locationIndex);
-            }
+            byColumn.set(column, locationIndex);
+            hasLoc = true;
         }
 
-        if (input.callFrame) {
-            const location = this.locations[locationIndex];
-
-            if (location.callFrame === undefined) {
-                location.callFrame = input.callFrame;
-            }
+        if (callFrame && !hasLoc) {
+            this.#locationsByNoScriptCallFrame.set(callFrame, locationIndex);
         }
 
         return locationIndex;
     }
-    resolveLocation(input: {
-        callFrame?: CpuProCallFrame;
-        script?: CpuProScript | null;
-        scriptOffset?: number;
-        line?: number;
-        column?: number;
-    }) {
-        return this.locations[this.resolveLocationIndex(input)];
+
+    resolveLocationIndex(
+        callFrame: CpuProCallFrame | null = null,
+        script: CpuProScript | null = null,
+        scriptOffset: number = -1,
+        line: number = -1,
+        column: number = -1
+    ) {
+        const resolvedScript = script || callFrame?.script || null;
+        let locationIndex = -1;
+
+        scriptOffset = normalizeLoc(scriptOffset);
+        line = normalizeLoc(line);
+        column = line === -1 ? -1 : normalizeLoc(column);
+
+        if (column === -1) {
+            line = -1;
+        }
+
+        if (callFrame && callFrame.script !== resolvedScript) {
+            throw new Error('Call frame script does not match provided script');
+        }
+
+        if (scriptOffset !== -1 && resolvedScript !== null) {
+            locationIndex = this.#locationsByScriptOffset.get(resolvedScript)?.get(scriptOffset) ?? -1;
+
+            // resolve line and column if possible to store the full location (offset, line, column)
+            if (locationIndex === -1 && line === -1 && resolvedScript.source !== null) {
+                const lineColumn = getScriptLineColumnFromOffset(resolvedScript, scriptOffset);
+
+                if (lineColumn !== null) {
+                    line = lineColumn.line;
+                    column = lineColumn.column;
+                }
+            }
+        } else if (line !== -1 && resolvedScript !== null) {
+            locationIndex = this.#locationsByScriptLineColumn.get(resolvedScript)?.get(line)?.get(column) ?? -1;
+
+            // resolve offset if possible to store the full location (offset, line, column)
+            if (locationIndex === -1 && scriptOffset === -1 && resolvedScript.source !== null) {
+                scriptOffset = getScriptOffsetFromLineColumn(resolvedScript, line, column) ?? -1;
+            }
+        } else if (callFrame) {
+            locationIndex = this.#locationsByNoScriptCallFrame.get(callFrame) ?? -1;
+        } else if (resolvedScript !== null) {
+            return this.resolveScriptCallFrameIndex(resolvedScript);
+        } else {
+            return this.#unknownLocationIndex;
+        }
+
+        if (locationIndex === -1) {
+            if (!callFrame) {
+                callFrame = resolvedScript !== null && (scriptOffset === 0 || (line === 0 && column === 0))
+                    ? this.callFrames[this.resolveScriptCallFrameIndex(resolvedScript)]
+                    : this.#unknownCallFrame;
+            }
+
+            locationIndex = this.#addLocation(
+                callFrame,
+                resolvedScript,
+                scriptOffset,
+                line,
+                column
+            );
+        }
+
+        return locationIndex;
+    }
+
+    resolveLocation(
+        callFrame?: CpuProCallFrame | null,
+        script?: CpuProScript | null,
+        scriptOffset?: number,
+        line?: number,
+        column?: number
+    ) {
+        return this.locations[this.resolveLocationIndex(callFrame, script, scriptOffset, line, column)];
     }
 
     resolveScript(
@@ -786,7 +936,7 @@ function setLazyStartEndIfNeeded(
         if (start === -1) {
             Object.defineProperty(callFrame, 'start', {
                 get() {
-                    const offset = getPosFromScriptLineColumn(sourceScript, lineNumber, columnNumber);
+                    const offset = getScriptOffsetFromLineColumn(sourceScript, lineNumber, columnNumber);
                     Object.defineProperty(this, 'start', { value: offset });
                     return offset;
                 }
@@ -795,7 +945,7 @@ function setLazyStartEndIfNeeded(
         if (end === -1) {
             Object.defineProperty(callFrame, 'end', {
                 get() {
-                    const offset = getFunctionEndFromScriptLineColumn(sourceScript, lineNumber, columnNumber, functionName);
+                    const offset = getFunctionEndFromScriptLineColumn(sourceScript, lineNumber, columnNumber);
                     Object.defineProperty(this, 'end', { value: offset });
                     return offset;
                 }
