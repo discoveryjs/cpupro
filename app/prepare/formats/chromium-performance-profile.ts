@@ -396,8 +396,19 @@ export function extractFromChromiumPerformanceProfile(
                 }
 
                 if (allocationSamples) {
-                    profileData.allocations += allocationSamples.ids.length;
-                    profileData.allocationChunks.push(allocationSamples);
+                    let processedAllocationSamples = allocationSamples;
+
+                    if (typeof allocationSamples.ids === 'string') {
+                        processedAllocationSamples = { ...allocationSamples };
+                        for (const [key, value] of Object.entries(allocationSamples)) {
+                            if (typeof value === 'string' && value[0] === '[' && value[value.length - 1] === ']') {
+                                processedAllocationSamples[key] = JSON.parse(value);
+                            }
+                        }
+                    }
+
+                    profileData.allocations += processedAllocationSamples.ids.length;
+                    profileData.allocationChunks.push(processedAllocationSamples);
                 }
 
                 if (endTime && endTime > profileData.endTime) {
