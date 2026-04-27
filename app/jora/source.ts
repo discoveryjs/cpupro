@@ -90,6 +90,8 @@ export const methods = {
                         range: [start, i],
                         content: ''
                     });
+                    i--;
+                    j--;
                 } else {
                     const start = j;
 

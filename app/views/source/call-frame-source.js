@@ -258,15 +258,16 @@ const sourceQuery = `{
     $codePoints,
     $inlinedPoints,
     $allMarks,
-    marks: $allMarks.values().().sort(offset asc, (noloc or false) desc)
-        + $formatting.[no range],
-    refs: $nestedScriptCodes.({
-        className: 'function',
-        range: [callFrame.start - $sourceSliceStart, callFrame.end - $sourceSliceStart],
-        marker: callFrame.marker('call-frame').href,
-        callFrameCodes: $,
-        tooltip: $callFrameTooltipView
-    }) + $formatting.[range],
+    marks: $formatting.[no range] +
+        $allMarks.values().().sort(offset asc, (noloc or false) desc),
+    refs: $formatting.[range] +
+        $nestedScriptCodes.({
+            className: 'function',
+            range: [callFrame.start - $sourceSliceStart, callFrame.end - $sourceSliceStart],
+            marker: callFrame.marker('call-frame').href,
+            callFrameCodes: $,
+            tooltip: $callFrameTooltipView
+        }),
 }`;
 
 discovery.view.define('call-frame-source', {
