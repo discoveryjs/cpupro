@@ -285,9 +285,9 @@ export function createVectorLocations(
                 prevScriptId = 0;
                 prevScript = null;
                 prevScriptOffset = -1;
-                prevCallFrame = contextInfoValue < 0xff
+                prevCallFrame = contextInfoValue < 0x0f
                     ? vmStateCallFrames[contextInfoValue]
-                    : builtinsCallFrames[(contextInfoValue >> 8) - 1];
+                    : builtinsCallFrames[(contextInfoValue >> 4) - 1];
             }
         }
 
