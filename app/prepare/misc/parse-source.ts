@@ -6,6 +6,8 @@ type FunctionRange = {
     type: string;
     name: string;
     callFrameStart: number;
+    callFrameStartLine: number;
+    callFrameStartColumn: number;
     start: number;
     end: number;
     loc: {
@@ -229,13 +231,42 @@ export function getFunctionRanges(code: string, url?: string | null): FunctionRa
         }
 
         if (isFunctionNode(node)) {
-            const callFrameStart = findCallFrameStart(node) || node.start;
+            const nodeStart = node.start || 0;
+            const callFrameStart = findCallFrameStart(node) || nodeStart;
+            let callFrameStartLine = node.loc.start.line;
+            let callFrameStartColumn = node.loc.start.column;
+
+            if (callFrameStart > nodeStart) {
+                let lineDiff = 0;
+                let columnDiff = 0;
+
+                for (let i = callFrameStart; i > nodeStart; i--) {
+                    const char = code.charCodeAt(i);
+                    if (char === 10) { // '\n'
+                        lineDiff++;
+                    } else if (char === 13) { // '\r'
+                        lineDiff++;
+                        if (i > 0 && code.charCodeAt(i - 1) === 10) { // '\r\n'
+                            i--;
+                        }
+                    } else if (lineDiff === 0) {
+                        columnDiff++;
+                    }
+                }
+
+                callFrameStartLine -= lineDiff;
+                callFrameStartColumn = lineDiff === 0
+                    ? callFrameStartColumn + columnDiff
+                    : columnDiff;
+            }
 
             result.push({
                 type: node.type,
                 name: getFunctionName(node, parent),
                 start: node.start,
                 callFrameStart,
+                callFrameStartLine,
+                callFrameStartColumn,
                 // slice: code.slice(node.start, node.end),
                 end: node.end,
                 loc: node.loc

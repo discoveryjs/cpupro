@@ -272,8 +272,8 @@ export class Dictionary {
                     scriptId: -1,
                     url: script.url,
                     functionName: functionRange.name,
-                    lineNumber: functionRange.loc.start.line - 1,
-                    columnNumber: functionRange.loc.start.column,
+                    lineNumber: functionRange.callFrameStartLine - 1,
+                    columnNumber: functionRange.callFrameStartColumn,
                     start: functionRange.callFrameStart,
                     end: functionRange.end
                 }, script)];
