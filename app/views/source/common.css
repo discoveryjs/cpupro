@@ -1,3 +1,10 @@
+.view-source.cpupro-source .view-source__prelude {
+    anchor-name: --view-source-prelude;
+}
+.view-source.cpupro-source .view-source__postlude {
+    anchor-name: --view-source-postlude;
+}
+
 .view-source.cpupro-source.unavailable .view-source__source {
     color: #666;
 }

@@ -1,3 +1,7 @@
+.view-call-frame-source {
+    anchor-scope: --view-source-prelude, --view-source-postlude;
+}
+
 .view-call-frame-source .view-source.regexp .view-source__source {
     word-break: break-word;
     white-space: normal;
@@ -52,7 +56,11 @@
 
 .view-call-frame-source__settings {
     position: absolute;
-    right: 2px;
+    position-anchor: --view-source-prelude;
+    position-area: center;
+    justify-self: right;
+    inset-inline-end: 2px;
+    z-index: 10;
 }
 .view-call-frame-source__settings .view-toggle {
     padding-top: 1px;
