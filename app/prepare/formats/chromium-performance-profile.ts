@@ -68,7 +68,6 @@ type ChromiumTraceProfileData = {
     samples: number;
     hasLineColumns: boolean;
     hasAllocationsMapping: boolean;
-    allocations: number;
     allocationChunks: AllocationSamples[];
 }
 
@@ -300,7 +299,6 @@ export function extractFromChromiumPerformanceProfile(
                     samples: 0,
                     hasLineColumns: false,
                     hasAllocationsMapping: false,
-                    allocations: 0,
                     allocationChunks: []
                 };
 
@@ -396,19 +394,7 @@ export function extractFromChromiumPerformanceProfile(
                 }
 
                 if (allocationSamples) {
-                    let processedAllocationSamples = allocationSamples;
-
-                    if (typeof allocationSamples.ids === 'string') {
-                        processedAllocationSamples = { ...allocationSamples };
-                        for (const [key, value] of Object.entries(allocationSamples)) {
-                            if (typeof value === 'string' && value[0] === '[' && value[value.length - 1] === ']') {
-                                processedAllocationSamples[key] = JSON.parse(value);
-                            }
-                        }
-                    }
-
-                    profileData.allocations += processedAllocationSamples.ids.length;
-                    profileData.allocationChunks.push(processedAllocationSamples);
+                    profileData.allocationChunks.push(allocationSamples);
                 }
 
                 if (endTime && endTime > profileData.endTime) {
@@ -517,18 +503,21 @@ export function extractFromChromiumPerformanceProfile(
         }
 
         if (allocationChunks.length > 0) {
-            profile._cpuproAllocationIds = buildChunkedVector(allocationChunks, 'ids');
-            profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes');
-            profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds');
-            profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets');
-            profile._cpuproAllocationContextInfo = buildChunkedVector(allocationChunks, 'contextInfo');
+            const ids = buildChunkedVector(allocationChunks, 'ids');
+            const allocationsCount = ids ? ids.length : 0;
+
+            profile._cpuproAllocationIds = ids;
+            profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes', allocationsCount);
+            profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds', allocationsCount);
+            profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets', allocationsCount);
+            profile._cpuproAllocationContextInfo = buildChunkedVector(allocationChunks, 'contextInfo', allocationsCount);
             profile._cpuproAllocationBuiltinNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'builtinsDict');
             profile._cpuproAllocationVmStateNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'vmStatesDict');
-            profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types');
+            profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types', allocationsCount);
             profile._cpuproAllocationTypeNames = buildChunkedMap(profile._cpuproAllocationTypes, allocationChunks, 'typesDict');
-            profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces');
+            profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces', allocationsCount);
             profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
-            profile._cpuproAllocationGc = buildChunkedVector(allocationChunks, 'gc');
+            profile._cpuproAllocationGc = buildChunkedVector(allocationChunks, 'gc', allocationsCount);
         }
 
         profiles.push(profile);
@@ -556,10 +545,26 @@ export function extractFromChromiumPerformanceProfile(
 
 function buildChunkedVector(
     chunks: AllocationSamples[],
-    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict'>
+    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict'>,
+    totalLength: number
 ): number[] | undefined {
-    const vector = chunks.flatMap(chunk => chunk[key] || []);
-    return vector.length ? vector : undefined;
+    const vector: number[] = totalLength > 0
+        ? new Uint32Array(totalLength) as unknown as number[]
+        : chunks.flatMap(chunk =>
+            typeof chunk[key] === 'string' ? JSON.parse(chunk[key]) : chunk[key] || []
+        );
+
+    if (totalLength > 0) {
+        let offset = 0;
+        for (const chunk of chunks) {
+            const array = typeof chunk[key] === 'string' ? JSON.parse(chunk[key]) : chunk[key];
+
+            (vector as unknown as Uint32Array).set(array, offset);
+            offset += array.length;
+        }
+    }
+
+    return vector.length ? vector as number[] : undefined;
 }
 
 function buildChunkedMap(
