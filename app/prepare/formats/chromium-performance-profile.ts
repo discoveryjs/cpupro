@@ -234,6 +234,7 @@ export function extractFromChromiumPerformanceProfile(
     const profileById = new Map<string, V8CpuProfile>();
     const profileDataByTid = new Map<string, ChromiumTraceProfileData>();
     const profileDataById = new Map<string, ChromiumTraceProfileData>();
+    const profileDataByIsolate = new Map<string, ChromiumTraceProfileData>();
     const profiles: V8CpuProfile[] = [];
 
     // Maps pid/tid pairs to thread names
@@ -304,6 +305,10 @@ export function extractFromChromiumPerformanceProfile(
 
                 profileDataById.set(profileId, profileData);
                 profileDataByTid.set(threadId, profileData);
+
+                if (event.args.isolate) {
+                    profileDataByIsolate.set(event.args.isolate, profileData);
+                }
                 break;
             }
 
@@ -376,7 +381,9 @@ export function extractFromChromiumPerformanceProfile(
 
             case 'ProfileChunk': {
                 const chunk: ChromiumTraceProfileChunkEventData = event.args.data;
-                const profileData = profileDataById.get(`${event.pid}:${event.id}`);
+                const profileData = event.args.isolate
+                    ? profileDataByIsolate.get(event.args.isolate)
+                    : profileDataById.get(`${event.pid}:${event.id}`);
 
                 if (!profileData) {
                     console.warn(`Ignoring ProfileChunk for undeclared Profile (pid: ${event.pid}, id: ${event.id})`);
@@ -546,7 +553,7 @@ export function extractFromChromiumPerformanceProfile(
 function buildChunkedVector(
     chunks: AllocationSamples[],
     key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict'>,
-    totalLength: number
+    totalLength: number = 0
 ): number[] | undefined {
     const vector: number[] = totalLength > 0
         ? new Uint32Array(totalLength) as unknown as number[]
