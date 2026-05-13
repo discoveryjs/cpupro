@@ -230,7 +230,7 @@ export const methods = {
             for (let i = 0; i < mappingToLine.length; i++) {
                 const value = values[i];
                 const absValue = axisMetrics.cumulative[mappingToLine[i]];
-                const binIndex = Math.min(n - 1, Math.floor(absValue / step));
+                const binIndex = Math.min(n - 1, Math.floor(absValue / step)) | 0;
                 const vector = vectors[attribute?.[i] ?? 0];
 
                 vector[binIndex] += value;
