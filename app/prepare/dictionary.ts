@@ -820,6 +820,28 @@ export class Dictionary {
                 if (functionName.startsWith(prefix)) {
                     kind = prefixKind;
                     name = functionName.slice(prefix.length);
+
+                    if (kind === 'builtin') {
+                        const [, Cls] = name.match(/^((?:Object|Array|Set|WeakSet|Map|WeakMap|WeakRef|Number|Math|String|Boolean|RegExp|Date|Promise|TypedArray|(?:Fast)?Function|Generator|Proxy)(?:Iterator)?)[A-Z]/) || [];
+
+
+                        if (Cls) {
+                            if (Cls === name) {
+                                name = Cls;
+                            } else {
+                                const rest = name.slice(Cls.length);
+
+                                if (rest === 'Constructor') {
+                                    name = `new ${Cls}`;
+                                } else {
+                                    name = Cls + rest
+                                        .replace(/^Prototype([A-Z])/, (_, matched) => `#${matched.toLowerCase()}`)
+                                        .replace(/^[A-Z]/, (matched) => `.${matched.toLowerCase()}`);
+                                }
+                            }
+                        }
+                    }
+
                     break;
                 }
             }
