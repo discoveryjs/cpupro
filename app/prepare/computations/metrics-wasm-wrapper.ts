@@ -54,14 +54,14 @@ type ComputeMetricsWasmModuleInstance = {
         accumulateSampleCount(
             srcSize: number,
             src: number,
-            dest: number,
-            map: number
+            map: number,
+            dest: number
         ): void;
         accumulateMetrics(
             srcSize: number,
             src: number,
-            dest: number,
-            map: number
+            map: number,
+            dest: number
         ): void;
         rollupTreeMetrics(
             nodesCount: number,
@@ -197,9 +197,39 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeM
 }
 
 export function createJavaScriptApi(): ComputeMetricsApi {
-    function accumulate(dest: Uint32Array, source: Uint32Array, map: Uint32Array) {
+    function accumulateSampleCount(source: Uint32Array, map: Uint32Array, dest: Uint32Array) {
+        for (let i = source.length - 1; i >= 0; i--) {
+            if (source[i] !== 0) {
+                dest[map[i]] += 1;
+            }
+        }
+    }
+
+    function accumulateMetrics(source: Uint32Array, map: Uint32Array, dest: Uint32Array) {
         for (let i = source.length - 1; i >= 0; i--) {
             dest[map[i]] += source[i];
+        }
+    }
+
+    function rollupTreeMetrics(parent: Uint32Array, selfTimes: Uint32Array, nestedTimes: Uint32Array) {
+        for (let i = parent.length - 1; i > 0; i--) {
+            nestedTimes[parent[i]] += selfTimes[i] + nestedTimes[i];
+        }
+    }
+
+    function rollupDictionaryMetrics(
+        totalNodes: Uint32Array,
+        nodeSelfTimes: Uint32Array,
+        nodeNestedTimes: Uint32Array,
+        totalNodeToDict: Uint32Array,
+        totalTimes: Uint32Array
+    ) {
+        for (let i = totalNodes.length - 1; i >= 0; i--) {
+            const nodeId = totalNodes[i];
+            const selfTime = nodeSelfTimes[nodeId];
+            const nestedTime = nodeNestedTimes[nodeId];
+
+            totalTimes[totalNodeToDict[i]] += selfTime + nestedTime;
         }
     }
 
@@ -211,20 +241,14 @@ export function createJavaScriptApi(): ComputeMetricsApi {
                 samplesCount,
                 samplesTotal
             } = map;
-            const samplesLength = samples.length;
 
             if (clear) {
                 samplesCount.fill(0);
                 samplesTotal.fill(0);
             }
 
-            accumulate(samplesTotal, values, samples);
-
-            for (let i = samplesLength - 1; i >= 0; i--) {
-                if (values[i] !== 0) {
-                    samplesCount[samples[i]]++;
-                }
-            }
+            accumulateSampleCount(values, samples, samplesCount);
+            accumulateMetrics(values, samples, samplesTotal);
         },
 
         computeTreeMetrics(map, clear = true) {
@@ -237,7 +261,6 @@ export function createJavaScriptApi(): ComputeMetricsApi {
                 selfValues,
                 nestedValues
             } = map;
-            const nodesCount = parent.length;
 
             if (clear) {
                 samplesCount.fill(0);
@@ -245,12 +268,9 @@ export function createJavaScriptApi(): ComputeMetricsApi {
                 nestedValues.fill(0);
             }
 
-            accumulate(samplesCount, sourceSamplesCount, sampleIdToNode);
-            accumulate(selfValues, sourceSamplesTotal, sampleIdToNode);
-
-            for (let i = nodesCount - 1; i > 0; i--) {
-                nestedValues[parent[i]] += selfValues[i] + nestedValues[i];
-            }
+            accumulateMetrics(sourceSamplesCount, sampleIdToNode, samplesCount);
+            accumulateMetrics(sourceSamplesTotal, sampleIdToNode, selfValues);
+            rollupTreeMetrics(parent, selfValues, nestedValues);
         },
 
         computeDictionaryMetrics(map, clear = true) {
@@ -266,7 +286,6 @@ export function createJavaScriptApi(): ComputeMetricsApi {
                 selfValues,
                 totalValues
             } = map;
-            const nodesCount = totalNodes.length;
 
             if (clear) {
                 samplesCount.fill(0);
@@ -274,16 +293,9 @@ export function createJavaScriptApi(): ComputeMetricsApi {
                 totalValues.fill(0);
             }
 
-            accumulate(samplesCount, sourceSamplesCount, sampleIdToDict);
-            accumulate(selfValues, sourceSamplesTotal, sampleIdToDict);
-
-            for (let i = nodesCount - 1; i >= 0; i--) {
-                const nodeId = totalNodes[i];
-                const selfValue = nodeSelfValues[nodeId];
-                const nestedValue = nodeNestedValues[nodeId];
-
-                totalValues[totalNodeToDict[i]] += selfValue + nestedValue;
-            }
+            accumulateMetrics(sourceSamplesCount, sampleIdToDict, samplesCount);
+            accumulateMetrics(sourceSamplesTotal, sampleIdToDict, selfValues);
+            rollupDictionaryMetrics(totalNodes, nodeSelfValues, nodeNestedValues, totalNodeToDict, totalValues);
         }
     };
 }

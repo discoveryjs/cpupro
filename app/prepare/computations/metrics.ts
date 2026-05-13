@@ -627,54 +627,6 @@ function createTreeComputeBuffer<T>(
     }
 }
 
-/**
- * Compute dimension from sample positions without requiring a tree.
- * Used for lines that only have location data (no call graph).
- *
- * @future This will be used in Phase 4 when implementing line mappings.
- * For example, a memory line with only locations can map to a time line's call graph.
- * For now, all lines use tree-based computations via computeMetrics().
- */
-export function computeLocationOnlyDimension<T extends CpuProNode>(
-    samples: Uint32Array,
-    values: Uint32Array,
-    locations: Int32Array,
-    dictionary: T[]
-): DictDimension<T> {
-    // Aggregate values by location
-    const samplesCount = new Uint32Array(dictionary.length);
-    const selfValues = new Uint32Array(dictionary.length);
-    const totalValues = new Uint32Array(dictionary.length);
-
-    for (let i = 0; i < samples.length; i++) {
-        const locIdx = locations[i];
-
-        samplesCount[locIdx]++;
-        selfValues[locIdx] += values[i];
-        totalValues[locIdx] += values[i];
-    }
-
-    // Create metrics objects with dict structure
-    const dictAll = new DictionaryMetrics<T>(
-        dictionary,
-        samplesCount.slice(),
-        selfValues.slice(),
-        totalValues.slice()
-    );
-
-    const dictFiltered = new DictionaryMetrics<T>(
-        dictionary,
-        samplesCount,
-        selfValues,
-        totalValues
-    );
-
-    return {
-        all: dictAll,
-        filtered: dictFiltered
-    };
-}
-
 function createDimension<T extends CpuProNode>(
     dimensionMaps: BufferDimensionMap<T>,
     samplesMap: BufferSamplesMetricsMap

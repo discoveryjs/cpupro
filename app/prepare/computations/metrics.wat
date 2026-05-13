@@ -9,7 +9,9 @@
   (local $resultAddr i32) ;; Address in $dest array.
 
   ;; for (let i = srcSize - 1; i >= 0; i--) {
-  ;;   dest[map[i]] += src[i];
+  ;;   if (src[i] !== 0) {
+  ;;     dest[map[i]] += 1;
+  ;;   }
   ;; }
 
   ;; Initialize $offset to the byte position of the last element
@@ -33,6 +35,7 @@
       )
 
       ;; Continue if value equals zero
+      ;; if (src[i] === 0) continue;
       (br_if $loop
         (i32.eqz
           (i32.load
