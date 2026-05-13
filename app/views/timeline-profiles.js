@@ -1,12 +1,19 @@
 const profileTooltip = [
     'text:name',
     { view: 'block', content: 'text:"Runtime: " + runtime.name' },
+    { view: 'context', when: 'timeline', content: [
+        'html:"<hr>"',
+        { view: 'block', content: 'text-numeric:"Profile time: " + timeline.axisTotal.ms()' },
+        { view: 'block', content: 'text-numeric:"CPU Samples: " + timeline.sourceInfo.samples' },
+        { view: 'block', content: 'text-numeric:"Sampling interval: " + timeline.sourceInfo.samplesInterval' }
+    ] },
+    { view: 'context', when: 'memline', content: [
+        'html:"<hr>"',
+        { view: 'block', content: 'text-numeric:"Allocated memory: " + memline.axisTotal.bytes()' },
+        { view: 'block', content: 'text-numeric:"Allocations: " + memline.sourceInfo.samples' }
+    ] },
     'html:"<hr>"',
-    { view: 'block', content: 'text-numeric:"Profile time: " + totalTime.ms()' },
-    { view: 'block', content: 'text-numeric:"Samples: " + sourceInfo.samples' },
-    { view: 'block', content: 'text-numeric:"Sampling interval: " + sourceInfo.samplesInterval' },
-    'html:"<hr>"',
-    { view: 'block', content: 'text-numeric:"Call tree nodes: " + sourceInfo.nodes' },
+    { view: 'block', content: 'text-numeric:"Call tree nodes: " + timeline.sourceInfo.nodes.size()' },
     { view: 'block', content: 'text-numeric:"Call frames: " + callFrames.size()' }
 ];
 
