@@ -249,12 +249,25 @@ export function extractFromChromiumPerformanceProfile(
     // Metadata and source maps
     let metadata: ChromiumTraceEventsMetadata = {};
     let sourceMaps: ProfileSourceMap[] = [];
+    const sourceMapByUrl = new Map<string, ProfileSourceMap>();
+    const sourceMapBySourceMapUrl = new Map<string, ProfileSourceMap>();
 
     // JSON Object Format
     if ('traceEvents' in events) {
         metadata = events.metadata || {};
         sourceMaps = metadata.sourceMaps || [];
         events = events.traceEvents;
+    }
+
+    // Index source maps by URL for quick lookup
+    for (const sourceMap of sourceMaps) {
+        if (sourceMap.url) {
+            sourceMapByUrl.set(sourceMap.url, sourceMap);
+        }
+
+        if (sourceMap.sourceMapUrl) {
+            sourceMapBySourceMapUrl.set(sourceMap.sourceMapUrl, sourceMap);
+        }
     }
 
     // Filter only necessary events and sort them since the events do not have
@@ -352,10 +365,11 @@ export function extractFromChromiumPerformanceProfile(
                         case 'url':
                             script[key] = props[key];
                             break;
-                        case 'sourceMapUrl': {
+
+                        case 'sourceMapUrl':
                             script.sourceMapUrl = props.sourceMapUrl;
                             break;
-                        }
+
                         case 'sourceText':
                             script.source = script.source === null
                                 ? props.sourceText
@@ -483,18 +497,29 @@ export function extractFromChromiumPerformanceProfile(
         if (thread.scripts) {
             profile._scripts = Array.from(thread.scripts.values());
 
+            // Attach source maps if available
             for (const script of profile._scripts) {
-                // Attach source map from trace file if available
-                if (script.sourceMapUrl) {
+                let sourceMap: ProfileSourceMap | null = null;
+
+                if (script.url) {
+                    sourceMap = sourceMapByUrl.get(script.url) || null;
+                }
+
+                if (script.sourceMapUrl && sourceMap === null) {
                     try {
                         const sourceMapUrl = new URL(script.sourceMapUrl, script.url || undefined).toString();
-                        const sourceMap = sourceMaps.find(sm => sm.sourceMapUrl === sourceMapUrl)?.sourceMap;
-                        if (sourceMap && typeof sourceMap === 'object') {
-                            script.sourceMap = sourceMap;
-                        }
+
+                        sourceMap =
+                            sourceMapBySourceMapUrl.get(script.sourceMapUrl) ||
+                            sourceMapBySourceMapUrl.get(sourceMapUrl) ||
+                            null;
                     } catch (error) {
-                        console.error('Error processing source map for script:', script, error);
+                        console.warn('Error resolving source map url for script:', script, error);
                     }
+                }
+
+                if (sourceMap) {
+                    script.sourceMap = sourceMap.sourceMap;
                 }
             }
         }
