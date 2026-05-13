@@ -141,6 +141,9 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             processDisplayNames(dict.modules)
         );
 
+        // trigger call frame resolution for all locations
+        dict.locations.forEach(location => location.callFrame);
+
         // apply object marker
         await runSessionTask('mark objects', () => {
             dict.locations.forEach(markers['call-frame-position']);
@@ -150,8 +153,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             dict.categories.forEach(markers.category);
             dict.scripts.forEach(markers.script);
         });
-
-        dict.locations.forEach(location => location.callFrame);
     }
 
     const defaultSession = sessions[0] ?? null;

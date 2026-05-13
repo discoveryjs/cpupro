@@ -68,7 +68,9 @@ export interface ProfileLine {
 
     // Optional line-owned vector locations.
     // Tree-derived locations remain available through dict.locations and tree.locations.
-    locations: DictDimension<CpuProLocation> | null;
+    locations: DictDimension<CpuProLocation> & {
+        sampleToLocation: Uint32Array;
+    } | null;
 
     // Mappings to other lines (key = target line kind)
     mappings: Record<ProfileLineType, LineMapping>;

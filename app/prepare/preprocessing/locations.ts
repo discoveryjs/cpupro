@@ -177,7 +177,7 @@ type RawScriptIds = ArrayLike<number | string>;
 type NumericVector = ArrayLike<number>;
 
 function recomputeLocationDictionaryMetrics(
-    locationIds: Int32Array,
+    locationIds: Uint32Array,
     values: Uint32Array,
     samplesCount: Uint32Array,
     selfValues: Uint32Array,
@@ -247,9 +247,8 @@ export function createVectorLocations(
     vmStateNames: Record<number, string> | null,
     samplesMetrics: SamplesMetrics,
     samplesMetricsFiltered: SamplesMetricsFiltered
-): {
-    sampleLocations: Int32Array;
-    dict: DictDimension<CpuProLocation>;
+): DictDimension<CpuProLocation> & {
+    sampleToLocation: Uint32Array;
 } | null {
     if (scriptIds === null || scriptOffsets === null || scriptIds.length !== scriptOffsets.length) {
         return null;
@@ -261,7 +260,7 @@ export function createVectorLocations(
         vmStateNames ?? emptyDict
     );
 
-    const locationIds = new Int32Array(scriptOffsets.length);
+    const sampleToLocation = new Uint32Array(scriptOffsets.length);
     let prevCallFrame: CpuProCallFrame | null = null;
     let prevScriptId = scriptOffsets.length > 0 ? scriptIds[0] : 0;
     let prevScript: CpuProScript | null = scriptFromScriptId(prevScriptId, null, scriptsMap);
@@ -285,9 +284,9 @@ export function createVectorLocations(
                 prevScriptId = 0;
                 prevScript = null;
                 prevScriptOffset = -1;
-                prevCallFrame = contextInfoValue < 0x0f
+                prevCallFrame = contextInfoValue <= 0x0f
                     ? vmStateCallFrames[contextInfoValue]
-                    : builtinsCallFrames[(contextInfoValue >> 4) - 1];
+                    : builtinsCallFrames[contextInfoValue >> 4];
             }
         }
 
@@ -309,7 +308,7 @@ export function createVectorLocations(
             );
         }
 
-        locationIds[i] = locationIndex;
+        sampleToLocation[i] = locationIndex;
         prevLocationIndex = locationIndex;
     }
 
@@ -321,23 +320,21 @@ export function createVectorLocations(
     const selfValuesFiltered = new Uint32Array(locationDictionary.length);
     const totalValuesFiltered = new Uint32Array(locationDictionary.length);
 
-    recomputeLocationDictionaryMetrics(locationIds, samplesMetrics.values, samplesCountAll, selfValuesAll, totalValuesAll);
-    recomputeLocationDictionaryMetrics(locationIds, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
+    recomputeLocationDictionaryMetrics(sampleToLocation, samplesMetrics.values, samplesCountAll, selfValuesAll, totalValuesAll);
+    recomputeLocationDictionaryMetrics(sampleToLocation, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
 
     const all = new DictionaryMetrics(locationDictionary, samplesCountAll, selfValuesAll, totalValuesAll);
     const filtered = new DictionaryMetrics(locationDictionary, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
 
     samplesMetricsFiltered.subscribe(() => {
-        recomputeLocationDictionaryMetrics(locationIds, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
+        recomputeLocationDictionaryMetrics(sampleToLocation, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
         filtered.sync();
         filtered.notify();
     });
 
     return {
-        sampleLocations: locationIds,
-        dict: {
-            all,
-            filtered
-        }
+        sampleToLocation,
+        all,
+        filtered
     };
 }

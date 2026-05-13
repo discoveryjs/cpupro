@@ -248,7 +248,7 @@ export async function createMemline(
 
         dict,
         tree,
-        locations: vectorLocations?.dict || null,
+        locations: vectorLocations,
 
         mappings: Object.create(null),
 

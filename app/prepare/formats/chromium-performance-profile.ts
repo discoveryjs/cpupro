@@ -608,7 +608,7 @@ function buildChunkedVector(
     totalLength: number = 0
 ): number[] | undefined {
     const vector: number[] = totalLength > 0
-        ? new Uint32Array(totalLength) as unknown as number[]
+        ? new Int32Array(totalLength) as unknown as number[]
         : chunks.flatMap(chunk =>
             typeof chunk[key] === 'string' ? JSON.parse(chunk[key]) : chunk[key] || []
         );
@@ -618,7 +618,7 @@ function buildChunkedVector(
         for (const chunk of chunks) {
             const array = typeof chunk[key] === 'string' ? JSON.parse(chunk[key]) : chunk[key];
 
-            (vector as unknown as Uint32Array).set(array, offset);
+            (vector as unknown as Int32Array).set(array, offset);
             offset += array.length;
         }
     }
