@@ -1,6 +1,6 @@
 import { allocTimespan, typeColor, typeColorComponents, typeOrder, vmFunctionStateTierHotness } from '../prepare/const.js';
 import { methods as binMethods } from './bin.js';
-import { methods as callTreeMethods, makeSamplesMask } from './call-tree.js';
+import { methods as callTreeMethods, makeDictMask, makeSamplesMask } from './call-tree.js';
 import { methods as disassembleMethods } from './disassemble.js';
 import { methods as positionTableMethods } from './position-table.js';
 import { methods as profileMethods, assertions as profileAssertions, getProfileOrScopeProfile } from './profile.js';
@@ -149,7 +149,7 @@ export const methods = {
 
         return { up, down };
     },
-    allocationsMatrix(tree, sampleTimings, subject, profile) {
+    allocationsMatrix(tree, sampleTimings, test, profile) {
         profile = getProfileOrScopeProfile(profile, this.context);
 
         if (!profile || !profile.memline) {
@@ -164,7 +164,9 @@ export const methods = {
         const sums = new Uint32Array(timespanCount * typeCount);
         const mins = new Uint32Array(timespanCount * typeCount);
         const maxs = new Uint32Array(timespanCount * typeCount);
-        const samplesMask = makeSamplesMask(tree, subject);
+        const samplesMask = tree.sampleIdToNode
+            ? makeSamplesMask(tree, test)
+            : makeDictMask(tree, test);
         const result = [];
 
         for (let i = 0; i < samples.length; i++) {

@@ -135,7 +135,7 @@ const sourceQuery = `{
         }
     };
     $selfValueTooltipView: scopeLine() | type = 'memline' and valueLifespans and valueTypes
-        ? 'allocation-samples-matrix:scopeLine() | tree.(locations or callFrames).filtered.tree.allocationsMatrix(samplesMetricsFiltered, @.value.entry).sort(total.sum or 0 desc)';
+        ? 'allocation-samples-matrix:values.allocationsMatrix(metrics, value.entry).sort(total.sum or 0 desc)';
     $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table)"' };
     $selfValueMisattributedTooltipView: {
         className: 'view-call-frame-source__tooltip',
@@ -181,6 +181,12 @@ const sourceQuery = `{
                 className: $noloc ? 'noloc',
                 content: $sampleMarkContent,
                 value: $values.entries[entryIndex],
+                values: $locations.sampleToLocation
+                    ? $locations.filtered
+                    : $line.tree.locations.filtered.tree,
+                metrics: $locations.sampleToLocation
+                    ? { ...$line.samplesMetricsFiltered, samples: $locations.sampleToLocation }
+                    : $line.samplesMetricsFiltered,
                 prop: 'selfValue',
                 postfix: $unit,
                 tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)

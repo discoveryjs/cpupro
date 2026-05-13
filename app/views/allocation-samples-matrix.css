@@ -2,7 +2,18 @@
     padding: 0;
 }
 
-.view-allocation-samples-matrix tfoot .view-table-cell:first-child {
+.view-allocation-samples-matrix .view-table-footer {
+    container-type: scroll-state;
+    position: sticky;
+    bottom: 0;
+
+    .view-table-footer-cell {
+        @container scroll-state(stuck: bottom) {
+            border-top: .5px solid black;
+        }
+    }
+}
+.view-allocation-samples-matrix .view-table-footer .view-table-cell:first-child {
     text-align: right;
     padding-right: 8px;
     color: #888;

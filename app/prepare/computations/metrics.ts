@@ -368,6 +368,7 @@ export type DictionaryMetric<T> = {
 };
 
 export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
+    dictionary: T[];
     entries: DictionaryMetric<T>[];
     entriesMap: Map<T, DictionaryMetric<T>>;
     samplesCount: Uint32Array;
@@ -382,6 +383,7 @@ export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
     ) {
         super();
 
+        this.dictionary = dictionary;
         this.samplesCount = samplesCount;
         this.selfValues = selfValues;
         this.totalValues = totalValues;

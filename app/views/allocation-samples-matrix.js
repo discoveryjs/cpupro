@@ -31,7 +31,7 @@ const metricCells = metrics.map(({ key, header }) => ({
 
 discovery.view.define('allocation-samples-matrix', {
     view: 'table',
-    data: 'sort(type.order() asc)',
+    data: 'sort(total.sum or 0 desc)',
     cols: [
         {
             header: 'Type',

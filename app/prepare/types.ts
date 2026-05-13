@@ -249,6 +249,7 @@ export type CpuProCallFrameKind = // alphabetical order
     | 'root'
     | 'script'
     | 'vm-state'
+    | 'unknown'
     ;
 export type CpuProCallFrame = {
     id: number;
