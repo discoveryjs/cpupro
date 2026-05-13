@@ -90,8 +90,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             profiles.push(profile);
             session.profiles.push(profile);
 
-            if (session.defaultProfile === null && thread.name === 'CrRendererMain') {
-                session.defaultProfile = profile;
+            if (thread.name === 'CrRendererMain') {
+                if (session.defaultProfile === null ||
+                    (profile.timeline?.axisTotal || 0) > (session.defaultProfile.timeline?.axisTotal || 0)) {
+                    session.defaultProfile = profile;
+                }
             }
         }
 
