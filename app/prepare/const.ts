@@ -20,7 +20,8 @@ export const callFrameKinds: Record<CpuProCallFrameKind, number> = {
     'lib':      0x0040,
     'builtin':  0x0080,
     'bytecode': 0x0100,
-    'ic':       0x0200
+    'ic':       0x0200,
+    'unknown':  0x0400
     /* eslint-enable key-spacing */
 };
 export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([

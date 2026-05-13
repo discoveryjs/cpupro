@@ -120,8 +120,8 @@ export class Dictionary {
             }, null as unknown as IProfileScriptsMap);
         }
 
-        this.#unknownCallFrame = this.callFrames[this.callFrames.wellKnownIndex.unknown];
-        this.#unknownLocationIndex = this.resolveLocationIndex(this.#unknownCallFrame, null, -1, -1, -1);
+        this.#unknownLocationIndex = this.callFrames.wellKnownIndex.unknown;
+        this.#unknownCallFrame = this.callFrames[this.#unknownLocationIndex];
     }
 
     callFrameToModule(callFrame: CpuProCallFrame) {
@@ -908,6 +908,10 @@ function resolveCallFrameKind(script: CpuProScript | null, name: string, regexp:
     if (script === null) {
         if (name === '(root)') {
             return 'root';
+        }
+
+        if (name === '(unknown)') {
+            return 'unknown';
         }
 
         if (moduleTypeByWellKnownName.has(name as WellKnownName)) {
