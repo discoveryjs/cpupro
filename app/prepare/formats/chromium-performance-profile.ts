@@ -47,6 +47,9 @@ type AllocationSamples = {
     spacesDict?: Record<string, string>;
     gc?: number[];
 };
+type AllocationGc = {
+    [key in number]: number[];
+};
 type ChromiumTraceProfileChunkEventData = {
     cpuProfile: V8CpuProfile;
     timeDeltas: number[];
@@ -57,6 +60,7 @@ type ChromiumTraceProfileChunkEventData = {
     // Combined profile allocation data
     allocationSampleIds?: number[];
     allocationSamples?: AllocationSamples;
+    allocationGc?: AllocationGc;
 };
 type ChromiumTraceProfileData = {
     pid: number;
@@ -69,6 +73,7 @@ type ChromiumTraceProfileData = {
     hasLineColumns: boolean;
     hasAllocationsMapping: boolean;
     allocationChunks: AllocationSamples[];
+    allocationGcs: AllocationGc[];
 }
 
 interface ChromiumTraceEvent {
@@ -300,7 +305,8 @@ export function extractFromChromiumPerformanceProfile(
                     samples: 0,
                     hasLineColumns: false,
                     hasAllocationsMapping: false,
-                    allocationChunks: []
+                    allocationChunks: [],
+                    allocationGcs: []
                 };
 
                 profileDataById.set(profileId, profileData);
@@ -394,7 +400,7 @@ export function extractFromChromiumPerformanceProfile(
                 profileData.hasLineColumns ||= Array.isArray(chunk.lines) && Array.isArray(chunk.columns);
                 profileData.hasAllocationsMapping ||= Array.isArray(chunk.allocationSampleIds) && chunk.allocationSampleIds.length > 0;
 
-                const { cpuProfile, allocationSamples, endTime } = chunk;
+                const { cpuProfile, allocationSamples, allocationGc, endTime } = chunk;
 
                 if (cpuProfile) {
                     profileData.samples += cpuProfile.samples?.length ?? 0;
@@ -402,6 +408,10 @@ export function extractFromChromiumPerformanceProfile(
 
                 if (allocationSamples) {
                     profileData.allocationChunks.push(allocationSamples);
+                }
+
+                if (allocationGc) {
+                    profileData.allocationGcs.push(allocationGc);
                 }
 
                 if (endTime && endTime > profileData.endTime) {
@@ -454,7 +464,7 @@ export function extractFromChromiumPerformanceProfile(
     }
 
     for (const profileData of profileDataById.values()) {
-        const { pid, tid, eventChannel, startTime, endTime, chunks, samples, allocationChunks } = profileData;
+        const { pid, tid, eventChannel, startTime, endTime, chunks, samples, allocationChunks, allocationGcs } = profileData;
         const { thread } = eventChannel;
         const profile: V8CpuProfile = {
             _name: thread.name,
@@ -525,6 +535,23 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces', allocationsCount);
             profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
             profile._cpuproAllocationGc = buildChunkedVector(allocationChunks, 'gc', allocationsCount);
+
+            if (allocationGcs.length > 0 && profile._cpuproAllocationGc) {
+                const idToIndexMap = new Map<number, number>(ids?.map((id, index) => [id, index]) || []);
+                for (const allocationGc of allocationGcs) {
+                    for (const [key, value] of Object.entries(allocationGc)) {
+                        const gc = parseInt(key);
+                        const ids = typeof value === 'string' ? JSON.parse(value) : value;
+
+                        for (const id of ids) {
+                            const index = idToIndexMap.get(id);
+                            if (index !== undefined) {
+                                profile._cpuproAllocationGc[index] = gc;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         profiles.push(profile);
