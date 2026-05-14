@@ -57,6 +57,8 @@ export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     callFrame: TCallFrame;
     children?: number[];
     parentScriptOffset?: number;
+    parentLineNumber?: number;
+    parentColumnNumber?: number;
 }
 export type V8CpuProfileCallFrame = {
     scriptId: string | number;

@@ -78,17 +78,34 @@ export function createNodeParent(
 
 export function createNodePositions(
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
-    generatedNodes: GeneratedNodes | null = null
+    generatedNodes: GeneratedNodes | null = null,
+    nodeParent: Uint32Array,
+    callFrameByNodeIndex: Uint32Array,
+    dict: Dictionary
 ) {
     const generatedNodePositions: number[] = generatedNodes?.parentScriptOffsets || [];
     const nodePositions = new Int32Array(nodes.length + generatedNodePositions.length).fill(-1);
 
     // nodes
     for (let i = 0; i < nodes.length; i++) {
-        const { parentScriptOffset } = nodes[i];
+        const {
+            parentScriptOffset,
+            parentLineNumber = -1,
+            parentColumnNumber = -1
+        } = nodes[i];
 
         if (typeof parentScriptOffset === 'number') {
             nodePositions[i] = parentScriptOffset;
+        } else {
+            if (parentLineNumber !== -1 && parentColumnNumber !== -1 && nodeParent[i] > 0) {
+                nodePositions[i] = dict.resolveLocation(
+                    dict.callFrames[callFrameByNodeIndex[nodeParent[i]]],
+                    null,
+                    -1,
+                    parentLineNumber,
+                    parentColumnNumber
+                ).scriptOffset;
+            }
         }
     }
 
@@ -100,11 +117,13 @@ export function createNodePositions(
 
 export function processNodes(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    generatedNodes: GeneratedNodes | null = null
+    generatedNodes: GeneratedNodes | null = null,
+    callFrameByNodeIndex: Uint32Array,
+    dict: Dictionary
 ) {
     const nodeIndexById = createNodeIndexById(nodes, generatedNodes);
     const nodeParent = createNodeParent(nodes, nodeIndexById, generatedNodes);
-    const nodePositions = createNodePositions(nodes, generatedNodes);
+    const nodePositions = createNodePositions(nodes, generatedNodes, nodeParent, callFrameByNodeIndex, dict);
 
     return {
         nodeIndexById,

@@ -261,7 +261,7 @@ export class Dictionary {
         scriptOffset: number,
         line: number,
         column: number
-    ) {
+    ): CpuProCallFrame {
         let candidate: CpuProCallFrame | null = null;
 
         if (scriptOffset !== -1) {
@@ -306,7 +306,7 @@ export class Dictionary {
             }, script)];
         }
 
-        return this.resolveScriptCallFrameIndex(script);
+        return this.callFrames[this.resolveScriptCallFrameIndex(script)];
     }
 
     #addLocation(

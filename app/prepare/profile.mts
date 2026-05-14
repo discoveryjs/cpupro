@@ -293,7 +293,12 @@ export async function createProfile(
     //
 
     const { nodeIndexById, nodeParent, nodePositions } = await work('process nodes', () =>
-        processNodes(data.nodes, generateNodes)
+        processNodes(
+            data.nodes,
+            generateNodes,
+            callFrameByNodeIndex,
+            dictionary
+        )
     );
 
     // call frame positions
