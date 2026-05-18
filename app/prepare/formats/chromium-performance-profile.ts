@@ -57,6 +57,7 @@ type ChromiumTraceProfileChunkEventData = {
     columns: number[];
     startTime: number;
     endTime: number;
+    isolate?: string;
     // Combined profile allocation data
     allocationSampleIds?: number[];
     allocationSamples?: AllocationSamples;
@@ -289,6 +290,7 @@ export function extractFromChromiumPerformanceProfile(
             }
 
             case 'Profile': {
+                const data = event.args.data as Partial<V8CpuProfile> & { isolate?: string };
                 const profileId = `${event.pid}:${event.id}`;
                 const eventChannel = getOrCreateEventChannel(event, eventChannels);
                 const threadId = getEventThreadId(event);
@@ -304,7 +306,7 @@ export function extractFromChromiumPerformanceProfile(
                     trace_ids: {},
                     lines: [],
                     columns: [],
-                    ...event.args.data as Partial<V8CpuProfile>
+                    ...data
                 };
                 profileById.set(threadId, profile);
 
@@ -312,7 +314,7 @@ export function extractFromChromiumPerformanceProfile(
                     eventChannel,
                     pid: event.pid,
                     tid: event.tid,
-                    startTime: (event.args.data as Partial<V8CpuProfile>).startTime || 0,
+                    startTime: data.startTime || 0,
                     endTime: 0,
                     chunks: [],
                     samples: 0,
@@ -325,8 +327,8 @@ export function extractFromChromiumPerformanceProfile(
                 profileDataById.set(profileId, profileData);
                 profileDataByTid.set(threadId, profileData);
 
-                if (event.args.isolate) {
-                    profileDataByIsolate.set(event.args.isolate, profileData);
+                if (data.isolate) {
+                    profileDataByIsolate.set(data.isolate, profileData);
                 }
                 break;
             }
@@ -401,8 +403,8 @@ export function extractFromChromiumPerformanceProfile(
 
             case 'ProfileChunk': {
                 const chunk: ChromiumTraceProfileChunkEventData = event.args.data;
-                const profileData = event.args.isolate
-                    ? profileDataByIsolate.get(event.args.isolate)
+                const profileData = chunk.isolate
+                    ? profileDataByIsolate.get(chunk.isolate)
                     : profileDataById.get(`${event.pid}:${event.id}`);
 
                 if (!profileData) {
