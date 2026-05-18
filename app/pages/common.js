@@ -22,7 +22,7 @@ export const timingCols = [
         content: 'metric:nestedValue'
     },
     {
-        header: 'Total time',
+        header: '="totalValue".metricName()',
         className: 'timings',
         sorting: 'totalValue desc, selfValue desc',
         when: 'totalValue',

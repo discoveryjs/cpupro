@@ -1,3 +1,10 @@
 .page-locations .view-cell-details-content .view-source__content {
     max-height: 70vh;
 }
+.page-locations > .locations-table {
+    width: 100%;
+}
+.page-locations > .locations-table > .view-table-header {
+    z-index: 20;
+    white-space: nowrap;
+}
