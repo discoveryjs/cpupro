@@ -1,0 +1,20 @@
+.page-events {
+    padding: 3px 4px !important;
+}
+.page-events .view-track-timeline {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: auto;
+}
+.page-events .view-select > .view-menu-item {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+.page-events > .view-checkbox-list {
+    display: inline-flex;
+    gap: 4px;
+    padding-left: 2ex;
+}
