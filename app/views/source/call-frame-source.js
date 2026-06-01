@@ -305,7 +305,7 @@ discovery.view.define('call-frame-source', {
                         {
                             view: 'toggle-group',
                             name: 'locationsSource',
-                            whenData: 'scopeLine() | dict.locations and locations',
+                            whenData: 'not #.locationsSourceControlled and (scopeLine() | dict.locations and locations)',
                             value: '="getSessionSetting".callAction("call-frame-source__line-locations", "tree")',
                             data: [
                                 {
