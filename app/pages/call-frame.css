@@ -21,3 +21,12 @@
     overflow-x: auto;
     overflow-y: hidden;
 }
+
+.page-call-frame .view-toggle-group.view-call-frame__locations-source {
+    position: sticky;
+    top: 6px;
+    z-index: 101;
+    display: flex;
+    width: fit-content;
+    margin: 0 0 -28px auto;
+}

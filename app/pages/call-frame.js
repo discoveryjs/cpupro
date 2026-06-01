@@ -197,11 +197,28 @@ const pageContent = [
 
     {
         view: 'update-on-line-metrics-changes',
-        metrics: '=scopeLine().dict.callFrames.filtered',
-        content: `page-indicator-metrics:{
-            full: scopeLine().dict.callFrames.all.entries[=>entry = @],
-            filtered: scopeLine().dict.callFrames.filtered.entries[=>entry = @]
-        }`
+        metrics: '=scopeLine() | #.locationsSource = "vector" and locations ? locations.filtered : dict.callFrames.filtered',
+        content: `page-indicator-metrics:
+            $cf: @;
+            $line: scopeLine();
+            #.locationsSource = "vector" and $line.locations
+                ? {
+                    full: $line.locations.all.entries.[entry.callFrame = $cf] | {
+                        selfValue: sum(=>selfValue),
+                        nestedValue: 0,
+                        totalValue: sum(=>selfValue)
+                    },
+                    filtered: $line.locations.filtered.entries.[entry.callFrame = $cf] | {
+                        selfValue: sum(=>selfValue),
+                        nestedValue: 0,
+                        totalValue: sum(=>selfValue)
+                    }
+                }
+                : {
+                    full: $line.dict.callFrames.all.entries[=>entry = $cf],
+                    filtered: $line.dict.callFrames.filtered.entries[=>entry = $cf]
+                }
+        `
     },
 
     {
@@ -228,16 +245,34 @@ const pageContent = [
         view: 'expand',
         when: '#.scopeProfile | memline | valueLifespans and valueTypes',
         className: 'trigger-outside',
-        data: '{ callFrame: @, matrix: #.scopeProfile.memline | tree.callFrames.all.tree.allocationsMatrix(samplesMetrics, @) }',
+        data: `
+            $line: #.scopeProfile.memline;
+            $cf: @;
+            $matrix: #.locationsSource = "vector" and $line.locations
+                ? $line.locations.all.allocationsMatrix(
+                    { ...$line.samplesMetrics, samples: $line.locations.sampleToLocation },
+                    => callFrame = $cf
+                )
+                : $line.tree.callFrames.all.tree.allocationsMatrix($line.samplesMetrics, $cf);
+
+            { callFrame: $cf, matrix: $matrix }
+        `,
         ...sessionExpandState('callframe-allocations-matrix', true, '$'),
         header: 'text:"Allocation types"',
         content: {
             view: 'update-on-line-metrics-changes',
-            metrics: '=#.scopeProfile.memline.dict.callFrames.filtered',
+            metrics: '=#.scopeProfile.memline | #.locationsSource = "vector" and locations ? locations.filtered : dict.callFrames.filtered',
             content: {
                 view: 'allocation-samples-matrix',
                 data: `
-                    $filtered: #.scopeProfile.memline | tree.callFrames.all.tree.allocationsMatrix(samplesMetricsFiltered, @.callFrame);
+                    $line: #.scopeProfile.memline;
+                    $cf: @.callFrame;
+                    $filtered: #.locationsSource = "vector" and $line.locations
+                        ? $line.locations.all.allocationsMatrix(
+                            { ...$line.samplesMetricsFiltered, samples: $line.locations.sampleToLocation },
+                            => callFrame = $cf
+                        )
+                        : $line.tree.callFrames.all.tree.allocationsMatrix($line.samplesMetricsFiltered, $cf);
 
                     matrix.($type; $filtered[=>type = $type] or { $type })
                 `
@@ -351,6 +386,25 @@ discovery.page.define('call-frame', {
         } },
         { content: {
             view: 'context',
+            modifiers: [
+                {
+                    view: 'toggle-group',
+                    className: 'view-call-frame__locations-source',
+                    name: 'locationsSource',
+                    whenData: 'scopeLine() | dict.locations and locations',
+                    value: '="getSessionSetting".callAction("call-frame-source__line-locations", "tree")',
+                    data: [
+                        {
+                            value: 'tree',
+                            text: 'Tree locations'
+                        },
+                        {
+                            value: 'vector',
+                            text: 'Vector locations'
+                        }
+                    ]
+                }
+            ],
             context: (data, context) => {
                 const scopeLine = resolveScopeProfileLine(null, context);
                 const scopeProfile = scopeLine.profile;
@@ -365,6 +419,7 @@ discovery.page.define('call-frame', {
 
                 return {
                     ...context,
+                    locationsSourceControlled: true,
                     subsetTreeValues: new SubsetTreeMetrics(
                         new SubsetCallTree(callFramesTree, data),
                         samplesMetrics
@@ -381,7 +436,15 @@ discovery.page.define('call-frame', {
                         : null
                 };
             },
-            content: pageContent
+            content: {
+                view: 'block',
+                postRender(el, _, data, context) {
+                    if (context.locationsSource) {
+                        context.actions.setSessionSetting?.('call-frame-source__line-locations', context.locationsSource);
+                    }
+                },
+                content: pageContent
+            }
         } }
     ]
 });
