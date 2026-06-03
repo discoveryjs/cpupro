@@ -2,7 +2,7 @@ import type { CreateProfileApi, Profile } from '../profile.mjs';
 import type { BuildTreeResult } from '../computations/build-trees.js';
 import type { V8CpuProfile } from '../types.js';
 import type { Metric, ProfileMemline } from './types.js';
-import { computeTimings } from '../preprocessing/samples.js';
+import { computeTreeMetrics } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { sum } from '../misc/utils.js';
 import { AllocationLifespan, typeColor } from '../const.js';
@@ -106,7 +106,7 @@ export async function createMemline(
     // The location tree will be null, metrics are aggregated by call frames only
     const allocationSampleLocations = null;
 
-    // Now use computeTimings with CPU profile's trees to get full dimensions
+    // Now use computeTreeMetrics with CPU profile's trees to get full dimensions
     // Note: This will remap the trees to work with allocationSamples
     const {
         recomputeMetrics,
@@ -115,7 +115,7 @@ export async function createMemline(
         dict,
         tree
     } = await work('compute memline metrics', () =>
-        computeTimings(
+        computeTreeMetrics(
             allocationSamples,
             allocationSizes,
             callFramesTree,

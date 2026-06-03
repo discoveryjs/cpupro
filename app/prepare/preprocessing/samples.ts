@@ -95,9 +95,9 @@ export function remapTreeSamples(
     }
 }
 
-export function computeTimings(
+export function computeTreeMetrics(
     samples: Uint32Array,
-    timeDeltas: Uint32Array,
+    values: Uint32Array,
     callFramesTree: CallTree<CpuProCallFrame>,
     modulesTree: CallTree<CpuProModule>,
     packagesTree: CallTree<CpuProPackage>,
@@ -105,7 +105,7 @@ export function computeTimings(
     locationsTree: CallTree<CpuProLocation> | null
 ) {
     // create metrics
-    const computeTimingsStart = Date.now();
+    const computeStart = Date.now();
     const {
         recomputeMetrics,
         samplesMetrics,
@@ -117,7 +117,7 @@ export function computeTimings(
             categoryDimension,
             locationDimension = null
         ]
-    } = computeMetrics(samples, timeDeltas, [
+    } = computeMetrics(samples, values, [
         callFramesTree,
         modulesTree,
         packagesTree,
@@ -142,7 +142,7 @@ export function computeTimings(
         locations: locationDimension?.tree as TreeDimension<CpuProLocation> || null
     };
 
-    TIMINGS && console.log('Compute timings:', Date.now() - computeTimingsStart);
+    TIMINGS && console.log('Compute timings:', Date.now() - computeStart);
 
     return {
         recomputeMetrics,

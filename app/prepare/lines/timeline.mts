@@ -2,7 +2,7 @@ import type { CreateProfileApi, Profile } from '../profile.mjs';
 import type { BuildTreeResult } from '../computations/build-trees.js';
 import type { Metric, TimelineLine } from './types.js';
 import { mergeSamples, remapTreeSamples } from '../preprocessing/samples.js';
-import { computeTimings } from '../preprocessing/samples.js';
+import { computeTreeMetrics } from '../preprocessing/samples.js';
 import { processLongTimeDeltas, processTimeDeltas } from '../preprocessing/time-deltas.js';
 import { GeneratedNodes, V8CpuProfile } from '../types.js';
 import { convertToInt32Array, convertToUint32Array } from '../misc/utils.js';
@@ -227,7 +227,7 @@ export async function createTimeline(
         dict,
         tree
     } = await work('process samples', () =>
-        computeTimings(
+        computeTreeMetrics(
             samples,
             timeDeltas,
             callFramesTree,
