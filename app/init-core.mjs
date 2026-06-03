@@ -44,9 +44,9 @@ model.on('unloadData', () => {
     });
 });
 model.on('data', () => {
-    const { defaultLineType, currentSamplesConvolutionRule } = model.context;
+    const { currentSamplesConvolutionRule } = model.context;
     const { defaultProfile, profiles } = model.data;
-    let primaryLineType = defaultLineType || null;
+    let primaryLineType = model.context.primaryLineType || null;
 
     if (!primaryLineType) {
         try {
@@ -55,7 +55,7 @@ model.on('data', () => {
     }
 
     if (!primaryLineType || !profiles.some(profile => profile.lines.find(line => line.type === primaryLineType))) {
-        primaryLineType = defaultProfile?.defaultLineType;
+        primaryLineType = defaultProfile?.lines?.[0].type || null;
     }
 
     const primaryBucket = {

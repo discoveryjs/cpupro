@@ -371,8 +371,6 @@ export async function createProfile(
         lines.push(memline);
     }
 
-    const primaryLine = memline || timeline;
-
     // Create mappings between lines if both exist
     if (memline && timeline && memline.mappings && timeline.mappings) {
         memline.mappings.timeline = createLineMapping(
@@ -429,9 +427,6 @@ export async function createProfile(
         memline,
         gcline: null as ProfileLine | null,
         lines,
-
-        // primaryLine reference (currently selected line in UI)
-        defaultLineType: primaryLine?.type || null,
 
         // ---- legacy fields ----
 
