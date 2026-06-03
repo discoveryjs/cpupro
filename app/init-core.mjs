@@ -7,6 +7,9 @@ model.action.define('selectPrimaryLine', (lineType) => {
     model.setContext({
         primaryLineType: lineType
     });
+    try {
+        sessionStorage.setItem('cpupro:primary-line-type', lineType);
+    } catch {}
 });
 model.action.define('selectProfile', (profile) => {
     model.setContext({
@@ -45,7 +48,13 @@ model.on('data', () => {
     const { defaultProfile, profiles } = model.data;
     let primaryLineType = defaultLineType || null;
 
-    if (!primaryLineType || !profiles.some(profile => profile.lines.includes(primaryLineType))) {
+    if (!primaryLineType) {
+        try {
+            primaryLineType = sessionStorage.getItem('cpupro:primary-line-type');
+        } catch {}
+    }
+
+    if (!primaryLineType || !profiles.some(profile => profile.lines.find(line => line.type === primaryLineType))) {
         primaryLineType = defaultProfile?.defaultLineType;
     }
 

@@ -52,9 +52,6 @@ discovery.page.define('locations', {
                 }
             },
             {
-                details: 'struct'
-            },
-            {
                 header: 'Call frame',
                 content: 'call-frame-badge:entry.callFrame'
             }

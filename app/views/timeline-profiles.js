@@ -1,6 +1,11 @@
 const profileTooltip = [
     'text:name',
-    { view: 'block', content: 'text:"Runtime: " + runtime.name' },
+    { view: 'block', content: [
+        'badge{ prefix: "pid", text: thread.pid }',
+        'text:" "',
+        'badge{ prefix: "tid", text: thread.tid }'
+    ] },
+    // { view: 'block', content: 'text:"Runtime: " + runtime.name' },
     { view: 'context', when: 'timeline', content: [
         'html:"<hr>"',
         { view: 'block', content: 'text-numeric:"Profile time: " + timeline.axisTotal.ms()' },
@@ -18,7 +23,12 @@ const profileTooltip = [
 ];
 
 discovery.view.define('timeline-profiles', function(el, props, data, context) {
-    const bucketProfiles = props.profiles || (Array.isArray(data) ? data : []);
+    const bucketProfiles = discovery.query(
+        '.group(=>profile.thread.process)' +
+        '.sort(key.threads.sum(=>events.size()))' +
+        '.value',
+        props.profiles || (Array.isArray(data) ? data : [])
+    );
     const min = props.startTime || props.startTime === 0
         ? props.startTime
         : discovery.query('profile.timeline.axisStart.min() or 0', bucketProfiles);

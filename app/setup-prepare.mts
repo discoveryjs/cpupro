@@ -92,7 +92,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
             if (thread.name === 'CrRendererMain') {
                 if (session.defaultProfile === null ||
-                    (profile.timeline?.axisTotal || 0) > (session.defaultProfile.timeline?.axisTotal || 0)) {
+                    measureWorkTime(profile) > measureWorkTime(session.defaultProfile)) {
                     session.defaultProfile = profile;
                 }
             }
@@ -166,3 +166,15 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
     return result;
 } satisfies PrepareFunction);
+
+function measureWorkTime(profile: Profile) {
+    const categories = profile.timeline?.dict.categories?.all.entries ?? [];
+
+    return categories.reduce((res, category) => {
+        if (!['idle', 'root', 'logging'].includes(category.entry.name)) {
+            return res + category.selfValue;
+        }
+
+        return res;
+    }, 0);
+}

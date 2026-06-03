@@ -177,23 +177,6 @@ function extractVectorIfExists(samples: SizeSample[], property: keyof SizeSample
     }
 }
 
-function extractRemapVectorIfExists(samples: SizeSample[], vectorName: keyof SizeSample, nameMap: Record<number, string>, useId = false) {
-    let vector = extractVectorIfExists(samples, vectorName);
-    let names: string[] = [];
-
-    if (vector !== undefined) {
-        const map = new Map([...new Set(vector)].map((type, idx) => [type, idx]));
-
-        vector = vector.map(origType => map.get(origType) || 0);
-        names = [...map.keys()].map(k => useId || !Object.hasOwn(nameMap, k)
-            ? `(${k}) ${nameMap[k] || 'unknown'}`
-            : nameMap[k] || 'unknown'
-        );
-    }
-
-    return { vector, names };
-}
-
 /**
  * Extract allocation data from combined CPU+memory profile.
  * Combined profiles have:
