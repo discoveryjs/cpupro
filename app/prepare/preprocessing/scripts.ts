@@ -42,7 +42,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
             return;
         }
 
-        for (const { id, url, source, sourceMap, sourceMapUrl } of scripts) {
+        for (const { id, url, source, sourceMap = null, sourceMapUrl = null } of scripts) {
             const script: CpuProScript = this.resolveScript(id, url, source)!;
 
             this.set(id, script);

@@ -1,22 +1,18 @@
 import type { DictDimension, TreeDimension } from '../computations/metrics.js';
-import type { SampledCallTree } from '../preprocessing/samples.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
-import type { LineTreeDimension, ProfileLineTree } from './types.js';
-
-type LineTreeInput<T extends CpuProNode> = SampledCallTree<T> | null;
+import type { LineTreeDimension, ProfileLine, ProfileLineTree } from './types.js';
 
 export function createLineTreeDimension<T extends CpuProNode>(
-    sampledTree: LineTreeInput<T>,
     dict: DictDimension<T> | null,
     tree: TreeDimension<T> | null
 ): LineTreeDimension<T> | null {
-    if (sampledTree === null || dict === null || tree === null) {
+    if (dict === null || tree === null) {
         return null;
     }
 
     return {
-        tree: sampledTree.tree,
-        sampleToNode: sampledTree.sampleToNode,
+        tree: tree.all.tree,
+        sampleToNode: tree.all.sampleToNode,
         all: {
             nodes: tree.all,
             dict: dict.all
@@ -31,13 +27,7 @@ export function createLineTreeDimension<T extends CpuProNode>(
 
 export function createLineTree(
     kind: string,
-    sampledTrees: {
-        locations: LineTreeInput<CpuProLocation>;
-        callFrames: LineTreeInput<CpuProCallFrame>;
-        modules: LineTreeInput<CpuProModule>;
-        packages: LineTreeInput<CpuProPackage>;
-        categories: LineTreeInput<CpuProCategory>;
-    },
+    line: ProfileLine,
     dimensions: {
         dict: {
             locations: DictDimension<CpuProLocation> | null;
@@ -57,10 +47,11 @@ export function createLineTree(
 ): ProfileLineTree {
     return {
         kind,
-        locations: createLineTreeDimension(sampledTrees.locations, dimensions.dict.locations, dimensions.tree.locations),
-        callFrames: createLineTreeDimension(sampledTrees.callFrames, dimensions.dict.callFrames, dimensions.tree.callFrames),
-        modules: createLineTreeDimension(sampledTrees.modules, dimensions.dict.modules, dimensions.tree.modules),
-        packages: createLineTreeDimension(sampledTrees.packages, dimensions.dict.packages, dimensions.tree.packages),
-        categories: createLineTreeDimension(sampledTrees.categories, dimensions.dict.categories, dimensions.tree.categories)
+        line,
+        locations: createLineTreeDimension(dimensions.dict.locations, dimensions.tree.locations),
+        callFrames: createLineTreeDimension(dimensions.dict.callFrames, dimensions.tree.callFrames),
+        modules: createLineTreeDimension(dimensions.dict.modules, dimensions.tree.modules),
+        packages: createLineTreeDimension(dimensions.dict.packages, dimensions.tree.packages),
+        categories: createLineTreeDimension(dimensions.dict.categories, dimensions.tree.categories)
     };
 }

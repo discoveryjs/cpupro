@@ -25,10 +25,6 @@ export type SampledCpuProCallTree =
     | SampledTree<CpuProPackage>
     | SampledTree<CpuProCategory>;
 
-export type SampledCallTree<T extends CpuProNode> = SampledTree<T> & {
-    sampleToNode: Uint32Array;
-};
-
 export function createSampledCallTree<T extends CpuProNode>(
     tree: CallTree<T>,
     sampleToNode: Uint32Array
@@ -86,11 +82,11 @@ export function remapTreeSamples(
 export function computeTreeMetrics(
     samples: Uint32Array,
     values: Uint32Array,
-    callFramesTree: SampledCallTree<CpuProCallFrame>,
-    modulesTree: SampledCallTree<CpuProModule>,
-    packagesTree: SampledCallTree<CpuProPackage>,
-    categoriesTree: SampledCallTree<CpuProCategory>,
-    locationsTree: SampledCallTree<CpuProLocation> | null
+    callFramesTree: SampledTree<CpuProCallFrame>,
+    modulesTree: SampledTree<CpuProModule>,
+    packagesTree: SampledTree<CpuProPackage>,
+    categoriesTree: SampledTree<CpuProCategory>,
+    locationsTree: SampledTree<CpuProLocation> | null
 ) {
     // create metrics
     const computeStart = Date.now();

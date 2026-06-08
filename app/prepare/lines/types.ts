@@ -28,12 +28,22 @@ export type LineTreeDimension<T extends CpuProNode> = {
 
 export type ProfileLineTree = {
     kind: string;
+    line: ProfileLine;
     locations: LineTreeDimension<CpuProLocation> | null;
     callFrames: LineTreeDimension<CpuProCallFrame> | null;
     modules: LineTreeDimension<CpuProModule> | null;
     packages: LineTreeDimension<CpuProPackage> | null;
     categories: LineTreeDimension<CpuProCategory> | null;
 };
+
+export type Axis = {
+    start: number;
+    startNoSamples: number;
+    end: number;
+    endNoSamples: number;
+    total: number;
+    samplesInterval: number;
+}
 
 export interface ProfileLine {
     type: ProfileLineType;

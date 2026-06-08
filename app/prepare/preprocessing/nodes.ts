@@ -1,8 +1,30 @@
-import type { V8CpuProfileNode, V8CpuProfileCallFrame, IProfileScriptsMap, GeneratedNodes } from '../types';
+import type { V8CpuProfileNode, V8CpuProfileCallFrame, IProfileScriptsMap } from '../types';
 import type { Dictionary } from '../dictionary';
 import { findMaxId } from '../misc/utils';
 
-export function mapNodes(
+export class GeneratedNodes {
+    dict: Dictionary;
+    nodeIdSeed: number;
+    noSamplesNodeId: number;
+    callFrames: number[];
+    nodeParentId: number[];
+    parentScriptOffsets: number[];
+
+    constructor(dict: Dictionary, nodeIdSeedStart: number) {
+        this.dict = dict;
+        this.nodeIdSeed = nodeIdSeedStart;
+        this.noSamplesNodeId = -1;
+        this.callFrames = [];
+        this.nodeParentId = [];
+        this.parentScriptOffsets = [];
+    }
+
+    get count() {
+        return this.nodeParentId.length;
+    }
+}
+
+export function createNodesCallFrameIndex(
     dict: Dictionary,
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
     callFrameByIndex: Uint32Array,
@@ -76,15 +98,15 @@ export function createNodeParent(
     return nodeParent;
 }
 
-export function createNodePositions(
+export function createNodeLocations(
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
-    generatedNodes: GeneratedNodes | null = null,
     nodeParent: Uint32Array,
+    generatedNodes: GeneratedNodes | null = null,
     callFrameByNodeIndex: Uint32Array,
     dict: Dictionary
 ) {
-    const generatedNodePositions: number[] = generatedNodes?.parentScriptOffsets || [];
-    const nodePositions = new Int32Array(nodes.length + generatedNodePositions.length).fill(-1);
+    const generatedNodeLocations: number[] = generatedNodes?.parentScriptOffsets || [];
+    const nodeLocations = new Int32Array(nodes.length + generatedNodeLocations.length).fill(-1);
 
     // nodes
     for (let i = 0; i < nodes.length; i++) {
@@ -95,10 +117,10 @@ export function createNodePositions(
         } = nodes[i];
 
         if (typeof parentScriptOffset === 'number') {
-            nodePositions[i] = parentScriptOffset;
+            nodeLocations[i] = parentScriptOffset;
         } else {
             if (parentLineNumber !== -1 && parentColumnNumber !== -1 && nodeParent[i] > 0) {
-                nodePositions[i] = dict.resolveLocation(
+                nodeLocations[i] = dict.resolveLocation(
                     dict.callFrames[callFrameByNodeIndex[nodeParent[i]]],
                     null,
                     -1,
@@ -110,9 +132,9 @@ export function createNodePositions(
     }
 
     // generated nodes
-    nodePositions.set(generatedNodePositions, nodes.length);
+    nodeLocations.set(generatedNodeLocations, nodes.length);
 
-    return nodePositions;
+    return nodeLocations;
 }
 
 export function processNodes(
@@ -123,11 +145,11 @@ export function processNodes(
 ) {
     const nodeIndexById = createNodeIndexById(nodes, generatedNodes);
     const nodeParent = createNodeParent(nodes, nodeIndexById, generatedNodes);
-    const nodePositions = createNodePositions(nodes, generatedNodes, nodeParent, callFrameByNodeIndex, dict);
+    const nodeLocations = createNodeLocations(nodes, nodeParent, generatedNodes, callFrameByNodeIndex, dict);
 
     return {
         nodeIndexById,
         nodeParent,
-        nodePositions
+        nodeLocations
     };
 }

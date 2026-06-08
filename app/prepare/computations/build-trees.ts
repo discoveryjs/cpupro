@@ -32,7 +32,7 @@ interface BuildTreeSource<S> {
 }
 
 export type BuildTreeResult = {
-    treeSource: TreeSource<CpuProCallFrame>;
+    sourceIdToNode: Int32Array;
     locationsTree: CallTree<CpuProLocation> | null;
     callFramesTree: CallTree<CpuProCallFrame>;
     modulesTree: CallTree<CpuProModule>;
@@ -345,10 +345,7 @@ function createDictionaryMap<S, D>(
         };
     }
 
-    const dictionaryIndex = new Map<D, number>(baseDictionary
-        ? baseDictionary.map((key, index) => [key, index])
-        : undefined
-    );
+    const dictionaryIndex = new Map(baseDictionary?.map((key, index) => [key, index]));
     const sourceDictionaryMap = Uint32Array.from(dictionary, (value) => {
         const key = mapping(value);
         let index = dictionaryIndex.get(key);
@@ -499,7 +496,7 @@ export function buildTrees(
     );
 
     const locationsTree = locationsTreeSource !== null
-        ? buildCallTree('callFramePositions', locationsTreeSource)
+        ? buildCallTree('callFrameLocations', locationsTreeSource)
         : null;
     const callFramesTree = locationsTree !== null
         ? buildCallTree('callFrames', locationsTree, pos => pos.callFrame, usage.callFrames)
@@ -509,7 +506,7 @@ export function buildTrees(
     const categoriesTree = buildCallTree('categories', packagesTree, dict.packageToCategory, usage.categories);
 
     return {
-        treeSource,
+        sourceIdToNode: locationsTreeSource?.sourceIdToNode || treeSource.sourceIdToNode,
         locationsTree,
         callFramesTree,
         modulesTree,

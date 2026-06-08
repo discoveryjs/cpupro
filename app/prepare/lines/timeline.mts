@@ -1,12 +1,12 @@
 import type { CreateProfileApi, Profile } from '../profile.mjs';
-import type { BuildTreeResult } from '../computations/build-trees.js';
-import type { Metric, TimelineLine } from './types.js';
-import { remapTreeSamples, type CpuProCallTree, type SampledCallTree } from '../preprocessing/samples.js';
-import { computeTreeMetrics } from '../preprocessing/samples.js';
-import { processLongTimeDeltas, processTimeDeltas } from '../preprocessing/time-deltas.js';
-import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage, GeneratedNodes, V8CpuProfile } from '../types.js';
-import { convertToInt32Array, convertToUint32Array } from '../misc/utils.js';
+import type { SampledTree } from '../computations/metrics.js';
+import type { Axis, Metric, ProfileLineTree, TimelineLine } from './types.js';
+import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage, V8CpuProfile } from '../types.js';
+import { processLongTimeDeltas, createTimelineAxis } from '../preprocessing/time-deltas.js';
+import { SampledCpuProCallTree, computeTreeMetrics } from '../preprocessing/samples.js';
 import { reparentGcNodes } from '../preprocessing/gc-samples.js';
+import { GeneratedNodes } from '../preprocessing/nodes.js';
+import { convertToInt32Array, convertToUint32Array } from '../misc/utils.js';
 import { createLineTree } from './trees.js';
 
 const experimentalFeatures = false;
@@ -33,36 +33,6 @@ const metricDefinitions: Record<Metric, string> = {
     totalValue: 'The complete time taken to execute a function. It includes both \'self time\', which is the time the function spends executing its own code, and \'nested time\', which is the time spent executing all other functions that are called from within this function.'
 };
 
-export interface TimelineSourceInfo {
-    nodes: number;
-    samples: number;
-    samplesInterval: number;
-}
-
-export interface TimelineAxisInfo {
-    start: number;
-    startNoSamples: number;
-    end: number;
-    endNoSamples: number;
-    total: number;
-}
-
-export interface TimelineSamplesData {
-    samples: Uint32Array;
-    sampleLocations: Int32Array | null;
-    values: Uint32Array;  // timeDeltas
-}
-
-export interface TimelineTreesData {
-    locationsTreeSource: { sourceIdToNode: Int32Array } | null;
-    treeSource: BuildTreeResult['treeSource'];
-    locationsTree: BuildTreeResult['locationsTree'];
-    callFramesTree: BuildTreeResult['callFramesTree'];
-    modulesTree: BuildTreeResult['modulesTree'];
-    packagesTree: BuildTreeResult['packagesTree'];
-    categoriesTree: BuildTreeResult['categoriesTree'];
-}
-
 export async function extractTimelineData(
     data: V8CpuProfile,
     generateNodes: GeneratedNodes,
@@ -76,20 +46,11 @@ export async function extractTimelineData(
 
     // preprocess timeDeltas, fix order if necessary
     // FIXME: mutate samples/timeDeltas
-    const {
-        startTime: axisStart,
-        startNoSamplesTime: axisStartNoSamples,
-        endTime: axisEnd,
-        endNoSamplesTime: axisEndNoSamples,
-        totalTime: axisTotal,
-        samplesInterval
-    } = await work('process time deltas', () =>
-        processTimeDeltas(
+    const axis = await work('process time deltas', () =>
+        createTimelineAxis(
             data.startTime,
             data.endTime,
             data.timeDeltas,
-            data.samples,
-            data._samplePositions,
             data._samplesInterval // could be computed on V8 log convertation into cpuprofile
         )
     );
@@ -99,7 +60,7 @@ export async function extractTimelineData(
     if (experimentalFeatures) {
         await work('process time deltas', () =>
             processLongTimeDeltas(
-                samplesInterval,
+                axis.samplesInterval,
                 data.timeDeltas,
                 data.samples,
                 data._samplePositions,
@@ -140,13 +101,7 @@ export async function extractTimelineData(
 
 
     return {
-        axis: {
-            axisStart,
-            axisStartNoSamples,
-            axisEnd,
-            axisEndNoSamples,
-            axisTotal
-        }
+        axis
     };
 }
 
@@ -155,56 +110,27 @@ export async function extractTimelineData(
  * This is the primary line for CPU profiles, showing time-based metrics.
  */
 export async function createTimeline(
-    sourceInfo: TimelineSourceInfo,
-    axisInfo: TimelineAxisInfo,
-    samplesData: TimelineSamplesData,
-    trees: TimelineTreesData,
+    data: V8CpuProfile,
+    axis: Axis,
+    samples: Uint32Array,
+    timeDeltas: Uint32Array,
+    sampledTreeList: SampledCpuProCallTree[],
     { work }: CreateProfileApi
 ): Promise<TimelineLine | null> {
-    const {
-        locationsTreeSource,
-        treeSource,
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree
-    } = trees;
+    const sourceInfo = {
+        nodes: data.nodes.length,
+        samples: data.samples.length,
+        samplesInterval: data._samplesInterval || axis.samplesInterval
+    };
 
-    const {
-        samples,
-        values: timeDeltas
-    } = samplesData;
-
-    const callTrees = [
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree
-    ].filter(tree => tree !== null) as CpuProCallTree[];
-
-    // ============================================================================
-    // Re-map samples FIRST (sets up line-owned sample-to-node mappings)
-    // ============================================================================
-
-    // re-map samples
-    // FIXME: remap callFramesTree only, before buildTrees()?
-    const sampledTreeList = await work('remap samples', () =>
-        remapTreeSamples(
-            samples,
-            locationsTreeSource?.sourceIdToNode || treeSource.sourceIdToNode,
-            callTrees
-        )
-    );
     let sampledTreeOffset = 0;
-    const sampledLocationsTree = locationsTree !== null
-        ? sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProLocation>
+    const sampledLocationsTree = sampledTreeList.length > 4
+        ? sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProLocation>
         : null;
-    const sampledCallFramesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProCallFrame>;
-    const sampledModulesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProModule>;
-    const sampledPackagesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProPackage>;
-    const sampledCategoriesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProCategory>;
+    const sampledCallFramesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProCallFrame>;
+    const sampledModulesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProModule>;
+    const sampledPackagesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProPackage>;
+    const sampledCategoriesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProCategory>;
 
     // build samples lists & trees
     const {
@@ -224,19 +150,9 @@ export async function createTimeline(
             sampledLocationsTree
         )
     );
-    const lineTrees = [createLineTree(
-        'call-stack',
-        {
-            locations: sampledLocationsTree,
-            callFrames: sampledCallFramesTree,
-            modules: sampledModulesTree,
-            packages: sampledPackagesTree,
-            categories: sampledCategoriesTree
-        },
-        { dict, tree }
-    )];
+    const lineTrees: ProfileLineTree[] = [];
 
-    return {
+    const line: TimelineLine = {
         type: 'timeline',
         kind: 'time' as const,
         profile: null as unknown as Profile, // to be set by caller
@@ -258,11 +174,11 @@ export async function createTimeline(
             return metricDefinitions[metric];
         },
 
-        axisStart: axisInfo.start,
-        axisStartNoSamples: axisInfo.startNoSamples,
-        axisEnd: axisInfo.end,
-        axisEndNoSamples: axisInfo.endNoSamples,
-        axisTotal: axisInfo.total,
+        axisStart: axis.start,
+        axisStartNoSamples: axis.startNoSamples,
+        axisEnd: axis.end,
+        axisEndNoSamples: axis.endNoSamples,
+        axisTotal: axis.total,
 
         values: samplesMetrics.values,
         samples: samplesMetrics.samples,
@@ -277,4 +193,8 @@ export async function createTimeline(
 
         mappings: Object.create(null)
     };
+
+    lineTrees.push(createLineTree('call-stack', line, { dict, tree }));
+
+    return line;
 }

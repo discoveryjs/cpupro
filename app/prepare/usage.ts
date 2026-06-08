@@ -1,5 +1,6 @@
 import type { CpuProCallFrame, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript } from './types.js';
 import type { Dictionary } from './dictionary.js';
+import { GeneratedNodes } from './preprocessing/nodes.js';
 
 export class Usage {
     callFrames: CpuProCallFrame[];
@@ -15,12 +16,17 @@ export class Usage {
 
     constructor(
         dict: Dictionary,
-        callFrameByNodeIndex: Uint32Array
+        callFrameByNodeIndex: Uint32Array,
+        generatedNodes: GeneratedNodes
     ) {
         const usedCallFrame = new Uint8Array(dict.callFrames.length);
 
         for (let i = 0; i < callFrameByNodeIndex.length; i++) {
             usedCallFrame[callFrameByNodeIndex[i]] = 1;
+        }
+
+        for (let i = 0; i < generatedNodes.callFrames.length; i++) {
+            usedCallFrame[generatedNodes.callFrames[i]] = 1;
         }
 
         for (let i = 0; i < usedCallFrame.length; i++) {

@@ -79,7 +79,7 @@ export function processLocations(
     dictionary: Dictionary,
     nodeIndexById: Int32Array,
     nodeParent: Uint32Array,
-    nodePositions: Int32Array,
+    nodeLocations: Int32Array,
     callFrames: CpuProCallFrame[],
     callFrameByNodeIndex: Uint32Array,
     samples: Uint32Array,
@@ -97,10 +97,10 @@ export function processLocations(
     const samplesPositionParent: number[] = [];
 
     // -> nodes
-    for (let i = 0; i < nodePositions.length; i++) {
+    for (let i = 0; i < nodeLocations.length; i++) {
         const callFrameIndex = callFrameByNodeIndex[nodeParent[i]];
         const callFrame = callFrames[callFrameIndex];
-        const scriptOffset = nodePositions[i];
+        const scriptOffset = nodeLocations[i];
         const ref = positionRef(callFrameIndex, scriptOffset);
         let positionIndex = positionsMap.get(ref);
 

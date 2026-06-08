@@ -1,4 +1,5 @@
-import type { GeneratedNodes, V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
+import type { V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
+import { GeneratedNodes } from './nodes.js';
 
 // The distribution of GC samples based on their location in the previous call frame appears too arbitrary.
 // As a result, GC samples (typically the smaller ones) are allocated within the function code as nested operations,

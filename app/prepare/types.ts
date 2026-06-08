@@ -185,16 +185,6 @@ export type WellKnownType = // alphabetical order
 
 export type CpuProNode = CpuProCallFrame | CpuProModule | CpuProPackage | CpuProCategory | CpuProLocation;
 
-export type GeneratedNodes = {
-    count: number;
-    dict: Dictionary;
-    nodeIdSeed: number;
-    noSamplesNodeId: number;
-    callFrames: number[];
-    nodeParentId: number[];
-    parentScriptOffsets: number[];
-}
-
 export type CpuProSession = {
     name: string | null;
     runtime: RuntimeCode | null;

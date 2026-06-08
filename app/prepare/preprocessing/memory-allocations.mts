@@ -16,11 +16,11 @@ export function processMemoryAllocations(
     }
 
     return {
-        startTime: 0,
-        startNoSamplesTime: 0,
-        endTime: deltasSum,
-        endNoSamplesTime: 0,
-        totalTime: deltasSum,
+        start: 0,
+        startNoSamples: 0,
+        end: deltasSum,
+        endNoSamples: 0,
+        total: deltasSum,
         samplesInterval
     };
 }

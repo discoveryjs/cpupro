@@ -1,18 +1,15 @@
-import { GeneratedNodes, WellKnownType } from '../types.js';
+import { WellKnownType } from '../types.js';
 import { sum } from '../misc/utils.js';
+import { GeneratedNodes } from './nodes.js';
 
 const NoSamplesType: WellKnownType = 'no-samples';
 
-export function processTimeDeltas(
+export function createTimelineAxis(
     startTime: number,
     endTime: number,
     timeDeltas: number[],
-    samples: number[],
-    samplePositions?: number[],
     samplesInterval?: number
 ) {
-    fixDeltasOrder(timeDeltas, samples, samplePositions);
-
     let deltasSum = sum(timeDeltas);
 
     // compute samples interval as a median of deltas if needed (it might be computed on steps before time deltas processing)
@@ -53,11 +50,11 @@ export function processTimeDeltas(
     const endNoSamplesTime = maybeTotalTime - totalTime;
 
     return {
-        startTime,
-        startNoSamplesTime,
-        endTime,
-        endNoSamplesTime,
-        totalTime,
+        start: startTime,
+        startNoSamples: startNoSamplesTime,
+        end: endTime,
+        endNoSamples: endNoSamplesTime,
+        total: totalTime,
         samplesInterval
     };
 }
@@ -65,7 +62,7 @@ export function processTimeDeltas(
 // Fixes negative deltas in a `timeDeltas` array and ensures the integrity and chronological order of the associated samples.
 // It adjusts the deltas to ensure all values are non-negative by redistributing negative deltas across adjacent elements.
 // Additionally, it corrects the order of associated samples to match the adjusted timing.
-function fixDeltasOrder(timeDeltas: number[], samples: number[], samplePositions?: number[]) {
+export function fixTimeDeltasOrderIfNeeded(timeDeltas: number[], samples: number[], sampleScriptOffsets: number[] | null = null) {
     for (let i = 0; i < timeDeltas.length; i++) {
         const delta = timeDeltas[i];
 
@@ -86,9 +83,9 @@ function fixDeltasOrder(timeDeltas: number[], samples: number[], samplePositions
                 // swap the current and previous samples to reflect the adjusted timing
                 swap(samples, i, i - 1);
 
-                // swap samplePositions
-                if (Array.isArray(samplePositions)) {
-                    swap(samplePositions, i, i - 1);
+                // swap sampleScriptOffsets
+                if (Array.isArray(sampleScriptOffsets)) {
+                    swap(sampleScriptOffsets, i, i - 1);
                 }
 
                 // move back two indices to re-evaluate the previous delta in case it became negative due to the adjustment

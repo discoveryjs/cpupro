@@ -1,11 +1,11 @@
 import type { Model } from '@discoveryjs/discovery';
 import { convertToInt32Array, convertToUint32Array } from './misc/utils.js';
-import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
+import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { createTimeline, createMemline } from './lines/index.mjs';
-import { extractCallFrames } from './preprocessing/call-frames.js';
-import { processNodes } from './preprocessing/nodes.js';
+import { extractCallFramesFromNodes } from './preprocessing/call-frames.js';
+import { GeneratedNodes, processNodes } from './preprocessing/nodes.js';
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { processLocations } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
@@ -13,13 +13,14 @@ import { buildTrees } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { CpuProCallFrame, CpuProThread, GeneratedNodes, V8CpuProfile } from './types.js';
+import { CpuProCallFrame, CpuProThread, V8CpuProfile } from './types.js';
 import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
 import { createLineMapping } from './computations/line-mapping.js';
 import { ProfileLine } from './lines/types.js';
 import { createLineBoundaries } from './misc/line-boundaries.js';
 import { SampleConvolutionRule } from './computations/call-tree.js';
+import { remapTreeSamples } from './preprocessing/samples.js';
 
 const experimentalFeatures = false;
 
@@ -80,19 +81,19 @@ export function toggleProfile(model: Model, profile: Profile) {
 }
 
 // FIXME: quick & dirty implementation
-function positionsFromScriptsLineColumns(
+function scriptOffsetsFromLineColumns(
     nodes: V8CpuProfile['nodes'],
-    callFrames: V8CpuProfile['_callFrames'],
-    scripts: V8CpuProfile['_scripts'],
     samples: V8CpuProfile['samples'],
+    callFrames: V8CpuProfile['_callFrames'],
+    scripts?: V8CpuProfile['_scripts'],
     lines?: V8CpuProfile['lines'],
     columns?: V8CpuProfile['columns']
 ): number[] | null {
-    if (!Array.isArray(lines) || !Array.isArray(columns) || lines.length !== columns.length || lines.length === 0) {
+    if (!Array.isArray(scripts)) {
         return null;
     }
 
-    if (!scripts) {
+    if (!Array.isArray(lines) || !Array.isArray(columns) || lines.length !== columns.length || lines.length === 0) {
         return null;
     }
 
@@ -133,33 +134,22 @@ export async function createProfile(
     dictionary: Dictionary,
     { work }: CreateProfileApi
 ) {
-    // store source's initial metrics
-    const nodesCount = data.nodes.length;
-    const samplesCount = data.samples.length;
-
     const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
-    const generateNodes: GeneratedNodes = {
-        dict: dictionary,
-        nodeIdSeed: data.nodes.length + 1,
-        noSamplesNodeId: -1,
-        callFrames: [],
-        nodeParentId: [],
-        parentScriptOffsets: [],
-        get count() {
-            return this.nodeParentId.length;
-        }
-    };
+    const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length + 1);
 
-    const _dataPositions = data._samplePositions ||
-        positionsFromScriptsLineColumns(
+    // Extract script offset first, since they depends on timestamps order,
+    // and should be moved together with timeDeltas if the order is adjusted
+    const _dataScriptOffsets = data._samplePositions || await work('extract sample script offsets', () =>
+        scriptOffsetsFromLineColumns(
             data.nodes,
+            data.samples,
             data._callFrames,
             data._scripts,
-            data.samples,
             data.lines,
             data.columns
-        );
+        )
+    );
 
     //
     // Process profile samples & time stamps
@@ -167,21 +157,21 @@ export async function createProfile(
 
     // preprocess timeDeltas, fix order if necessary
     // FIXME: mutate samples/timeDeltas
-    const {
-        startTime,
-        startNoSamplesTime,
-        endTime,
-        endNoSamplesTime,
-        totalTime,
-        samplesInterval
-    } = profileType === 'time'
+    await work('fix time deltas order', () =>
+        fixTimeDeltasOrderIfNeeded(
+            data.timeDeltas,
+            data.samples,
+            _dataScriptOffsets
+        )
+    );
+
+    // create samples axis
+    const axis = profileType === 'time'
         ? await work('process time deltas', () =>
-            processTimeDeltas(
+            createTimelineAxis(
                 data.startTime,
                 data.endTime,
                 data.timeDeltas,
-                data.samples,
-                _dataPositions || undefined,
                 data._samplesInterval // could be computed on V8 log convertation into cpuprofile
             )
         )
@@ -196,11 +186,11 @@ export async function createProfile(
     if (experimentalFeatures && profileType === 'time') {
         await work('process time deltas', () =>
             processLongTimeDeltas(
-                samplesInterval,
+                axis.samplesInterval,
                 data.timeDeltas,
                 data.samples,
-                _dataPositions || undefined,
-                generateNodes
+                _dataScriptOffsets,
+                generatedNodes
             )
         );
     }
@@ -214,8 +204,8 @@ export async function createProfile(
     } = await work('convert samples & timeDeltas into TypedArrays', () => ({
         samples: convertToUint32Array(data.samples),
         timeDeltas: convertToUint32Array(data.timeDeltas),
-        sampleLocations: Array.isArray(_dataPositions)
-            ? convertToInt32Array(_dataPositions)
+        sampleLocations: Array.isArray(_dataScriptOffsets)
+            ? convertToInt32Array(_dataScriptOffsets)
             : null
     }));
 
@@ -224,7 +214,7 @@ export async function createProfile(
     await work('reparent GC samples', () =>
         reparentGcNodes(
             data.nodes,
-            generateNodes,
+            generatedNodes,
             data._callFrames || null,
             samples,
             sampleLocations
@@ -236,51 +226,27 @@ export async function createProfile(
     //
 
     const profileScriptsMap = new ProfileScriptsMap(dictionary, data._scripts);
-
     const {
         callFrameByIndex,
         callFrameByNodeIndex
     } = await work('extract call frames', () =>
-        extractCallFrames(
+        extractCallFramesFromNodes(
             dictionary,
             data.nodes,
             data._callFrames,
             profileScriptsMap,
-            generateNodes
+            generatedNodes
         )
-    );
-
-    // process function codes
-    const {
-        codes,
-        codesByCallFrame,
-        codesByScript
-    } = await work('process function codes', () =>
-        processCallFrameCodes(
-            data._callFrameCodes,
-            callFrameByIndex,
-            dictionary.callFrames,
-            startTime,
-            endTime
-        )
-    );
-
-    //
-    // Usage vectors
-    //
-
-    const usage = await work('usage', () =>
-        new Usage(dictionary, callFrameByNodeIndex)
     );
 
     //
     // Create profile's data derivatives
     //
 
-    const { nodeIndexById, nodeParent, nodePositions } = await work('process nodes', () =>
+    const { nodeIndexById, nodeParent, nodeLocations } = await work('process nodes', () =>
         processNodes(
             data.nodes,
-            generateNodes,
+            generatedNodes,
             callFrameByNodeIndex,
             dictionary
         )
@@ -292,7 +258,7 @@ export async function createProfile(
             dictionary,
             nodeIndexById,
             nodeParent,
-            nodePositions,
+            nodeLocations,
             dictionary.callFrames,
             callFrameByNodeIndex,
             samples,
@@ -301,11 +267,19 @@ export async function createProfile(
     );
 
     //
+    // Usage vectors
+    //
+
+    const usage = await work('usage', () =>
+        new Usage(dictionary, callFrameByNodeIndex, generatedNodes)
+    );
+
+    //
     // Create profile's data derivatives
     //
 
     const {
-        treeSource,
+        sourceIdToNode,
         locationsTree,
         callFramesTree,
         modulesTree,
@@ -322,18 +296,32 @@ export async function createProfile(
         )
     );
 
+    // re-map samples
+    // FIXME: remap callFramesTree only, before buildTrees()?
+    const sampledTreeList = await work('remap samples', () =>
+        remapTreeSamples(
+            samples,
+            sourceIdToNode,
+            [
+                ...(locationsTree ? [locationsTree] : []),
+                callFramesTree,
+                modulesTree,
+                packagesTree,
+                categoriesTree
+            ]
+        )
+    );
+
     // Create timeline (CPU time profiling line)
     const timeline = await createTimeline(
-        // Source metadata
-        { nodes: nodesCount, samples: samplesCount, samplesInterval },
-        // Axis info
-        { start: startTime, startNoSamples: startNoSamplesTime, end: endTime, endNoSamples: endNoSamplesTime, total: totalTime },
-        // Samples data
-        { samples, sampleLocations, values: timeDeltas },
-        // Trees
-        { locationsTreeSource, treeSource, locationsTree, callFramesTree, modulesTree, packagesTree, categoriesTree },
+        data,
+        axis,
+        samples,
+        timeDeltas,
+        sampledTreeList,
         { work }
     );
+
     if (timeline) {
         lines.push(timeline);
     }
@@ -343,13 +331,8 @@ export async function createProfile(
         data,
         dictionary,
         profileScriptsMap,
-        timeline ? timeline.samplesMetrics.samples : convertToUint32Array(data.samples),
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree,
-        timeline?.trees[0] || null,
+        samples,
+        sampledTreeList,
         { work }
     );
 
@@ -397,6 +380,22 @@ export async function createProfile(
     const profilePackagesTree = timeline?.tree.packages?.all.tree || packagesTree;
     const profileCategoriesTree = timeline?.tree.categories?.all.tree || categoriesTree;
 
+    // process function codes
+    const {
+        codes,
+        codesByCallFrame,
+        codesByScript
+    } = await work('process function codes', () =>
+        processCallFrameCodes(
+            data._callFrameCodes,
+            callFrameByIndex,
+            dictionary.callFrames,
+            axis.start,
+            axis.end
+        )
+    );
+
+    // create profile
     const profile = {
         name: data._name,
         runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
