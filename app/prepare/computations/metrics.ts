@@ -71,6 +71,11 @@ export type TreeDimension<T extends CpuProNode> = {
     bounds: TreeValueBounds<T>;
 }
 
+export type SampledTree<T> = {
+    tree: CallTree<T>;
+    sampleToNode: Uint32Array;
+};
+
 export type Listener = { fn: () => void };
 export class MetricsObserver {
     #subscriptions: Listener[] = [];
@@ -200,12 +205,14 @@ export class SamplesMetricsFiltered extends SamplesMetrics {
 
 export class TreeMetrics<T extends CpuProNode> extends MetricsObserver {
     tree: CallTree<T>;
+    sampleToNode: Uint32Array;
     samplesCount: Uint32Array;
     selfValues: Uint32Array;
     nestedValues: Uint32Array;
 
     constructor(
         tree: CallTree<T>,
+        sampleToNode: Uint32Array,
         samplesCount: Uint32Array,
         selfValues: Uint32Array,
         nestedValues: Uint32Array
@@ -213,6 +220,7 @@ export class TreeMetrics<T extends CpuProNode> extends MetricsObserver {
         super();
 
         this.tree = tree;
+        this.sampleToNode = sampleToNode;
         this.samplesCount = samplesCount;
         this.selfValues = selfValues;
         this.nestedValues = nestedValues;
@@ -257,17 +265,40 @@ export class TreeMetrics<T extends CpuProNode> extends MetricsObserver {
     }
 }
 
+function projectSampleToNode<T extends CpuProNode>(tree: CallTree<T>, sourceMetrics: TreeMetrics<T>) {
+    if (tree === sourceMetrics.tree) {
+        return sourceMetrics.sampleToNode;
+    }
+
+    if (tree.sourceTree !== sourceMetrics.tree) {
+        throw new Error('Unable to project samples: tree source does not match source metrics tree');
+    }
+
+    const sampleToNode = new Uint32Array(sourceMetrics.sampleToNode.length);
+    const excludedNode = tree.nodes.length;
+
+    for (let i = 0; i < sampleToNode.length; i++) {
+        const nodeIndex = tree.sourceIdToNode[sourceMetrics.sampleToNode[i]];
+
+        sampleToNode[i] = nodeIndex >= 0 ? nodeIndex : excludedNode;
+    }
+
+    return sampleToNode;
+}
+
 // The SubsetTreeMetrics class is mostly the same as TreeMetrics, but works with subtrees.
-// It uses tree's sampleIdToNode to land samples to existing nodes and the rest (sampleIdToNode[i] === -1)
+// It uses sampleToNode to land samples to existing nodes and the rest
 // to a special (last) element in samplesCount/selfValues/nestedValues arrays.
 export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
     samplesMetrics: SamplesMetrics;
 
-    constructor(tree: CallTree<T>, samplesMetrics: SamplesMetrics) {
+    constructor(tree: CallTree<T>, samplesMetrics: SamplesMetrics, sourceMetrics: TreeMetrics<T>) {
         const size = tree.nodes.length + 1; // add extra element for excluded metrics
+        const sampleToNode = projectSampleToNode(tree, sourceMetrics);
 
         super(
             tree,
+            sampleToNode,
             new Uint32Array(size),
             new Uint32Array(size),
             new Uint32Array(size)
@@ -295,7 +326,7 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
             tree: this.tree,
             sourceSamplesCount: this.samplesMetrics.samplesCount,
             sourceSamplesTotal: this.samplesMetrics.samplesTotal,
-            sampleIdToNode: this.tree.sampleIdToNode,
+            sampleToNode: this.sampleToNode,
             parent: this.tree.parent,
             samplesCount: this.samplesCount,
             selfValues: this.selfValues,
@@ -317,6 +348,7 @@ export class AncestorSubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics
 
         super(
             tree,
+            projectSampleToNode(tree, originalMetrics),
             new Uint32Array(size),
             new Uint32Array(size),
             new Uint32Array(size)
@@ -434,15 +466,15 @@ export class TreeValueBounds<T extends CpuProNode> {
     firstSeen: Uint32Array;
     lastSeen: Uint32Array;
 
-    constructor(tree: CallTree<T>, cumulative: Uint32Array, samples: Uint32Array) {
-        const { dictionary, nodes, parent, sampleIdToNode } = tree;
+    constructor(tree: CallTree<T>, sampleToNode: Uint32Array, cumulative: Uint32Array, samples: Uint32Array) {
+        const { dictionary, nodes, parent } = tree;
         const firstSeen = new Uint32Array(nodes.length).fill(0xffffffff);
         const lastSeen = new Uint32Array(nodes.length);
         const firstSeenDict = new Uint32Array(dictionary.length).fill(0xffffffff);
         const lastSeenDict = new Uint32Array(dictionary.length);
 
         for (let i = 0; i < samples.length; i++) {
-            const nodeId = sampleIdToNode[samples[i]];
+            const nodeId = sampleToNode[samples[i]];
             const position = cumulative[i];
 
             if (firstSeen[nodeId] > position) {
@@ -493,8 +525,9 @@ export class TreeValueBounds<T extends CpuProNode> {
     }
 }
 
-function createMapsFromTree<T>(tree: CallTree<T>) {
-    const { nodes, nested, sampleIdToNode } = tree;
+function createMapsFromTree<T>(sampledTree: SampledTree<T>) {
+    const { tree, sampleToNode } = sampledTree;
+    const { nodes, nested } = tree;
     const totalNodes = new Uint32Array(nodes.length);
     const totalNodeToDict = new Uint32Array(nodes.length);
     let k = 0;
@@ -509,7 +542,8 @@ function createMapsFromTree<T>(tree: CallTree<T>) {
 
     return {
         tree,
-        sampleIdToDict: sampleIdToNode.map(id => nodes[id]),
+        sampleToNode,
+        sampleIdToDict: sampleToNode.map(id => nodes[id]),
         totalNodes: totalNodes.slice(0, k),
         totalNodeToDict: totalNodeToDict.slice(0, k)
     };
@@ -518,13 +552,13 @@ function createMapsFromTree<T>(tree: CallTree<T>) {
 function createTreeComputeBuffer<T>(
     samples: Uint32Array,
     values: Uint32Array,
-    trees: CallTree<T>[],
+    trees: SampledTree<T>[],
     useWasm = true
 ) {
     const maps = trees.map(createMapsFromTree);
 
     // estimate buffer size
-    const samplesMapSize = trees[0].sampleIdToNode.length;
+    const samplesMapSize = trees[0].sampleToNode.length;
     let bufferSize =
         // values
         // cumulative
@@ -536,11 +570,11 @@ function createTreeComputeBuffer<T>(
         // samplesTotal
         3 * samplesMapSize;
 
-    for (const { tree, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
+    for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         // tree metrics
         bufferSize +=
-            // sampleIdToNode
-            tree.sampleIdToNode.length +
+            // sample-to-node map
+            sampleToNode.length +
             // parent
             tree.parent.length +
             // samplesCount
@@ -580,12 +614,12 @@ function createTreeComputeBuffer<T>(
 
     computeCumulative(samplesMap.cumulative, samplesMap.values);
 
-    for (const { tree, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
+    for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         const treeMap: BufferTreeMetricsMap<T> = {
             tree,
             sourceSamplesCount: samplesMap.samplesCount,
             sourceSamplesTotal: samplesMap.samplesTotal,
-            sampleIdToNode: tree.sampleIdToNode = adopt(tree.sampleIdToNode),
+            sampleToNode: adopt(sampleToNode),
             parent: adopt(tree.parent),
             samplesCount: alloc(tree.nodes.length),
             selfValues: alloc(tree.nodes.length),
@@ -648,18 +682,21 @@ function createDimension<T extends CpuProNode>(
     );
     const treeAll = new TreeMetrics(
         treeMap.tree,
+        treeMap.sampleToNode,
         treeMap.samplesCount.slice(),
         treeMap.selfValues.slice(),
         treeMap.nestedValues.slice()
     );
     const treeFiltered = new TreeMetrics(
         treeMap.tree,
+        treeMap.sampleToNode,
         treeMap.samplesCount,
         treeMap.selfValues,
         treeMap.nestedValues
     );
     const treeBounds = new TreeValueBounds(
         treeMap.tree,
+        treeMap.sampleToNode,
         samplesMap.cumulative,
         samplesMap.samples
     );
@@ -677,7 +714,7 @@ function createDimension<T extends CpuProNode>(
     };
 }
 
-export function computeMetrics<T extends readonly CallTree<CpuProNode>[]>(
+export function computeMetrics<T extends readonly SampledTree<CpuProNode>[]>(
     samples: Uint32Array,
     values: Uint32Array,
     trees: [...T]
@@ -716,22 +753,7 @@ export function computeMetrics<T extends readonly CallTree<CpuProNode>[]>(
         createDimension(maps, samplesMap)
     );
 
-    // Recompute metrics function
     const recomputeMetrics = () => {
-        for (const { treeMap, dictMap } of dimensionMaps) {
-            const { sampleIdToNode, tree: { nodes, sampleIdToNodeChanged } } = treeMap;
-            const { sampleIdToDict } = dictMap;
-
-            if (sampleIdToNodeChanged) {
-                for (let j = 0; j < sampleIdToNode.length; j++) {
-                    sampleIdToDict[j] = nodes[sampleIdToNode[j]];
-                }
-
-                // FIXME: temporary solution to avoid unnecessary dict recalculations
-                treeMap.tree.sampleIdToNodeChanged = false;
-            }
-        }
-
         computeAll(computeMetricsApi, bufferMap);
 
         for (const dimension of dimensionsWithStructure) {

@@ -1,6 +1,7 @@
 import type { Profile } from '../profile.mjs';
 
 export function computeCrossProfileStableAllocations(profiles: Profile[]) {
+    // FIXME: will fix later, since here we need a bucket instead Profile[]
     const memlines = profiles.map(profile =>
         !profile.disabled ? profile.memline : null
     ).filter(memline => memline !== null);
@@ -24,7 +25,13 @@ export function computeCrossProfileStableAllocations(profiles: Profile[]) {
             _uniqueValuesMap,
             _callFramesMap
         } = memline;
-        const { sampleIdToNode, nodes, dictionary } = memline.profile.callFramesTree;
+        const callFramesTree = memline.trees[0]?.callFrames;
+
+        if (callFramesTree === null || callFramesTree === undefined) {
+            continue;
+        }
+
+        const { sampleToNode, tree: { nodes, dictionary } } = callFramesTree;
         const _samplesSum = new Uint32Array(_callFramesStable.length);
         // const _samplesCheck = new Uint32Array(_callFramesStable.length);
 
@@ -34,7 +41,7 @@ export function computeCrossProfileStableAllocations(profiles: Profile[]) {
             const sampleId = samples[i];
             const value = timeDeltas[i];
             const valueIdx = _uniqueValuesMap.get(value) || 0;
-            const callFrameIdx = nodes[sampleIdToNode[sampleId]];
+            const callFrameIdx = nodes[sampleToNode[sampleId]];
             const callFrame = dictionary[callFrameIdx];
             const callFrameSharedIndex = _callFramesMap.get(callFrame) || 0;
 

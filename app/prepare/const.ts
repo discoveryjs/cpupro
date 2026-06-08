@@ -3,7 +3,6 @@ import { packageRegistryEndpoints } from './misc/utils';
 
 export const TIMINGS = false;
 export const USE_WASM = true;
-export const MERGE_SAMPLES = false;
 export const FEATURE_MULTI_PROFILES = true;
 export const FEATURE_INLINE_CACHE = false;
 

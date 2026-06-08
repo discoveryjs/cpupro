@@ -1,6 +1,6 @@
 import { TIMINGS } from '../const.js';
 import { CallTree } from '../computations/call-tree.js';
-import { computeMetrics, DictDimension, TreeDimension } from '../computations/metrics.js';
+import { computeMetrics, DictDimension, SampledTree, TreeDimension } from '../computations/metrics.js';
 import { convertToUint32Array } from '../misc/utils.js';
 import {
     CpuProModule,
@@ -11,50 +11,32 @@ import {
     CpuProLocation
 } from '../types.js';
 
-// Merging sequentially identical samples and coresponsing timeDeltas.
-// Usually it allows to reduce number of samples for further processing at least by x2
-export function mergeSamples(samples: Uint32Array, timeDeltas: Uint32Array, sampleLocations: Int32Array | null) {
-    const sampleCounts = new Uint32Array(samples.length).fill(1);
-    let k = 1;
+export type CpuProCallTree =
+    | CallTree<CpuProLocation>
+    | CallTree<CpuProCallFrame>
+    | CallTree<CpuProModule>
+    | CallTree<CpuProPackage>
+    | CallTree<CpuProCategory>;
 
-    if (sampleLocations !== null) {
-        for (let i = 1; i < samples.length; i++) {
-            if (samples[i] !== samples[i - 1] || sampleLocations[i] !== sampleLocations[i - 1]) {
-                timeDeltas[k] = timeDeltas[i];
-                samples[k] = samples[i];
-                sampleLocations[k] = sampleLocations[i];
-                k++;
-            } else {
-                timeDeltas[k - 1] += timeDeltas[i];
-                sampleCounts[k - 1]++;
-            }
-        }
-    } else {
-        for (let i = 1; i < samples.length; i++) {
-            if (samples[i] !== samples[i - 1]) {
-                timeDeltas[k] = timeDeltas[i];
-                samples[k] = samples[i];
-                k++;
-            } else {
-                timeDeltas[k - 1] += timeDeltas[i];
-                sampleCounts[k - 1]++;
-            }
-        }
-    }
+export type SampledCpuProCallTree =
+    | SampledTree<CpuProLocation>
+    | SampledTree<CpuProCallFrame>
+    | SampledTree<CpuProModule>
+    | SampledTree<CpuProPackage>
+    | SampledTree<CpuProCategory>;
 
-    return k !== samples.length
-        ? {
-            samples: samples.slice(0, k),
-            sampleCounts: sampleCounts.slice(0, k),
-            sampleLocations: sampleLocations !== null ? sampleLocations.slice(0, k) : sampleLocations,
-            timeDeltas: timeDeltas.slice(0, k)
-        }
-        : {
-            samples,
-            sampleCounts,
-            sampleLocations,
-            timeDeltas
-        };
+export type SampledCallTree<T extends CpuProNode> = SampledTree<T> & {
+    sampleToNode: Uint32Array;
+};
+
+export function createSampledCallTree<T extends CpuProNode>(
+    tree: CallTree<T>,
+    sampleToNode: Uint32Array
+): SampledTree<T> {
+    return {
+        tree,
+        sampleToNode
+    };
 }
 
 // FIXME: sampleIdMap can contain -1 for missed IDs; normally, this shouldn't happen,
@@ -85,27 +67,40 @@ export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
 export function remapTreeSamples(
     samples: Uint32Array,
     sampleIdToEntryTreeNode: Int32Array,
-    trees: CallTree<CpuProNode>[]
+    trees: CpuProCallTree[]
 ) {
-    let sampleIdToNode = remapSamples(samples, sampleIdToEntryTreeNode);
+    let sampleToNode = remapSamples(samples, sampleIdToEntryTreeNode);
+    const sampledTrees: SampledCpuProCallTree[] = [];
 
     for (const tree of trees) {
-        sampleIdToNode = sampleIdToNode.map(id => tree.sourceIdToNode[id]);
-        tree.sampleIdToNode = sampleIdToNode;
+        sampleToNode = sampleToNode.map(id => tree.sourceIdToNode[id]);
+        sampledTrees.push(createSampledCallTree(
+            tree,
+            sampleToNode
+        ));
     }
+
+    return sampledTrees;
 }
 
 export function computeTreeMetrics(
     samples: Uint32Array,
     values: Uint32Array,
-    callFramesTree: CallTree<CpuProCallFrame>,
-    modulesTree: CallTree<CpuProModule>,
-    packagesTree: CallTree<CpuProPackage>,
-    categoriesTree: CallTree<CpuProCategory>,
-    locationsTree: CallTree<CpuProLocation> | null
+    callFramesTree: SampledCallTree<CpuProCallFrame>,
+    modulesTree: SampledCallTree<CpuProModule>,
+    packagesTree: SampledCallTree<CpuProPackage>,
+    categoriesTree: SampledCallTree<CpuProCategory>,
+    locationsTree: SampledCallTree<CpuProLocation> | null
 ) {
     // create metrics
     const computeStart = Date.now();
+    const metricTrees = [
+        callFramesTree,
+        modulesTree,
+        packagesTree,
+        categoriesTree,
+        ...locationsTree ? [locationsTree] : []
+    ] as unknown as SampledTree<CpuProNode>[];
     const {
         recomputeMetrics,
         samplesMetrics,
@@ -117,13 +112,7 @@ export function computeTreeMetrics(
             categoryDimension,
             locationDimension = null
         ]
-    } = computeMetrics(samples, values, [
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree,
-        ...locationsTree ? [locationsTree] : []
-    ]);
+    } = computeMetrics(samples, values, metricTrees);
 
     // Reorganize dimensions into dict/tree structure
     const dict = {

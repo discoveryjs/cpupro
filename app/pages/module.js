@@ -13,7 +13,7 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: #.scopeProfile.modulesTree }'
+        data: '{ subject: @, tree: scopeLine().trees[].modules.all.nodes }'
     },
 
     {

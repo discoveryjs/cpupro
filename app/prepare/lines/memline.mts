@@ -1,13 +1,14 @@
 import type { CreateProfileApi, Profile } from '../profile.mjs';
 import type { BuildTreeResult } from '../computations/build-trees.js';
 import type { V8CpuProfile } from '../types.js';
-import type { Metric, ProfileMemline } from './types.js';
-import { computeTreeMetrics } from '../preprocessing/samples.js';
+import type { Metric, ProfileLineTree, ProfileMemline } from './types.js';
+import { computeTreeMetrics, createSampledCallTree } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { sum } from '../misc/utils.js';
 import { AllocationLifespan, typeColor } from '../const.js';
 import { Dictionary } from '../dictionary.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
+import { createLineTree } from './trees.js';
 
 const metricName: Record<Metric, string> = {
     axis: 'Memory allocated',
@@ -46,6 +47,7 @@ export async function createMemline(
     modulesTree: BuildTreeResult['modulesTree'],
     packagesTree: BuildTreeResult['packagesTree'],
     categoriesTree: BuildTreeResult['categoriesTree'],
+    sourceTree: ProfileLineTree | null,
     { work }: CreateProfileApi
 ): Promise<ProfileMemline | null> {
     const {
@@ -66,6 +68,16 @@ export async function createMemline(
     if (!_cpuproAllocationMapping || !_cpuproAllocationIds || !_cpuproAllocationSizes) {
         return null;
     }
+
+    if (sourceTree === null || sourceTree.callFrames === null || sourceTree.modules === null || sourceTree.packages === null || sourceTree.categories === null) {
+        return null;
+    }
+
+    const sourceLocationsTree = sourceTree.locations;
+    const sourceCallFramesTree = sourceTree.callFrames;
+    const sourceModulesTree = sourceTree.modules;
+    const sourcePackagesTree = sourceTree.packages;
+    const sourceCategoriesTree = sourceTree.categories;
 
     // Build allocation sample vector: map each allocation to its CPU sample node
     // _cpuproAllocationMapping[cpuSampleIdx] = last allocation ID when CPU sample taken
@@ -104,10 +116,23 @@ export async function createMemline(
 
     // Allocations don't have precise execution locations (script offsets)
     // The location tree will be null, metrics are aggregated by call frames only
-    const allocationSampleLocations = null;
+    const {
+        sampledLocationsTree,
+        sampledCallFramesTree,
+        sampledModulesTree,
+        sampledPackagesTree,
+        sampledCategoriesTree
+    } = await work('prepare allocation tree mappings', () => ({
+        sampledLocationsTree: locationsTree !== null
+            ? createSampledCallTree(locationsTree, sourceLocationsTree?.sampleToNode || sourceCallFramesTree.sampleToNode)
+            : null,
+        sampledCallFramesTree: createSampledCallTree(callFramesTree, sourceCallFramesTree.sampleToNode),
+        sampledModulesTree: createSampledCallTree(modulesTree, sourceModulesTree.sampleToNode),
+        sampledPackagesTree: createSampledCallTree(packagesTree, sourcePackagesTree.sampleToNode),
+        sampledCategoriesTree: createSampledCallTree(categoriesTree, sourceCategoriesTree.sampleToNode)
+    }));
 
     // Now use computeTreeMetrics with CPU profile's trees to get full dimensions
-    // Note: This will remap the trees to work with allocationSamples
     const {
         recomputeMetrics,
         samplesMetrics,
@@ -118,13 +143,24 @@ export async function createMemline(
         computeTreeMetrics(
             allocationSamples,
             allocationSizes,
-            callFramesTree,
-            modulesTree,
-            packagesTree,
-            categoriesTree,
-            locationsTree
+            sampledCallFramesTree,
+            sampledModulesTree,
+            sampledPackagesTree,
+            sampledCategoriesTree,
+            sampledLocationsTree
         )
     );
+    const lineTrees = [createLineTree(
+        'call-stack',
+        {
+            locations: sampledLocationsTree,
+            callFrames: sampledCallFramesTree,
+            modules: sampledModulesTree,
+            packages: sampledPackagesTree,
+            categories: sampledCategoriesTree
+        },
+        { dict, tree }
+    )];
 
     const vectorLocations = createVectorLocations(
         dictionary,
@@ -235,19 +271,15 @@ export async function createMemline(
         axisEndNoSamples: totalAllocationSize,
         axisTotal: totalAllocationSize,
 
-        samples: samplesMetrics.samples,
-        sampleCounts: new Uint32Array(allocationCount).fill(1), // Each allocation is a separate event
-        sampleCountsByProfile: new Uint32Array(),
-        sampleLocations: allocationSampleLocations,
-
         values: samplesMetrics.values,
-        valuesByProfile: new Uint32Array(),
+        samples: samplesMetrics.samples,
         samplesMetrics,
         samplesMetricsFiltered,
-        recomputeValues: recomputeMetrics,
+        recomputeMetrics: recomputeMetrics,
 
         dict,
         tree,
+        trees: lineTrees,
         locations: vectorLocations,
 
         mappings: Object.create(null),

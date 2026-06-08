@@ -16,13 +16,14 @@ export function makeDictMask(tree, test) {
     return mask;
 }
 
-export function makeSamplesMask(tree, test) {
-    const { dictionary, sampleIdToNode, nodes } = tree;
+export function makeSamplesMask(treeMetrics, test) {
+    const { tree, sampleToNode } = treeMetrics;
+    const { dictionary, nodes } = tree;
     const accept = typeof test === 'function' ? test : (entry) => entry === test;
-    const mask = new Uint8Array(sampleIdToNode.length);
+    const mask = new Uint8Array(sampleToNode.length);
 
     for (let i = 0; i < mask.length; i++) {
-        const nodeIndex = sampleIdToNode[i];
+        const nodeIndex = sampleToNode[i];
 
         if (accept(dictionary[nodes[nodeIndex]], i)) {
             mask[i] = 1;
@@ -106,13 +107,13 @@ export const methods = {
         }
     },
     // TODO: optimize
-    subtreeSamples(tree, subject, includeSelf = false) {
-        const sampleIdToNode = tree.sampleIdToNode;
-        const sampleIds = new Set(sampleIdToNode);
+    subtreeSamples(treeMetrics, subject, includeSelf = false) {
+        const { tree, sampleToNode } = treeMetrics;
+        const sampleIds = new Set(sampleToNode);
         const selected = new Set();
         const selectedEntries = new Set();
         const selectedSamples = new Set();
-        const mask = new Uint8Array(sampleIdToNode.length);
+        const mask = new Uint8Array(sampleToNode.length);
         const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
 
         for (const nodeIndex of tree.selectNodes(subject)) {
@@ -128,8 +129,8 @@ export const methods = {
             }
         }
 
-        for (let i = 0; i < sampleIdToNode.length; i++) {
-            if (selected.has(sampleIdToNode[i])) {
+        for (let i = 0; i < mask.length; i++) {
+            if (selected.has(sampleToNode[i])) {
                 mask[i] = 1;
                 selectedSamples.add(i);
             }
@@ -160,7 +161,7 @@ export const methods = {
         const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
         const dictMetrics = new Uint32Array(tree.dictionary.length);
         const nodes = tree.nodes;
-        const sampleIdToNode = tree.sampleIdToNode;
+        const sampleToNode = treeMetrics.sampleToNode;
         const nodesMask = new Uint32Array(tree.nodes.length);
         const visited = new Set();
         const result = [];
@@ -173,9 +174,9 @@ export const methods = {
             }
         }
 
-        for (let i = 0; i < sampleIdToNode.length; i++) {
-            if (nodesMask[sampleIdToNode[i]]) {
-                const nodeIndex = tree.sampleIdToNode[i];
+        for (let i = 0; i < sampleToNode.length; i++) {
+            if (nodesMask[sampleToNode[i]]) {
+                const nodeIndex = sampleToNode[i];
 
                 if (!visited.has(nodeIndex)) {
                     dictMetrics[tree.nodes[nodeIndex]] += treeMetrics.selfValues[nodeIndex];

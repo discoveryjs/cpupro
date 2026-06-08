@@ -34,7 +34,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         : discovery.query('profile.timeline.axisStart.min() or 0', bucketProfiles);
     const max = props.endTime || discovery.query('profile.timeline.axisEnd.max() or 0', bucketProfiles);
     const range = max - min;
-    const activeProfiles = bucketProfiles.filter(profile => !profile.disabled);
+    // const activeProfiles = bucketProfiles.filter(profile => !profile.disabled);
 
     el.style.setProperty('--range', range);
 
@@ -58,23 +58,23 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
 
         viewportEl.className = 'viewport';
 
-        if (profile.timeDeltasByProfile) {
-            const total = profile.timeline?.axisTotal;
+        // if (profile.timeDeltasByProfile) {
+        //     const total = profile.timeline?.axisTotal;
 
-            for (let i = activeProfiles.length - 1, start = 0; i >= 0; i--) {
-                const duration = profile.timeDeltasByProfile[i];
-                const presenceEl = document.createElement('div');
+        //     for (let i = activeProfiles.length - 1, start = 0; i >= 0; i--) {
+        //         const duration = profile.timeDeltasByProfile[i];
+        //         const presenceEl = document.createElement('div');
 
-                presenceEl.className = 'profiles-presence';
-                presenceEl.style.setProperty('--x1', start / total);
-                presenceEl.style.setProperty('--x2', (start + duration) / total);
-                presenceEl.style.setProperty('--presence', i / (activeProfiles.length - 1));
+        //         presenceEl.className = 'profiles-presence';
+        //         presenceEl.style.setProperty('--x1', start / total);
+        //         presenceEl.style.setProperty('--x2', (start + duration) / total);
+        //         presenceEl.style.setProperty('--presence', i / (activeProfiles.length - 1));
 
-                viewportEl.append(presenceEl);
+        //         viewportEl.append(presenceEl);
 
-                start += duration;
-            }
-        }
+        //         start += duration;
+        //     }
+        // }
 
         if (context.primaryProfile === profile) {
             barEl.classList.add('selected');
@@ -91,7 +91,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         this.render(barEl, {
             view: 'sample-histogram',
             data: `
-                $tree: profile.timeline.tree.categories.all.tree;
+                $treeMetrics: profile.timeline.tree.categories.all;
                 $binCount: 750;
                 $min: profiles.profile.timeline.axisStart.min();
                 $max: profiles.profile.timeline.axisEnd.max();
@@ -103,7 +103,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
                     $max,
                     $skip,
                     total: $max - $min,
-                    bins: $tree.binSignals({
+                    bins: $treeMetrics.binSignals({
                         test: => name not in ['root', 'idle'],
                         line: profile.timeline,
                         $skip,

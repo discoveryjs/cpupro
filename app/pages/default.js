@@ -60,8 +60,8 @@ const categoriesTimeline = {
             line: $scopeLine,
             samples: $scopeLine.dict.categories.all.entries.[totalValue and entry.name != 'root'].({
                 $category: entry;
-                $tree: $profile.categoriesTree;
-                $subtree: $tree.subtreeSamples($category);
+                $treeMetrics: $scopeLine.tree.categories.all;
+                $subtree: $treeMetrics.subtreeSamples($category);
                 $totalValueBins: $subtree.mask.binCallsFromMask($binCount);
 
                 $category,
@@ -70,7 +70,7 @@ const categoriesTimeline = {
                 $binCount,
                 binSize: $totalValue / $binCount,
                 $binSamples,
-                bins: $tree.binCalls($category, $binCount),
+                bins: $treeMetrics.binCalls($category, $binCount),
                 $totalValueBins,
                 color: $category.name.color(),
                 href: $category.marker("category").href

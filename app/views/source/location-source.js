@@ -20,7 +20,7 @@ discovery.view.define('location-source', {
         $lineNum: $source.slice(0, $scriptOffset).match(/\\r\\n?|\\n/g).size();
 
         $selfValueTooltipView: scopeLine() | type = 'memline' and valueLifespans and valueTypes
-            // ? 'allocation-samples-matrix:#.currentProfile.memline | tree.(locations or callFrames).filtered.tree.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
+            // ? 'allocation-samples-matrix:#.currentProfile.memline | tree.(locations or callFrames).filtered.nodes.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
             ? 'allocation-samples-matrix:values.allocationsMatrix(metrics, value.entry).sort(total.sum or 0 desc)';
         $unit: 0.valueAndUnit().unit;
         $locationValues: $line
@@ -47,7 +47,7 @@ discovery.view.define('location-source', {
                     value: $,
                     values: $locations.sampleToLocation
                         ? $locations.filtered
-                        : $line.tree.locations.filtered.tree,
+                        : $line.tree.locations.filtered.nodes,
                     metrics: $locations.sampleToLocation
                         ? { ...$line.samplesMetricsFiltered, samples: $locations.sampleToLocation }
                         : $line.samplesMetricsFiltered,

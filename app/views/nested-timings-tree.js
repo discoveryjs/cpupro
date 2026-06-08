@@ -9,7 +9,7 @@ discovery.view.define('nested-timings-tree', {
         data: `
             $tree;
             $subject;
-            $callFrames: scopeLine().tree.callFrames.filtered.nestedValues(subject, tree);
+            $callFrames: scopeLine().trees[].callFrames.filtered.nodes.nestedValues(subject, tree);
             $totalValue: $callFrames.sum(=> selfValue);
 
             $callFrames

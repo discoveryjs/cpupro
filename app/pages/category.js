@@ -11,7 +11,7 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: scopeProfile().categoriesTree }'
+        data: '{ subject: @, tree: scopeLine().trees[].categories.all.nodes }'
     },
 
     {

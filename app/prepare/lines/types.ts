@@ -1,7 +1,8 @@
 import { LineMapping } from '../computations/line-mapping';
-import { DictDimension, SamplesMetrics, SamplesMetricsFiltered, TreeDimension } from '../computations/metrics';
+import { CallTree } from '../computations/call-tree';
+import { DictDimension, DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered, TreeDimension, TreeMetrics, TreeValueBounds } from '../computations/metrics';
 import { Profile } from '../profile.mjs';
-import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage } from '../types';
+import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProPackage } from '../types';
 
 export type ProfileLineType = 'timeline' | 'memline';
 export type LineKind = 'time' | 'memory'
@@ -11,6 +12,28 @@ export type Metric =
     | 'selfValue'
     | 'nestedValue'
     | 'totalValue';
+
+export type LineTreeMetricState<T extends CpuProNode> = {
+    nodes: TreeMetrics<T>;
+    dict: DictionaryMetrics<T>;
+};
+
+export type LineTreeDimension<T extends CpuProNode> = {
+    tree: CallTree<T>;
+    sampleToNode: Uint32Array;
+    all: LineTreeMetricState<T>;
+    filtered: LineTreeMetricState<T>;
+    bounds: TreeValueBounds<T>;
+};
+
+export type ProfileLineTree = {
+    kind: string;
+    locations: LineTreeDimension<CpuProLocation> | null;
+    callFrames: LineTreeDimension<CpuProCallFrame> | null;
+    modules: LineTreeDimension<CpuProModule> | null;
+    packages: LineTreeDimension<CpuProPackage> | null;
+    categories: LineTreeDimension<CpuProCategory> | null;
+};
 
 export interface ProfileLine {
     type: ProfileLineType;
@@ -36,17 +59,13 @@ export interface ProfileLine {
     axisTotal: number;
 
     // Sample domain (always present)
-    samples: Uint32Array;                // sampleId -> profile.<tree>.sampleIdToNode[sampleId]
-    sampleCounts: Uint32Array;
-    sampleCountsByProfile: Uint32Array;
-    sampleLocations: Int32Array | null;  // per-sample offsets in the line's primary sample domain
+    samples: Uint32Array;                // line sample id per value
 
     // Values (generic metric)
     values: Uint32Array;
-    valuesByProfile: Uint32Array;
     samplesMetrics: SamplesMetrics;
     samplesMetricsFiltered: SamplesMetricsFiltered;
-    recomputeValues: () => void;
+    recomputeMetrics: () => void;
 
     // Dictionary-based dimensions (aggregated by entity, no tree structure needed)
     dict: {
@@ -65,6 +84,10 @@ export interface ProfileLine {
         packages: TreeDimension<CpuProPackage> | null;
         categories: TreeDimension<CpuProCategory> | null;
     };
+
+    // Line-owned tree views. Several lines may reuse the same tree structure,
+    // while keeping independent sample-to-node mappings and metrics.
+    trees: ProfileLineTree[];
 
     // Optional line-owned vector locations.
     // Tree-derived locations remain available through dict.locations and tree.locations.
@@ -99,7 +122,7 @@ export type ProfileMemline = ProfileLine & {
     // _commonTree: TreeSource<CpuProCallFrame>;
     _uniqueValuesMap: Map<number, number>;
     _uniqueValuesArray: Array<number>;
-    _callFramesMap: Map<number, number>;
+    _callFramesMap: Map<CpuProCallFrame, number>;
     _callFramesVariance: Uint32Array;
     _callFramesStable: Uint32Array;
     _samplesAll: Uint32Array;

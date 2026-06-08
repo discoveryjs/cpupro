@@ -76,9 +76,9 @@ export type V8CpuProfileExecutionContext = {
 export type V8CpuProfileScript = {
     id: number;
     url: string;
-    sourceMapUrl: string | null;
     source: string;
-    sourceMap: SourceMap | null;
+    sourceMapUrl?: string | null;
+    sourceMap?: SourceMap | null;
 }
 export type V8CpuProfileFunction = {
     scriptId: number;

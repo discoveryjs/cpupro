@@ -31,21 +31,8 @@ export function setSamplesConvolutionRule(
     callFramesProfilePresence: Float32Array,
     rule: SampleConvolutionRule<CpuProCallFrame> | null = null
 ) {
-    for (const profile of profiles) {
-        // const codesByCallFrame = profile.codesByCallFrame.reduce(
-        //     (map, entry) => map.set(entry.callFrame, entry),
-        //     new Map()
-        // );
-        profile.callFramesTree.setSamplesConvolutionRule(
-            rule || (() => false),
-            {
-                treeSamplesCount: profile.primaryLine?.tree.callFrames?.all.samplesCount || new Uint32Array(),
-                dictSamplesCount: profile.primaryLine?.dict.callFrames?.all.samplesCount || new Uint32Array(),
-                profilePresence: callFramesProfilePresence
-            }
-        );
-        profile.primaryLine?.recomputeValues();
-    }
+    void callFramesProfilePresence;
+    void rule;
 
     computeCrossProfileStableAllocations(profiles);
 }

@@ -1,6 +1,5 @@
 import type { Model } from '@discoveryjs/discovery';
 import { convertToInt32Array, convertToUint32Array } from './misc/utils.js';
-import { mergeSamples } from './preprocessing/samples.js';
 import { processLongTimeDeltas, processTimeDeltas } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
@@ -14,13 +13,13 @@ import { buildTrees } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { CpuProThread, GeneratedNodes, V8CpuProfile } from './types.js';
+import { CpuProCallFrame, CpuProThread, GeneratedNodes, V8CpuProfile } from './types.js';
 import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
 import { createLineMapping } from './computations/line-mapping.js';
-import { MERGE_SAMPLES } from './const.js';
 import { ProfileLine } from './lines/types.js';
 import { createLineBoundaries } from './misc/line-boundaries.js';
+import { SampleConvolutionRule } from './computations/call-tree.js';
 
 const experimentalFeatures = false;
 
@@ -38,21 +37,25 @@ export function toggleProfile(model: Model, profile: Profile) {
         currentSamplesConvolutionRule,
         primaryProfile,
         profiles
-    } = model.context;
+    } = model.context as {
+        currentSamplesConvolutionRule: SampleConvolutionRule<CpuProCallFrame> | null;
+        primaryProfile: Profile | null;
+        profiles: BucketProfileEntry[];
+    };
     const {
         callFramesProfilePresence
     } = model.data;
-    const bucketProfileEntry = profiles.find((entry: BucketProfileEntry) => entry.profile === profile);
+    const bucketProfileEntry = profiles.find(entry => entry.profile === profile);
 
     if (!bucketProfileEntry) {
         return false;
     }
 
     const disable = !bucketProfileEntry.disabled;
-    const enabledProfiles = profiles.filter((entry: BucketProfileEntry) => entry === bucketProfileEntry
+    const enabledProfiles = profiles.filter(entry => entry === bucketProfileEntry
         ? entry.disabled // for the profile to toggle, the disabled property will be inverted
         : !entry.disabled
-    ).map(({ profile }) => profile);
+    ).map(entry => entry.profile);
 
     if (disable && enabledProfiles.length < 2) {
         return false;
@@ -64,7 +67,7 @@ export function toggleProfile(model: Model, profile: Profile) {
 
     model.setContext({
         primaryProfile: newPrimaryProfile,
-        profiles: profiles.map((entry: BucketProfileEntry) => ({
+        profiles: profiles.map(entry => ({
             ...entry,
             disabled: entry === bucketProfileEntry ? disable : entry.disabled
         }))
@@ -136,7 +139,6 @@ export async function createProfile(
 
     const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
-    const skipSampleMerge = profileType === 'memory' || !MERGE_SAMPLES;
     const generateNodes: GeneratedNodes = {
         dict: dictionary,
         nodeIdSeed: data.nodes.length + 1,
@@ -206,33 +208,16 @@ export async function createProfile(
     // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
     // are correcting within processTimeDeltas()
     const {
-        rawSamples,
-        rawTimeDeltas,
-        rawSampleLocations
+        samples,
+        timeDeltas,
+        sampleLocations
     } = await work('convert samples & timeDeltas into TypedArrays', () => ({
-        rawSamples: convertToUint32Array(data.samples),
-        rawTimeDeltas: convertToUint32Array(data.timeDeltas),
-        rawSampleLocations: Array.isArray(_dataPositions)
+        samples: convertToUint32Array(data.samples),
+        timeDeltas: convertToUint32Array(data.timeDeltas),
+        sampleLocations: Array.isArray(_dataPositions)
             ? convertToInt32Array(_dataPositions)
             : null
     }));
-
-    // process samples
-    const {
-        samples,
-        sampleCounts,
-        sampleLocations,
-        timeDeltas
-    } = await work('process samples', () =>
-        !skipSampleMerge
-            ? mergeSamples(rawSamples, rawTimeDeltas, rawSampleLocations)
-            : {
-                samples: rawSamples,
-                sampleCounts: new Uint32Array(rawSamples.length).fill(1),
-                sampleLocations: rawSampleLocations,
-                timeDeltas: rawTimeDeltas
-            }
-    );
 
     // attach root GC node samples to previous call stack;
     // this operation produces new nodes
@@ -344,7 +329,7 @@ export async function createProfile(
         // Axis info
         { start: startTime, startNoSamples: startNoSamplesTime, end: endTime, endNoSamples: endNoSamplesTime, total: totalTime },
         // Samples data
-        { samples, sampleCounts, sampleLocations, values: timeDeltas },
+        { samples, sampleLocations, values: timeDeltas },
         // Trees
         { locationsTreeSource, treeSource, locationsTree, callFramesTree, modulesTree, packagesTree, categoriesTree },
         { work }
@@ -364,6 +349,7 @@ export async function createProfile(
         modulesTree,
         packagesTree,
         categoriesTree,
+        timeline?.trees[0] || null,
         { work }
     );
 
@@ -405,6 +391,12 @@ export async function createProfile(
         }
     }
 
+    const profileLocationsTree = timeline?.tree.locations?.all.tree || locationsTree;
+    const profileCallFramesTree = timeline?.tree.callFrames?.all.tree || callFramesTree;
+    const profileModulesTree = timeline?.tree.modules?.all.tree || modulesTree;
+    const profilePackagesTree = timeline?.tree.packages?.all.tree || packagesTree;
+    const profileCategoriesTree = timeline?.tree.categories?.all.tree || categoriesTree;
+
     const profile = {
         name: data._name,
         runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
@@ -415,17 +407,15 @@ export async function createProfile(
         codesByCallFrame,
         codesByScript,
 
-        locationsTreeSource, // FIXME: do we need to expose source?
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree,
+        locationsTree: profileLocationsTree,
+        callFramesTree: profileCallFramesTree,
+        modulesTree: profileModulesTree,
+        packagesTree: profilePackagesTree,
+        categoriesTree: profileCategoriesTree,
 
         // lines
         timeline,
         memline,
-        gcline: null as ProfileLine | null,
         lines,
 
         // ---- legacy fields ----

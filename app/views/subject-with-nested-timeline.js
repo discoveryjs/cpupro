@@ -28,13 +28,14 @@ discovery.view.define('subject-with-nested-timeline', {
             $totalValueBins,
             color: $subject.$getCategory().name.color(),
             nested: (
+                $metricsSource: $line.trees[].categories.all.nodes;
                 $selector: $subtree.sampleSelector;
                 $subtree.entries.($getCategory()).sort(id asc).({
                     $category: $;
                     $category,
                     color: name.color(),
                     $binSize,
-                    bins: $profile.categoriesTree.binCalls(=>($=$category and $selector($$)), $binCount),
+                    bins: $metricsSource.binCalls(=>$=$category and $selector($$), $binCount),
                     $totalValueBins
                 })
             )

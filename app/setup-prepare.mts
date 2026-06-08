@@ -112,13 +112,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             session.processes[0] ??
             null;
 
-        // init aggregation by profile count here since we need to know the total number of profiles,
-        // that can be filtered out on preprocessing
-        for (const profile of profiles) {
-            profile.timeDeltasByProfile = new Uint32Array(profiles.length);
-            profile.sampleCountsByProfile = new Uint32Array(profiles.length);
-        }
-
         // cross-profiles usage
         const callFramesProfilePresence = new Float32Array(dict.callFrames.length);
         await runSessionTask('cross-profile usage', () => {

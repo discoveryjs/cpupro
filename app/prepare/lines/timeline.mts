@@ -1,13 +1,13 @@
 import type { CreateProfileApi, Profile } from '../profile.mjs';
 import type { BuildTreeResult } from '../computations/build-trees.js';
 import type { Metric, TimelineLine } from './types.js';
-import { mergeSamples, remapTreeSamples } from '../preprocessing/samples.js';
+import { remapTreeSamples, type CpuProCallTree, type SampledCallTree } from '../preprocessing/samples.js';
 import { computeTreeMetrics } from '../preprocessing/samples.js';
 import { processLongTimeDeltas, processTimeDeltas } from '../preprocessing/time-deltas.js';
-import { GeneratedNodes, V8CpuProfile } from '../types.js';
+import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage, GeneratedNodes, V8CpuProfile } from '../types.js';
 import { convertToInt32Array, convertToUint32Array } from '../misc/utils.js';
-import { MERGE_SAMPLES } from '../const.js';
 import { reparentGcNodes } from '../preprocessing/gc-samples.js';
+import { createLineTree } from './trees.js';
 
 const experimentalFeatures = false;
 const metricName: Record<Metric, string> = {
@@ -49,7 +49,6 @@ export interface TimelineAxisInfo {
 
 export interface TimelineSamplesData {
     samples: Uint32Array;
-    sampleCounts: Uint32Array;
     sampleLocations: Int32Array | null;
     values: Uint32Array;  // timeDeltas
 }
@@ -70,7 +69,6 @@ export async function extractTimelineData(
     { work }: CreateProfileApi
 ) {
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
-    const skipSampleMerge = !MERGE_SAMPLES;
 
     if (profileType !== 'time') {
         return null;
@@ -117,33 +115,16 @@ export async function extractTimelineData(
     // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
     // are correcting within processTimeDeltas()
     const {
-        rawSamples,
-        rawTimeDeltas,
-        rawSampleLocations
+        samples,
+        // timeDeltas,
+        sampleLocations
     } = await work('convert samples & timeDeltas into TypedArrays', () => ({
-        rawSamples: convertToUint32Array(data.samples),
-        rawTimeDeltas: convertToUint32Array(data.timeDeltas),
-        rawSampleLocations: Array.isArray(data._samplePositions)
+        samples: convertToUint32Array(data.samples),
+        timeDeltas: convertToUint32Array(data.timeDeltas),
+        sampleLocations: Array.isArray(data._samplePositions)
             ? convertToInt32Array(data._samplePositions)
             : null
     }));
-
-    // process samples
-    const {
-        samples,
-        // sampleCounts,
-        sampleLocations
-        // timeDeltas
-    } = await work('process samples', () =>
-        !skipSampleMerge
-            ? mergeSamples(rawSamples, rawTimeDeltas, rawSampleLocations)
-            : {
-                samples: rawSamples,
-                sampleCounts: new Uint32Array(rawSamples.length).fill(1),
-                sampleLocations: rawSampleLocations,
-                timeDeltas: rawTimeDeltas
-            }
-    );
 
     // attach root GC node samples to previous call stack;
     // this operation produces new nodes
@@ -192,8 +173,6 @@ export async function createTimeline(
 
     const {
         samples,
-        sampleCounts,
-        sampleLocations,
         values: timeDeltas
     } = samplesData;
 
@@ -203,21 +182,29 @@ export async function createTimeline(
         modulesTree,
         packagesTree,
         categoriesTree
-    ].filter(tree => tree !== null);
+    ].filter(tree => tree !== null) as CpuProCallTree[];
 
     // ============================================================================
-    // Re-map samples FIRST (sets up sampleIdToNode mappings in trees)
+    // Re-map samples FIRST (sets up line-owned sample-to-node mappings)
     // ============================================================================
 
     // re-map samples
     // FIXME: remap callFramesTree only, before buildTrees()?
-    await work('remap samples', () =>
+    const sampledTreeList = await work('remap samples', () =>
         remapTreeSamples(
             samples,
             locationsTreeSource?.sourceIdToNode || treeSource.sourceIdToNode,
             callTrees
         )
     );
+    let sampledTreeOffset = 0;
+    const sampledLocationsTree = locationsTree !== null
+        ? sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProLocation>
+        : null;
+    const sampledCallFramesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProCallFrame>;
+    const sampledModulesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProModule>;
+    const sampledPackagesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProPackage>;
+    const sampledCategoriesTree = sampledTreeList[sampledTreeOffset++] as SampledCallTree<CpuProCategory>;
 
     // build samples lists & trees
     const {
@@ -230,13 +217,24 @@ export async function createTimeline(
         computeTreeMetrics(
             samples,
             timeDeltas,
-            callFramesTree,
-            modulesTree,
-            packagesTree,
-            categoriesTree,
-            locationsTree
+            sampledCallFramesTree,
+            sampledModulesTree,
+            sampledPackagesTree,
+            sampledCategoriesTree,
+            sampledLocationsTree
         )
     );
+    const lineTrees = [createLineTree(
+        'call-stack',
+        {
+            locations: sampledLocationsTree,
+            callFrames: sampledCallFramesTree,
+            modules: sampledModulesTree,
+            packages: sampledPackagesTree,
+            categories: sampledCategoriesTree
+        },
+        { dict, tree }
+    )];
 
     return {
         type: 'timeline',
@@ -266,19 +264,15 @@ export async function createTimeline(
         axisEndNoSamples: axisInfo.endNoSamples,
         axisTotal: axisInfo.total,
 
-        samples: samplesMetrics.samples,
-        sampleCounts,
-        sampleCountsByProfile: new Uint32Array(),
-        sampleLocations,
-
         values: samplesMetrics.values,
-        valuesByProfile: new Uint32Array(),
+        samples: samplesMetrics.samples,
         samplesMetrics,
         samplesMetricsFiltered,
-        recomputeValues: recomputeMetrics,
+        recomputeMetrics: recomputeMetrics,
 
         dict,
         tree,
+        trees: lineTrees,
         locations: null,
 
         mappings: Object.create(null)

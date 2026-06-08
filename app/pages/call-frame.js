@@ -192,7 +192,7 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: #.scopeProfile.callFramesTree }'
+        data: '{ subject: @, tree: scopeLine().trees[].callFrames.all.nodes }'
     },
 
     {
@@ -228,7 +228,7 @@ const pageContent = [
         view: 'expand',
         when: '#.scopeProfile | memline | valueLifespans and valueTypes',
         className: 'trigger-outside',
-        data: '{ callFrame: @, matrix: #.scopeProfile.memline | tree.callFrames.all.tree.allocationsMatrix(samplesMetrics, @) }',
+        data: '{ callFrame: @, matrix: #.scopeProfile.memline | trees[].callFrames.all.nodes.allocationsMatrix(samplesMetrics, @) }',
         ...sessionExpandState('callframe-allocations-matrix', true, '$'),
         header: 'text:"Allocation types"',
         content: {
@@ -237,7 +237,7 @@ const pageContent = [
             content: {
                 view: 'allocation-samples-matrix',
                 data: `
-                    $filtered: #.scopeProfile.memline | tree.callFrames.all.tree.allocationsMatrix(samplesMetricsFiltered, @.callFrame);
+                    $filtered: #.scopeProfile.memline | trees[].callFrames.filtered.nodes.allocationsMatrix(samplesMetricsFiltered, @.callFrame);
 
                     matrix.($type; $filtered[=>type = $type] or { $type })
                 `
@@ -357,7 +357,7 @@ discovery.page.define('call-frame', {
 
                 const callFramesTree = scopeProfile.callFramesTree;
                 const samplesMetrics = scopeLine.samplesMetricsFiltered;
-                const originalTreeMetrics = scopeLine.tree.callFrames.filtered;
+                const originalTreeMetrics = scopeLine.trees[0].callFrames.filtered.nodes;
                 const secondaryLine = scopeProfile.lines.find(
                     line => line.type !== context.primaryLineType
                 ) ?? null;
@@ -367,7 +367,8 @@ discovery.page.define('call-frame', {
                     ...context,
                     subsetTreeValues: new SubsetTreeMetrics(
                         new SubsetCallTree(callFramesTree, data),
-                        samplesMetrics
+                        samplesMetrics,
+                        originalTreeMetrics
                     ),
                     ancestorSubsetTreeValues: new AncestorSubsetTreeMetrics(
                         ancestorTree,
@@ -376,7 +377,7 @@ discovery.page.define('call-frame', {
                     secondaryAncestorSubsetTreeValues: secondaryLine
                         ? new AncestorSubsetTreeMetrics(
                             ancestorTree,
-                            secondaryLine.tree.callFrames.filtered
+                            secondaryLine.trees[0].callFrames.filtered.nodes
                         )
                         : null
                 };

@@ -424,7 +424,7 @@ export function buildCallTreeArrays<S extends CpuProNode, D extends CpuProNode =
 
 function buildCallTree<S extends CpuProNode, D extends CpuProNode = S>(
     name: string,
-    source: TreeSource<S>,
+    source: BuildTreeSource<S>,
     dictionaryMapping?: Uint32Array | ((node: S) => D),
     baseDictionary?: D[]
 ) {
@@ -444,7 +444,13 @@ function buildCallTree<S extends CpuProNode, D extends CpuProNode = S>(
     );
 
     const createTreeStart = Date.now();
-    const tree = new CallTree(dictionary, new Int32Array(sourceNodeMap.buffer), nodes, parent, subtreeSize, nested);
+    const tree = new CallTree(dictionary, nodes, parent, subtreeSize, nested);
+
+    if (source instanceof CallTree) {
+        tree.setSourceTree(source, new Int32Array(sourceNodeMap.buffer));
+    } else {
+        tree.sourceIdToNode = new Int32Array(sourceNodeMap.buffer);
+    }
 
     if (TIMINGS) {
         console.info(

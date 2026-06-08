@@ -73,7 +73,7 @@ export const methods = {
         return Array.from(bins);
     },
 
-    binSignals(tree, options: BinOptions) {
+    binSignals(treeMetrics, options: BinOptions) {
         const {
             test = () => true,
             n = 500,
@@ -82,15 +82,15 @@ export const methods = {
             line
         } = options || {};
         const { samples, values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
-        const mask = makeSamplesMask(tree, test);
+        const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, total ?? axisTotal, skip);
 
         return bins;
     },
 
-    binCalls(tree, test, n = 500, line?: ProfileLine | ProfileLineType) {
+    binCalls(treeMetrics, test, n = 500, line?: ProfileLine | ProfileLineType) {
         const { samples, values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
-        const mask = makeSamplesMask(tree, test);
+        const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
         // let sum = 0;

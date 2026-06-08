@@ -26,11 +26,11 @@ function positionNodeRef(nodeIndex: number, scriptOffset: number) {
  *   - line/column will come from callFrame.line/column (in processLocations)
  *
  * Returns Int32Array of script offsets, or null if no data available.
- * Note: This should only be called AFTER remapTreeSamples() has set up sampleIdToNode.
  */
 export function ensureLocations(
     samples: Uint32Array,
     sampleLocations: Int32Array | null,
+    sampleToNode: Uint32Array,
     callFramesTree: CallTree<CpuProCallFrame> | null
 ): Int32Array | null {
     // If we already have sample locations (precise execution points), use them
@@ -45,11 +45,11 @@ export function ensureLocations(
 
     // Build location offsets from call frame definitions
     const locations = new Int32Array(samples.length);
-    const { sampleIdToNode, nodes, dictionary } = callFramesTree;
+    const { nodes, dictionary } = callFramesTree;
 
     for (let i = 0; i < samples.length; i++) {
         const sampleId = samples[i];
-        const nodeIdx = sampleIdToNode[sampleId];
+        const nodeIdx = sampleToNode[sampleId];
         const callFrameIdx = nodes[nodeIdx];
         const callFrame = dictionary[callFrameIdx];
 

@@ -28,7 +28,7 @@ export type BufferTreeMetricsMap<T> = {
     tree: CallTree<T>;
     sourceSamplesCount: Uint32Array;
     sourceSamplesTotal: Uint32Array;
-    sampleIdToNode: Uint32Array;
+    sampleToNode: Uint32Array;
     parent: Uint32Array;
     samplesCount: Uint32Array;
     selfValues: Uint32Array;
@@ -144,14 +144,14 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeM
             accumulateMetrics(
                 map.sourceSamplesCount.length,
                 map.sourceSamplesCount.byteOffset,
-                map.sampleIdToNode.byteOffset,
+                map.sampleToNode.byteOffset,
                 map.samplesCount.byteOffset
             );
 
             accumulateMetrics(
                 map.sourceSamplesTotal.length,
                 map.sourceSamplesTotal.byteOffset,
-                map.sampleIdToNode.byteOffset,
+                map.sampleToNode.byteOffset,
                 map.selfValues.byteOffset
             );
 
@@ -255,7 +255,7 @@ export function createJavaScriptApi(): ComputeMetricsApi {
             const {
                 sourceSamplesCount,
                 sourceSamplesTotal,
-                sampleIdToNode,
+                sampleToNode,
                 parent,
                 samplesCount,
                 selfValues,
@@ -268,8 +268,8 @@ export function createJavaScriptApi(): ComputeMetricsApi {
                 nestedValues.fill(0);
             }
 
-            accumulateMetrics(sourceSamplesCount, sampleIdToNode, samplesCount);
-            accumulateMetrics(sourceSamplesTotal, sampleIdToNode, selfValues);
+            accumulateMetrics(sourceSamplesCount, sampleToNode, samplesCount);
+            accumulateMetrics(sourceSamplesTotal, sampleToNode, selfValues);
             rollupTreeMetrics(parent, selfValues, nestedValues);
         },
 

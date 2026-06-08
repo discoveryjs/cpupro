@@ -12,7 +12,7 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: #.scopeProfile.packagesTree }'
+        data: '{ subject: @, tree: scopeLine().trees[].packages.all.nodes }'
     },
 
     {
@@ -39,7 +39,7 @@ const pageContent = [
         ],
         content: `nested-timings-tree:scopeLine() | {
             subject: @,
-            tree: profile.packagesTree,
+            tree: scopeLine().trees[].packages.tree,
             metrics: dict.packages.filtered
         }`
     },
@@ -108,7 +108,7 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('package-flame-graphs', true),
-        tree: '=#.scopeProfile.packagesTree',
+        tree: '=scopeLine().trees[].packages.tree',
         value: '='
     }
 ];

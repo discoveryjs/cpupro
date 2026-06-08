@@ -30,8 +30,6 @@ type SampleConvolutionNode<T> = {
     profilePresence: number;
 };
 
-const NULL_ARRAY = new Uint32Array();
-
 function makeDictMask<T>(tree: CallTree<T>, test: TestFunctionOrEntry<T>) {
     const { dictionary } = tree;
     const accept = typeof test === 'function'
@@ -50,10 +48,8 @@ function makeDictMask<T>(tree: CallTree<T>, test: TestFunctionOrEntry<T>) {
 
 export class CallTree<T> {
     dictionary: T[];              // entries
-    sourceIdToNode: Int32Array;   // sourceNodeId -> index of nodes
-    sampleIdToNode: Uint32Array; // sampleId  -> index of nodes
-    #sampleIdToNode: Uint32Array;
-    sampleIdToNodeChanged: boolean; // FIXME: temporary solution to avoid unnecessary dict recalculations
+    sourceTree: CallTree<unknown> | null;
+    sourceIdToNode: Int32Array;   // source tree node index -> this tree node index
     nodes: NumericArray;          // nodeIndex -> index of dictionary
     parent: NumericArray;         // nodeIndex -> index of nodes
     subtreeSize: NumericArray;    // nodeIndex -> number of nodes in subtree, 0 when no children
@@ -77,17 +73,14 @@ export class CallTree<T> {
 
     constructor(
         dictionary: T[],
-        sourceIdToNode: Int32Array,
         nodes: NumericArray,
         parent?: NumericArray,
         subtreeSize?: NumericArray,
         nested?: NumericArray
     ) {
         this.dictionary = dictionary;
-        this.sourceIdToNode = sourceIdToNode;
-        this.sampleIdToNode = NULL_ARRAY; // setting up later
-        this.#sampleIdToNode = NULL_ARRAY;
-        this.sampleIdToNodeChanged = false;
+        this.sourceTree = null;
+        this.sourceIdToNode = new Int32Array();
 
         this.nodes = nodes;
         this.parent = parent || new Uint32Array(nodes.length);
@@ -121,6 +114,17 @@ export class CallTree<T> {
                 get: () => this.#computeEntryNodes().entryNodesCount
             }
         });
+    }
+
+    setSourceTree<S>(sourceTree: CallTree<S> | null, sourceIdToNode: Int32Array) {
+        if (sourceTree !== null && sourceIdToNode.length !== sourceTree.nodes.length) {
+            throw new Error('Source tree mapping size does not match source tree size');
+        }
+
+        this.sourceTree = sourceTree;
+        this.sourceIdToNode = sourceIdToNode;
+
+        return this;
     }
 
     #computeEntryNodes() {
@@ -238,49 +242,6 @@ export class CallTree<T> {
         }
 
         return includeSelf ? result + count : result;
-    }
-
-    setSamplesConvolutionRule(rule: SampleConvolutionRule<T>, {
-        treeSamplesCount,
-        dictSamplesCount,
-        profilePresence
-    }:{
-        treeSamplesCount: Uint32Array,
-        dictSamplesCount: Uint32Array,
-        profilePresence: Float32Array
-    }) {
-        const { parent, nodes, sampleIdToNode } = this;
-        const nodesRemap = nodes.slice();
-        let origSampleIdToNode = this.#sampleIdToNode;
-        const createEntry = (index: number) => ({
-            entry: this.dictionary[nodes[index]],
-            treeSamplesCount: treeSamplesCount[index],
-            dictSamplesCount: dictSamplesCount[index],
-            profilePresence: profilePresence[nodes[index]]
-        });
-
-        for (let i = 1; i < nodesRemap.length; i++) {
-            const parentNode = parent[i];
-            const rootNode = nodesRemap[parentNode];
-            const selfEntry = createEntry(i);
-            const parentEntry = createEntry(parentNode);
-            const rootEntry = rootNode === parentNode
-                ? parentEntry
-                : createEntry(rootNode);
-
-            nodesRemap[i] = rule(selfEntry, parentEntry, rootEntry) === true ? rootNode : i;
-        }
-
-        if (origSampleIdToNode === NULL_ARRAY) {
-            this.#sampleIdToNode = origSampleIdToNode = sampleIdToNode.slice();
-        }
-
-        for (let i = 0; i < sampleIdToNode.length; i++) {
-            sampleIdToNode[i] = nodesRemap[origSampleIdToNode[i]];
-        }
-
-        // FIXME: temporary solution to avoid unnecessary dict recalculations
-        this.sampleIdToNodeChanged = true;
     }
 
     *map(nodeIndexes: Iterable<number>) {
@@ -412,13 +373,8 @@ export class SubsetCallTree<T extends CpuProNode> extends CallTree<T> {
             }
         }
 
-        super(dictionary, sourceNodeMap, nodes, parent, subtreeSize, nested);
-
-        this.sampleIdToNode = tree.sampleIdToNode.map(i =>
-            sourceNodeMap[i] !== -1
-                ? sourceNodeMap[i]
-                : nodes.length
-        );
+        super(dictionary, nodes, parent, subtreeSize, nested);
+        this.setSourceTree(tree, sourceNodeMap);
     }
 }
 
@@ -517,18 +473,28 @@ export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
         // Step 4: Build nodeOriginals as flat TypedArrays (offset/count pattern)
         // Maps each consolidated node to ALL original tree node indices merged into it
         const nodeOriginalsCount = new Uint32Array(nodes.length);
+        const sourceNodeMap = new Int32Array(tree.nodes.length).fill(-1);
         const rootIdx = rollupNodeMap[0];
+
         nodeOriginalsCount[rootIdx] += occurrences.length;
+
+        for (const occNodeIndex of occurrences) {
+            sourceNodeMap[occNodeIndex] = rootIdx;
+        }
+
         for (let i = 1; i < preOriginals.length; i++) {
             if (preOriginals[i] >= 0) {
-                nodeOriginalsCount[rollupNodeMap[i]]++;
+                const consolidatedNode = rollupNodeMap[i];
+
+                sourceNodeMap[preOriginals[i]] = consolidatedNode;
+                nodeOriginalsCount[consolidatedNode]++;
             }
         }
 
         const nodeOriginalsOffset = new Uint32Array(nodes.length);
-        for (let i = 0, off = 0; i < nodeOriginalsCount.length; i++) {
-            nodeOriginalsOffset[i] = off;
-            off += nodeOriginalsCount[i];
+        for (let i = 0, offset = 0; i < nodeOriginalsCount.length; i++) {
+            nodeOriginalsOffset[i] = offset;
+            offset += nodeOriginalsCount[i];
         }
 
         const totalOriginals = occurrences.length + totalAncestorNodes;
@@ -548,14 +514,11 @@ export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
             nodeOriginalsOffset[i] -= nodeOriginalsCount[i];
         }
 
-        // sampleIdToNode: map everything to excluded (metrics computed differently)
-        const sampleIdToNode = new Uint32Array(tree.sampleIdToNode.length).fill(nodes.length);
-
-        super(dictionary, new Int32Array(nodes.length).fill(-1), nodes, parent, subtreeSize, nested);
+        super(dictionary, nodes, parent, subtreeSize, nested);
+        this.setSourceTree(tree, sourceNodeMap);
 
         this.nodeOriginals = nodeOriginals;
         this.nodeOriginalsOffset = nodeOriginalsOffset;
         this.nodeOriginalsCount = nodeOriginalsCount;
-        this.sampleIdToNode = sampleIdToNode;
     }
 }

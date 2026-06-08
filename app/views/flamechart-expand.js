@@ -2,6 +2,20 @@ const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 
+function getTreeMetrics(line, tree) {
+    for (const dimentionTrees of line.trees) {
+        for (const dimensionName of ['locations', 'callFrames', 'modules', 'packages', 'categories']) {
+            const dimension = dimentionTrees[dimensionName];
+
+            if (dimension?.filtered.nodes.tree === tree) {
+                return dimension.filtered.nodes;
+            }
+        }
+    }
+
+    return null;
+}
+
 discovery.view.define('flamechart-expand', function(el, config, data, context) {
     const {
         header,
@@ -13,9 +27,15 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
     } = config;
     const line = resolveScopeProfileLine(config.line, context);
     const samplesMetrics = line.samplesMetricsFiltered;
+    const sourceTreeMetrics = getTreeMetrics(line, tree);
+    if (!computedValues && sourceTreeMetrics === null) {
+        throw new Error('Unable to resolve source tree metrics for flamechart expansion');
+    }
+
     const subsetTreeValues = computedValues || new SubsetTreeMetrics(
         value ? new SubsetCallTree(tree, value) : tree,
-        samplesMetrics
+        samplesMetrics,
+        sourceTreeMetrics
     );
 
     return this.render(el, {
