@@ -62,10 +62,6 @@ discovery.view.define('location-source', {
                 }
             ]).[];
 
-        __v: $values,
-        __x: $values.nodes.getEntry(@),
-        __e: @,
-        $tree,
         syntax: $hasSource ? 'js',
         lineNum: () => $ + $lineNum,
         source: $hasSource ? $source.slice($sourceSliceStart, $sourceSliceEnd) : '(source is unavailable)',

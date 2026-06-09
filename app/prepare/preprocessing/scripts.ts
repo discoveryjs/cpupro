@@ -1,6 +1,6 @@
-import { SourceMapConsumer } from 'source-map-js';
 import type { Dictionary } from '../dictionary.js';
 import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfileScript } from '../types.js';
+// import { SourceMapConsumer } from 'source-map-js';
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
@@ -49,23 +49,23 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
 
             script.sourceMapUrl = sourceMapUrl ?? null;
             script.sourceMap = sourceMap ?? null;
-            if (sourceMap && sourceMap.sourcesContent) {
-                try {
-                    const sourceMapConsumer = new SourceMapConsumer(sourceMap);
+            // if (sourceMap && sourceMap.sourcesContent) {
+            //     try {
+            //         const sourceMapConsumer = new SourceMapConsumer(sourceMap);
 
-                    script._sourceMap = sourceMapConsumer;
-                    script._originalScripts = Object.create(null);
-                    for (let i = 0; i < sourceMap.sourcesContent.length; i++) {
-                        const smc = sourceMap.sourcesContent[i];
-                        const smUrl = sourceMap.sourceRoot
-                            ? new URL(sourceMap.sources[i], sourceMap.sourceRoot || '').toString()
-                            : sourceMap.sources[i];
-                        script._originalScripts[smUrl] = createScript(-1, smUrl, smc);
-                    }
-                } catch (e) {
-                    console.warn('Failed to parse source map for script', url, e);
-                }
-            }
+            //         script._sourceMap = sourceMapConsumer;
+            //         script._originalScripts = Object.create(null);
+            //         for (let i = 0; i < sourceMap.sourcesContent.length; i++) {
+            //             const smc = sourceMap.sourcesContent[i];
+            //             const smUrl = sourceMap.sourceRoot
+            //                 ? new URL(sourceMap.sources[i], sourceMap.sourceRoot || '').toString()
+            //                 : sourceMap.sources[i];
+            //             script._originalScripts[smUrl] = createScript(-1, smUrl, smc);
+            //         }
+            //     } catch (e) {
+            //         console.warn('Failed to parse source map for script', url, e);
+            //     }
+            // }
         }
     }
 

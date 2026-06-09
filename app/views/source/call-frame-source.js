@@ -135,7 +135,7 @@ const sourceQuery = `{
     };
     $selfValueTooltipView: $line | type = 'memline' and valueLifespans and valueTypes
         ? 'allocation-samples-matrix:values.allocationsMatrix(metrics, value.entry).sort(total.sum or 0 desc)';
-    $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table)"' };
+    $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table or call site location)"' };
     $selfValueMisattributedTooltipView: {
         className: 'view-call-frame-source__tooltip',
         content: $misattributedMessage

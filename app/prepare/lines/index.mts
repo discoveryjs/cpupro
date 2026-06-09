@@ -8,11 +8,5 @@
  * - Cross-line mappings for correlation
  */
 
-export {
-    createTimeline,
-    type TimelineSourceInfo,
-    type TimelineAxisInfo,
-    type TimelineSamplesData,
-    type TimelineTreesData
-} from './timeline.mjs';
+export { createTimeline} from './timeline.mjs';
 export { createMemline } from './memline.mjs';

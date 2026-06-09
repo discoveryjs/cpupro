@@ -1,5 +1,4 @@
 import { createTreeSourceFromParent } from '../computations/build-trees.js';
-import { computeCrossProfileStableAllocations } from '../computations/cross-profile-allocations.mjs';
 import type { Dictionary } from '../dictionary.js';
 import type { Profile } from '../profile.mjs';
 import { min, sum } from '../misc/utils.js';
@@ -65,8 +64,6 @@ export function processCrossProfileAllocations(dict: Dictionary, profiles: Profi
             _samplesAll: new Uint32Array(callFramesCount * uniqueValuesCount)
         });
     }
-
-    computeCrossProfileStableAllocations(memlineProfiles);
 }
 
 function buildCommonTree(dict: Dictionary, profiles: Profile[]) {
