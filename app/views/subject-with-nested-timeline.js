@@ -28,7 +28,7 @@ discovery.view.define('subject-with-nested-timeline', {
             $totalValueBins,
             color: $subject.$getCategory().name.color(),
             nested: (
-                $metricsSource: $line.trees[].categories.all.nodes;
+                $metricsSource: $line.primaryTree().categories.all.nodes;
                 $selector: $subtree.sampleSelector;
                 $subtree.entries.($getCategory()).sort(id asc).({
                     $category: $;
@@ -101,12 +101,11 @@ discovery.view.define('subject-with-nested-timeline', {
             limit: false,
             context: '{ ...#, binCount }',
             data: `
+                $totalValue: profile.timeline.axisTotal;
                 $type: subject.marker().type;
-                $profile: scopeProfile();
-                $totalValue: $profile.timeline.axisTotal;
                 $step: $totalValue / #.binCount;
 
-                $profile
+                profile
                     | $type = "module"     ? codesByScript[=> script = @.subject.script].compilation.codes :
                       $type = "call-frame" ? codesByCallFrame[=> callFrame = @.subject].codes :
                     | .($code: $; segments or [{ tm, duration }] | .({ ..., $code, segment: $ }))

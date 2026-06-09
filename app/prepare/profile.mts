@@ -14,7 +14,7 @@ import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
 import { CpuProCallFrame, CpuProThread, V8CpuProfile } from './types.js';
-import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
+// import { computeCrossProfileUsage } from './computations/cross-profile-usage.mjs';
 import { setSamplesConvolutionRule } from './computations/samples-convolution.mjs';
 import { createLineMapping } from './computations/line-mapping.js';
 import { ProfileLine } from './lines/types.js';
@@ -74,7 +74,7 @@ export function toggleProfile(model: Model, profile: Profile) {
         }))
     });
 
-    computeCrossProfileUsage(enabledProfiles, callFramesProfilePresence);
+    // computeCrossProfileUsage(enabledProfiles, callFramesProfilePresence);
     setSamplesConvolutionRule(enabledProfiles, callFramesProfilePresence, currentSamplesConvolutionRule);
 
     return true;
@@ -422,10 +422,8 @@ export async function createProfile(
         heap: data._heap || null
     };
 
-    for (const line of [timeline, memline]) {
-        if (line) {
-            line.profile = profile;
-        }
+    for (const line of lines) {
+        line.profile = profile;
     }
 
     return profile;

@@ -5,8 +5,8 @@ import { processPaths } from './prepare/preprocessing/short-paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { Dictionary } from './prepare/dictionary.js';
 import { createProfile, Profile } from './prepare/profile.mjs';
-import { computeCrossProfileUsage } from './prepare/computations/cross-profile-usage.mjs';
-import { processCrossProfileAllocations } from './prepare/preprocessing/memory-allocations.mjs';
+// import { computeCrossProfileUsage } from './prepare/computations/cross-profile-usage.mjs';
+// import { processCrossProfileAllocations } from './prepare/preprocessing/memory-allocations.mjs';
 import { ProfileLineType } from './prepare/lines/types.js';
 import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
@@ -113,16 +113,16 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             null;
 
         // cross-profiles usage
-        const callFramesProfilePresence = new Float32Array(dict.callFrames.length);
-        await runSessionTask('cross-profile usage', () => {
-            computeCrossProfileUsage(profiles, callFramesProfilePresence);
-        });
+        // const callFramesProfilePresence = new Float32Array(dict.callFrames.length);
+        // await runSessionTask('cross-profile usage', () => {
+        //     computeCrossProfileUsage(profiles, callFramesProfilePresence);
+        // });
 
-        if (availableLineTypes.has('memline')) {
-            await runSessionTask('compute stable memory allocations', () =>
-                processCrossProfileAllocations(dict, profiles)
-            );
-        }
+        // if (availableLineTypes.has('memline')) {
+        //     await runSessionTask('compute stable memory allocations', () =>
+        //         processCrossProfileAllocations(dict, profiles)
+        //     );
+        // }
 
         // process paths
         await runSessionTask('process module paths', () =>

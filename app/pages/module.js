@@ -13,15 +13,15 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: scopeLine().trees[].modules.all.nodes }'
+        data: '{ subject: @, tree: scopeTree().modules.all.nodes }'
     },
 
     {
         view: 'update-on-line-metrics-changes',
-        metrics: '=scopeLine().dict.modules.filtered',
-        content: `page-indicator-metrics:scopeLine().dict.modules | {
-            full: all.entries[=>entry = @],
-            filtered: filtered.entries[=>entry = @]
+        metrics: '=scopeTree().modules.filtered.dict',
+        content: `page-indicator-metrics:scopeTree().modules | {
+            full: all.dict.entries[=>entry = @],
+            filtered: filtered.dict.entries[=>entry = @]
         }`
     },
 
@@ -50,14 +50,14 @@ const pageContent = [
             { view: 'block', className: 'text-divider' },
             {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeLine().dict.modules.filtered',
-                content: 'duration:scopeLine().dict.modules.filtered.entries[=>entry=@].nestedValue'
+                metrics: '=scopeTree().modules.filtered.dict',
+                content: 'duration:scopeTree().modules.filtered.dict.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:scopeLine() | {
+        content: `nested-timings-tree:scopeTree() | {
             subject: @,
-            tree: tree.modules.filtered.tree,
-            metrics: dict.modules.filtered
+            tree: modules.tree,
+            metrics: modules.filtered.dict
         }`
     },
 
@@ -69,8 +69,8 @@ const pageContent = [
             'text:"Call frames "',
             {
                 view: 'update-on-line-metrics-changes',
-                data: 'scopeLine().dict.callFrames.filtered.entries.[entry.module = @]',
-                metrics: '=scopeLine().dict.callFrames.filtered',
+                data: 'scopeTree().callFrames.filtered.dict.entries.[entry.module = @]',
+                metrics: '=scopeTree().callFrames.filtered.dict',
                 content: 'sampled-count-total{ count(=> totalValue?), total: size() }'
             }
         ],
@@ -78,9 +78,9 @@ const pageContent = [
             view: 'content-filter',
             className: 'table-content-filter',
             data: `
-                scopeLine() | dict.callFrames.filtered.entries
+                scopeTree() | callFrames.filtered.dict.entries
                     .[entry.module = @]
-                    .zip(=> entry, profile.codesByCallFrame, => callFrame)
+                    .zip(=> entry, line.profile.codesByCallFrame, => callFrame)
                     .({
                         $entry: left.entry;
 
@@ -93,7 +93,7 @@ const pageContent = [
             `,
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeLine().dict.callFrames.filtered',
+                metrics: '=scopeTree().callFrames.filtered.dict',
                 content: {
                     view: 'table',
                     data: `
@@ -142,7 +142,7 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('module-flame-graphs', true),
-        tree: '=#.scopeProfile.modulesTree',
+        tree: '=scopeTree().modules.tree',
         value: '='
     }
 ];

@@ -3,6 +3,11 @@ import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRu
 
 const model = discovery;
 
+model.action.define('selectProfile', (profile) => {
+    model.setContext({
+        primaryProfile: profile
+    });
+});
 model.action.define('selectPrimaryLine', (lineType) => {
     model.setContext({
         primaryLineType: lineType
@@ -11,10 +16,13 @@ model.action.define('selectPrimaryLine', (lineType) => {
         sessionStorage.setItem('cpupro:primary-line-type', lineType);
     } catch {}
 });
-model.action.define('selectProfile', (profile) => {
+model.action.define('selectPrimaryTree', (treeKind) => {
     model.setContext({
-        primaryProfile: profile
+        primaryTreeKind: treeKind
     });
+    try {
+        sessionStorage.setItem('cpupro:primary-tree-kind', treeKind);
+    } catch {}
 });
 model.action.define('toggleProfile', (profile) => {
     if (toggleProfile(model, profile)) {
@@ -39,14 +47,17 @@ model.on('unloadData', () => {
         profiles: [],
         primaryProfile: null,
         // primaryLineType: null, // keep selected line type
+        // primaryTreeKind: null, // keep selected tree kind
         scopeProfile: null, // always null by default, views can override it
-        scopeLine: null
+        scopeLine: null,
+        scopeTree: null
     });
 });
 model.on('data', () => {
     const { currentSamplesConvolutionRule } = model.context;
     const { defaultProfile, profiles } = model.data;
     let primaryLineType = model.context.primaryLineType || null;
+    let primaryTreeKind = model.context.primaryTreeKind || null;
 
     if (!primaryLineType) {
         try {
@@ -56,6 +67,18 @@ model.on('data', () => {
 
     if (!primaryLineType || !profiles.some(profile => profile.lines.find(line => line.type === primaryLineType))) {
         primaryLineType = defaultProfile?.lines?.[0].type || null;
+    }
+
+    const primaryLine = defaultProfile?.lines.find(line => line.type === primaryLineType);
+
+    if (!primaryTreeKind) {
+        try {
+            primaryTreeKind = sessionStorage.getItem('cpupro:primary-tree-kind');
+        } catch {}
+    }
+
+    if (!primaryTreeKind || !primaryLine?.trees?.some(tree => tree.kind === primaryTreeKind)) {
+        primaryTreeKind = primaryLine?.trees?.[0]?.kind || null;
     }
 
     const primaryBucket = {
@@ -78,8 +101,10 @@ model.on('data', () => {
         })),
         primaryProfile: defaultProfile,
         primaryLineType,
+        primaryTreeKind,
         scopeProfile: null, // always null by default, views can override it
-        scopeLine: null     // always null by default, views can override it
+        scopeLine: null,    // always null by default, views can override it
+        scopeTree: null     // always null by default, views can override it
     });
 
     if (currentSamplesConvolutionRule) {

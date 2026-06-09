@@ -9,6 +9,13 @@ discovery.view.define('appbar', [
             onChange: '==>"selectPrimaryLine".callAction($)'
         },
         {
+            view: 'toggle-group',
+            data: '#.data.profiles.lines.trees.kind',
+            // whenData: 'size() > 1',
+            value: '=#.primaryTreeKind',
+            onChange: '==>"selectPrimaryTree".callAction($)'
+        },
+        {
             view: 'block',
             className: 'appbar-profile-name',
             content: 'text:#.datasets[].resource | type = "file" ? name : "Untitled dataset"'

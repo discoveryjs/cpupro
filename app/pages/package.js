@@ -12,15 +12,15 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: scopeLine().trees[].packages.all.nodes }'
+        data: '{ subject: @, tree: scopeTree().packages.all.nodes }'
     },
 
     {
         view: 'update-on-line-metrics-changes',
-        metrics: '=scopeLine().dict.packages.filtered',
-        content: `page-indicator-metrics:scopeLine().dict.packages | {
-            full: all.entries[=>entry = @],
-            filtered: filtered.entries[=>entry = @]
+        metrics: '=scopeTree().packages.filtered.dict',
+        content: `page-indicator-metrics:scopeTree().packages | {
+            full: all.dict.entries[=>entry = @],
+            filtered: filtered.dict.entries[=>entry = @]
         }`
     },
 
@@ -33,14 +33,14 @@ const pageContent = [
             { view: 'block', className: 'text-divider' },
             {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeLine().dict.packages.filtered',
-                content: 'metric:scopeLine().dict.packages.filtered.entries[=>entry=@].nestedValue'
+                metrics: '=scopeTree().packages.filtered.dict',
+                content: 'metric:scopeTree().packages.filtered.dict.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:scopeLine() | {
+        content: `nested-timings-tree:scopeTree() | {
             subject: @,
-            tree: scopeLine().trees[].packages.tree,
-            metrics: dict.packages.filtered
+            tree: packages.tree,
+            metrics: packages.filtered.dict
         }`
     },
 
@@ -52,25 +52,25 @@ const pageContent = [
             'text:"Modules "',
             {
                 view: 'update-on-line-metrics-changes',
-                data: 'scopeLine().dict.modules.filtered.entries.[entry.package = @]',
-                metrics: '=scopeLine().dict.modules.filtered',
+                data: 'scopeTree().modules.filtered.dict.entries.[entry.package = @]',
+                metrics: '=scopeTree().modules.filtered.dict',
                 content: 'sampled-count-total{ count(=> totalValue?), total: size() }'
             }
         ],
         content: {
             view: 'content-filter',
             data: `
-                scopeLine().dict | callFrames.filtered.entries
+                scopeTree() | callFrames.filtered.dict.entries
                     .[entry.package = @]
                     .group(=> entry.module)
-                    .zip(=> key, modules.filtered.entries, => entry)
+                    .zip(=> key, modules.all.dict.entries, => entry)
                     .({ module: right, name: right.entry | packageRelPath or name, callFrames: left.value })
             `,
             className: 'table-content-filter',
             content: {
                 view: 'update-on-line-metrics-changes',
                 data: '.[name ~= #.filter]',
-                metrics: '=scopeLine().dict.modules.filtered',
+                metrics: '=scopeTree().modules.filtered.dict',
                 content: {
                     view: 'table',
                     data: `
@@ -108,7 +108,7 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('package-flame-graphs', true),
-        tree: '=scopeLine().trees[].packages.tree',
+        tree: '=scopeTree().packages.tree',
         value: '='
     }
 ];

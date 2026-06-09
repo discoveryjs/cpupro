@@ -1,12 +1,14 @@
-import { Metric, ProfileLine, ProfileLineType } from '../prepare/lines/types.js';
+import { Metric, ProfileLine, ProfileLineTree, ProfileLineType } from '../prepare/lines/types.js';
 import { Profile } from '../prepare/profile.mjs';
 
 type Method = (this: { context: MethodContext }, ...args: unknown[]) => unknown;
 type MethodContext = {
-    primaryLineType: ProfileLineType;
     primaryProfile: Profile | null;
+    primaryLineType: ProfileLineType;
+    primaryTreeKind: string | null;
     scopeProfile: Profile | null;
     scopeLine: ProfileLine | null;
+    scopeTree: ProfileLineTree | null;
     data: null | {
         profiles: Profile[];
     };
@@ -22,6 +24,10 @@ function isProfile(value: unknown): value is Profile {
     );
 }
 
+function findProfileLine(profile: Profile, lineType: string | null = null): ProfileLine | null {
+    return profile.lines.find(line => !lineType || line.type === lineType) ?? null;
+}
+
 function isProfileLine(line: unknown): line is ProfileLine {
     if (!line || typeof line !== 'object') {
         return false;
@@ -34,7 +40,26 @@ function isProfileLine(line: unknown): line is ProfileLine {
         return false;
     }
 
-    return profileLine === profile[profileLine.type];
+    return profileLine === findProfileLine(profile, profileLine.type);
+}
+
+function findProfileLineTree(line: ProfileLine, treeKind: string | null = null): ProfileLineTree | null {
+    return line.trees?.find(tree => !treeKind || tree.kind === treeKind) ?? null;
+}
+
+function isProfileLineTree(tree: unknown): tree is ProfileLineTree {
+    if (!tree || typeof tree !== 'object') {
+        return false;
+    }
+
+    const lineTree = tree as ProfileLineTree;
+    const line = lineTree.line;
+
+    if (!isProfileLine(line)) {
+        return false;
+    }
+
+    return lineTree === findProfileLineTree(line, lineTree.kind);
 }
 
 function getScopeProfile(context: MethodContext): Profile | null {
@@ -47,11 +72,22 @@ export function getProfileOrScopeProfile(profile: unknown, context: MethodContex
         : getScopeProfile(context);
 }
 
-export function getProfilePrimaryLine(context: MethodContext, profile: unknown = null): ProfileLine | null {
-    const { primaryLineType } = context;
+export function getProfilePrimaryLine(context: MethodContext, profile: unknown = null, line: string | null = null): ProfileLine | null {
     const targetProfile = getProfileOrScopeProfile(profile, context);
 
-    return targetProfile?.[primaryLineType] ?? null;
+    return targetProfile && findProfileLine(
+        targetProfile,
+        typeof line === 'string' ? line : context.primaryLineType
+    );
+}
+
+export function getProfileLineTree(context: MethodContext, line: unknown = null, tree: string | null = null): ProfileLineTree | null {
+    const targetLine = resolveScopeProfileLine(line, context);
+
+    return targetLine && findProfileLineTree(
+        targetLine,
+        typeof tree === 'string' ? tree : context.primaryTreeKind
+    );
 }
 
 export function resolveScopeProfileLine(
@@ -71,6 +107,25 @@ export function resolveScopeProfileLine(
     return resolvedLine;
 }
 
+export function resolveScopeProfileLineTree(
+    tree: unknown,
+    line: unknown,
+    context: MethodContext
+): ProfileLineTree | null {
+    let resolvedTree: ProfileLineTree | null = null;
+
+    if (!tree) {
+        resolvedTree = context.scopeTree || getProfileLineTree(context, line);
+    } else if (typeof tree === 'string') {
+        resolvedTree = resolveScopeProfileLine(line, context)?.trees
+            .find(p => p.kind === tree) ?? null;
+    } else if (isProfileLineTree(tree)) {
+        resolvedTree = tree;
+    }
+
+    return resolvedTree;
+}
+
 export const assertions: Record<string, Method> = {
     profile(profile: unknown) {
         return this.context.data?.profiles.includes(profile as Profile) || false;
@@ -84,6 +139,15 @@ export const assertions: Record<string, Method> = {
 };
 
 export const methods: Record<string, Method> = {
+    scopeProfile() {
+        return getScopeProfile(this.context);
+    },
+    scopeLine(_: unknown, line: string | null = null) {
+        return this.context.scopeLine || getProfilePrimaryLine(this.context, null, line);
+    },
+    scopeTree(_: unknown, tree: string | null = null) {
+        return this.context.scopeTree || getProfileLineTree(this.context, null, tree);
+    },
     primaryLine(profile: Profile) {
         return getProfilePrimaryLine(this.context, profile);
     },
@@ -95,11 +159,8 @@ export const methods: Record<string, Method> = {
             lineType ? line.type === lineType : line.type !== primaryLineType
         ) ?? null;
     },
-    scopeProfile() {
-        return getScopeProfile(this.context);
-    },
-    scopeLine() {
-        return this.context.scopeLine || getProfilePrimaryLine(this.context);
+    primaryTree(line: ProfileLine) {
+        return getProfileLineTree(this.context, line);
     },
     metricName(metric: Metric, line?: ProfileLine | ProfileLineType) {
         return resolveScopeProfileLine(line, this.context)?.metricName(metric);

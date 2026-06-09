@@ -71,9 +71,9 @@ export function remapTreeSamples(
     for (const tree of trees) {
         sampleToNode = sampleToNode.map(id => tree.sourceIdToNode[id]);
         sampledTrees.push(createSampledCallTree(
-            tree,
+            tree as CallTree<CpuProNode>,
             sampleToNode
-        ));
+        ) as SampledCpuProCallTree);
     }
 
     return sampledTrees;

@@ -50,7 +50,8 @@ const categoriesTimeline = {
     view: 'block',
     className: 'category-timelines',
     data: `
-        $scopeLine: scopeLine();
+        $scopeTree: scopeTree();
+        $scopeLine: $scopeTree.line;
         $profile: $scopeLine.profile;
         $binCount: 500;
         $totalValue: $scopeLine.axisTotal;
@@ -58,9 +59,9 @@ const categoriesTimeline = {
 
         {
             line: $scopeLine,
-            samples: $scopeLine.dict.categories.all.entries.[totalValue and entry.name != 'root'].({
+            samples: $scopeTree.categories.all.dict.entries.[totalValue and entry.name != 'root'].({
                 $category: entry;
-                $treeMetrics: $scopeLine.tree.categories.all;
+                $treeMetrics: $scopeTree.categories.all.nodes;
                 $subtree: $treeMetrics.subtreeSamples($category);
                 $totalValueBins: $subtree.mask.binCallsFromMask($binCount);
 
@@ -468,8 +469,8 @@ const flamecharts = {
     },
     content: {
         view: 'flamechart',
-        tree: '=$[#.dataset + "Tree"]',
-        timings: '=scopeLine().tree[#.dataset].filtered',
+        tree: '=scopeTree()[#.dataset].tree',
+        timings: '=scopeTree()[#.dataset].filtered.nodes',
         lockScrolling: true,
         postRender(el, config, data, context) {
             el.classList.toggle('lock-scrolling', !context.params.flamechartFullpage);

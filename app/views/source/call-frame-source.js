@@ -1,10 +1,12 @@
 import { regexpSourceView, unavailableSourceView } from './common.js';
 
 const sourceQuery = `{
-    $line: scopeLine();
-    $locations: $line | tree.locations and locations
-        ? #.locationsSource = "tree" ? dict.locations : locations
-        : dict.locations or locations;
+    $tree: scopeTree();
+    $line: $tree.line;
+    $locations: $tree | locations or callFrames;
+    $locationValues: #.nonFilteredTimings
+        ? $locations.all
+        : $locations.filtered;
     $script;
     $source: $script.source;
     $sourceSliceLineStart: $source.lastIndexOf('\\n', start) + 1;
@@ -18,10 +20,7 @@ const sourceQuery = `{
     $end;
     $unit: 0.valueAndUnit().unit;
     $callFrameCodes: #.currentProfile.codesByCallFrame[=> callFrame = @];
-    $locationValues: $line | #.nonFilteredTimings
-        ? $locations.all
-        : $locations.filtered;
-    $values: $locationValues or ($line | #.nonFilteredTimings ? dict.callFrames.all : dict.callFrames.filtered);
+    $values: $locationValues;// or ($tree | #.nonFilteredTimings ? callFrames.all.dict : callFrames.filtered.dict);
 
     $formatting: #.sourceFormatting = 'beautified' ? $sourceSlice.jsBeautifyRanges().(
         content
@@ -127,27 +126,27 @@ const sourceQuery = `{
 
     $sampleMarkContent: {
         view: 'update-on-line-metrics-changes',
-        metrics: $values,
+        metrics: $values.nodes,
         content: {
             view: 'text-numeric',
             data: 'value[prop] / 1000 | $ > 0 ? toFixed(1) : ""',
             className: => ?: 'empty-content'
         }
     };
-    $selfValueTooltipView: scopeLine() | type = 'memline' and valueLifespans and valueTypes
+    $selfValueTooltipView: $line | type = 'memline' and valueLifespans and valueTypes
         ? 'allocation-samples-matrix:values.allocationsMatrix(metrics, value.entry).sort(total.sum or 0 desc)';
     $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table)"' };
     $selfValueMisattributedTooltipView: {
         className: 'view-call-frame-source__tooltip',
         content: $misattributedMessage
     };
-    $nestedValueTooltipView: scopeLine() | type != 'memline'
+    $nestedValueTooltipView: $line | type != 'memline'
         ? {
             className: 'view-call-frame-source__tooltip',
             content: [$misattributedMessage, {
                 view: 'table',
                 data: \`
-                    $tree: scopeLine().tree | positions or callFrames | filtered;
+                    $tree: scopeTree() | locations or callFrames | filtered.nodes;
                     $tree
                         .select("nodes", value.entry).node.nodeIndex
                         .($tree.select("children", $))
@@ -169,7 +168,7 @@ const sourceQuery = `{
                 ]
             }]
         };
-    $sampleMarks: $values.entries
+    $sampleMarks: $values.dict.entries
         | $[].entry.callFrame
             ? .[entry | script = $script and (callFrame = @ or (scriptOffset >= $start and scriptOffset <= $end))]
             : $[=> entry = @]
@@ -180,13 +179,9 @@ const sourceQuery = `{
                 kind: 'self',
                 className: $noloc ? 'noloc',
                 content: $sampleMarkContent,
-                value: $values.entries[entryIndex],
-                values: $locations.sampleToLocation
-                    ? $locations.filtered
-                    : $line.tree.locations.filtered.tree,
-                metrics: $locations.sampleToLocation
-                    ? { ...$line.samplesMetricsFiltered, samples: $locations.sampleToLocation }
-                    : $line.samplesMetricsFiltered,
+                value: $values.dict.entries[entryIndex],
+                values: $values.nodes,
+                metrics: $line.samplesMetricsFiltered,
                 prop: 'selfValue',
                 postfix: $unit,
                 tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)
@@ -197,7 +192,7 @@ const sourceQuery = `{
                 kind: 'nested',
                 className: $noloc ? 'noloc',
                 content: $sampleMarkContent,
-                value: $values.entries[entryIndex],
+                value: $values.dict.entries[entryIndex],
                 prop: 'nestedValue',
                 postfix: $unit,
                 tooltip: $nestedValueTooltipView
@@ -211,7 +206,7 @@ const sourceQuery = `{
     //             offset: entry.scriptOffset - $sourceSliceStart,
     //             kind: 'self',
     //             content: $sampleMarkContent,
-    //             value: $values.entries[entryIndex],
+    //             value: $values.dict.entries[entryIndex],
     //             prop: 'selfValue',
     //             postfix: 'Kb'
     //         });
@@ -299,22 +294,6 @@ discovery.view.define('call-frame-source', {
                                 {
                                     value: 'beautified',
                                     text: 'Beautified'
-                                }
-                            ]
-                        },
-                        {
-                            view: 'toggle-group',
-                            name: 'locationsSource',
-                            whenData: 'scopeLine() | dict.locations and locations',
-                            value: '="getSessionSetting".callAction("call-frame-source__line-locations", "tree")',
-                            data: [
-                                {
-                                    value: 'tree',
-                                    text: 'Tree locations'
-                                },
-                                {
-                                    value: 'vector',
-                                    text: 'Vector locations'
                                 }
                             ]
                         }

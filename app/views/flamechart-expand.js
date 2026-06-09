@@ -2,13 +2,17 @@ const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 
-function getTreeMetrics(line, tree) {
-    for (const dimentionTrees of line.trees) {
+function getTreeDimension(line, tree) {
+    for (const dimensionTrees of line.trees) {
         for (const dimensionName of ['locations', 'callFrames', 'modules', 'packages', 'categories']) {
-            const dimension = dimentionTrees[dimensionName];
+            const dimension = dimensionTrees[dimensionName];
 
             if (dimension?.filtered.nodes.tree === tree) {
-                return dimension.filtered.nodes;
+                return {
+                    dimensions: dimensionTrees,
+                    dimensionName,
+                    dimension
+                };
             }
         }
     }
@@ -27,7 +31,12 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
     } = config;
     const line = resolveScopeProfileLine(config.line, context);
     const samplesMetrics = line.samplesMetricsFiltered;
-    const sourceTreeMetrics = getTreeMetrics(line, tree);
+    const {
+        dimensions,
+        dimension
+    } = getTreeDimension(line, tree);
+    const sourceTreeMetrics = dimension.filtered.nodes;
+
     if (!computedValues && sourceTreeMetrics === null) {
         throw new Error('Unable to resolve source tree metrics for flamechart expansion');
     }
@@ -54,10 +63,10 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
                         view: 'toggle-group',
                         name: 'dataset',
                         data: [
-                            { text: 'Categories', value: 'categoriesTree', active: tree === line.profile.categoriesTree },
-                            { text: 'Packages', value: 'packagesTree', active: tree === line.profile.packagesTree },
-                            { text: 'Modules', value: 'modulesTree', active: tree === line.profile.modulesTree },
-                            { text: 'Call frames', value: 'callFramesTree', active: tree === line.profile.callFramesTree }
+                            { text: 'Categories', value: 'categories', active: dimension === dimensions.categories },
+                            { text: 'Packages', value: 'packages', active: dimension === dimensions.packages },
+                            { text: 'Modules', value: 'modules', active: dimension === dimensions.modules },
+                            { text: 'Call frames', value: 'callFrames', active: dimension === dimensions.callFrames }
                         ]
                     }
                 ]

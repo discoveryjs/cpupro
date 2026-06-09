@@ -1,7 +1,7 @@
 export const categoriesFractionBars = {
     view: 'fractions-bar',
     data: `
-        $values: scopeLine().dict.categories.all.entries.[selfValue];
+        $values: scopeTree().categories.all.dict.entries.[selfValue];
         $total: $values.sum(=> selfValue);
 
         $values.({

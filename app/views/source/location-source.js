@@ -3,10 +3,12 @@ discovery.view.define('location-source', {
     className: '=syntax = "js" ? "cpupro-source" : "cpupro-source unavailable"',
     actionCopySource: false,
     data: `{
-        $line: scopeLine();
-        $locations: $line | tree.locations and locations
-            ? (#.locationsSource | $ = "tree" or is undefined) ? dict.locations : locations
-            : dict.locations or locations;
+        $tree: scopeTree();
+        $line: $tree.line;
+        $locations: $tree | locations or callFrames;
+        $locationValues: #.nonFilteredTimings
+            ? $locations.all
+            : $locations.filtered;
         $source: callFrame.script.source or '';
         $hasSource: $source.bool();
         $scriptOffset: scriptOffset | $hasSource and $ > 0 ? $ : 0;
@@ -19,38 +21,29 @@ discovery.view.define('location-source', {
         $sourceSliceEnd: $sourceSliceEndRaw - $scriptOffset | $ < $postlude ? $sourceSliceEndRaw : $scriptOffset + $postlude;
         $lineNum: $source.slice(0, $scriptOffset).match(/\\r\\n?|\\n/g).size();
 
-        $selfValueTooltipView: scopeLine() | type = 'memline' and valueLifespans and valueTypes
-            // ? 'allocation-samples-matrix:#.currentProfile.memline | tree.(locations or callFrames).filtered.nodes.allocationsMatrix(samplesTimingsFiltered, @.value.entry)';
+        $selfValueTooltipView: $line | type = 'memline' and valueLifespans and valueTypes
             ? 'allocation-samples-matrix:values.allocationsMatrix(metrics, value.entry).sort(total.sum or 0 desc)';
         $unit: 0.valueAndUnit().unit;
-        $locationValues: $line
-            | #.nonFilteredTimings
-                ? $locations.all
-                : $locations.filtered;
-        $values: $locationValues or ($line | #.nonFilteredTimings ? dict.locations.all : dict.locations.filtered);
+        $values: $locationValues;
         $sampleMarkContent: {
             view: 'update-on-line-metrics-changes',
-            metrics: $values,
+            metrics: $values.dict,
             content: {
                 view: 'text-numeric',
                 data: 'value[prop] / 1000 | $ > 0 ? toFixed(1) : ""',
                 className: => ?: 'empty-content'
             }
         };
-        $sampleMarks:
-            $values.getEntry(@)
-            .($pos: entry.scriptOffset | $hasSource and is number and $ != -1 ? $ - $sourceSliceStart : 0; [
+        $sampleMarks: $values.dict
+            | getEntry(@) or getEntry(@.callFrame)
+            | .($pos: entry.scriptOffset | $hasSource and is number and $ != -1 ? $ - $sourceSliceStart : 0; [
                 selfValue ? {
                     offset: $pos,
                     kind: 'self',
                     content: $sampleMarkContent,
                     value: $,
-                    values: $locations.sampleToLocation
-                        ? $locations.filtered
-                        : $line.tree.locations.filtered.nodes,
-                    metrics: $locations.sampleToLocation
-                        ? { ...$line.samplesMetricsFiltered, samples: $locations.sampleToLocation }
-                        : $line.samplesMetricsFiltered,
+                    values: $values.nodes,
+                    metrics: $line.samplesMetricsFiltered,
                     prop: 'selfValue',
                     postfix: $unit,
                     tooltip: $selfValueTooltipView
@@ -69,6 +62,10 @@ discovery.view.define('location-source', {
                 }
             ]).[];
 
+        __v: $values,
+        __x: $values.nodes.getEntry(@),
+        __e: @,
+        $tree,
         syntax: $hasSource ? 'js',
         lineNum: () => $ + $lineNum,
         source: $hasSource ? $source.slice($sourceSliceStart, $sourceSliceEnd) : '(source is unavailable)',

@@ -2,8 +2,8 @@ discovery.page.define('modules', [
     {
         view: 'context',
         data: `
-            scopeLine() | dict.modules.all.entries
-                .zip(=> entry, profile.scripts, => module)
+            scopeTree() | modules.all.dict.entries
+                .zip(=> entry, line.profile.scripts, => module)
                 .({
                     $entry: left.entry;
 
