@@ -1,4 +1,4 @@
-import { resolveScopeProfileLine } from '../jora/profile.js';
+import { resolveScopeProfileLine, resolveScopeProfileLineTree } from '../jora/profile.js';
 import { TrackTimeline } from './track-timeline/index.js';
 import Tooltip from './track-timeline/tooltip.js';
 import { utils } from '@discoveryjs/discovery';
@@ -10,8 +10,9 @@ const defaultTooltipContent = [
 
 discovery.view.define('track-timeline', function(el, config, data, context) {
     const scopeLine = resolveScopeProfileLine(config.line, context);
+    const scopeTree = resolveScopeProfileLineTree(null, scopeLine, context);
     const scopeLineStart = scopeLine.axisStart + scopeLine.axisStartNoSamples;
-    const samplesMetrics = scopeLine.samplesMetricsFiltered;
+    const samplesMetrics = scopeTree.samplesMetricsFiltered;
     const {
         tooltipContent = defaultTooltipContent,
         ruler = 'relative',

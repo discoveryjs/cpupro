@@ -29,6 +29,9 @@ export type LineTreeDimension<T extends CpuProNode> = {
 export type ProfileLineTree = {
     kind: string;
     line: ProfileLine;
+    samplesMetrics: SamplesMetrics;
+    samplesMetricsFiltered: SamplesMetricsFiltered;
+    recomputeMetrics: () => void;
     locations: LineTreeDimension<CpuProLocation> | null;
     callFrames: LineTreeDimension<CpuProCallFrame> | null;
     modules: LineTreeDimension<CpuProModule> | null;
@@ -68,14 +71,7 @@ export interface ProfileLine {
     axisEndNoSamples: number;
     axisTotal: number;
 
-    // Sample domain (always present)
-    samples: Uint32Array;                // line sample id per value
-
-    // Values (generic metric)
     values: Uint32Array;
-    samplesMetrics: SamplesMetrics;
-    samplesMetricsFiltered: SamplesMetricsFiltered;
-    recomputeMetrics: () => void;
 
     // Dictionary-based dimensions (aggregated by entity, no tree structure needed)
     dict: {
@@ -98,12 +94,6 @@ export interface ProfileLine {
     // Line-owned tree views. Several lines may reuse the same tree structure,
     // while keeping independent sample-to-node mappings and metrics.
     trees: ProfileLineTree[];
-
-    // Optional line-owned vector locations.
-    // Tree-derived locations remain available through dict.locations and tree.locations.
-    locations: DictDimension<CpuProLocation> & {
-        sampleToLocation: Uint32Array;
-    } | null;
 
     // Mappings to other lines (key = target line kind)
     mappings: Record<ProfileLineType, LineMapping>;

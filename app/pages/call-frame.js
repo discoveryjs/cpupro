@@ -228,7 +228,7 @@ const pageContent = [
         view: 'expand',
         when: 'scopeLine("memline") | valueLifespans and valueTypes',
         className: 'trigger-outside',
-        data: '{ callFrame: @, matrix: scopeTree() | callFrames.all.nodes.allocationsMatrix(line.samplesMetrics, @) }',
+        data: '{ callFrame: @, matrix: scopeTree() | callFrames.all.nodes.allocationsMatrix(samplesMetrics, @) }',
         ...sessionExpandState('callframe-allocations-matrix', true, '$'),
         header: 'text:"Allocation types"',
         content: {
@@ -238,7 +238,7 @@ const pageContent = [
                 view: 'allocation-samples-matrix',
                 data: `
                     $filtered: scopeTree() | callFrames.filtered.nodes.allocationsMatrix(
-                        line.samplesMetricsFiltered,
+                        samplesMetricsFiltered,
                         @.callFrame
                     );
 
@@ -346,7 +346,7 @@ const pageContent = [
 discovery.page.define('call-frame', {
     view: 'switch',
     context: '{ ...#, scopeProfile: #.primaryProfile, scopeLine: #.scopeProfile.primaryLine() }',
-    data: '#.scopeProfile.callFrames[=>id = +#.id]',
+    data: 'scopeTree().callFrames.all.dict.dictionary[=>id = +#.id]',
     content: [
         { when: 'no $', content: {
             view: 'alert-warning',
@@ -358,7 +358,7 @@ discovery.page.define('call-frame', {
                 const scopeTree = resolveScopeProfileLineTree(null, null, context);
                 const scopeLine = resolveScopeProfileLine(null, context);
                 const scopeProfile = scopeLine.profile;
-                const samplesMetrics = scopeLine.samplesMetricsFiltered;
+                const samplesMetrics = scopeTree.samplesMetricsFiltered;
                 const scopeTreeMetrics = scopeTree.callFrames.filtered.nodes;
                 const findRelatedTree = line => line.trees.find(tree =>
                     tree.callFrames.tree === scopeTreeMetrics.tree

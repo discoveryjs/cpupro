@@ -140,39 +140,40 @@ const sourceQuery = `{
         className: 'view-call-frame-source__tooltip',
         content: $misattributedMessage
     };
-    $nestedValueTooltipView: $line | type != 'memline'
-        ? {
-            className: 'view-call-frame-source__tooltip',
-            content: [$misattributedMessage, {
-                view: 'table',
-                data: \`
-                    $tree: scopeTree() | locations or callFrames | filtered.nodes;
-                    $tree
-                        .select("nodes", value.entry).node.nodeIndex
-                        .($tree.select("children", $))
-                        .group(=>node.value | callFrame or $)
-                        .({
-                            callFrame: key,
-                            selfValue: value.sum(=>selfValue),
-                            nestedValue: value.sum(=>nestedValue),
-                            totalValue: value.sum(=>totalValue)
-                        })
-                        .sort(totalValue desc)
-                \`,
-                cols: [
-                    { header: 'Self time', content: 'metric:selfValue' },
-                    { header: 'Nested time', content: 'metric:nestedValue' },
-                    { header: 'Total time', content: 'metric:totalValue' },
-                    { header: 'Kind', content: 'call-frame-kind-badge:callFrame.kind' },
-                    { header: 'Call frame', content: 'call-frame-badge' }
-                ]
-            }]
-        };
+    $nestedValueTooltipView: {
+        className: 'view-call-frame-source__tooltip',
+        content: [$misattributedMessage, {
+            view: 'table',
+            data: \`
+                $tree: scopeTree() | locations or callFrames | filtered.nodes;
+                $tree
+                    .select("nodes", value.entry).node.nodeIndex
+                    .($tree.select("children", $))
+                    .group(=>node.value | callFrame or $)
+                    .({
+                        callFrame: key,
+                        selfValue: value.sum(=>selfValue),
+                        nestedValue: value.sum(=>nestedValue),
+                        totalValue: value.sum(=>totalValue)
+                    })
+                    .sort(totalValue desc)
+            \`,
+            cols: [
+                { header: "selfValue".metricName(), content: 'metric:selfValue' },
+                { header: "nestedValue".metricName(), content: 'metric:nestedValue' },
+                { header: "totalValue".metricName(), content: 'metric:totalValue' },
+                { header: 'Kind', content: 'call-frame-kind-badge:callFrame.kind' },
+                { header: 'Call frame', content: 'call-frame-badge' }
+            ]
+        }]
+    };
     $sampleMarks: $values.dict.entries
         | $[].entry.callFrame
             ? .[entry | script = $script and (callFrame = @ or (scriptOffset >= $start and scriptOffset <= $end))]
             : $[=> entry = @]
-        |? .($noloc: entry.scriptOffset = -1; $offset: entry.scriptOffset | (is number and $ != -1 ?: $start) - $sourceSliceStart; [
+        |? .(
+            $noloc: entry.scriptOffset = -1;
+            $offset: entry.scriptOffset | (is number and $ != -1 ?: $start) - $sourceSliceStart; [
             selfValue ? {
                 $offset,
                 $noloc,
@@ -181,7 +182,7 @@ const sourceQuery = `{
                 content: $sampleMarkContent,
                 value: $values.dict.entries[entryIndex],
                 values: $values.nodes,
-                metrics: $line.samplesMetricsFiltered,
+                metrics: $tree.samplesMetricsFiltered,
                 prop: 'selfValue',
                 postfix: $unit,
                 tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)

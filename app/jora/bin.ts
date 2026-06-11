@@ -1,10 +1,14 @@
 import { typeColor, vmFunctionStateTiers } from '../prepare/const.js';
-import { ProfileLine, ProfileLineType } from '../prepare/lines/types.js';
+import { ProfileLine, ProfileLineTree, ProfileLineType } from '../prepare/lines/types.js';
 import { sum } from '../prepare/misc/utils.js';
 import { Profile } from '../prepare/profile.mjs';
 import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepare/types.js';
 import { makeSamplesMask } from './call-tree.js';
-import { getProfileOrScopeProfile, resolveScopeProfileLine } from './profile.js';
+import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineTree } from './profile.js';
+
+function getCallStackSamplesMetrics(line: ProfileLine) {
+    return line.trees.find(tree => tree.kind === 'call-stack')!.samplesMetrics;
+}
 
 function makeSampleBins(
     n: number,
@@ -66,8 +70,10 @@ type BinOptions = {
 }
 
 export const methods = {
-    binCallsFromMask(mask: Uint8Array, n = 500, line?: ProfileLine | ProfileLineType) {
-        const { samples, values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+    binCallsFromMask(mask: Uint8Array, n = 500, lineTree?: ProfileLineTree | string) {
+        const resolvedLineTree = resolveScopeProfileLineTree(lineTree, null, this.context) as ProfileLineTree;
+        const { axisTotal } = resolvedLineTree.line;
+        const { samples, values } = resolvedLineTree.samplesMetricsFiltered;
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
         return Array.from(bins);
@@ -81,15 +87,19 @@ export const methods = {
             total,
             line
         } = options || {};
-        const { samples, values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const resolvedLineTree = resolveScopeProfileLineTree(null, line, this.context) as ProfileLineTree;
+        const { axisTotal } = resolvedLineTree.line;
+        const { samples, values } = resolvedLineTree.samplesMetricsFiltered;
         const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, total ?? axisTotal, skip);
 
         return bins;
     },
 
-    binCalls(treeMetrics, test, n = 500, line?: ProfileLine | ProfileLineType) {
-        const { samples, values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+    binCalls(treeMetrics, test, n = 500, lineTree?: ProfileLineTree | string) {
+        const resolvedLineTree = resolveScopeProfileLineTree(lineTree, null, this.context) as ProfileLineTree;
+        const { axisTotal } = resolvedLineTree.line;
+        const { samples, values } = resolvedLineTree.samplesMetricsFiltered;
         const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
@@ -219,7 +229,8 @@ export const methods = {
         const mappingToLine = valuesLine !== axisLine
             ? mappings[axisLine.type]._mapping
             : null;
-        const { samplesMetrics: axisMetrics, axisTotal } = axisLine;
+        const axisMetrics = getCallStackSamplesMetrics(axisLine);
+        const { axisTotal } = axisLine;
         const binSumVector = new Uint32Array(n);
         const vectors = attribute
             ? Array.from({ length: attributeDict?.length || 0 }, () => new Uint32Array(n))

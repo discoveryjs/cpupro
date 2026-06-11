@@ -2,8 +2,8 @@ import type { CpuProCallFrame, CpuProLocation, CpuProScript, IProfileScriptsMap 
 import type { Dictionary } from '../dictionary.js';
 import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import { CallTree } from '../computations/call-tree.js';
-import { DictDimension, DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered } from '../computations/metrics.js';
 import { scriptFromScriptId } from './scripts.js';
+import { GeneratedNodes } from './nodes.js';
 
 function positionRef(callFrameIndex: number, scriptOffset: number) {
     return (scriptOffset + 1) * 0x0100_0000 + callFrameIndex;
@@ -176,27 +176,6 @@ export function processLocations(
 type RawScriptIds = ArrayLike<number | string>;
 type NumericVector = ArrayLike<number>;
 
-function recomputeLocationDictionaryMetrics(
-    locationIds: Uint32Array,
-    values: Uint32Array,
-    samplesCount: Uint32Array,
-    selfValues: Uint32Array,
-    totalValues: Uint32Array
-) {
-    samplesCount.fill(0);
-    selfValues.fill(0);
-    totalValues.fill(0);
-
-    for (let i = 0; i < locationIds.length; i++) {
-        const locationIndex = locationIds[i];
-        const value = values[i];
-
-        samplesCount[locationIndex]++;
-        selfValues[locationIndex] += value;
-        totalValues[locationIndex] += value;
-    }
-}
-
 function callFramesMapFromDict(dict: Record<number, string>): (CpuProCallFrame | null)[] {
     const maxId = Object.keys(dict).reduce((max, key) => Math.max(max, Number(key)), 0);
     return Array.from({ length: maxId + 1 }, () => null);
@@ -244,11 +223,10 @@ export function createVectorLocations(
     scriptOffsets: NumericVector | null,
     contextInfo: NumericVector | null,
     builtinsNames: Record<number, string> | null,
-    vmStateNames: Record<number, string> | null,
-    samplesMetrics: SamplesMetrics,
-    samplesMetricsFiltered: SamplesMetricsFiltered
-): DictDimension<CpuProLocation> & {
-    sampleToLocation: Uint32Array;
+    vmStateNames: Record<number, string> | null
+): {
+    generatedNodes: GeneratedNodes;
+    sampleToNode: Uint32Array;
 } | null {
     if (scriptIds === null || scriptOffsets === null || scriptIds.length !== scriptOffsets.length) {
         return null;
@@ -260,81 +238,115 @@ export function createVectorLocations(
         vmStateNames ?? emptyDict
     );
 
-    const sampleToLocation = new Uint32Array(scriptOffsets.length);
-    let prevCallFrame: CpuProCallFrame | null = null;
+    const generatedNodes = new GeneratedNodes(dictionary, 0);
+    const sampleToNode = new Uint32Array(scriptOffsets.length);
+    const locationIndexToNodeIndex = new Array(dictionary.locations.length).fill(-1);
+    // const sampleToLocation = new Uint32Array(scriptOffsets.length);
+    // let prevCallFrame: CpuProCallFrame | null = null;
     let prevScriptId = scriptOffsets.length > 0 ? scriptIds[0] : 0;
     let prevScript: CpuProScript | null = scriptFromScriptId(prevScriptId, null, scriptsMap);
     let prevScriptOffset = scriptOffsets.length > 0 ? scriptOffsets[0] : 0;
-    let prevContextInfo = 0;
+    let prevContextInfoValue = contextInfo !== null && contextInfo.length > 0 ? contextInfo[0] : 0;
+    // let prevContextInfo = 0;
     let prevLocationIndex = -1;
+    let nodeIndex = 0;
+
+    generatedNodes.push(0, 0, -1); // root node (unknown call frame, no script, no offset)
 
     for (let i = 0; i < scriptOffsets.length; i++) {
         const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
-        const scriptId = contextInfoValue === 0 ? scriptIds[i] : 0;
-        const scriptOffset = scriptId !== 0 ? scriptOffsets[i] : -1;
+        const scriptId = scriptIds[i];
+        const scriptOffset = scriptOffsets[i];
         let locationIndex = prevLocationIndex;
-
-        if (contextInfoValue !== prevContextInfo) {
-            prevCallFrame = null;
-            prevContextInfo = contextInfoValue;
-            locationIndex = -1; // context info changed, need to recompute location index
-
-            if (contextInfoValue !== 0) {
-                // debugger;
-                prevScriptId = 0;
-                prevScript = null;
-                prevScriptOffset = -1;
-                prevCallFrame = contextInfoValue <= 0x0f
-                    ? vmStateCallFrames[contextInfoValue]
-                    : builtinsCallFrames[contextInfoValue >> 4];
-            }
-        }
 
         if (scriptId !== prevScriptId) {
             prevScriptId = scriptId;
             prevScript = scriptFromScriptId(scriptId, null, scriptsMap);
             prevScriptOffset = scriptOffset;
+            prevContextInfoValue = contextInfoValue;
             locationIndex = -1;
         } else if (scriptOffset !== prevScriptOffset) {
             prevScriptOffset = scriptOffset;
+            prevContextInfoValue = contextInfoValue;
+            locationIndex = -1;
+        } else if (contextInfoValue !== prevContextInfoValue) {
+            prevContextInfoValue = contextInfoValue;
             locationIndex = -1;
         }
 
         if (locationIndex === -1) {
-            locationIndex = dictionary.resolveLocationIndex(
-                prevCallFrame,
-                prevScript,
-                scriptOffset
-            );
+            locationIndex = scriptId !== 0
+                ? dictionary.resolveLocationIndex(
+                    null,
+                    prevScript,
+                    scriptOffset
+                )
+                : contextInfoValue !== 0
+                    ? dictionary.resolveLocationIndex(
+                        contextInfoValue <= 0x0f
+                            ? vmStateCallFrames[contextInfoValue]
+                            : builtinsCallFrames[contextInfoValue >> 4]
+                    )
+                    : 0; // unknown location
+
+            if (locationIndex >= locationIndexToNodeIndex.length) {
+                locationIndexToNodeIndex.push(-1);
+                nodeIndex = -1;
+            } else {
+                nodeIndex = locationIndexToNodeIndex[locationIndex];
+            }
+
+            if (nodeIndex === -1) {
+                nodeIndex = generatedNodes.push(
+                    dictionary.locations[locationIndex].callFrame.id - 1,
+                    0,
+                    locationIndex
+                );
+                locationIndexToNodeIndex[locationIndex] = nodeIndex;
+            }
         }
 
-        sampleToLocation[i] = locationIndex;
+        sampleToNode[i] = nodeIndex;
+        // sampleToLocation[i] = locationIndex;
         prevLocationIndex = locationIndex;
     }
 
-    const locationDictionary = dictionary.locations.slice();
-    const samplesCountAll = new Uint32Array(locationDictionary.length);
-    const selfValuesAll = new Uint32Array(locationDictionary.length);
-    const totalValuesAll = new Uint32Array(locationDictionary.length);
-    const samplesCountFiltered = new Uint32Array(locationDictionary.length);
-    const selfValuesFiltered = new Uint32Array(locationDictionary.length);
-    const totalValuesFiltered = new Uint32Array(locationDictionary.length);
+    // second pass to attach context info to js frames
+    if (contextInfo !== null) {
+        const nodesCount = generatedNodes.count;
+        const contextNodesMap = new Map<number, number>();
 
-    recomputeLocationDictionaryMetrics(sampleToLocation, samplesMetrics.values, samplesCountAll, selfValuesAll, totalValuesAll);
-    recomputeLocationDictionaryMetrics(sampleToLocation, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
+        for (let i = 0; i < contextInfo.length; i++) {
+            const contextInfoValue = contextInfo[i];
 
-    const all = new DictionaryMetrics(locationDictionary, samplesCountAll, selfValuesAll, totalValuesAll);
-    const filtered = new DictionaryMetrics(locationDictionary, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
+            if (contextInfoValue !== 0 && scriptIds[i] !== 0) {
+                const ref = nodesCount * contextInfoValue + sampleToNode[i];
+                const callFrame = contextInfoValue <= 0x0f
+                    ? vmStateCallFrames[contextInfoValue]
+                    : builtinsCallFrames[contextInfoValue >> 4];
+                let contextNodeIndex = contextNodesMap.get(ref);
 
-    samplesMetricsFiltered.subscribe(() => {
-        recomputeLocationDictionaryMetrics(sampleToLocation, samplesMetricsFiltered.values, samplesCountFiltered, selfValuesFiltered, totalValuesFiltered);
-        filtered.sync();
-        filtered.notify();
-    });
+                if (contextNodeIndex === undefined) {
+                    contextNodesMap.set(ref, contextNodeIndex = generatedNodes.push(
+                        callFrame!.id - 1,
+                        sampleToNode[i],
+                        dictionary.resolveLocationIndex(
+                            callFrame
+                        )
+                    ));
+                }
+
+                sampleToNode[i] = contextNodeIndex;
+                // not needed
+                // sampleToLocation[i] = dictionary.resolveLocationIndex(
+                //     callFrame
+                // );
+            }
+        }
+    }
 
     return {
-        sampleToLocation,
-        all,
-        filtered
+        generatedNodes,
+        sampleToNode
     };
 }

@@ -180,21 +180,21 @@ export async function createTimeline(
         axisEndNoSamples: axis.endNoSamples,
         axisTotal: axis.total,
 
-        values: samplesMetrics.values,
-        samples: samplesMetrics.samples,
-        samplesMetrics,
-        samplesMetricsFiltered,
-        recomputeMetrics: recomputeMetrics,
+        values: timeDeltas,
 
         dict,
         tree,
         trees: lineTrees,
-        locations: null,
 
         mappings: Object.create(null)
     };
 
-    lineTrees.push(createLineTree('call-stack', line, { dict, tree }));
+    lineTrees.push(createLineTree(
+        'call-stack',
+        line,
+        { dict, tree },
+        { samplesMetrics, samplesMetricsFiltered, recomputeMetrics }
+    ));
 
     return line;
 }

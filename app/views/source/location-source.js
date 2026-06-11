@@ -11,7 +11,9 @@ discovery.view.define('location-source', {
             : $locations.filtered;
         $source: callFrame.script.source or '';
         $hasSource: $source.bool();
-        $scriptOffset: scriptOffset | $hasSource and $ > 0 ? $ : 0;
+        $start;
+        $normStart: scriptOffset != -1 ? scriptOffset : callFrame.start;
+        $scriptOffset: $normStart | $hasSource and $ > 0 ? $ : 0;
         $sourceLineStart: $source.lastIndexOf('\\n', $scriptOffset) | $ != $scriptOffset ?: $source.lastIndexOf('\\n', $scriptOffset - 1) | $ + 1;
         $sourceSliceStartRaw: $sourceLineStart + $source.slice($sourceLineStart).match(/^\\s*/).matched[].size();
         $sourceSliceEndRaw: $source.indexOf('\\n', $scriptOffset) | $ != -1 ?: $source.size();
@@ -23,6 +25,38 @@ discovery.view.define('location-source', {
 
         $selfValueTooltipView: $line | type = 'memline' and valueLifespans and valueTypes
             ? 'allocation-samples-matrix:values.allocationsMatrix(metrics, value.entry).sort(total.sum or 0 desc)';
+        $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table or call site location)"' };
+        $selfValueMisattributedTooltipView: {
+            className: 'view-call-frame-source__tooltip',
+            content: $misattributedMessage
+        };
+        $nestedValueTooltipView: {
+            className: 'view-call-frame-source__tooltip',
+            content: [$misattributedMessage, {
+                view: 'table',
+                data: \`
+                    $tree: scopeTree() | locations or callFrames | filtered.nodes;
+                    $tree
+                        .select("nodes", value.entry).node.nodeIndex
+                        .($tree.select("children", $))
+                        .group(=>node.value | callFrame or $)
+                        .({
+                            callFrame: key,
+                            selfValue: value.sum(=>selfValue),
+                            nestedValue: value.sum(=>nestedValue),
+                            totalValue: value.sum(=>totalValue)
+                        })
+                        .sort(totalValue desc)
+                \`,
+                cols: [
+                    { header: "selfValue".metricName(), content: 'metric:selfValue' },
+                    { header: "nestedValue".metricName(), content: 'metric:nestedValue' },
+                    { header: "totalValue".metricName(), content: 'metric:totalValue' },
+                    { header: 'Kind', content: 'call-frame-kind-badge:callFrame.kind' },
+                    { header: 'Call frame', content: 'call-frame-badge' }
+                ]
+            }]
+        };
         $unit: 0.valueAndUnit().unit;
         $values: $locationValues;
         $sampleMarkContent: {
@@ -36,28 +70,33 @@ discovery.view.define('location-source', {
         };
         $sampleMarks: $values.dict
             | getEntry(@) or getEntry(@.callFrame)
-            | .($pos: entry.scriptOffset | $hasSource and is number and $ != -1 ? $ - $sourceSliceStart : 0; [
-                selfValue ? {
-                    offset: $pos,
+            | .(
+               $noloc: @.scriptOffset = -1;
+               $offset: entry.scriptOffset | ($hasSource and is number ? ($ != -1 ?: callFrame.start | is number and $ != -1 ?: $scriptOffset) - $sourceSliceStart : 0); [
+               selfValue ? {
+                    $offset,
                     kind: 'self',
+                    className: $noloc ? 'noloc',
                     content: $sampleMarkContent,
                     value: $,
                     values: $values.nodes,
-                    metrics: $line.samplesMetricsFiltered,
+                    metrics: $tree.samplesMetricsFiltered,
                     prop: 'selfValue',
                     postfix: $unit,
-                    tooltip: $selfValueTooltipView
+                    tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)
                 },
                 nestedValue ? {
-                    offset: $pos,
+                    $offset,
                     kind: 'nested',
+                    className: $noloc ? 'noloc',
                     content: $sampleMarkContent,
                     value: $,
                     prop: 'nestedValue',
-                    postfix: $unit
+                    postfix: $unit,
+                    tooltip: $nestedValueTooltipView
                 },
                 no selfValue and no nestedValue ? {
-                    offset: $pos,
+                    $offset,
                     kind: 'dot'
                 }
             ]).[];

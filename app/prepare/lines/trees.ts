@@ -1,4 +1,4 @@
-import type { DictDimension, TreeDimension } from '../computations/metrics.js';
+import type { DictDimension, SamplesMetrics, SamplesMetricsFiltered, TreeDimension } from '../computations/metrics.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
 import type { LineTreeDimension, ProfileLine, ProfileLineTree } from './types.js';
 
@@ -43,11 +43,19 @@ export function createLineTree(
             packages: TreeDimension<CpuProPackage> | null;
             categories: TreeDimension<CpuProCategory> | null;
         };
+    },
+    metrics: {
+        samplesMetrics: SamplesMetrics;
+        samplesMetricsFiltered: SamplesMetricsFiltered;
+        recomputeMetrics: () => void;
     }
 ): ProfileLineTree {
     return {
         kind,
         line,
+        samplesMetrics: metrics.samplesMetrics,
+        samplesMetricsFiltered: metrics.samplesMetricsFiltered,
+        recomputeMetrics: metrics.recomputeMetrics,
         locations: createLineTreeDimension(dimensions.dict.locations, dimensions.tree.locations),
         callFrames: createLineTreeDimension(dimensions.dict.callFrames, dimensions.tree.callFrames),
         modules: createLineTreeDimension(dimensions.dict.modules, dimensions.tree.modules),

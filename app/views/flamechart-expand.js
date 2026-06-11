@@ -30,11 +30,11 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
         value
     } = config;
     const line = resolveScopeProfileLine(config.line, context);
-    const samplesMetrics = line.samplesMetricsFiltered;
     const {
         dimensions,
         dimension
     } = getTreeDimension(line, tree);
+    const samplesMetrics = dimensions.samplesMetricsFiltered;
     const sourceTreeMetrics = dimension.filtered.nodes;
 
     if (!computedValues && sourceTreeMetrics === null) {

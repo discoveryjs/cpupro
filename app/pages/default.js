@@ -1,5 +1,4 @@
 /* eslint-env node */
-const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { supportedFormats } = require('../prepare/index.js');
 const { sessionExpandState } = require('./common.js');
 const { categoriesFractionBars } = require('./default-page/categories-fraction-bar.js');
@@ -59,11 +58,12 @@ const categoriesTimeline = {
 
         {
             line: $scopeLine,
+            tree: $scopeTree,
             samples: $scopeTree.categories.all.dict.entries.[totalValue and entry.name != 'root'].({
                 $category: entry;
                 $treeMetrics: $scopeTree.categories.all.nodes;
                 $subtree: $treeMetrics.subtreeSamples($category);
-                $totalValueBins: $subtree.mask.binCallsFromMask($binCount);
+                $totalValueBins: $subtree.mask.binCallsFromMask($binCount, $scopeTree);
 
                 $category,
                 timings: $,
@@ -137,14 +137,13 @@ const categoriesTimeline = {
             view: 'time-ruler',
             duration: '=samples[].totalValue',
             segments: '=samples[].binCount',
-            selectionStart: '=line.samplesMetricsFiltered.rangeStart',
-            selectionEnd: '=line.samplesMetricsFiltered.rangeEnd',
-            rangeManager: '=line.samplesMetricsFiltered',
-            onChange(state, name, el, data, context) {
+            selectionStart: '=tree.samplesMetricsFiltered.rangeStart',
+            selectionEnd: '=tree.samplesMetricsFiltered.rangeEnd',
+            rangeManager: '=tree.samplesMetricsFiltered',
+            onChange(state, name, el, { tree }) {
                 // console.log('change', state);
                 // const t = Date.now();
-                const scopeLine = resolveScopeProfileLine(null, context);
-                const samplesMetrics = scopeLine.samplesMetricsFiltered;
+                const samplesMetrics = tree.samplesMetricsFiltered;
 
                 if (state.timeStart !== null) {
                     samplesMetrics.setRange(state.timeStart, state.timeEnd);

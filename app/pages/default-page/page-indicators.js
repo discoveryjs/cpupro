@@ -28,7 +28,7 @@ export const pageIndicators = {
                         'Each sample represents the CPU\'s state, including the call stack, at a specific time interval, revealing which functions are executing at each point.',
                         'For efficiency, CPUpro merges sequentially identical samples, reducing the workload of processing samples.',
                         '- Captured samples: `{{scopeLine().sourceInfo.samples}}`',
-                        '- Deduplicated samples: `{{scopeLine().samples.size()}}`'
+                        '- Deduplicated samples: `{{scopeTree().samplesMetrics.samples.size()}}`'
                     ),
                     value: '=scopeLine().sourceInfo.samples'
                 },
@@ -60,10 +60,10 @@ export const pageIndicators = {
             className: 'filters',
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeLine().samplesMetricsFiltered',
+                metrics: '=scopeTree().samplesMetricsFiltered',
                 content: {
                     view: 'context',
-                    when: 'scopeLine().samplesMetricsFiltered.rangeStart != null',
+                    when: 'scopeTree().samplesMetricsFiltered.rangeStart != null',
                     content: [
                         {
                             view: 'block',
@@ -72,12 +72,12 @@ export const pageIndicators = {
                         {
                             view: 'page-indicator',
                             title: 'Samples',
-                            value: '=scopeLine().samplesMetricsFiltered.rangeSamples'
+                            value: '=scopeTree().samplesMetricsFiltered.rangeSamples'
                         },
                         {
                             view: 'page-indicator',
                             title: 'Range',
-                            value: '=`${scopeLine().samplesMetricsFiltered.rangeStart.formatMicrosecondsTime()} – ${scopeLine().samplesMetricsFiltered.rangeEnd.formatMicrosecondsTime()}`'
+                            value: '=`${scopeTree().samplesMetricsFiltered.rangeStart.formatMicrosecondsTime()} – ${scopeTree().samplesMetricsFiltered.rangeEnd.formatMicrosecondsTime()}`'
                         }
                     ]
                 }

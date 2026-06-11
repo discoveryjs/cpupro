@@ -1,7 +1,7 @@
 import type { CreateProfileApi, Profile } from '../profile.mjs';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineTree, ProfileMemline } from './types.js';
-import { computeTreeMetrics, SampledCpuProCallTree } from '../preprocessing/samples.js';
+import { computeTreeMetrics, remapTreeSamples, SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { AllocationLifespan, typeColor } from '../const.js';
@@ -9,6 +9,8 @@ import { sum } from '../misc/utils.js';
 import { Dictionary } from '../dictionary.js';
 import { createLineTree } from './trees.js';
 import { SampledTree } from '../computations/metrics.js';
+import type { GeneratedNodes } from '../preprocessing/nodes.js';
+import { buildTrees, createTreeSourceFromParent } from '../computations/build-trees.js';
 
 const metricName: Record<Metric, string> = {
     axis: 'Memory allocated',
@@ -32,6 +34,52 @@ const metricDefinitions: Record<Metric, string> = {
     nestedValue: 'The memory allocated by functions that are called by a given function, excluding the memory taken during the original function\'s own code execution.',
     totalValue: 'The complete memory allocated by a function, including both \'self memory\' and \'nested memory\'.'
 };
+
+function createAllocationLocationTreeSamples(
+    dictionary: Dictionary,
+    generatedNodes: GeneratedNodes,
+    sampleToNode: Uint32Array
+) {
+    const callFrameByNodeIndex = Uint32Array.from(generatedNodes.callFrames);
+    const nodeIndexById = Int32Array.from({ length: generatedNodes.count }, (_, index) => index);
+    const nodeParent = Uint32Array.from(generatedNodes.nodeParentId);
+    const locationNodes = new Uint32Array(generatedNodes.parentScriptOffsets);
+
+    const locationsTreeSource = createTreeSourceFromParent(
+        nodeParent,
+        nodeIndexById,
+        locationNodes,
+        dictionary.locations
+    );
+    const {
+        sourceIdToNode: treeSourceIdToNode,
+        locationsTree,
+        callFramesTree,
+        modulesTree,
+        packagesTree,
+        categoriesTree
+    } = buildTrees(
+        dictionary,
+        nodeParent,
+        nodeIndexById,
+        callFrameByNodeIndex,
+        locationsTreeSource
+    );
+
+    const sampledTreeList = remapTreeSamples(
+        sampleToNode,
+        treeSourceIdToNode,
+        [
+            ...(locationsTree ? [locationsTree] : []),
+            callFramesTree,
+            modulesTree,
+            packagesTree,
+            categoriesTree
+        ]
+    );
+
+    return { sampledTreeList };
+}
 
 /**
  * Create memory allocation line from combined profile allocation data.
@@ -59,6 +107,28 @@ export async function createMemline(
         _cpuproAllocationTypeNames = null
     } = data;
 
+    const vmstate = new Uint32Array(16);
+    const builtins = new Map();
+    let internals = 0;
+    for (let i = 0; i < _cpuproAllocationContextInfo!.length; i++) {
+        vmstate[_cpuproAllocationContextInfo![i] & 0x0f] += _cpuproAllocationSizes![i];
+        if (_cpuproAllocationContextInfo![i] > 0x0f) {
+            internals += _cpuproAllocationSizes![i];
+            const id = _cpuproAllocationContextInfo![i] >> 4;
+            builtins.set(id, (builtins.get(id) || 0) + _cpuproAllocationSizes![i]);
+        }
+    }
+    console.log('Internals', internals);
+    for (let i = 0; i < vmstate.length; i++) {
+        if (vmstate[i] > 0) {
+            console.log(_cpuproAllocationVmStateNames![i], vmstate[i]);
+        }
+    }
+    console.log('Builtins:');
+    for (const [id, size] of [...builtins.entries()].sort((a, b) => b[1] - a[1])) {
+        console.log(`  ${_cpuproAllocationBuiltinNames![id]}: ${size}`);
+    }
+
     // Check if allocation data is present
     if (!_cpuproAllocationMapping || !_cpuproAllocationIds || !_cpuproAllocationSizes) {
         return null;
@@ -68,7 +138,7 @@ export async function createMemline(
     // _cpuproAllocationMapping[cpuSampleIdx] = last allocation ID when CPU sample taken
     // We need reverse: for each allocation, which CPU sample was it captured in?
     const allocationCount = _cpuproAllocationIds.length;
-    const allocationSamples = new Uint32Array(allocationCount);
+    const allocationCpuSamples = new Uint32Array(allocationCount);
     const allocationSizes = new Uint32Array(allocationCount);
     let samplesInterval = _cpuproAllocationSizes[0];
 
@@ -92,24 +162,23 @@ export async function createMemline(
 
             // All allocations up to targetAllocId belong to this CPU sample
             while (allocIdx < allocationCount && _cpuproAllocationIds[allocIdx] <= targetAllocId) {
-                allocationSamples[allocIdx] = cpuSample;
+                allocationCpuSamples[allocIdx] = cpuSample;
                 allocationSizes[allocIdx] = _cpuproAllocationSizes[allocIdx] || 0;
                 allocIdx++;
             }
         }
     });
 
-    // Allocations don't have precise execution locations (script offsets)
-    // The location tree will be null, metrics are aggregated by call frames only
-    const [
-        sampledLocationsTree,
-        sampledCallFramesTree,
-        sampledModulesTree,
-        sampledPackagesTree,
-        sampledCategoriesTree
-    ] = sampledTreeList;
+    let memlineSampledTreeOffset = 0;
+    const memlineSampledLocationsTree = sampledTreeList.length > 4
+        ? sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProLocation>
+        : null;
+    const memlineSampledCallFramesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProCallFrame>;
+    const memlineSampledModulesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProModule>;
+    const memlineSampledPackagesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProPackage>;
+    const memlineSampledCategoriesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProCategory>;
 
-    // Now use computeTreeMetrics with CPU profile's trees to get full dimensions
+    // Now use computeTreeMetrics with memline's compact sample domain to get full dimensions
     const {
         recomputeMetrics,
         samplesMetrics,
@@ -118,13 +187,13 @@ export async function createMemline(
         tree
     } = await work('compute memline metrics', () =>
         computeTreeMetrics(
-            allocationSamples,
+            allocationCpuSamples,
             allocationSizes,
-            sampledCallFramesTree as SampledTree<CpuProCallFrame>,
-            sampledModulesTree as SampledTree<CpuProModule>,
-            sampledPackagesTree as SampledTree<CpuProPackage>,
-            sampledCategoriesTree as SampledTree<CpuProCategory>,
-            sampledLocationsTree as SampledTree<CpuProLocation> | null
+            memlineSampledCallFramesTree,
+            memlineSampledModulesTree,
+            memlineSampledPackagesTree,
+            memlineSampledCategoriesTree,
+            memlineSampledLocationsTree
         )
     );
 
@@ -135,10 +204,40 @@ export async function createMemline(
         _cpuproAllocationLocations,
         _cpuproAllocationContextInfo,
         _cpuproAllocationBuiltinNames,
-        _cpuproAllocationVmStateNames,
-        samplesMetrics,
-        samplesMetricsFiltered
+        _cpuproAllocationVmStateNames
     );
+
+    const allocationLocationMetrics = vectorLocations !== null
+        ? await work('compute memline location metrics', () => {
+            const locationTreeSamples = createAllocationLocationTreeSamples(
+                dictionary,
+                vectorLocations.generatedNodes,
+                vectorLocations.sampleToNode
+            );
+
+            if (locationTreeSamples === null) {
+                return null;
+            }
+
+            const [
+                allocationLocationsTree,
+                allocationCallFramesTree,
+                allocationModulesTree,
+                allocationPackagesTree,
+                allocationCategoriesTree
+            ] = locationTreeSamples.sampledTreeList;
+
+            return computeTreeMetrics(
+                vectorLocations.sampleToNode,
+                allocationSizes,
+                allocationCallFramesTree as SampledTree<CpuProCallFrame>,
+                allocationModulesTree as SampledTree<CpuProModule>,
+                allocationPackagesTree as SampledTree<CpuProPackage>,
+                allocationCategoriesTree as SampledTree<CpuProCategory>,
+                allocationLocationsTree as SampledTree<CpuProLocation>
+            );
+        })
+        : null;
 
     // Calculate total allocation size as axis total
     const totalAllocationSize = sum(allocationSizes);
@@ -237,16 +336,11 @@ export async function createMemline(
         axisEndNoSamples: totalAllocationSize,
         axisTotal: totalAllocationSize,
 
-        values: samplesMetrics.values,
-        samples: samplesMetrics.samples,
-        samplesMetrics,
-        samplesMetricsFiltered,
-        recomputeMetrics: recomputeMetrics,
+        values: allocationSizes,
 
         dict,
         tree,
         trees: lineTrees,
-        locations: vectorLocations,
 
         mappings: Object.create(null),
 
@@ -274,8 +368,25 @@ export async function createMemline(
     lineTrees.push(createLineTree(
         'call-stack',
         line,
-        { dict, tree }
+        { dict, tree },
+        { samplesMetrics, samplesMetricsFiltered, recomputeMetrics }
     ));
+
+    if (allocationLocationMetrics !== null) {
+        lineTrees.push(createLineTree(
+            'locations',
+            line,
+            {
+                dict: allocationLocationMetrics.dict,
+                tree: allocationLocationMetrics.tree
+            },
+            {
+                samplesMetrics: allocationLocationMetrics.samplesMetrics,
+                samplesMetricsFiltered: allocationLocationMetrics.samplesMetricsFiltered,
+                recomputeMetrics: allocationLocationMetrics.recomputeMetrics
+            }
+        ));
+    }
 
     return line;
 }

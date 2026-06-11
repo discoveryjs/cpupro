@@ -19,6 +19,15 @@ export class GeneratedNodes {
         this.parentScriptOffsets = [];
     }
 
+    push(callFrameIndex: number, parentId: number, parentScriptOffset: number) {
+        const index = this.nodeIdSeed;
+        this.nodeIdSeed++;
+        this.callFrames.push(callFrameIndex);
+        this.nodeParentId.push(parentId);
+        this.parentScriptOffsets.push(parentScriptOffset);
+        return index;
+    }
+
     get count() {
         return this.nodeParentId.length;
     }

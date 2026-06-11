@@ -1,23 +1,25 @@
-const { resolveScopeProfileLine } = require('../jora/profile.ts');
+const { resolveScopeProfileLine, resolveScopeProfileLineTree } = require('../jora/profile.ts');
 
 discovery.view.define('subject-with-nested-timeline', {
     view: 'context',
     data: `
-        $line: scopeLine();
-        $profile: $line.profile;
+        $scopeTree: scopeTree();
+        $scopeLine: $scopeTree.line;
+        $profile: $scopeLine.profile;
         $subject;
         $tree;
         $subtree: $tree.subtreeSamples($subject);
         $getCategory: $subject.marker('category') ? =>$ : =>category;
-        $totalValue: $line.axisTotal;
+        $totalValue: $scopeLine.axisTotal;
         $binCount: 500;
         $binSize: $totalValue / $binCount;
         $binSamples: $binCount.countSamples();
-        $totalValueBins: $subtree.mask.binCallsFromMask($binCount);
+        $totalValueBins: $subtree.mask.binCallsFromMask($binCount, $scopeTree);
 
         {
             $profile,
-            $line,
+            $scopeLine,
+            $scopeTree,
             $subject,
             $subtree,
             bins: $tree.binCalls($subject, $binCount),
@@ -28,7 +30,7 @@ discovery.view.define('subject-with-nested-timeline', {
             $totalValueBins,
             color: $subject.$getCategory().name.color(),
             nested: (
-                $metricsSource: $line.primaryTree().categories.all.nodes;
+                $metricsSource: $scopeLine.primaryTree().categories.all.nodes;
                 $selector: $subtree.sampleSelector;
                 $subtree.entries.($getCategory()).sort(id asc).({
                     $category: $;
@@ -47,17 +49,18 @@ discovery.view.define('subject-with-nested-timeline', {
             labels: 'top',
             duration: '=totalValue',
             segments: '=binCount',
-            selectionStart: '=line.samplesMetricsFiltered.rangeStart',
-            selectionEnd: '=line.samplesMetricsFiltered.rangeEnd',
-            rangeManager: '=line.samplesMetricsFiltered',
-            onChange: (state, name, el, data) => {
+            selectionStart: '=scopeTree.lineSamplesMetrics.rangeStart',
+            selectionEnd: '=scopeTree.lineSamplesMetrics.rangeEnd',
+            rangeManager: '=scopeTree.lineSamplesMetrics',
+            onChange: (state, name, el, { scopeTree }) => {
                 // console.log('change', state);
                 // const t = Date.now();
+                const samplesMetrics = scopeTree.samplesMetricsFiltered;
 
                 if (state.timeStart !== null) {
-                    data.line.samplesMetricsFiltered.setRange(state.timeStart, state.timeEnd);
+                    samplesMetrics.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    data.line.samplesMetricsFiltered.resetRange();
+                    samplesMetrics.resetRange();
                 }
 
                 // console.log('compute timings', Date.now() - t);
@@ -140,7 +143,8 @@ discovery.view.define('subject-with-nested-timeline', {
                 },
                 postRender(el, _, data, context) {
                     const { tm, duration, color } = data;
-                    const { axisTotal, samplesMetricsFiltered } = resolveScopeProfileLine(null, context);
+                    const { axisTotal } = resolveScopeProfileLine(null, context);
+                    const { samplesMetricsFiltered } = resolveScopeProfileLineTree(null, null, context);
 
                     el.style.setProperty('--pos', tm / axisTotal);
                     el.style.setProperty('--duration', duration / axisTotal);

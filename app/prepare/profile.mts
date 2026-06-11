@@ -331,13 +331,16 @@ export async function createProfile(
 
     // Create mappings between lines if both exist
     if (memline && timeline && memline.mappings && timeline.mappings) {
+        const memlineCallStackTree = memline.trees.find(tree => tree.kind === 'call-stack')!;
+        const timelineCallStackTree = timeline.trees.find(tree => tree.kind === 'call-stack')!;
+
         memline.mappings.timeline = createLineMapping(
-            memline.samplesMetrics,
-            timeline.samplesMetrics
+            memlineCallStackTree.samplesMetrics,
+            timelineCallStackTree.samplesMetrics
         );
         timeline.mappings.memline = createLineMapping(
-            timeline.samplesMetrics,
-            memline.samplesMetrics
+            timelineCallStackTree.samplesMetrics,
+            memlineCallStackTree.samplesMetrics
         );
 
         if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
