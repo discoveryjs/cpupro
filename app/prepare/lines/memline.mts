@@ -107,28 +107,6 @@ export async function createMemline(
         _cpuproAllocationTypeNames = null
     } = data;
 
-    const vmstate = new Uint32Array(16);
-    const builtins = new Map();
-    let internals = 0;
-    for (let i = 0; i < _cpuproAllocationContextInfo!.length; i++) {
-        vmstate[_cpuproAllocationContextInfo![i] & 0x0f] += _cpuproAllocationSizes![i];
-        if (_cpuproAllocationContextInfo![i] > 0x0f) {
-            internals += _cpuproAllocationSizes![i];
-            const id = _cpuproAllocationContextInfo![i] >> 4;
-            builtins.set(id, (builtins.get(id) || 0) + _cpuproAllocationSizes![i]);
-        }
-    }
-    console.log('Internals', internals);
-    for (let i = 0; i < vmstate.length; i++) {
-        if (vmstate[i] > 0) {
-            console.log(_cpuproAllocationVmStateNames![i], vmstate[i]);
-        }
-    }
-    console.log('Builtins:');
-    for (const [id, size] of [...builtins.entries()].sort((a, b) => b[1] - a[1])) {
-        console.log(`  ${_cpuproAllocationBuiltinNames![id]}: ${size}`);
-    }
-
     // Check if allocation data is present
     if (!_cpuproAllocationMapping || !_cpuproAllocationIds || !_cpuproAllocationSizes) {
         return null;

@@ -91,7 +91,8 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         this.render(barEl, {
             view: 'sample-histogram',
             data: `
-                $treeMetrics: profile.timeline.tree.categories.all;
+                $tree: profile.timeline.trees[];
+                $treeMetrics: $tree.categories.all.nodes;
                 $binCount: 750;
                 $min: profiles.profile.timeline.axisStart.min();
                 $max: profiles.profile.timeline.axisEnd.max();
@@ -106,6 +107,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
                     bins: $treeMetrics.binSignals({
                         test: => name not in ['root', 'idle'],
                         line: profile.timeline,
+                        $tree,
                         $skip,
                         total: $max - $min,
                         $binCount

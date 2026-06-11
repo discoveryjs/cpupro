@@ -67,6 +67,8 @@ type BinOptions = {
     skip?: number;
     total?: number;
     line?: ProfileLine | ProfileLineType;
+    tree?: ProfileLineTree | string;
+
 }
 
 export const methods = {
@@ -85,11 +87,12 @@ export const methods = {
             n = 500,
             skip = 0,
             total,
-            line
+            line,
+            tree: lineTree
         } = options || {};
-        const resolvedLineTree = resolveScopeProfileLineTree(null, line, this.context) as ProfileLineTree;
+        const resolvedLineTree = resolveScopeProfileLineTree(lineTree, line, this.context) as ProfileLineTree;
         const { axisTotal } = resolvedLineTree.line;
-        const { samples, values } = resolvedLineTree.samplesMetricsFiltered;
+        const { samples, values } = resolvedLineTree.samplesMetrics;
         const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, total ?? axisTotal, skip);
 
@@ -99,7 +102,7 @@ export const methods = {
     binCalls(treeMetrics, test, n = 500, lineTree?: ProfileLineTree | string) {
         const resolvedLineTree = resolveScopeProfileLineTree(lineTree, null, this.context) as ProfileLineTree;
         const { axisTotal } = resolvedLineTree.line;
-        const { samples, values } = resolvedLineTree.samplesMetricsFiltered;
+        const { samples, values } = resolvedLineTree.samplesMetrics;
         const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
