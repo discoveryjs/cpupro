@@ -49,9 +49,9 @@ discovery.view.define('subject-with-nested-timeline', {
             labels: 'top',
             duration: '=totalValue',
             segments: '=binCount',
-            selectionStart: '=scopeTree.lineSamplesMetrics.rangeStart',
-            selectionEnd: '=scopeTree.lineSamplesMetrics.rangeEnd',
-            rangeManager: '=scopeTree.lineSamplesMetrics',
+            selectionStart: '=scopeTree.samplesMetricsFiltered.rangeStart',
+            selectionEnd: '=scopeTree.samplesMetricsFiltered.rangeEnd',
+            rangeManager: '=scopeTree.samplesMetricsFiltered',
             onChange: (state, name, el, { scopeTree }) => {
                 // console.log('change', state);
                 // const t = Date.now();
