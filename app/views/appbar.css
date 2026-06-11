@@ -3,14 +3,14 @@
     align-items: stretch;
     height: 30.2px;
 }
-.view-appbar > .appbar-logo {
+.view-appbar > .appbar__logo {
     display: block;
     font-size: 14px;
     padding: 8px 12px 0;
     line-height: 1;
     background-color: color-mix(in srgb, #000 25%, var(--discovery-background-color));
 }
-.view-appbar > .appbar-content {
+.view-appbar > .appbar__content {
     flex: 1;
     padding: 0 10px;
     gap: 12px;
@@ -18,4 +18,10 @@
     align-items: center;
     border-top: .1px solid black;
     background: color-mix(in srgb, #ffffff 8%, var(--discovery-background-color));
+}
+.view-appbar > .appbar__content > .appbar__profile-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

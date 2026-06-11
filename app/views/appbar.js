@@ -1,6 +1,6 @@
 discovery.view.define('appbar', [
-    { view: 'block', className: 'appbar-logo', content: 'text:"CPUpro"' },
-    { view: 'block', className: 'appbar-content', content: [
+    { view: 'block', className: 'appbar__logo', content: 'text:"CPUpro"' },
+    { view: 'block', className: 'appbar__content', content: [
         {
             view: 'toggle-group',
             data: '#.data.profiles.lines.type',
@@ -17,7 +17,7 @@ discovery.view.define('appbar', [
         },
         {
             view: 'block',
-            className: 'appbar-profile-name',
+            className: 'appbar__profile-name',
             content: 'text:#.datasets[].resource | type = "file" ? name : "Untitled dataset"'
         }
     ] }
