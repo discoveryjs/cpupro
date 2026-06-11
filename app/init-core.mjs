@@ -3,9 +3,22 @@ import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRu
 
 const model = discovery;
 
+function normPrimaryTree(treeKind) {
+    const line = model.context.primaryProfile?.lines
+        ?.find(line => line.type === model.context.primaryLineType);
+    const supported = line?.trees.some(tree => tree.kind === treeKind);
+
+    if (supported) {
+        return treeKind;
+    }
+
+    return line?.trees?.[0]?.kind || null;
+}
+
 model.action.define('selectProfile', (profile) => {
     model.setContext({
-        primaryProfile: profile
+        primaryProfile: profile,
+        primaryTreeKind: normPrimaryTree(model.context.primaryTreeKind)
     });
 });
 model.action.define('selectPrimaryLine', (lineType) => {
@@ -15,13 +28,19 @@ model.action.define('selectPrimaryLine', (lineType) => {
     try {
         sessionStorage.setItem('cpupro:primary-line-type', lineType);
     } catch {}
+
+    model.action.call('selectPrimaryTree', model.context.primaryTreeKind);
 });
 model.action.define('selectPrimaryTree', (treeKind) => {
+    const nextTreeKind = normPrimaryTree(treeKind);
+
     model.setContext({
-        primaryTreeKind: treeKind
+        primaryTreeKind: nextTreeKind
     });
     try {
-        sessionStorage.setItem('cpupro:primary-tree-kind', treeKind);
+        if (nextTreeKind !== treeKind) {
+            sessionStorage.setItem('cpupro:primary-tree-kind', treeKind);
+        }
     } catch {}
 });
 model.action.define('toggleProfile', (profile) => {
