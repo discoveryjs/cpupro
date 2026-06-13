@@ -13,7 +13,7 @@ import { buildTrees } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { CpuProThread, V8CpuProfile } from './types.js';
+import { CpuProScript, CpuProThread, V8CpuProfile } from './types.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { ProfileLine } from './lines/types.js';
 import { createLineBoundaries } from './misc/line-boundaries.js';
@@ -86,11 +86,19 @@ function scriptOffsetsFromLineColumns(
         return null;
     }
 
-    const scriptLineBoundaries = Object.create(null) as Record<number, ReturnType<typeof createLineBoundaries>>;
+    const scriptLineBoundaries = Object.create(null) as Record<number, {
+        lineBoundaries: ReturnType<typeof createLineBoundaries>;
+        lineOffset: number;
+        columnOffset: number;
+    }>;
     for (let i = 0; i < scripts.length; i++) {
         const script = scripts[i];
         if (script && script.source) {
-            scriptLineBoundaries[script.id] = createLineBoundaries(script.source);
+            scriptLineBoundaries[script.id] = {
+                lineBoundaries: createLineBoundaries(script.source),
+                lineOffset: script.lineOffset ?? 0,
+                columnOffset: script.columnOffset ?? 0
+            };
         }
     }
 
@@ -106,10 +114,15 @@ function scriptOffsetsFromLineColumns(
         const callFrame = typeof callFrameRaw === 'number' ? callFrames![callFrameRaw] : callFrameRaw;
         const scriptId = Number(callFrame.scriptId);
         const scriptEntry = scriptLineBoundaries[scriptId];
+        const line = lines[i];
         let offset = -1;
 
-        if (scriptEntry && lines[i]) {
-            offset = scriptEntry.getOffset(lines[i], columns[i]);
+        if (scriptEntry && line) {
+            const column = columns[i];
+            offset = scriptEntry.lineBoundaries.getOffset(
+                line - scriptEntry.lineOffset,
+                column - (line === scriptEntry.lineOffset ? scriptEntry.columnOffset : 0)
+            );
         }
 
         result[i] = offset;

@@ -8,6 +8,8 @@ type Script = {
     scriptId: string | number;
     url: string;
     sourceText?: string;
+    startLine: number;
+    startColumn: number;
 };
 type TraceEvent = {
     [k: string]: unknown;
@@ -47,7 +49,9 @@ export function extractFromDevToolsEnhancedTraces(data: DevToolsEnchandedTraceEv
                 url: script.url,
                 source: script.sourceText,
                 sourceMapUrl: null,
-                sourceMap: null
+                sourceMap: null,
+                lineOffset: script.startLine || 0,
+                columnOffset: script.startColumn || 0
             });
         }
     }

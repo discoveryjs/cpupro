@@ -79,6 +79,8 @@ export type V8CpuProfileScript = {
     source: string;
     sourceMapUrl?: string | null;
     sourceMap?: SourceMap | null;
+    lineOffset?: number;
+    columnOffset?: number;
 }
 export type V8CpuProfileFunction = {
     scriptId: number;
@@ -369,6 +371,8 @@ export type CpuProScript = {
     id: number;
     url: string;
     source: string | null;
+    lineOffset: number;
+    columnOffset: number;
     sourceMapUrl: string | null;
     sourceMap: SourceMap | null;
     module: CpuProModule;

@@ -32,6 +32,8 @@ type ScriptCatchupEventData = {
     url: string;
     sourceText: string;
     sourceMapUrl: string;
+    lineOffset?: number;
+    columnOffset?: number;
 }
 type AllocationSamples = {
     ids: number[];
@@ -357,7 +359,9 @@ export function extractFromChromiumPerformanceProfile(
                         url: null as unknown as string,
                         source: null as unknown as string,
                         sourceMapUrl: null,
-                        sourceMap: null
+                        sourceMap: null,
+                        lineOffset: 0,
+                        columnOffset: 0
                     });
                     eventChannel.thread.scripts.push(script);
                 }
@@ -365,6 +369,11 @@ export function extractFromChromiumPerformanceProfile(
                 for (const key of Object.keys(props)) {
                     switch (key) {
                         case 'url':
+                            script[key] = props[key];
+                            break;
+
+                        case 'lineOffset':
+                        case 'columnOffset':
                             script[key] = props[key];
                             break;
 

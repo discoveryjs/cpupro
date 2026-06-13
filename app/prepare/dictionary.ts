@@ -148,10 +148,11 @@ export class Dictionary {
 
     resolveCallFrameIndex(
         inputCallFrame: V8CpuProfileCallFrame,
-        scriptsMap: IProfileScriptsMap
+        scriptsMap: IProfileScriptsMap,
+        correctLineColumn = false
     ) {
         const script = scriptFromScriptId(inputCallFrame.scriptId, inputCallFrame.url, scriptsMap);
-        return this.#resolveScriptCallFrameIndex(inputCallFrame, script);
+        return this.#resolveScriptCallFrameIndex(inputCallFrame, script, correctLineColumn);
     }
     #resolveCallFramesByScriptLineColumn(
         script: CpuProScript | null,
@@ -178,14 +179,21 @@ export class Dictionary {
     }
     #resolveScriptCallFrameIndex(
         inputCallFrame: V8CpuProfileCallFrame,
-        script: CpuProScript | null
+        script: CpuProScript | null,
+        correctLineColumn = false
     ) {
         const functionName = script !== null
             ? inputCallFrame.functionName || ''
             : wellKnownNameAliases.get(inputCallFrame.functionName as WellKnownName) || inputCallFrame.functionName || '';
         const lineNumber = script !== null ? normalizeLoc(inputCallFrame.lineNumber) : -1;
         const columnNumber = script !== null ? normalizeLoc(inputCallFrame.columnNumber) : -1;
-        const callFrameByFunctionName = this.#resolveCallFramesByScriptLineColumn(script, lineNumber, columnNumber);
+        const scriptLineNumber = correctLineColumn && script !== null && lineNumber !== -1
+            ? lineNumber - script.lineOffset
+            : lineNumber;
+        const scriptColumnNumber = correctLineColumn && script !== null && scriptLineNumber === 0
+            ? columnNumber - script.columnOffset
+            : columnNumber;
+        const callFrameByFunctionName = this.#resolveCallFramesByScriptLineColumn(script, scriptLineNumber, scriptColumnNumber);
 
         let callFrameIndex = callFrameByFunctionName.get(functionName);
         if (callFrameIndex === undefined) {
@@ -193,16 +201,16 @@ export class Dictionary {
             const end = normalizeLoc(inputCallFrame.end);
             const start = normalizeLoc(inputCallFrame.start);
             const module = this.resolveModule(sourceScript, functionName);
-            const { name, kind, regexp } = this.#resolveFunctionName(functionName, lineNumber, columnNumber);
+            const { name, kind, regexp } = this.#resolveFunctionName(functionName, scriptLineNumber, scriptColumnNumber);
             const callFrame: CpuProCallFrame = {
                 id: this.callFrames.length + 1,
                 script: sourceScript,
                 kind: kind || resolveCallFrameKind(sourceScript, name, regexp),
                 name,
                 origName: functionName,
-                line: lineNumber,
-                column: columnNumber,
-                loc: locFromLineColumn(lineNumber, columnNumber),
+                line: scriptLineNumber,
+                column: scriptColumnNumber,
+                loc: locFromLineColumn(scriptLineNumber, scriptColumnNumber),
                 start,
                 end,
                 regexp,
@@ -214,8 +222,8 @@ export class Dictionary {
 
             setCallFrameLazyStartEndIfNeeded(
                 callFrame,
-                lineNumber,
-                columnNumber,
+                scriptLineNumber,
+                scriptColumnNumber,
                 sourceScript,
                 start,
                 end
@@ -228,7 +236,7 @@ export class Dictionary {
             if (sourceScript) {
                 sourceScript.callFrames.push(callFrame);
 
-                const callFrameStartLocation = this.resolveLocation(callFrame, sourceScript, start, lineNumber, columnNumber);
+                const callFrameStartLocation = this.resolveLocation(callFrame, sourceScript, start, scriptLineNumber, scriptColumnNumber);
                 if (callFrameStartLocation.scriptOffset !== start) {
                     Object.defineProperty(callFrame, 'start', {
                         value: callFrameStartLocation.scriptOffset
@@ -397,7 +405,8 @@ export class Dictionary {
         script: CpuProScript | null = null,
         scriptOffset: number = -1,
         line: number = -1,
-        column: number = -1
+        column: number = -1,
+        correctLineColumn = false
     ) {
         const resolvedScript = script || callFrame?.script || null;
         let locationIndex = -1;
@@ -408,6 +417,11 @@ export class Dictionary {
 
         if (column === -1) {
             line = -1;
+        } else if (correctLineColumn && resolvedScript !== null) {
+            line -= resolvedScript.lineOffset;
+            if (line === 0) {
+                column -= resolvedScript.columnOffset;
+            }
         }
 
         if (callFrame && callFrame.script !== resolvedScript) {
@@ -465,9 +479,10 @@ export class Dictionary {
         script?: CpuProScript | null,
         scriptOffset?: number,
         line?: number,
-        column?: number
+        column?: number,
+        correctLineColumn = false
     ) {
-        return this.locations[this.resolveLocationIndex(callFrame, script, scriptOffset, line, column)];
+        return this.locations[this.resolveLocationIndex(callFrame, script, scriptOffset, line, column, correctLineColumn)];
     }
 
     resolveScript(
