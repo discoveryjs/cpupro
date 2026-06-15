@@ -382,12 +382,6 @@ export async function createProfile(
         }
     }
 
-    const profileLocationsTree = timeline?.tree.locations?.all.tree || locationsTree;
-    const profileCallFramesTree = timeline?.tree.callFrames?.all.tree || callFramesTree;
-    const profileModulesTree = timeline?.tree.modules?.all.tree || modulesTree;
-    const profilePackagesTree = timeline?.tree.packages?.all.tree || packagesTree;
-    const profileCategoriesTree = timeline?.tree.categories?.all.tree || categoriesTree;
-
     // process function codes
     const {
         codes,
@@ -413,12 +407,6 @@ export async function createProfile(
         codes,
         codesByCallFrame,
         codesByScript,
-
-        locationsTree: profileLocationsTree,
-        callFramesTree: profileCallFramesTree,
-        modulesTree: profileModulesTree,
-        packagesTree: profilePackagesTree,
-        categoriesTree: profileCategoriesTree,
 
         // lines
         timeline,
