@@ -13,7 +13,7 @@ import { buildTrees } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { CpuProThread, V8CpuProfile } from './types.js';
+import { CpuProScript, CpuProThread, V8CpuProfile } from './types.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { ProfileLine } from './lines/types.js';
 import { createLineBoundaries } from './misc/line-boundaries.js';
@@ -86,11 +86,19 @@ function scriptOffsetsFromLineColumns(
         return null;
     }
 
-    const scriptLineBoundaries = Object.create(null) as Record<number, ReturnType<typeof createLineBoundaries>>;
+    const scriptLineBoundaries = Object.create(null) as Record<number, {
+        lineBoundaries: ReturnType<typeof createLineBoundaries>;
+        lineOffset: number;
+        columnOffset: number;
+    }>;
     for (let i = 0; i < scripts.length; i++) {
         const script = scripts[i];
         if (script && script.source) {
-            scriptLineBoundaries[script.id] = createLineBoundaries(script.source);
+            scriptLineBoundaries[script.id] = {
+                lineBoundaries: createLineBoundaries(script.source),
+                lineOffset: script.lineOffset ?? 0,
+                columnOffset: script.columnOffset ?? 0
+            };
         }
     }
 
@@ -106,10 +114,15 @@ function scriptOffsetsFromLineColumns(
         const callFrame = typeof callFrameRaw === 'number' ? callFrames![callFrameRaw] : callFrameRaw;
         const scriptId = Number(callFrame.scriptId);
         const scriptEntry = scriptLineBoundaries[scriptId];
+        const line = lines[i];
         let offset = -1;
 
-        if (scriptEntry && lines[i]) {
-            offset = scriptEntry.getOffset(lines[i], columns[i]);
+        if (scriptEntry && line) {
+            const column = columns[i];
+            offset = scriptEntry.lineBoundaries.getOffset(
+                line - scriptEntry.lineOffset,
+                column - (line === scriptEntry.lineOffset ? scriptEntry.columnOffset : 0)
+            );
         }
 
         result[i] = offset;
@@ -273,8 +286,7 @@ export async function createProfile(
         callFramesTree,
         modulesTree,
         packagesTree,
-        categoriesTree,
-        ownersTree
+        categoriesTree
     } = await work('build trees', () =>
         buildTrees(
             dictionary,
@@ -297,8 +309,7 @@ export async function createProfile(
                 callFramesTree,
                 modulesTree,
                 packagesTree,
-                categoriesTree,
-                ownersTree
+                categoriesTree
             ]
         )
     );
@@ -336,21 +347,24 @@ export async function createProfile(
         const memlineCallStackTree = memline.trees.find(tree => tree.kind === 'call-stack')!;
         const timelineCallStackTree = timeline.trees.find(tree => tree.kind === 'call-stack')!;
 
-        memline.mappings.timeline = createLineMapping(
+        const memlineToTimeline = createLineMapping(
             memlineCallStackTree.samplesMetrics,
             timelineCallStackTree.samplesMetrics
         );
-        timeline.mappings.memline = createLineMapping(
+        const timelineToMemline = createLineMapping(
             timelineCallStackTree.samplesMetrics,
             memlineCallStackTree.samplesMetrics
         );
 
-        if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
-            timeline.mappings.memline._mapping.set(data._cpuproAllocationMapping);
+        memline.mappings.timeline = memlineToTimeline;
+        timeline.mappings.memline = timelineToMemline;
 
-            const mapping = timeline.mappings.memline._mapping;
-            const memlineSamples = data._cpuproAllocationIds!; // [0, 1, 2, 3, 4, ...]
-            const memlineToTimelineMap = memline.mappings.timeline._mapping;
+        if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
+            timelineToMemline._mapping.set(data._cpuproAllocationMapping);
+
+            const mapping = timelineToMemline._mapping;
+            const memlineSamples = data._cpuproAllocationIds; // [0, 1, 2, 3, 4, ...]
+            const memlineToTimelineMap = memlineToTimeline._mapping;
             // [0, 0, 1, 1, 1, 3, 3, ...] -> timeline sample ids
             // we attach memline sample id to the cpu sample id it was recorded after
 
@@ -367,12 +381,6 @@ export async function createProfile(
             }
         }
     }
-
-    const profileLocationsTree = timeline?.tree.locations?.all.tree || locationsTree;
-    const profileCallFramesTree = timeline?.tree.callFrames?.all.tree || callFramesTree;
-    const profileModulesTree = timeline?.tree.modules?.all.tree || modulesTree;
-    const profilePackagesTree = timeline?.tree.packages?.all.tree || packagesTree;
-    const profileCategoriesTree = timeline?.tree.categories?.all.tree || categoriesTree;
 
     // process function codes
     const {
@@ -399,13 +407,6 @@ export async function createProfile(
         codes,
         codesByCallFrame,
         codesByScript,
-
-        locationsTree: profileLocationsTree,
-        callFramesTree: profileCallFramesTree,
-        modulesTree: profileModulesTree,
-        packagesTree: profilePackagesTree,
-        categoriesTree: profileCategoriesTree,
-        ownersTree,
 
         // lines
         timeline,

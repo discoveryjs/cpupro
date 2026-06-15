@@ -64,7 +64,7 @@ export function createTreeSourceFromParent<S>(
         }
     }
 
-    for (let i = 0; i < parent.length; i++) {
+    for (let i = 0; i < computedNodes.length; i++) {
         const sourceId = nodeToSourceId[computedNodes[i]];
 
         if (sourceId !== -1) {

@@ -89,9 +89,9 @@ export function processLocations(
         return { locationsTreeSource: null };
     }
 
-    const positionsMap = new Map<number, number>();
-    const positionNodeMap = new Map<number, number>();
-    const positions: CpuProLocation[] = [];
+    const locationByRef = new Map<number, number>();
+    const locationNodeMap = new Map<number, number>();
+    const locations: CpuProLocation[] = [];
     const nodesPosition = new Uint32Array(nodeParent.length);
     const samplesPositionNodes: number[] = [];
     const samplesPositionParent: number[] = [];
@@ -102,19 +102,19 @@ export function processLocations(
         const callFrame = callFrames[callFrameIndex];
         const scriptOffset = nodeLocations[i];
         const ref = positionRef(callFrameIndex, scriptOffset);
-        let positionIndex = positionsMap.get(ref);
+        let locationIndex = locationByRef.get(ref);
 
-        if (positionIndex === undefined) {
+        if (locationIndex === undefined) {
             const globalLocationIndex = dictionary.resolveLocationIndex(
                 callFrame,
                 callFrame.script,
                 scriptOffset
             );
 
-            positionsMap.set(ref, positionIndex = positions.push(dictionary.locations[globalLocationIndex]) - 1);
+            locationByRef.set(ref, locationIndex = locations.push(dictionary.locations[globalLocationIndex]) - 1);
         }
 
-        nodesPosition[i] = positionIndex;
+        nodesPosition[i] = locationIndex;
     }
 
     // sampleLocations -> callFramePositions + nodes
@@ -125,25 +125,25 @@ export function processLocations(
             const callFrame = callFrames[callFrameIndex];
             const scriptOffset = sampleLocations[i];
             const ref = positionRef(callFrameIndex, scriptOffset);
-            let positionIndex = positionsMap.get(ref);
+            let locationIndex = locationByRef.get(ref);
 
-            if (positionIndex === undefined) {
+            if (locationIndex === undefined) {
                 const globalLocationIndex = dictionary.resolveLocationIndex(
                     callFrame,
                     callFrame.script,
                     scriptOffset
                 );
 
-                positionsMap.set(ref, positionIndex = positions.push(dictionary.locations[globalLocationIndex]) - 1);
+                locationByRef.set(ref, locationIndex = locations.push(dictionary.locations[globalLocationIndex]) - 1);
             }
 
             const nodeRef = positionNodeRef(nodeIndex, scriptOffset);
-            let sampleNodeId = positionNodeMap.get(nodeRef);
+            let sampleNodeId = locationNodeMap.get(nodeRef);
 
             if (sampleNodeId === undefined) {
-                sampleNodeId = nodesPosition.length + positionNodeMap.size;
-                positionNodeMap.set(nodeRef, sampleNodeId); // -> sourceIdToNode
-                samplesPositionNodes.push(positionIndex); // -> nodes
+                sampleNodeId = nodesPosition.length + locationNodeMap.size;
+                locationNodeMap.set(nodeRef, sampleNodeId); // -> sourceIdToNode
+                samplesPositionNodes.push(locationIndex); // -> nodes
                 samplesPositionParent.push(nodeIndex); // -> parent & sourceIdToNode
             }
 
@@ -152,20 +152,20 @@ export function processLocations(
     }
 
     const positionArraysLength = nodesPosition.length + samplesPositionNodes.length;
-    const positionNodes = new Uint32Array(positionArraysLength);
-    const positionParent = new Uint32Array(positionArraysLength);
+    const locationNodes = new Uint32Array(positionArraysLength);
+    const locationParents = new Uint32Array(positionArraysLength);
 
-    positionNodes.set(nodesPosition);
-    positionNodes.set(samplesPositionNodes, nodesPosition.length);
-    positionParent.set(nodeParent);
-    positionParent.set(samplesPositionParent, nodesPosition.length);
+    locationNodes.set(nodesPosition);
+    locationNodes.set(samplesPositionNodes, nodesPosition.length);
+    locationParents.set(nodeParent);
+    locationParents.set(samplesPositionParent, nodesPosition.length);
 
-    const sourceIdToNode = new Int32Array(positionNodeMap.values());
+    const sourceIdToNode = new Int32Array(locationNodeMap.values());
     const locationsTreeSource = createTreeSourceFromParent(
-        positionParent,
+        locationParents,
         sourceIdToNode,
-        positionNodes,
-        positions
+        locationNodes,
+        locations
     );
 
     return {

@@ -48,7 +48,7 @@ export function createNodesCallFrameIndex(
         const { callFrame } = nodes[i];
         const callFrameIndex = typeof callFrame === 'number'
             ? callFrameByIndex[callFrame]
-            : dict.resolveCallFrameIndex(callFrame, scriptsMap);
+            : dict.resolveCallFrameIndex(callFrame, scriptsMap, true);
 
         callFrameByNodeIndex[i] = callFrameIndex;
     }
@@ -134,7 +134,8 @@ export function createNodeLocations(
                     null,
                     -1,
                     parentLineNumber,
-                    parentColumnNumber
+                    parentColumnNumber,
+                    true
                 ).scriptOffset;
             }
         }

@@ -38,9 +38,7 @@ model.action.define('selectPrimaryTree', (treeKind) => {
         primaryTreeKind: nextTreeKind
     });
     try {
-        if (nextTreeKind !== treeKind) {
-            sessionStorage.setItem('cpupro:primary-tree-kind', treeKind);
-        }
+        sessionStorage.setItem('cpupro:primary-tree-kind', nextTreeKind);
     } catch {}
 });
 model.action.define('toggleProfile', (profile) => {

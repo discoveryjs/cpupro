@@ -42,11 +42,22 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
             return;
         }
 
-        for (const { id, url, source, sourceMap = null, sourceMapUrl = null } of scripts) {
+        for (const inputScript of scripts) {
+            const {
+                id,
+                url,
+                source,
+                sourceMapUrl = null,
+                sourceMap = null,
+                lineOffset = 0,
+                columnOffset = 0
+            } = inputScript;
             const script: CpuProScript = this.resolveScript(id, url, source)!;
 
             this.set(id, script);
 
+            script.lineOffset = lineOffset;
+            script.columnOffset = columnOffset;
             script.sourceMapUrl = sourceMapUrl ?? null;
             script.sourceMap = sourceMap ?? null;
             // if (sourceMap && sourceMap.sourcesContent) {
@@ -194,6 +205,8 @@ export function createScript(id: number, url: string, source: string | null = nu
         id,
         url,
         source,
+        lineOffset: 0,
+        columnOffset: 0,
         sourceMapUrl: null,
         sourceMap: null,
         module: null as unknown as CpuProModule,

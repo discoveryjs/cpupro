@@ -37,7 +37,7 @@ export function processInputCallFrames(
 
     if (Array.isArray(callFrames)) {
         for (let i = 0; i < callFrames.length; i++) {
-            map[i] = dict.resolveCallFrameIndex(callFrames[i], scriptsMap);
+            map[i] = dict.resolveCallFrameIndex(callFrames[i], scriptsMap, true);
         }
 
         // FIXME: callFrames from v8 log shouldn't dedup

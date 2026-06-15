@@ -18,7 +18,7 @@ function isProfile(value: unknown): value is Profile {
     return (
         value !== null &&
         typeof value === 'object' &&
-        'callFramesTree' in value &&
+        'runtime' in value &&
         'lines' in value &&
         Array.isArray(value.lines)
     );

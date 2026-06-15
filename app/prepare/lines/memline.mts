@@ -43,7 +43,7 @@ function createAllocationLocationTreeSamples(
     const callFrameByNodeIndex = Uint32Array.from(generatedNodes.callFrames);
     const nodeIndexById = Int32Array.from({ length: generatedNodes.count }, (_, index) => index);
     const nodeParent = Uint32Array.from(generatedNodes.nodeParentId);
-    const locationNodes = new Uint32Array(generatedNodes.parentScriptOffsets);
+    const locationNodes = new Uint32Array(generatedNodes.parentScriptOffsets); // parentScriptOffsets used to store location indices
 
     const locationsTreeSource = createTreeSourceFromParent(
         nodeParent,
