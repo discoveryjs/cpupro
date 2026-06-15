@@ -4,7 +4,7 @@ const { SubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 
 function getTreeDimension(line, tree) {
     for (const dimensionTrees of line.trees) {
-        for (const dimensionName of ['locations', 'callFrames', 'modules', 'packages', 'categories']) {
+        for (const dimensionName of ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners']) {
             const dimension = dimensionTrees[dimensionName];
 
             if (dimension?.filtered.nodes.tree === tree) {
@@ -66,7 +66,8 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
                             { text: 'Categories', value: 'categories', active: dimension === dimensions.categories },
                             { text: 'Packages', value: 'packages', active: dimension === dimensions.packages },
                             { text: 'Modules', value: 'modules', active: dimension === dimensions.modules },
-                            { text: 'Call frames', value: 'callFrames', active: dimension === dimensions.callFrames }
+                            { text: 'Call frames', value: 'callFrames', active: dimension === dimensions.callFrames },
+                            { text: 'Owners', value: 'owners', active: dimension === dimensions.owners }
                         ]
                     }
                 ]

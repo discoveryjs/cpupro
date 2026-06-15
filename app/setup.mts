@@ -1,7 +1,7 @@
 import { ModelOptions } from '@discoveryjs/discovery';
 import { methods, assertions } from './jora/index.mjs';
 import prepare from './setup-prepare.mjs';
-import { CpuProCallFrame, CpuProLocation, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript, CpuProCallFrameCodes } from './prepare/types.js';
+import { CpuProCallFrame, CpuProLocation, CpuProCategory, CpuProModule, CpuProOwner, CpuProPackage, CpuProScript, CpuProCallFrameCodes } from './prepare/types.js';
 
 export default (function({ defineObjectMarker, addQueryMethods, addQueryAssertions, setPrepare }) {
     defineObjectMarker<CpuProCallFrame>('call-frame', { ref: 'id', title: 'name', page: 'call-frame' });
@@ -9,6 +9,7 @@ export default (function({ defineObjectMarker, addQueryMethods, addQueryAssertio
     defineObjectMarker<CpuProModule>('module', { ref: 'id', title: (module) => module.name || module.path, page: 'module' });
     defineObjectMarker<CpuProPackage>('package', { ref: 'id', title: 'name', page: 'package' });
     defineObjectMarker<CpuProCategory>('category', { ref: 'name', title: 'name', page: 'category' });
+    defineObjectMarker<CpuProOwner>('owner', { ref: 'id', title: 'name', page: 'owner' });
     defineObjectMarker<CpuProScript>('script', { ref: 'id', title: 'url' });
     defineObjectMarker<CpuProCallFrameCodes>('call-frame-codes', { /* ref: 'id', */ title: fn => fn.callFrame.name });
 

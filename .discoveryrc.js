@@ -43,6 +43,8 @@ module.exports = {
             './pages/module.js',
             './pages/category.js',
             './pages/package.js',
+            './pages/owner.js',
+            './pages/all-owners.js',
             './pages/profiles-matrix.css',
             './pages/profiles-matrix.js',
             './pages/samples.css',

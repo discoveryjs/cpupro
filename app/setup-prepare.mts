@@ -140,6 +140,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             dict.modules.forEach(markers.module);
             dict.packages.forEach(markers.package);
             dict.categories.forEach(markers.category);
+            dict.owners.forEach(markers.owner);
             dict.scripts.forEach(markers.script);
         });
     }
