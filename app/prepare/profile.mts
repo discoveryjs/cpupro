@@ -347,21 +347,24 @@ export async function createProfile(
         const memlineCallStackTree = memline.trees.find(tree => tree.kind === 'call-stack')!;
         const timelineCallStackTree = timeline.trees.find(tree => tree.kind === 'call-stack')!;
 
-        memline.mappings.timeline = createLineMapping(
+        const memlineToTimeline = createLineMapping(
             memlineCallStackTree.samplesMetrics,
             timelineCallStackTree.samplesMetrics
         );
-        timeline.mappings.memline = createLineMapping(
+        const timelineToMemline = createLineMapping(
             timelineCallStackTree.samplesMetrics,
             memlineCallStackTree.samplesMetrics
         );
 
-        if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
-            timeline.mappings.memline._mapping.set(data._cpuproAllocationMapping);
+        memline.mappings.timeline = memlineToTimeline;
+        timeline.mappings.memline = timelineToMemline;
 
-            const mapping = timeline.mappings.memline._mapping;
-            const memlineSamples = data._cpuproAllocationIds!; // [0, 1, 2, 3, 4, ...]
-            const memlineToTimelineMap = memline.mappings.timeline._mapping;
+        if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
+            timelineToMemline._mapping.set(data._cpuproAllocationMapping);
+
+            const mapping = timelineToMemline._mapping;
+            const memlineSamples = data._cpuproAllocationIds; // [0, 1, 2, 3, 4, ...]
+            const memlineToTimelineMap = memlineToTimeline._mapping;
             // [0, 0, 1, 1, 1, 3, 3, ...] -> timeline sample ids
             // we attach memline sample id to the cpu sample id it was recorded after
 
