@@ -38,6 +38,16 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     for (let sessionIndex = 0; sessionIndex < profilingDataset.sessions.length; sessionIndex++) {
         const rawSession = profilingDataset.sessions[sessionIndex];
         const dict = new Dictionary();
+
+        // Seed owners from session ownership metadata (if any) so the dictionary
+        // contains real area names before modules are resolved. Real per-module
+        // attribution is wired separately.
+        if (rawSession.ownership) {
+            for (const area of rawSession.ownership.areas) {
+                dict.resolveOwner(area);
+            }
+        }
+
         const runSessionTask: typeof work = profilingDataset.sessions.length > 1
             ? (name, fn) => work(`Session ${sessionIndex + 1}/${profilingDataset.sessions.length} — ${name}`, fn)
             : work;

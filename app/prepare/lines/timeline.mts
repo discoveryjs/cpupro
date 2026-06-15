@@ -1,7 +1,7 @@
 import type { CreateProfileApi, Profile } from '../profile.mjs';
 import type { SampledTree } from '../computations/metrics.js';
 import type { Axis, Metric, ProfileLineTree, TimelineLine } from './types.js';
-import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage, V8CpuProfile } from '../types.js';
+import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProOwner, CpuProPackage, V8CpuProfile } from '../types.js';
 import { processLongTimeDeltas, createTimelineAxis } from '../preprocessing/time-deltas.js';
 import { SampledCpuProCallTree, computeTreeMetrics } from '../preprocessing/samples.js';
 import { reparentGcNodes } from '../preprocessing/gc-samples.js';
@@ -124,13 +124,14 @@ export async function createTimeline(
     };
 
     let sampledTreeOffset = 0;
-    const sampledLocationsTree = sampledTreeList.length > 4
+    const sampledLocationsTree = sampledTreeList.length > 5
         ? sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProLocation>
         : null;
     const sampledCallFramesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProCallFrame>;
     const sampledModulesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProModule>;
     const sampledPackagesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProPackage>;
     const sampledCategoriesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProCategory>;
+    const sampledOwnersTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProOwner>;
 
     // build samples lists & trees
     const {
@@ -147,6 +148,7 @@ export async function createTimeline(
             sampledModulesTree,
             sampledPackagesTree,
             sampledCategoriesTree,
+            sampledOwnersTree,
             sampledLocationsTree
         )
     );

@@ -1,6 +1,6 @@
 import { TIMINGS } from '../const.js';
 import { CallTree } from './call-tree.js';
-import type { CpuProCallFrame, CpuProLocation, CpuProCategory, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
+import type { CpuProCallFrame, CpuProLocation, CpuProCategory, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Usage } from '../usage.js';
 
@@ -38,6 +38,7 @@ export type BuildTreeResult = {
     modulesTree: CallTree<CpuProModule>;
     packagesTree: CallTree<CpuProPackage>;
     categoriesTree: CallTree<CpuProCategory>;
+    ownersTree: CallTree<CpuProOwner>;
 };
 
 interface TreeSource<S> extends BuildTreeSource<S> {
@@ -504,6 +505,7 @@ export function buildTrees(
     const modulesTree = buildCallTree('modules', callFramesTree, dict.callFrameToModule, usage.modules);
     const packagesTree = buildCallTree('packages', modulesTree, dict.moduleToPackage, usage.packages);
     const categoriesTree = buildCallTree('categories', packagesTree, dict.packageToCategory, usage.categories);
+    const ownersTree = buildCallTree('owners', modulesTree, dict.moduleToOwner, usage.owners);
 
     return {
         sourceIdToNode: locationsTreeSource?.sourceIdToNode || treeSource.sourceIdToNode,
@@ -511,6 +513,7 @@ export function buildTrees(
         callFramesTree,
         modulesTree,
         packagesTree,
-        categoriesTree
+        categoriesTree,
+        ownersTree
     };
 }

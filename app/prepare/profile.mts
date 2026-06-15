@@ -273,7 +273,8 @@ export async function createProfile(
         callFramesTree,
         modulesTree,
         packagesTree,
-        categoriesTree
+        categoriesTree,
+        ownersTree
     } = await work('build trees', () =>
         buildTrees(
             dictionary,
@@ -296,7 +297,8 @@ export async function createProfile(
                 callFramesTree,
                 modulesTree,
                 packagesTree,
-                categoriesTree
+                categoriesTree,
+                ownersTree
             ]
         )
     );
@@ -403,6 +405,7 @@ export async function createProfile(
         modulesTree: profileModulesTree,
         packagesTree: profilePackagesTree,
         categoriesTree: profileCategoriesTree,
+        ownersTree,
 
         // lines
         timeline,

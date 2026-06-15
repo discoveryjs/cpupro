@@ -23,6 +23,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         startTime: rawSession.startTime ?? null,
         source: rawSession.source ?? null,
         dataOrigin: rawSession.dataOrigin ?? null,
+        ownership: rawSession.ownership ?? null,
         processes,
         defaultProcess: null,
         profiles: [],

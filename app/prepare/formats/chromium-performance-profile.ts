@@ -1,13 +1,14 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
 import type { SourceMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
-import { UniformProcess, UniformProfilingSession, UniformThread, UniformTraceEvent } from './types.js';
+import { Ownership, UniformProcess, UniformProfilingSession, UniformThread, UniformTraceEvent } from './types.js';
 
 export type ChromiumTraceEventsMetadata = {
     startTime?: string;
     source?: string;
     dataOrigin?: string;
     sourceMaps?: ProfileSourceMap[];
+    ownership?: Ownership;
 };
 export type ChromiumTraceEventsSource = {
     traceEvents: ChromiumTraceEvent[];
@@ -600,7 +601,9 @@ export function extractFromChromiumPerformanceProfile(
             .map(({ thread }) => thread)
             .sort((a, b) => a.pid - b.pid || a.tid - b.tid),
 
-        profiles
+        profiles,
+
+        ownership: metadata.ownership ?? null
     };
 }
 
