@@ -14,94 +14,91 @@ export function reparentGcNodes(
     generatedNodes: GeneratedNodes,
     callFrames: V8CpuProfileCallFrame[] | null,
     samples: Uint32Array,
-    sampleLocations: Int32Array | null
+    sampleScriptOffsets: Int32Array | null
 ) {
-    const rootGcNodeId = callFrames !== null
+    const rootGcNodeIndex = callFrames !== null
         ? findRootGcNodeIdWithCallFrames(nodes, callFrames)
         : findRootGcNodeId(nodes as V8CpuProfileNode[]);
 
-    if (rootGcNodeId === -1) {
+    if (rootGcNodeIndex === -1) {
         return;
     }
 
-    if (useSampleLocations && sampleLocations !== null) {
-        remapGcSamplesWithLocations(rootGcNodeId, generatedNodes, samples, sampleLocations);
+    if (useSampleLocations && sampleScriptOffsets !== null) {
+        remapGcSamplesWithScriptOffsets(rootGcNodeIndex, generatedNodes, samples, sampleScriptOffsets);
     } else {
-        remapGcSamples(rootGcNodeId, generatedNodes, samples);
+        remapGcSamples(rootGcNodeIndex, generatedNodes, samples);
     }
 }
 
 function remapGcSamples(
-    gcNodeId: number,
+    gcNodeIndex: number,
     generatedNodes: GeneratedNodes,
     samples: Uint32Array
 ) {
-    const nodeIdToGcNodeId = new Map<number, number>();
-    const { nodeParentId, noSamplesNodeId, parentScriptOffsets, callFrames, dict } = generatedNodes;
+    const sampleToGcNode = new Map<number, number>();
+    const { noSamplesNodeId, dict } = generatedNodes;
     const gcCallFrameIndex = dict.callFrames.wellKnownIndex.gc;
 
-    for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
-        const nodeId = samples[i];
+    for (let i = 1, prevNodeIndex = samples[0]; i < samples.length; i++) {
+        const nodeIndex = samples[i];
 
-        if (nodeId === gcNodeId) {
-            if (prevNodeId === gcNodeId) {
+        if (nodeIndex === gcNodeIndex) {
+            if (prevNodeIndex === gcNodeIndex) {
                 samples[i] = samples[i - 1];
-            } else if (prevNodeId !== noSamplesNodeId) {
-                let newGcNodeId = nodeIdToGcNodeId.get(prevNodeId);
+            } else if (prevNodeIndex !== noSamplesNodeId) {
+                let newGcNodeId = sampleToGcNode.get(prevNodeIndex);
 
                 if (newGcNodeId === undefined) {
-                    newGcNodeId = generatedNodes.nodeIdSeed++;
-                    nodeIdToGcNodeId.set(prevNodeId, newGcNodeId);
-
-                    callFrames.push(gcCallFrameIndex);
-                    nodeParentId.push(prevNodeId);
-                    parentScriptOffsets.push(-1);
+                    sampleToGcNode.set(prevNodeIndex, newGcNodeId = generatedNodes.addNode(
+                        gcCallFrameIndex,
+                        prevNodeIndex,
+                        -1
+                    ));
                 }
 
                 samples[i] = newGcNodeId;
             }
         }
 
-        prevNodeId = nodeId;
+        prevNodeIndex = nodeIndex;
     }
 }
 
-function remapGcSamplesWithLocations(
-    gcNodeId: number,
+function remapGcSamplesWithScriptOffsets(
+    gcNodeIndex: number,
     generatedNodes: GeneratedNodes,
     samples: Uint32Array,
-    sampleLocations: Int32Array
+    sampleScriptOffsets: Int32Array
 ) {
-    const maxNodeId = generatedNodes.nodeIdSeed;
-    const nodeIdToGcNodeId = new Map<number, number>();
-    const { nodeParentId, noSamplesNodeId, parentScriptOffsets, callFrames, dict } = generatedNodes;
+    const sampleToGcNode = new Map<number, number>();
+    const { nodeIndexSeed: maxNodeIndex, noSamplesNodeId, dict } = generatedNodes;
     const gcCallFrameIndex = dict.callFrames.wellKnownIndex.gc;
 
-    for (let i = 1, prevNodeId = samples[0]; i < samples.length; i++) {
-        const nodeId = samples[i];
+    for (let i = 1, prevNodeIndex = samples[0]; i < samples.length; i++) {
+        const nodeIndex = samples[i];
 
-        if (nodeId === gcNodeId) {
-            if (prevNodeId === gcNodeId) {
+        if (nodeIndex === gcNodeIndex) {
+            if (prevNodeIndex === gcNodeIndex) {
                 samples[i] = samples[i - 1];
-            } else if (prevNodeId !== noSamplesNodeId) {
-                const prevNodeScriptOffset = sampleLocations[i - 1];
-                const prevNodeRef = prevNodeScriptOffset * maxNodeId + prevNodeId;
-                let newGcNodeId = nodeIdToGcNodeId.get(prevNodeRef);
+            } else if (prevNodeIndex !== noSamplesNodeId) {
+                const prevNodeScriptOffset = sampleScriptOffsets[i - 1];
+                const prevNodeRef = prevNodeScriptOffset * maxNodeIndex + prevNodeIndex;
+                let newGcNodeId = sampleToGcNode.get(prevNodeRef);
 
                 if (newGcNodeId === undefined) {
-                    newGcNodeId = generatedNodes.nodeIdSeed++;
-                    nodeIdToGcNodeId.set(prevNodeRef, newGcNodeId);
-
-                    callFrames.push(gcCallFrameIndex);
-                    nodeParentId.push(prevNodeId);
-                    parentScriptOffsets.push(prevNodeScriptOffset);
+                    sampleToGcNode.set(prevNodeRef, newGcNodeId = generatedNodes.addNode(
+                        gcCallFrameIndex,
+                        prevNodeIndex,
+                        prevNodeScriptOffset
+                    ));
                 }
 
                 samples[i] = newGcNodeId;
             }
         }
 
-        prevNodeId = nodeId;
+        prevNodeIndex = nodeIndex;
     }
 }
 
@@ -111,7 +108,8 @@ function findRootGcNodeIdWithCallFrames(
 ) {
     const rootChildren = new Set(nodes[0].children);
 
-    for (const node of nodes) {
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
         const callFrameOrIndex = node.callFrame;
         const callFrame = typeof callFrameOrIndex === 'number'
             ? callFrames[callFrameOrIndex]
@@ -120,7 +118,7 @@ function findRootGcNodeIdWithCallFrames(
         if (callFrame.scriptId === 0 &&
             callFrame.functionName === '(garbage collector)' &&
             rootChildren.has(node.id)) {
-            return node.id;
+            return i;
         }
     }
 
@@ -130,13 +128,14 @@ function findRootGcNodeIdWithCallFrames(
 function findRootGcNodeId(nodes: V8CpuProfileNode[]) {
     const rootChildren = new Set(nodes[0].children);
 
-    for (const node of nodes) {
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
         const callFrame = node.callFrame;
 
         if (callFrame.scriptId === 0 &&
             callFrame.functionName === '(garbage collector)' &&
             rootChildren.has(node.id)) {
-            return node.id;
+            return i;
         }
     }
 

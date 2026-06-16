@@ -114,13 +114,15 @@ function swap(array: number[], i: number, j: number) {
 // This is one more reason to separate "(no samples)" from true "(idle)" samples (if any).
 // It might be beneficial to add additional new samples in "(no samples)" periods, such as "(compiler)"
 // or "(garbage collector)", based on data from events, code compilation records, etc.
-export function processLongTimeDeltas(
+export type LongTimeDeltas = {
+    longTimeDeltasCount: number;
+    thresholdLongSampleDuration: number;
+    allowedSampleDuration: number;
+}
+export function enumerateLongTimeDeltas(
     samplesInterval: number,
-    timeDeltas: number[],
-    samples: number[],
-    sampleLocations: number[] | null = null,
-    generatedNodes: GeneratedNodes
-) {
+    timeDeltas: number[]
+): LongTimeDeltas | null {
     // CPUpro uses two factors to truncate long samples.
     // The first factor, `longSampleFactor` (currently 1.5), is used to check if a sample has overshot
     // the duration limit.
@@ -146,48 +148,64 @@ export function processLongTimeDeltas(
         }
     }
 
-    if (longTimeDeltasCount > 0) {
-        const noSamplesNodeId = generatedNodes.nodeIdSeed++;
-        const originalSize = timeDeltas.length;
+    if (longTimeDeltasCount === 0) {
+        return null;
+    }
 
-        // create no-samples node
-        generatedNodes.noSamplesNodeId = noSamplesNodeId;
-        generatedNodes.callFrames.push(generatedNodes.dict.callFrames.wellKnownIndex[NoSamplesType]);
-        generatedNodes.nodeParentId.push(1);
-        generatedNodes.parentScriptOffsets.push(-1);
+    return {
+        longTimeDeltasCount,
+        thresholdLongSampleDuration,
+        allowedSampleDuration
+    };
+}
 
-        // extend arrays to prevent
-        timeDeltas.length += longTimeDeltasCount;
-        samples.length += longTimeDeltasCount;
+export function processLongTimeDeltas(
+    longDeltas: LongTimeDeltas,
+    timeDeltas: Uint32Array,
+    samples: Uint32Array,
+    sampleScriptOffsets: Int32Array | null = null,
+    generatedNodes: GeneratedNodes
+) {
+    const {
+        longTimeDeltasCount,
+        thresholdLongSampleDuration,
+        allowedSampleDuration
+    } = longDeltas;
 
-        if (sampleLocations !== null) {
-            sampleLocations.length += longTimeDeltasCount;
-        }
+    // the size of the original arrays before adding new samples for long time deltas
+    const originalSize = timeDeltas.length - longTimeDeltasCount;
 
-        // enrich arrays with new elements
-        for (let i = originalSize + longTimeDeltasCount - 1, j = originalSize - 1; i >= 0; i--, j--) {
-            const delta = timeDeltas[j];
+    // create no-samples node
+    const noSamplesNodeId = generatedNodes.addNode(
+        generatedNodes.dict.callFrames.wellKnownIndex[NoSamplesType],
+        1, // parentId = root
+        -1 // parentScriptOffset
+    );
+    generatedNodes.noSamplesNodeId = noSamplesNodeId;
 
-            if (delta > thresholdLongSampleDuration) {
-                timeDeltas[i - 1] = allowedSampleDuration;
-                timeDeltas[i] = delta - allowedSampleDuration;
-                samples[i - 1] = samples[j];
-                samples[i] = noSamplesNodeId;
+    // enrich arrays with new elements
+    for (let i = originalSize + longTimeDeltasCount - 1, j = originalSize - 1; i >= 0; i--, j--) {
+        const delta = timeDeltas[j];
 
-                if (sampleLocations !== null) {
-                    sampleLocations[i - 1] = sampleLocations[j];
-                    sampleLocations[i] = -1;
-                }
+        if (delta > thresholdLongSampleDuration) {
+            timeDeltas[i - 1] = allowedSampleDuration;
+            timeDeltas[i] = delta - allowedSampleDuration;
+            samples[i - 1] = samples[j];
+            samples[i] = noSamplesNodeId;
 
-                // additional decrement since we write 2 elements
-                i--;
-            } else {
-                timeDeltas[i] = delta;
-                samples[i] = samples[j];
+            if (sampleScriptOffsets !== null) {
+                sampleScriptOffsets[i - 1] = sampleScriptOffsets[j];
+                sampleScriptOffsets[i] = -1;
+            }
 
-                if (sampleLocations !== null) {
-                    sampleLocations[i] = sampleLocations[j];
-                }
+            // additional decrement since we write 2 elements
+            i--;
+        } else {
+            timeDeltas[i] = delta;
+            samples[i] = samples[j];
+
+            if (sampleScriptOffsets !== null) {
+                sampleScriptOffsets[i] = sampleScriptOffsets[j];
             }
         }
     }

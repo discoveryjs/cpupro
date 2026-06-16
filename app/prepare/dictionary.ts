@@ -128,6 +128,9 @@ export class Dictionary {
         this.#unknownCallFrame = this.callFrames[this.#unknownLocationIndex];
     }
 
+    locationToCallFrame(location: CpuProLocation) {
+        return location.callFrame;
+    }
     callFrameToModule(callFrame: CpuProCallFrame) {
         return callFrame.module;
     }

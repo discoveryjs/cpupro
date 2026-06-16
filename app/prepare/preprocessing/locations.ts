@@ -1,15 +1,15 @@
-import type { CpuProCallFrame, CpuProLocation, CpuProScript, IProfileScriptsMap } from '../types.js';
+import type { CpuProCallFrame, CpuProScript, IProfileScriptsMap } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import { CallTree } from '../computations/call-tree.js';
 import { scriptFromScriptId } from './scripts.js';
 import { GeneratedNodes } from './nodes.js';
 
-function positionRef(callFrameIndex: number, scriptOffset: number) {
+function locationRef(callFrameIndex: number, scriptOffset: number) {
     return (scriptOffset + 1) * 0x0100_0000 + callFrameIndex;
 }
 
-function positionNodeRef(nodeIndex: number, scriptOffset: number) {
+function locationNodeRef(nodeIndex: number, scriptOffset: number) {
     return (scriptOffset + 1) * 0x0100_0000 + nodeIndex;
 }
 
@@ -76,96 +76,90 @@ export function ensureLocations(
  * Returns a location tree for aggregating metrics by execution point.
  */
 export function processLocations(
-    dictionary: Dictionary,
-    nodeIndexById: Int32Array,
+    dict: Dictionary,
     nodeParent: Uint32Array,
-    nodeLocations: Int32Array,
+    nodeScriptOffsets: Int32Array,
     callFrames: CpuProCallFrame[],
     callFrameByNodeIndex: Uint32Array,
     samples: Uint32Array,
-    sampleLocations: Int32Array | null
+    sampleScriptOffsets: Int32Array | null
 ) {
-    if (sampleLocations === null) {
+    if (sampleScriptOffsets === null) {
         return { locationsTreeSource: null };
     }
 
     const locationByRef = new Map<number, number>();
     const locationNodeMap = new Map<number, number>();
-    const locations: CpuProLocation[] = [];
-    const nodesPosition = new Uint32Array(nodeParent.length);
-    const samplesPositionNodes: number[] = [];
-    const samplesPositionParent: number[] = [];
+    const treeLocationNodes = new Uint32Array(nodeParent.length);
+    const sampledLocationNodes: number[] = [];
+    const sampledLocationParents: number[] = [];
 
+    // Locations from nodes -> callFramePositions + nodes
     // -> nodes
-    for (let i = 0; i < nodeLocations.length; i++) {
+    for (let i = 0; i < nodeScriptOffsets.length; i++) {
         const callFrameIndex = callFrameByNodeIndex[nodeParent[i]];
-        const callFrame = callFrames[callFrameIndex];
-        const scriptOffset = nodeLocations[i];
-        const ref = positionRef(callFrameIndex, scriptOffset);
+        const scriptOffset = nodeScriptOffsets[i];
+        const ref = locationRef(callFrameIndex, scriptOffset);
         let locationIndex = locationByRef.get(ref);
 
         if (locationIndex === undefined) {
-            const globalLocationIndex = dictionary.resolveLocationIndex(
-                callFrame,
-                callFrame.script,
+            locationByRef.set(ref, locationIndex = dict.resolveLocationIndex(
+                callFrames[callFrameIndex],
+                null,
                 scriptOffset
-            );
-
-            locationByRef.set(ref, locationIndex = locations.push(dictionary.locations[globalLocationIndex]) - 1);
+            ));
         }
 
-        nodesPosition[i] = locationIndex;
+        treeLocationNodes[i] = locationIndex;
     }
 
+    // Locations from samples
     // sampleLocations -> callFramePositions + nodes
-    if (sampleLocations !== null) {
+    if (sampleScriptOffsets !== null) {
         for (let i = 0; i < samples.length; i++) {
-            const nodeIndex = nodeIndexById[samples[i]];
-            const callFrameIndex = callFrameByNodeIndex[nodeIndex] || 0;
-            const callFrame = callFrames[callFrameIndex];
-            const scriptOffset = sampleLocations[i];
-            const ref = positionRef(callFrameIndex, scriptOffset);
-            let locationIndex = locationByRef.get(ref);
-
-            if (locationIndex === undefined) {
-                const globalLocationIndex = dictionary.resolveLocationIndex(
-                    callFrame,
-                    callFrame.script,
-                    scriptOffset
-                );
-
-                locationByRef.set(ref, locationIndex = locations.push(dictionary.locations[globalLocationIndex]) - 1);
-            }
-
-            const nodeRef = positionNodeRef(nodeIndex, scriptOffset);
+            const nodeIndex = samples[i];
+            const scriptOffset = sampleScriptOffsets[i];
+            const nodeRef = locationNodeRef(nodeIndex, scriptOffset);
             let sampleNodeId = locationNodeMap.get(nodeRef);
 
             if (sampleNodeId === undefined) {
-                sampleNodeId = nodesPosition.length + locationNodeMap.size;
+                const callFrameIndex = callFrameByNodeIndex[nodeIndex] || 0;
+                const ref = locationRef(callFrameIndex, scriptOffset);
+                let locationIndex = locationByRef.get(ref);
+
+                if (locationIndex === undefined) {
+                    locationByRef.set(ref, locationIndex = dict.resolveLocationIndex(
+                        callFrames[callFrameIndex],
+                        null,
+                        scriptOffset
+                    ));
+                }
+
+                sampleNodeId = treeLocationNodes.length + locationNodeMap.size;
                 locationNodeMap.set(nodeRef, sampleNodeId); // -> sourceIdToNode
-                samplesPositionNodes.push(locationIndex); // -> nodes
-                samplesPositionParent.push(nodeIndex); // -> parent & sourceIdToNode
+                sampledLocationNodes.push(locationIndex); // -> nodes
+                sampledLocationParents.push(nodeIndex); // -> parent & sourceIdToNode
             }
 
-            samples[i] = sampleNodeId - nodesPosition.length;
+            samples[i] = sampleNodeId - treeLocationNodes.length;
         }
     }
 
-    const positionArraysLength = nodesPosition.length + samplesPositionNodes.length;
-    const locationNodes = new Uint32Array(positionArraysLength);
-    const locationParents = new Uint32Array(positionArraysLength);
+    const locationArraysLength = treeLocationNodes.length + sampledLocationNodes.length;
+    const locationNodes = new Uint32Array(locationArraysLength);
+    const locationParents = new Uint32Array(locationArraysLength);
 
-    locationNodes.set(nodesPosition);
-    locationNodes.set(samplesPositionNodes, nodesPosition.length);
+    locationNodes.set(treeLocationNodes);
+    locationNodes.set(sampledLocationNodes, treeLocationNodes.length);
     locationParents.set(nodeParent);
-    locationParents.set(samplesPositionParent, nodesPosition.length);
+    locationParents.set(sampledLocationParents, treeLocationNodes.length);
 
     const sourceIdToNode = new Int32Array(locationNodeMap.values());
     const locationsTreeSource = createTreeSourceFromParent(
         locationParents,
         sourceIdToNode,
         locationNodes,
-        locations
+        dict.locations
     );
 
     return {
@@ -251,7 +245,8 @@ export function createVectorLocations(
     let prevLocationIndex = -1;
     let nodeIndex = 0;
 
-    generatedNodes.push(0, 0, -1); // root node (unknown call frame, no script, no offset)
+    // root node (unknown call frame, self-parent, unknown location)
+    generatedNodes.addNode(0, 0, 0);
 
     for (let i = 0; i < scriptOffsets.length; i++) {
         const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
@@ -297,7 +292,7 @@ export function createVectorLocations(
             }
 
             if (nodeIndex === -1) {
-                nodeIndex = generatedNodes.push(
+                nodeIndex = generatedNodes.addNode(
                     dictionary.locations[locationIndex].callFrame.id - 1,
                     0,
                     locationIndex
@@ -327,7 +322,7 @@ export function createVectorLocations(
                 let contextNodeIndex = contextNodesMap.get(ref);
 
                 if (contextNodeIndex === undefined) {
-                    contextNodesMap.set(ref, contextNodeIndex = generatedNodes.push(
+                    contextNodesMap.set(ref, contextNodeIndex = generatedNodes.addNode(
                         callFrame!.id - 1,
                         sampleToNode[i],
                         dictionary.resolveLocationIndex(

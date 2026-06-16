@@ -4,34 +4,13 @@ import type { CpuProCallFrame, CpuProLocation, CpuProCategory, CpuProModule, Cpu
 import type { Dictionary } from '../dictionary.js';
 import type { Usage } from '../usage.js';
 
-// TODO Phase 5: Combined Tree Building
-// When multiple lines have call graphs (e.g., time + memory profile),
-// we need to build unified trees that merge nodes from both sources:
-//
-// export function buildCombinedTrees(
-//     dict: Dictionary,
-//     sources: Array<{
-//         kind: 'time' | 'memory' | 'gc';
-//         nodeParent: Uint32Array;
-//         nodeIndexById: Map<number, number>;
-//         callFrameByNodeIndex: Uint32Array;
-//         locationsTreeSource?: TreeSource;
-//         usage: Usage;
-//     }>
-// ): { locationsTree?, callFramesTree, modulesTree, packagesTree, categoriesTree }
-//
-// Steps:
-// 1. Merge node graphs (remap node IDs to avoid conflicts)
-// 2. Build combined trees with union of all nodes
-// 3. Each line will map its samples to combined tree nodes
-
 interface BuildTreeSource<S> {
     dictionary: S[];
     parent: Uint32Array;
     nodes: Uint32Array;
 }
 
-export type BuildTreeResult = {
+export type TreeSet = {
     sourceIdToNode: Int32Array;
     locationsTree: CallTree<CpuProLocation> | null;
     callFramesTree: CallTree<CpuProCallFrame>;
@@ -370,19 +349,18 @@ export function buildCallTreeArrays<S extends CpuProNode, D extends CpuProNode =
     baseDictionary?: D[]
 ) {
     const initTimeStart = Date.now();
-    const sourceNodes = source.nodes;
-    const sourceNodeMap = new Uint32Array(sourceNodes.length);
     const { firstChild, nextSibling } = firstNextFromParent(source.parent);
 
     const sourceToDictStart = Date.now();
-    const sourceDictionary = source.dictionary;
     const { dictionary, sourceDictionaryMap } = createDictionaryMap(
-        sourceDictionary,
+        source.dictionary,
         dictionaryMapping,
         baseDictionary
     );
 
     const rollupTreeStart = Date.now();
+    const sourceNodes = source.nodes;
+    const sourceNodeMap = new Uint32Array(sourceNodes.length);
     const nodesCount = rollupTreeByCommonValues(
         dictionary.length,
         sourceNodes,
@@ -481,14 +459,14 @@ function buildTreeSource(
     return treeSource;
 }
 
-export function buildTrees(
+export function createTreeSet(
     dict: Dictionary,
     nodeParent: Uint32Array,
     nodeIndexById: Int32Array,
     callFrameByNodeIndex: Uint32Array,
     locationsTreeSource: TreeSource<CpuProLocation> | null = null,
     usage: Usage | Dictionary = dict
-): BuildTreeResult {
+): TreeSet {
     const treeSource = buildTreeSource(
         nodeParent,
         nodeIndexById,
@@ -500,7 +478,7 @@ export function buildTrees(
         ? buildCallTree('callFrameLocations', locationsTreeSource)
         : null;
     const callFramesTree = locationsTree !== null
-        ? buildCallTree('callFrames', locationsTree, pos => pos.callFrame, usage.callFrames)
+        ? buildCallTree('callFrames', locationsTree, dict.locationToCallFrame, usage.callFrames)
         : buildCallTree('callFrames', treeSource);
     const modulesTree = buildCallTree('modules', callFramesTree, dict.callFrameToModule, usage.modules);
     const packagesTree = buildCallTree('packages', modulesTree, dict.moduleToPackage, usage.packages);

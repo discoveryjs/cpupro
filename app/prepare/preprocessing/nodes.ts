@@ -4,27 +4,28 @@ import { findMaxId } from '../misc/utils';
 
 export class GeneratedNodes {
     dict: Dictionary;
-    nodeIdSeed: number;
+    nodeIndexSeed: number;
     noSamplesNodeId: number;
     callFrames: number[];
     nodeParentId: number[];
     parentScriptOffsets: number[];
 
-    constructor(dict: Dictionary, nodeIdSeedStart: number) {
+    constructor(dict: Dictionary, nodeIndexSeedStart: number = 0) {
         this.dict = dict;
-        this.nodeIdSeed = nodeIdSeedStart;
+        this.nodeIndexSeed = nodeIndexSeedStart;
         this.noSamplesNodeId = -1;
         this.callFrames = [];
         this.nodeParentId = [];
         this.parentScriptOffsets = [];
     }
 
-    push(callFrameIndex: number, parentId: number, parentScriptOffset: number) {
-        const index = this.nodeIdSeed;
-        this.nodeIdSeed++;
+    addNode(callFrameIndex: number, parentId: number, parentScriptOffset: number) {
+        const index = this.nodeIndexSeed++;
+
         this.callFrames.push(callFrameIndex);
         this.nodeParentId.push(parentId);
         this.parentScriptOffsets.push(parentScriptOffset);
+
         return index;
     }
 
@@ -40,8 +41,8 @@ export function createNodesCallFrameIndex(
     scriptsMap: IProfileScriptsMap,
     generatedNodes: GeneratedNodes | null = null
 ) {
-    const generatedNodesCount: number = generatedNodes?.count || 0;
-    const callFrameByNodeIndex = new Uint32Array(nodes.length + generatedNodesCount);
+    const generatedNodesCallFrames = generatedNodes?.callFrames || [];
+    const callFrameByNodeIndex = new Uint32Array(nodes.length + generatedNodesCallFrames.length);
 
     // nodes
     for (let i = 0; i < nodes.length; i++) {
@@ -54,7 +55,7 @@ export function createNodesCallFrameIndex(
     }
 
     // generatedNodes
-    callFrameByNodeIndex.set(generatedNodes?.callFrames || [], nodes.length);
+    callFrameByNodeIndex.set(generatedNodesCallFrames, nodes.length);
 
     return callFrameByNodeIndex;
 }
@@ -99,10 +100,8 @@ export function createNodeParent(
         }
     }
 
-    // generatedNodes
-    for (let i = 0, k = nodes.length; i < generatedNodesParentId.length; i++, k++) {
-        nodeParent[k] = nodeIndexById[generatedNodesParentId[i]];
-    }
+    // generatedNodes.nodeParentId already resolved into node indices, just set them in place
+    nodeParent.set(generatedNodesParentId, nodes.length);
 
     return nodeParent;
 }
@@ -145,21 +144,4 @@ export function createNodeLocations(
     nodeLocations.set(generatedNodeLocations, nodes.length);
 
     return nodeLocations;
-}
-
-export function processNodes(
-    nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
-    generatedNodes: GeneratedNodes | null = null,
-    callFrameByNodeIndex: Uint32Array,
-    dict: Dictionary
-) {
-    const nodeIndexById = createNodeIndexById(nodes, generatedNodes);
-    const nodeParent = createNodeParent(nodes, nodeIndexById, generatedNodes);
-    const nodeLocations = createNodeLocations(nodes, nodeParent, generatedNodes, callFrameByNodeIndex, dict);
-
-    return {
-        nodeIndexById,
-        nodeParent,
-        nodeLocations
-    };
 }
