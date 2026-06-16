@@ -1,5 +1,11 @@
 import { RuntimeCode, V8CpuProfile, V8CpuProfileScript } from '../types';
 
+export type Ownership = {
+    api: string;
+    areas: string[];
+    files: Record<string, number[]>;
+}
+
 export type UniformProfilingDataset = {
     sessions: UniformProfilingSession[];
 }
@@ -17,6 +23,8 @@ export type UniformProfilingSession = {
     processes: UniformProcess[];
     threads: UniformThread[];
     profiles: UniformProfile[];
+
+    ownership: Ownership | null;
 }
 export type UniformProcess = {
     pid: number;

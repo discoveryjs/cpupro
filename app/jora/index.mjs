@@ -6,6 +6,7 @@ import { methods as positionTableMethods } from './position-table.js';
 import { methods as profileMethods, assertions as profileAssertions, getProfileOrScopeProfile } from './profile.js';
 import { methods as samplesMethods } from './samples.js';
 import { methods as sourceMethods } from './source.js';
+import { methods as ownershipMethods } from './ownership.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 
 const sessionColorComponents = new Map();
@@ -51,6 +52,7 @@ export const methods = {
     ...samplesMethods,
     ...sourceMethods,
     ...profileMethods,
+    ...ownershipMethods,
 
     order(value) {
         return typeOrder[value] || 100;

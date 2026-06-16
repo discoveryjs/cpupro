@@ -14,6 +14,7 @@ import {
     CpuProCallFrameKind,
     CpuProLocation,
     CpuProModule,
+    CpuProOwner,
     CpuProPackage,
     CpuProScript,
     IProfileScriptsMap,
@@ -65,10 +66,12 @@ export class Dictionary {
     modules: CpuProModule[];
     packages: CpuProPackage[];
     categories: CpuProCategory[];
+    owners: CpuProOwner[];
 
     #modulesMap: Map<CpuProScript | string, CpuProModule>;
     #packagesMap: Map<string, CpuProPackage>;
     #categoriesMap: Map<string, CpuProCategory>;
+    #ownersMap: Map<string, CpuProOwner>;
 
     #callFramesByScript: CallFrameMap;
     #scriptCallFrames: WeakMap<CpuProScript, number>;
@@ -88,10 +91,12 @@ export class Dictionary {
         this.modules = [];
         this.packages = [];
         this.categories = [];
+        this.owners = [];
 
         this.#modulesMap = new Map();
         this.#packagesMap = new Map();
         this.#categoriesMap = new Map();
+        this.#ownersMap = new Map();
 
         this.#callFramesByScript = new Map();
         this.#scriptCallFrames = new WeakMap();
@@ -137,6 +142,9 @@ export class Dictionary {
     }
     packageToCategory(pkg: CpuProPackage) {
         return pkg.category;
+    }
+    moduleToOwner(module: CpuProModule) {
+        return module.owner;
     }
 
     setPackageNameForOrigin(origin: string, packageName: string) {
@@ -516,6 +524,22 @@ export class Dictionary {
         return category;
     }
 
+    resolveOwner(name: string): CpuProOwner {
+        let owner = this.#ownersMap.get(name);
+
+        if (owner === undefined) {
+            owner = {
+                id: this.#ownersMap.size + 1,
+                name
+            };
+
+            this.#ownersMap.set(name, owner);
+            this.owners.push(owner);
+        }
+
+        return owner;
+    }
+
     resolvePackage(
         moduleType: ModuleType,
         modulePath: string | null
@@ -700,6 +724,9 @@ export class Dictionary {
 
         if (module === undefined) {
             const pkg = this.resolvePackage(type, path);
+            const owner = this.owners.length > 0
+                ? this.owners[this.#modulesMap.size % this.owners.length]
+                : this.resolveOwner('(unknown)');
 
             module = {
                 id: this.#modulesMap.size + 1, // starts with 1
@@ -709,6 +736,7 @@ export class Dictionary {
                 script,
                 category: pkg.category,
                 package: pkg,
+                owner,
                 packageRelPath: null
             };
 

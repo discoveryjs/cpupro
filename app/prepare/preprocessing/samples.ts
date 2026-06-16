@@ -8,6 +8,7 @@ import {
     CpuProPackage,
     CpuProNode,
     CpuProCallFrame,
+    CpuProOwner,
     CpuProLocation
 } from '../types.js';
 
@@ -16,14 +17,16 @@ export type CpuProCallTree =
     | CallTree<CpuProCallFrame>
     | CallTree<CpuProModule>
     | CallTree<CpuProPackage>
-    | CallTree<CpuProCategory>;
+    | CallTree<CpuProCategory>
+    | CallTree<CpuProOwner>;
 
 export type SampledCpuProCallTree =
     | SampledTree<CpuProLocation>
     | SampledTree<CpuProCallFrame>
     | SampledTree<CpuProModule>
     | SampledTree<CpuProPackage>
-    | SampledTree<CpuProCategory>;
+    | SampledTree<CpuProCategory>
+    | SampledTree<CpuProOwner>;
 
 export function createSampledCallTree<T extends CpuProNode>(
     tree: CallTree<T>,
@@ -86,6 +89,7 @@ export function computeTreeMetrics(
     modulesTree: SampledTree<CpuProModule>,
     packagesTree: SampledTree<CpuProPackage>,
     categoriesTree: SampledTree<CpuProCategory>,
+    ownersTree: SampledTree<CpuProOwner>,
     locationsTree: SampledTree<CpuProLocation> | null
 ) {
     // create metrics
@@ -95,6 +99,7 @@ export function computeTreeMetrics(
         modulesTree,
         packagesTree,
         categoriesTree,
+        ownersTree,
         ...locationsTree ? [locationsTree] : []
     ] as unknown as SampledTree<CpuProNode>[];
     const {
@@ -106,6 +111,7 @@ export function computeTreeMetrics(
             moduleDimension,
             packageDimension,
             categoryDimension,
+            ownerDimension,
             locationDimension = null
         ]
     } = computeMetrics(samples, values, metricTrees);
@@ -116,6 +122,7 @@ export function computeTreeMetrics(
         modules: moduleDimension.dict as DictDimension<CpuProModule>,
         packages: packageDimension.dict as DictDimension<CpuProPackage>,
         categories: categoryDimension.dict as DictDimension<CpuProCategory>,
+        owners: ownerDimension.dict as DictDimension<CpuProOwner>,
         locations: locationDimension?.dict as DictDimension<CpuProLocation> || null
     };
 
@@ -124,6 +131,7 @@ export function computeTreeMetrics(
         modules: moduleDimension.tree as TreeDimension<CpuProModule>,
         packages: packageDimension.tree as TreeDimension<CpuProPackage>,
         categories: categoryDimension.tree as TreeDimension<CpuProCategory>,
+        owners: ownerDimension.tree as TreeDimension<CpuProOwner>,
         locations: locationDimension?.tree as TreeDimension<CpuProLocation> || null
     };
 

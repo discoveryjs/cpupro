@@ -2,7 +2,7 @@ import { LineMapping } from '../computations/line-mapping';
 import { CallTree } from '../computations/call-tree';
 import { DictDimension, DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered, TreeDimension, TreeMetrics, TreeValueBounds } from '../computations/metrics';
 import { Profile } from '../profile.mjs';
-import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProPackage } from '../types';
+import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types';
 
 export type ProfileLineType = 'timeline' | 'memline';
 export type LineKind = 'time' | 'memory'
@@ -37,6 +37,7 @@ export type ProfileLineTree = {
     modules: LineTreeDimension<CpuProModule> | null;
     packages: LineTreeDimension<CpuProPackage> | null;
     categories: LineTreeDimension<CpuProCategory> | null;
+    owners: LineTreeDimension<CpuProOwner> | null;
 };
 
 export type Axis = {
@@ -80,6 +81,7 @@ export interface ProfileLine {
         modules: DictDimension<CpuProModule> | null;
         packages: DictDimension<CpuProPackage> | null;
         categories: DictDimension<CpuProCategory> | null;
+        owners: DictDimension<CpuProOwner> | null;
     };
 
     // Tree-based dimensions (requires call tree structure)
@@ -89,6 +91,7 @@ export interface ProfileLine {
         modules: TreeDimension<CpuProModule> | null;
         packages: TreeDimension<CpuProPackage> | null;
         categories: TreeDimension<CpuProCategory> | null;
+        owners: TreeDimension<CpuProOwner> | null;
     };
 
     // Line-owned tree views. Several lines may reuse the same tree structure,

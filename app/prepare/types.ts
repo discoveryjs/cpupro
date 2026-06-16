@@ -1,5 +1,5 @@
 import { Dictionary } from './dictionary.js';
-import { UniformTraceEvent } from './formats/types.js';
+import { Ownership, UniformTraceEvent } from './formats/types.js';
 import { Profile } from './profile.mjs';
 
 export type V8CpuProfile = {
@@ -193,6 +193,7 @@ export type CpuProSession = {
     startTime: string | null;
     source: string | null;
     dataOrigin: string | null;
+    ownership: Ownership | null;
     processes: CpuProProcess[];
     defaultProcess: CpuProProcess | null;
     profiles: Profile[];
@@ -302,6 +303,7 @@ export type CpuProModule = {
     script: CpuProScript | null;
     category: CpuProCategory;
     package: CpuProPackage;
+    owner: CpuProOwner;
     packageRelPath: string | null;
 }
 
@@ -364,6 +366,11 @@ export type CpuProPackage = {
 
 export type CpuProCategory = {
     id: number;
+    name: string;
+}
+
+export type CpuProOwner = {
+    id: number; // starts with 1
     name: string;
 }
 

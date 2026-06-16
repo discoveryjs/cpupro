@@ -1,4 +1,4 @@
-import type { CpuProCallFrame, CpuProCategory, CpuProModule, CpuProPackage, CpuProScript } from './types.js';
+import type { CpuProCallFrame, CpuProCategory, CpuProModule, CpuProOwner, CpuProPackage, CpuProScript } from './types.js';
 import type { Dictionary } from './dictionary.js';
 import { GeneratedNodes } from './preprocessing/nodes.js';
 
@@ -8,11 +8,13 @@ export class Usage {
     modules: CpuProModule[];
     packages: CpuProPackage[];
     categories: CpuProCategory[];
+    owners: CpuProOwner[];
 
     callFrameToModule: Uint32Array;
     moduleToScript: Uint32Array;
     moduleToPackage: Uint32Array;
     packageToCategory: Uint32Array;
+    moduleToOwner: Uint32Array;
 
     constructor(
         dict: Dictionary,
@@ -41,6 +43,7 @@ export class Usage {
         [this.scripts, this.moduleToScript] = getUsed(dict.scripts, this.modules, dict.moduleToScript);
         [this.packages, this.moduleToPackage] = getUsed(dict.packages, this.modules, dict.moduleToPackage);
         [this.categories, this.packageToCategory] = getUsed(dict.categories, this.packages, dict.packageToCategory);
+        [this.owners, this.moduleToOwner] = getUsed(dict.owners, this.modules, dict.moduleToOwner);
     }
 }
 

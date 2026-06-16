@@ -1,5 +1,5 @@
 import type { CreateProfileApi, Profile } from '../profile.mjs';
-import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProPackage, V8CpuProfile } from '../types.js';
+import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProOwner, CpuProPackage, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineTree, ProfileMemline } from './types.js';
 import { computeTreeMetrics, remapTreeSamples, SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
@@ -57,7 +57,8 @@ function createAllocationLocationTreeSamples(
         callFramesTree,
         modulesTree,
         packagesTree,
-        categoriesTree
+        categoriesTree,
+        ownersTree
     } = createTreeSet(
         dictionary,
         nodeParent,
@@ -74,7 +75,8 @@ function createAllocationLocationTreeSamples(
             callFramesTree,
             modulesTree,
             packagesTree,
-            categoriesTree
+            categoriesTree,
+            ownersTree
         ]
     );
 
@@ -148,13 +150,14 @@ export async function createMemline(
     });
 
     let memlineSampledTreeOffset = 0;
-    const memlineSampledLocationsTree = sampledTreeList.length > 4
+    const memlineSampledLocationsTree = sampledTreeList.length > 5
         ? sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProLocation>
         : null;
     const memlineSampledCallFramesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProCallFrame>;
     const memlineSampledModulesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProModule>;
     const memlineSampledPackagesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProPackage>;
     const memlineSampledCategoriesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProCategory>;
+    const memlineSampledOwnersTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProOwner>;
 
     // Now use computeTreeMetrics with memline's compact sample domain to get full dimensions
     const {
@@ -171,6 +174,7 @@ export async function createMemline(
             memlineSampledModulesTree,
             memlineSampledPackagesTree,
             memlineSampledCategoriesTree,
+            memlineSampledOwnersTree,
             memlineSampledLocationsTree
         )
     );
@@ -202,7 +206,8 @@ export async function createMemline(
                 allocationCallFramesTree,
                 allocationModulesTree,
                 allocationPackagesTree,
-                allocationCategoriesTree
+                allocationCategoriesTree,
+                allocationOwnersTree
             ] = locationTreeSamples.sampledTreeList;
 
             return computeTreeMetrics(
@@ -212,6 +217,7 @@ export async function createMemline(
                 allocationModulesTree as SampledTree<CpuProModule>,
                 allocationPackagesTree as SampledTree<CpuProPackage>,
                 allocationCategoriesTree as SampledTree<CpuProCategory>,
+                allocationOwnersTree as SampledTree<CpuProOwner>,
                 allocationLocationsTree as SampledTree<CpuProLocation>
             );
         })

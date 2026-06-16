@@ -1,5 +1,5 @@
 import type { DictDimension, SamplesMetrics, SamplesMetricsFiltered, TreeDimension } from '../computations/metrics.js';
-import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProPackage } from '../types.js';
+import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { LineTreeDimension, ProfileLine, ProfileLineTree } from './types.js';
 
 export function createLineTreeDimension<T extends CpuProNode>(
@@ -35,6 +35,7 @@ export function createLineTree(
             modules: DictDimension<CpuProModule> | null;
             packages: DictDimension<CpuProPackage> | null;
             categories: DictDimension<CpuProCategory> | null;
+            owners: DictDimension<CpuProOwner> | null;
         };
         tree: {
             locations: TreeDimension<CpuProLocation> | null;
@@ -42,6 +43,7 @@ export function createLineTree(
             modules: TreeDimension<CpuProModule> | null;
             packages: TreeDimension<CpuProPackage> | null;
             categories: TreeDimension<CpuProCategory> | null;
+            owners: TreeDimension<CpuProOwner> | null;
         };
     },
     metrics: {
@@ -60,6 +62,7 @@ export function createLineTree(
         callFrames: createLineTreeDimension(dimensions.dict.callFrames, dimensions.tree.callFrames),
         modules: createLineTreeDimension(dimensions.dict.modules, dimensions.tree.modules),
         packages: createLineTreeDimension(dimensions.dict.packages, dimensions.tree.packages),
-        categories: createLineTreeDimension(dimensions.dict.categories, dimensions.tree.categories)
+        categories: createLineTreeDimension(dimensions.dict.categories, dimensions.tree.categories),
+        owners: createLineTreeDimension(dimensions.dict.owners, dimensions.tree.owners)
     };
 }

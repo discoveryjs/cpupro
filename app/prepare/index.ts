@@ -51,7 +51,8 @@ function createProfilingSession(profiles: UniformProfile[] = []): UniformProfili
         scenarioId: null,
         processes: [],
         threads: [],
-        profiles
+        profiles,
+        ownership: null
     };
 }
 
