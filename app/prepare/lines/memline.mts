@@ -10,7 +10,7 @@ import { Dictionary } from '../dictionary.js';
 import { createLineTree } from './trees.js';
 import { SampledTree } from '../computations/metrics.js';
 import type { GeneratedNodes } from '../preprocessing/nodes.js';
-import { buildTrees, createTreeSourceFromParent } from '../computations/build-trees.js';
+import { createTreeSet, createTreeSourceFromParent } from '../computations/build-trees.js';
 
 const metricName: Record<Metric, string> = {
     axis: 'Memory allocated',
@@ -58,7 +58,7 @@ function createAllocationLocationTreeSamples(
         modulesTree,
         packagesTree,
         categoriesTree
-    } = buildTrees(
+    } = createTreeSet(
         dictionary,
         nodeParent,
         nodeIndexById,

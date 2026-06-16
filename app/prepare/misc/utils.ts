@@ -22,26 +22,17 @@ export function min(array: Uint32Array | number[]) {
     return min;
 }
 
-// As of March 6th, 2024, V8 and JavaScriptCore do not seem to optimize for `new Uint32Array(array)` construction,
-// showing no notable performance difference in SpiderMonkey.
-// For large arrays, manually creating a Uint32Array and populating it element by element outperforms
-// the direct constructor usage; benchmarking on a 1.5 million element number array yielded 25ms for direct
-// construction vs. 3ms for manual population on a Mac M1 using V8.
-export function convertToUint32Array(source: number[]) {
-    const result = new Uint32Array(source.length);
+export function convertToUint32Array(source: number[], extraLength: number = 0) {
+    const result = new Uint32Array(source.length + extraLength);
 
-    for (let i = 0; i < result.length; i++) {
-        result[i] = source[i];
-    }
+    result.set(source);
 
     return result;
 }
-export function convertToInt32Array(source: number[]) {
-    const result = new Int32Array(source.length);
+export function convertToInt32Array(source: number[], extraLength: number = 0) {
+    const result = new Int32Array(source.length + extraLength);
 
-    for (let i = 0; i < result.length; i++) {
-        result[i] = source[i];
-    }
+    result.set(source);
 
     return result;
 }

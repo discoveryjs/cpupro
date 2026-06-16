@@ -1,19 +1,19 @@
 import type { Model } from '@discoveryjs/discovery';
 import { convertToInt32Array, convertToUint32Array } from './misc/utils.js';
-import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis } from './preprocessing/time-deltas.js';
+import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis, enumerateLongTimeDeltas, LongTimeDeltas } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { createTimeline, createMemline } from './lines/index.mjs';
 import { extractCallFramesFromNodes } from './preprocessing/call-frames.js';
-import { GeneratedNodes, processNodes } from './preprocessing/nodes.js';
+import { createNodeIndexById, createNodeLocations, createNodeParent, GeneratedNodes } from './preprocessing/nodes.js';
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { processLocations } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
-import { buildTrees } from './computations/build-trees.js';
+import { createTreeSet } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { CpuProScript, CpuProThread, V8CpuProfile } from './types.js';
+import { CpuProThread, V8CpuProfile } from './types.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { ProfileLine } from './lines/types.js';
 import { createLineBoundaries } from './misc/line-boundaries.js';
@@ -131,6 +131,82 @@ function scriptOffsetsFromLineColumns(
     return result;
 }
 
+async function createTree_(
+    dictionary: Dictionary,
+    nodeIndexById: Int32Array,
+    nodeParent: Uint32Array,
+    nodeScriptOffsets: Int32Array,
+    callFrameByNodeIndex: Uint32Array,
+    samples: Uint32Array,
+    sampleScriptOffsets: Int32Array | null,
+    generatedNodes: GeneratedNodes,
+    { work }: CreateProfileApi
+) {
+    // call frame positions
+    const { locationsTreeSource } = await work('process locations', () =>
+        processLocations(
+            dictionary,
+            nodeParent,
+            nodeScriptOffsets,
+            dictionary.callFrames,
+            callFrameByNodeIndex,
+            samples,
+            sampleScriptOffsets
+        )
+    );
+
+    //
+    // Usage vectors
+    //
+
+    const usage = await work('usage', () =>
+        new Usage(dictionary, callFrameByNodeIndex, generatedNodes)
+    );
+
+    //
+    // Create profile's data derivatives
+    //
+
+    const {
+        sourceIdToNode,
+        locationsTree,
+        callFramesTree,
+        modulesTree,
+        packagesTree,
+        categoriesTree
+    } = await work('build trees', () =>
+        createTreeSet(
+            dictionary,
+            nodeParent,
+            nodeIndexById,
+            callFrameByNodeIndex,
+            locationsTreeSource,
+            usage
+        )
+    );
+
+    // re-map samples
+    // FIXME: remap callFramesTree only, before createTreeSet()?
+    const sampledTreeSet = await work('remap samples', () =>
+        remapTreeSamples(
+            samples,
+            sourceIdToNode,
+            [
+                ...(locationsTree ? [locationsTree] : []),
+                callFramesTree,
+                modulesTree,
+                packagesTree,
+                categoriesTree
+            ]
+        )
+    );
+
+    return {
+        sampledTreeSet,
+        usage // FIXME: temporary, remove after usage is moved
+    };
+}
+
 export async function createProfile(
     data: V8CpuProfile,
     dictionary: Dictionary,
@@ -138,10 +214,10 @@ export async function createProfile(
 ) {
     const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
-    const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length + 1);
+    const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
 
     // Extract script offset first, since they depends on timestamps order,
-    // and should be moved together with timeDeltas if the order is adjusted
+    // and should be moved together with timeDeltas if the order is adjusted in fixTimeDeltasOrderIfNeeded()
     const _dataScriptOffsets = data._samplePositions || await work('extract sample script offsets', () =>
         scriptOffsetsFromLineColumns(
             data.nodes,
@@ -158,8 +234,8 @@ export async function createProfile(
     //
 
     // preprocess timeDeltas, fix order if necessary
-    // FIXME: mutate samples/timeDeltas
-    await work('fix time deltas order', () =>
+    // FIXME: avoid mutation of samples/timeDeltas/scriptOffsets
+    await work('ensure correct time deltas order', () =>
         fixTimeDeltasOrderIfNeeded(
             data.timeDeltas,
             data.samples,
@@ -170,6 +246,7 @@ export async function createProfile(
     // create samples axis
     const axis = profileType === 'time'
         ? await work('process time deltas', () =>
+            // FIXME: avoid mutation of timeDeltas
             createTimelineAxis(
                 data.startTime,
                 data.endTime,
@@ -185,31 +262,56 @@ export async function createProfile(
         );
 
     // normalize long samples (time deltas)
+    // FIXME: avoid mutation of samples/timeDeltas/scriptOffsets
+    let longDeltas: LongTimeDeltas | null = null;
     if (experimentalFeatures && profileType === 'time') {
-        await work('process time deltas', () =>
-            processLongTimeDeltas(
+        longDeltas = await work('enumerate long time deltas', () =>
+            enumerateLongTimeDeltas(
                 axis.samplesInterval,
-                data.timeDeltas,
-                data.samples,
-                _dataScriptOffsets,
-                generatedNodes
+                data.timeDeltas
             )
         );
     }
 
-    // convert to Uint32Array following the processTimeDeltas() call, as timeDeltas may include negative values,
-    // are correcting within processTimeDeltas()
+    // convert arrays into TypedArrays;
+    // after this point these arrays will not change their length
+    const extraLength = longDeltas?.longTimeDeltasCount ?? 0;
     const {
-        samples,
         timeDeltas,
-        sampleLocations
-    } = await work('convert samples & timeDeltas into TypedArrays', () => ({
-        samples: convertToUint32Array(data.samples),
-        timeDeltas: convertToUint32Array(data.timeDeltas),
-        sampleLocations: Array.isArray(_dataScriptOffsets)
-            ? convertToInt32Array(_dataScriptOffsets)
+        samples,
+        sampleScriptOffsets
+    } = await work('convert vectors into TypedArrays', () => ({
+        timeDeltas: convertToUint32Array(data.timeDeltas, extraLength),
+        samples: convertToUint32Array(data.samples, extraLength),
+        sampleScriptOffsets: Array.isArray(_dataScriptOffsets)
+            ? convertToInt32Array(_dataScriptOffsets, extraLength)
             : null
     }));
+
+    // create node index by id and remap sample node ids to node indices;
+    // at this point, only data.nodes use ids for reference to other nodes
+    const nodeIndexById = await work('remap samples to node indices', () => {
+        const nodeIndexById = createNodeIndexById(data.nodes);
+
+        for (let i = 0; i < samples.length; i++) {
+            samples[i] = nodeIndexById[samples[i]];
+        }
+
+        return nodeIndexById;
+    });
+
+    // process long time deltas if needed
+    if (longDeltas !== null) {
+        await work('process long time deltas', () =>
+            processLongTimeDeltas(
+                longDeltas,
+                timeDeltas,
+                samples,
+                sampleScriptOffsets,
+                generatedNodes
+            )
+        );
+    }
 
     // attach root GC node samples to previous call stack;
     // this operation produces new nodes
@@ -219,7 +321,7 @@ export async function createProfile(
             generatedNodes,
             data._callFrames || null,
             samples,
-            sampleLocations
+            sampleScriptOffsets
         )
     );
 
@@ -245,72 +347,35 @@ export async function createProfile(
     // Create profile's data derivatives
     //
 
-    const { nodeIndexById, nodeParent, nodeLocations } = await work('process nodes', () =>
-        processNodes(
+    const nodeParent = await work('process nodes', () =>
+        createNodeParent(
             data.nodes,
+            nodeIndexById,
+            generatedNodes
+        )
+    );
+
+    const nodeScriptOffsets = await work('create node locations', () =>
+        createNodeLocations(
+            data.nodes,
+            nodeParent,
             generatedNodes,
             callFrameByNodeIndex,
             dictionary
         )
     );
 
-    // call frame positions
-    const { locationsTreeSource } = await work('process locations', () =>
-        processLocations(
+    const { sampledTreeSet, usage } = await work('create tree breakdown', () =>
+        createTree_(
             dictionary,
             nodeIndexById,
             nodeParent,
-            nodeLocations,
-            dictionary.callFrames,
+            nodeScriptOffsets,
             callFrameByNodeIndex,
             samples,
-            sampleLocations
-        )
-    );
-
-    //
-    // Usage vectors
-    //
-
-    const usage = await work('usage', () =>
-        new Usage(dictionary, callFrameByNodeIndex, generatedNodes)
-    );
-
-    //
-    // Create profile's data derivatives
-    //
-
-    const {
-        sourceIdToNode,
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree
-    } = await work('build trees', () =>
-        buildTrees(
-            dictionary,
-            nodeParent,
-            nodeIndexById,
-            callFrameByNodeIndex,
-            locationsTreeSource,
-            usage
-        )
-    );
-
-    // re-map samples
-    // FIXME: remap callFramesTree only, before buildTrees()?
-    const sampledTreeList = await work('remap samples', () =>
-        remapTreeSamples(
-            samples,
-            sourceIdToNode,
-            [
-                ...(locationsTree ? [locationsTree] : []),
-                callFramesTree,
-                modulesTree,
-                packagesTree,
-                categoriesTree
-            ]
+            sampleScriptOffsets,
+            generatedNodes,
+            { work }
         )
     );
 
@@ -320,7 +385,7 @@ export async function createProfile(
         axis,
         samples,
         timeDeltas,
-        sampledTreeList,
+        sampledTreeSet,
         { work }
     );
 
@@ -334,7 +399,7 @@ export async function createProfile(
         dictionary,
         profileScriptsMap,
         samples,
-        sampledTreeList,
+        sampledTreeSet,
         { work }
     );
 
