@@ -173,7 +173,8 @@ async function createTree_(
         callFramesTree,
         modulesTree,
         packagesTree,
-        categoriesTree
+        categoriesTree,
+        ownersTree
     } = await work('build trees', () =>
         createTreeSet(
             dictionary,
@@ -196,7 +197,8 @@ async function createTree_(
                 callFramesTree,
                 modulesTree,
                 packagesTree,
-                categoriesTree
+                categoriesTree,
+                ownersTree
             ]
         )
     );
