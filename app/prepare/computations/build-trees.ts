@@ -451,7 +451,7 @@ function buildTreeSource(
 ) {
     const t = Date.now();
 
-    const treeSource = createTreeSourceFromParent(nodeParent, nodeIndexById.slice(), callFrameByNodeIndex, callFrames);
+    const treeSource = createTreeSourceFromParent(nodeParent, nodeIndexById, callFrameByNodeIndex, callFrames);
 
     TIMINGS && console.log('buildTreeSource()', Date.now() - t);
 

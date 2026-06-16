@@ -5,9 +5,9 @@ import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
 import { createTimeline, createMemline } from './lines/index.mjs';
 import { extractCallFramesFromNodes } from './preprocessing/call-frames.js';
-import { createNodeIndexById, createNodeLocations, createNodeParent, GeneratedNodes } from './preprocessing/nodes.js';
+import { createNodeIndexById, createNodeScriptOffsets, createNodeParent, GeneratedNodes } from './preprocessing/nodes.js';
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
-import { processLocations } from './preprocessing/locations.js';
+import { createLocationsTreeSource } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createTreeSet } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
@@ -133,10 +133,9 @@ function scriptOffsetsFromLineColumns(
 
 async function createTree_(
     dictionary: Dictionary,
-    nodeIndexById: Int32Array,
     nodeParent: Uint32Array,
     nodeScriptOffsets: Int32Array,
-    callFrameByNodeIndex: Uint32Array,
+    nodeCallFrames: Uint32Array,
     samples: Uint32Array,
     sampleScriptOffsets: Int32Array | null,
     generatedNodes: GeneratedNodes,
@@ -144,12 +143,11 @@ async function createTree_(
 ) {
     // call frame positions
     const { locationsTreeSource } = await work('process locations', () =>
-        processLocations(
+        createLocationsTreeSource(
             dictionary,
             nodeParent,
             nodeScriptOffsets,
-            dictionary.callFrames,
-            callFrameByNodeIndex,
+            nodeCallFrames,
             samples,
             sampleScriptOffsets
         )
@@ -160,7 +158,7 @@ async function createTree_(
     //
 
     const usage = await work('usage', () =>
-        new Usage(dictionary, callFrameByNodeIndex, generatedNodes)
+        new Usage(dictionary, nodeCallFrames, generatedNodes)
     );
 
     //
@@ -178,8 +176,8 @@ async function createTree_(
         createTreeSet(
             dictionary,
             nodeParent,
-            nodeIndexById,
-            callFrameByNodeIndex,
+            Int32Array.from({ length: nodeParent.length }, (_, i) => i),
+            nodeCallFrames,
             locationsTreeSource,
             usage
         )
@@ -355,8 +353,8 @@ export async function createProfile(
         )
     );
 
-    const nodeScriptOffsets = await work('create node locations', () =>
-        createNodeLocations(
+    const nodeScriptOffsets = await work('create node script offsets', () =>
+        createNodeScriptOffsets(
             data.nodes,
             nodeParent,
             generatedNodes,
@@ -368,7 +366,6 @@ export async function createProfile(
     const { sampledTreeSet, usage } = await work('create tree breakdown', () =>
         createTree_(
             dictionary,
-            nodeIndexById,
             nodeParent,
             nodeScriptOffsets,
             callFrameByNodeIndex,

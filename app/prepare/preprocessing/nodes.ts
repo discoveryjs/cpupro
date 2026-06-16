@@ -106,15 +106,15 @@ export function createNodeParent(
     return nodeParent;
 }
 
-export function createNodeLocations(
+export function createNodeScriptOffsets(
     nodes: V8CpuProfileNode<V8CpuProfileCallFrame | number>[],
     nodeParent: Uint32Array,
     generatedNodes: GeneratedNodes | null = null,
     callFrameByNodeIndex: Uint32Array,
     dict: Dictionary
 ) {
-    const generatedNodeLocations: number[] = generatedNodes?.parentScriptOffsets || [];
-    const nodeLocations = new Int32Array(nodes.length + generatedNodeLocations.length).fill(-1);
+    const generatedNodeScriptOffsets: number[] = generatedNodes?.parentScriptOffsets || [];
+    const nodeScriptOffsets = new Int32Array(nodes.length + generatedNodeScriptOffsets.length).fill(-1);
 
     // nodes
     for (let i = 0; i < nodes.length; i++) {
@@ -125,10 +125,10 @@ export function createNodeLocations(
         } = nodes[i];
 
         if (typeof parentScriptOffset === 'number') {
-            nodeLocations[i] = parentScriptOffset;
+            nodeScriptOffsets[i] = parentScriptOffset;
         } else {
             if (parentLineNumber !== -1 && parentColumnNumber !== -1 && nodeParent[i] > 0) {
-                nodeLocations[i] = dict.resolveLocation(
+                nodeScriptOffsets[i] = dict.resolveLocation(
                     dict.callFrames[callFrameByNodeIndex[nodeParent[i]]],
                     null,
                     -1,
@@ -140,8 +140,8 @@ export function createNodeLocations(
         }
     }
 
-    // generated nodes
-    nodeLocations.set(generatedNodeLocations, nodes.length);
+    // generated nodes already have script offsets, just set them in place
+    nodeScriptOffsets.set(generatedNodeScriptOffsets, nodes.length);
 
-    return nodeLocations;
+    return nodeScriptOffsets;
 }

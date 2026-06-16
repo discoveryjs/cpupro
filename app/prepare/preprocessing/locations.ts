@@ -75,12 +75,11 @@ export function ensureLocations(
  *
  * Returns a location tree for aggregating metrics by execution point.
  */
-export function processLocations(
+export function createLocationsTreeSource(
     dict: Dictionary,
     nodeParent: Uint32Array,
     nodeScriptOffsets: Int32Array,
-    callFrames: CpuProCallFrame[],
-    callFrameByNodeIndex: Uint32Array,
+    nodeCallFrames: Uint32Array,
     samples: Uint32Array,
     sampleScriptOffsets: Int32Array | null
 ) {
@@ -88,6 +87,7 @@ export function processLocations(
         return { locationsTreeSource: null };
     }
 
+    const callFrames = dict.callFrames;
     const locationByRef = new Map<number, number>();
     const locationNodeMap = new Map<number, number>();
     const treeLocationNodes = new Uint32Array(nodeParent.length);
@@ -97,7 +97,7 @@ export function processLocations(
     // Locations from nodes -> callFramePositions + nodes
     // -> nodes
     for (let i = 0; i < nodeScriptOffsets.length; i++) {
-        const callFrameIndex = callFrameByNodeIndex[nodeParent[i]];
+        const callFrameIndex = nodeCallFrames[nodeParent[i]];
         const scriptOffset = nodeScriptOffsets[i];
         const ref = locationRef(callFrameIndex, scriptOffset);
         let locationIndex = locationByRef.get(ref);
@@ -116,14 +116,17 @@ export function processLocations(
     // Locations from samples
     // sampleLocations -> callFramePositions + nodes
     if (sampleScriptOffsets !== null) {
+        // nodes indecies created after samples
+        const sampleNodeIndexBase = treeLocationNodes.length;
+
         for (let i = 0; i < samples.length; i++) {
             const nodeIndex = samples[i];
             const scriptOffset = sampleScriptOffsets[i];
             const nodeRef = locationNodeRef(nodeIndex, scriptOffset);
-            let sampleNodeId = locationNodeMap.get(nodeRef);
+            let sampleNodeIndex = locationNodeMap.get(nodeRef);
 
-            if (sampleNodeId === undefined) {
-                const callFrameIndex = callFrameByNodeIndex[nodeIndex] || 0;
+            if (sampleNodeIndex === undefined) {
+                const callFrameIndex = nodeCallFrames[nodeIndex] || 0;
                 const ref = locationRef(callFrameIndex, scriptOffset);
                 let locationIndex = locationByRef.get(ref);
 
@@ -135,16 +138,17 @@ export function processLocations(
                     ));
                 }
 
-                sampleNodeId = treeLocationNodes.length + locationNodeMap.size;
-                locationNodeMap.set(nodeRef, sampleNodeId); // -> sourceIdToNode
+                sampleNodeIndex = locationNodeMap.size + sampleNodeIndexBase;
+                locationNodeMap.set(nodeRef, sampleNodeIndex); // -> sourceIdToNode
                 sampledLocationNodes.push(locationIndex); // -> nodes
                 sampledLocationParents.push(nodeIndex); // -> parent & sourceIdToNode
             }
 
-            samples[i] = sampleNodeId - treeLocationNodes.length;
+            samples[i] = sampleNodeIndex - sampleNodeIndexBase;
         }
     }
 
+    // concat arrays for tree source
     const locationArraysLength = treeLocationNodes.length + sampledLocationNodes.length;
     const locationNodes = new Uint32Array(locationArraysLength);
     const locationParents = new Uint32Array(locationArraysLength);
@@ -152,8 +156,9 @@ export function processLocations(
     locationNodes.set(treeLocationNodes);
     locationNodes.set(sampledLocationNodes, treeLocationNodes.length);
     locationParents.set(nodeParent);
-    locationParents.set(sampledLocationParents, treeLocationNodes.length);
+    locationParents.set(sampledLocationParents, nodeParent.length);
 
+    // create tree source for locations
     const sourceIdToNode = new Int32Array(locationNodeMap.values());
     const locationsTreeSource = createTreeSourceFromParent(
         locationParents,
