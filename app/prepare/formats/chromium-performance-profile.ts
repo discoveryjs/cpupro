@@ -572,22 +572,7 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
             profile._cpuproAllocationGc = buildChunkedVector(allocationChunks, 'gc', allocationsCount);
 
-            if (allocationGcs.length > 0 && profile._cpuproAllocationGc) {
-                const idToIndexMap = new Map<number, number>(ids?.map((id, index) => [id, index]) || []);
-                for (const allocationGc of allocationGcs) {
-                    for (const [key, value] of Object.entries(allocationGc)) {
-                        const gc = parseInt(key);
-                        const ids = typeof value === 'string' ? JSON.parse(value) : value;
-
-                        for (const id of ids) {
-                            const index = idToIndexMap.get(id);
-                            if (index !== undefined) {
-                                profile._cpuproAllocationGc[index] = gc;
-                            }
-                        }
-                    }
-                }
-            }
+            updateAllocationsGc(ids, allocationGcs, profile._cpuproAllocationGc);
         }
 
         profiles.push(profile);
@@ -620,9 +605,9 @@ function buildChunkedVector(
 ): number[] | undefined {
     const vector: number[] = totalLength > 0
         ? new Int32Array(totalLength) as unknown as number[]
-        : chunks.flatMap(chunk =>
+        : chunks.map(chunk =>
             typeof chunk[key] === 'string' ? JSON.parse(chunk[key]) : chunk[key] || []
-        );
+        ).flat(1);
 
     if (totalLength > 0) {
         let offset = 0;
@@ -686,4 +671,61 @@ function buildChunkedArray(
     }
 
     return result;
+}
+
+function updateAllocationsGc(
+    allocactionIds: number[] | undefined,
+    allocationGcChunks: AllocationGc[],
+    allocationGcs: number[] | undefined
+) {
+    if (!allocationGcChunks.length || !allocationGcs || !allocactionIds) {
+        return;
+    }
+
+    // Check if allocation ids are monotonic, which allows to optimize GC mapping
+    let monotonicIds = true;
+
+    for (let i = 1; i < allocactionIds.length; i++) {
+        if (allocactionIds[i] !== allocactionIds[i - 1] + 1) {
+            monotonicIds = false;
+            break;
+        }
+    }
+
+    // If ids are monotonic, we can directly calculate the index in the GC array based on the id,
+    // otherwise we need to build a map (which is 3x times slower)
+    if (monotonicIds) {
+        const firstId = allocactionIds[0];
+        const lastId = allocactionIds[allocactionIds.length - 1];
+
+        for (const allocationGc of allocationGcChunks) {
+            for (const [key, value] of Object.entries(allocationGc)) {
+                const gc = parseInt(key);
+                const gcIds = typeof value === 'string' ? JSON.parse(value) : value;
+
+                for (let i = 0; i < gcIds.length; i++) {
+                    const id = gcIds[i];
+                    if (id >= firstId && id <= lastId) {
+                        allocationGcs[id - firstId] = gc;
+                    }
+                }
+            }
+        }
+    } else {
+        const idToIndexMap = new Map<number, number>(allocactionIds.map((id, index) => [id, index]) || []);
+
+        for (const allocationGc of allocationGcChunks) {
+            for (const [key, value] of Object.entries(allocationGc)) {
+                const gc = parseInt(key);
+                const gcIds = typeof value === 'string' ? JSON.parse(value) : value;
+
+                for (let i = 0; i < gcIds.length; i++) {
+                    const index = idToIndexMap.get(gcIds[i]);
+                    if (index !== undefined) {
+                        allocationGcs[index] = gc;
+                    }
+                }
+            }
+        }
+    }
 }
