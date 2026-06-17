@@ -8,6 +8,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     #scriptIdFromString: Map<string, number>;
     $scriptIndexByUrl: Map<string, number[]>;
     #scriptByUrl: Map<string, CpuProScript[]>;
+    #originalScriptByUrl: Map<string, CpuProScript>;
 
     constructor(dict: Dictionary, scripts?: V8CpuProfileScript[] | null) {
         this.dict = dict;
@@ -15,6 +16,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         this.#scriptIdFromString = new Map();
         this.$scriptIndexByUrl = new Map();
         this.#scriptByUrl = this.#createScriptByUrlMap(dict.scripts);
+        this.#originalScriptByUrl = new Map();
 
         this.#addScripts(scripts);
     }
@@ -111,6 +113,21 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         }
 
         return seed;
+    }
+
+    resolveOriginalScript(url: string, source: string | null, from: CpuProScript | null = null): CpuProScript {
+        let script = this.#originalScriptByUrl.get(url);
+
+        if (!script) {
+            script = createScript(-this.#originalScriptByUrl.size - 1, url, source);
+            script.module = this.dict.resolveModule(script);
+            script.originalFor = from;
+            this.#originalScriptByUrl.set(url, script);
+            this.#scriptById.set(script.id, script);
+            this.dict.scripts.push(script);
+        }
+
+        return script;
     }
 
     resolveScript(scriptId: number, url?: string | null, source?: string | null) {
@@ -210,6 +227,7 @@ export function createScript(id: number, url: string, source: string | null = nu
         sourceMapUrl: null,
         sourceMap: null,
         module: null as unknown as CpuProModule,
-        callFrames: []
+        callFrames: [],
+        originalFor: null
     };
 }

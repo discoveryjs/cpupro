@@ -148,8 +148,8 @@ export function getFunctionRanges(code: string, url?: string | null): FunctionRa
 
     try {
         ast = parse(code, {
-            sourceType: 'unambiguous'
-            // plugins: ['typescript', 'jsx'],
+            sourceType: 'unambiguous',
+            plugins: ['typescript', 'jsx']
             // ranges: true,
             // errorRecovery: true
         });

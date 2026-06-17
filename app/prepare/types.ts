@@ -384,6 +384,7 @@ export type CpuProScript = {
     sourceMap: SourceMap | null;
     module: CpuProModule;
     callFrames: CpuProCallFrame[];
+    originalFor: CpuProScript | null;
 }
 export interface IProfileScriptsMap {
     get(scriptId: number | string): CpuProScript | undefined;
