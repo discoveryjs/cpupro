@@ -8,6 +8,11 @@ import { reparentGcNodes } from '../preprocessing/gc-samples.js';
 import { GeneratedNodes } from '../preprocessing/nodes.js';
 import { convertToInt32Array, convertToUint32Array } from '../misc/utils.js';
 import { createLineTree } from './trees.js';
+import { noopWorkHandler, WorkHandler } from '../misc/work.js';
+
+export type CreateTimelineOptions = {
+    work: WorkHandler;
+};
 
 const experimentalFeatures = false;
 const metricName: Record<Metric, string> = {
@@ -36,8 +41,11 @@ const metricDefinitions: Record<Metric, string> = {
 export async function extractTimelineData(
     data: V8CpuProfile,
     generateNodes: GeneratedNodes,
-    { work }: CreateProfileApi
+    options?: Partial<CreateTimelineOptions>
 ) {
+    const {
+        work = noopWorkHandler
+    } = options || {};
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
 
     if (profileType !== 'time') {

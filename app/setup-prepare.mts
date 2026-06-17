@@ -8,9 +8,10 @@ import { createProfile, Profile } from './prepare/profile.mjs';
 import { ProfileLineType } from './prepare/lines/types.js';
 import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
+import { createWorkHandler } from './prepare/misc/work.js';
 
 export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
-    const work = async function<T>(name: string, fn: () => T): Promise<T> {
+    const work = createWorkHandler(async function<T>(name: string, fn: () => T): Promise<T> {
         await setWorkTitle(name);
         const startTime = Date.now();
 
@@ -19,7 +20,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         } finally {
             TIMINGS && console.info('>', name, Date.now() - startTime);
         }
-    };
+    });
 
     //
     // Extract & validate profile data
@@ -49,17 +50,17 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         }
 
         const runSessionTask: typeof work = profilingDataset.sessions.length > 1
-            ? (name, fn) => work(`Session ${sessionIndex + 1}/${profilingDataset.sessions.length} — ${name}`, fn)
+            ? work.withPrefix(`Session ${sessionIndex + 1}/${profilingDataset.sessions.length}`)
             : work;
 
         // create session
-        const { session, profiles: threadProfiles } = createProfileSession(rawSession, dict);
+        const { session, profiles: sessionProfiles } = createProfileSession(rawSession, dict);
         sessions.push(session);
 
         // process session profiles if any
-        for (let i = 0; i < threadProfiles.length; i++) {
+        for (let i = 0; i < sessionProfiles.length; i++) {
             // if (i === 0) continue;
-            const { thread, profile: profileData } = threadProfiles[i];
+            const { thread, profile: profileData } = sessionProfiles[i];
 
             if (!profileData.nodes?.length) {
                 console.warn('Ignored a profile with no call tree nodes', profileData);
@@ -73,9 +74,12 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 dict.setPackageNameForOrigin(new URL(origin).host, name);
             }
 
-            const profile = await createProfile(profileData, dict, {
-                work: threadProfiles.length > 1
-                    ? (name, fn) => runSessionTask(`Profile ${i + 1}/${threadProfiles.length} — ${name}`, fn)
+            const profile = await createProfile(profileData, {
+                dictionary: dict,
+                runtime: null,
+                ownership: rawSession.ownership ?? null,
+                work: sessionProfiles.length > 1
+                    ? runSessionTask.withPrefix(`Profile ${i + 1}/${sessionProfiles.length}`)
                     : runSessionTask
             });
 

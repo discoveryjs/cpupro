@@ -11,6 +11,11 @@ import { createLineTree } from './trees.js';
 import { SampledTree } from '../computations/metrics.js';
 import type { GeneratedNodes } from '../preprocessing/nodes.js';
 import { createTreeSet, createTreeSourceFromParent } from '../computations/build-trees.js';
+import { noopWorkHandler, WorkHandler } from '../misc/work.js';
+
+export type CreateMemlineOptions = {
+    work: WorkHandler;
+};
 
 const metricName: Record<Metric, string> = {
     axis: 'Memory allocated',
@@ -93,8 +98,11 @@ export async function createMemline(
     scriptsMap: ProfileScriptsMap,
     cpuSamples: Uint32Array,
     sampledTreeList: SampledCpuProCallTree[],
-    { work }: CreateProfileApi
+    options?: Partial<CreateMemlineOptions>
 ): Promise<ProfileMemline | null> {
+    const {
+        work = noopWorkHandler
+    } = options || {};
     const {
         _cpuproAllocationMapping,
         _cpuproAllocationIds,

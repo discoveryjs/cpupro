@@ -18,10 +18,16 @@ import { createLineMapping } from './computations/line-mapping.js';
 import { ProfileLine } from './lines/types.js';
 import { createLineBoundaries } from './misc/line-boundaries.js';
 import { remapTreeSamples } from './preprocessing/samples.js';
+import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
 const experimentalFeatures = false;
 
 export type Profile = Awaited<ReturnType<typeof createProfile>>;
+export type CreateProfileOptions = {
+    dictionary: Dictionary;
+    runtime: RuntimeCode | null;
+    work: WorkHandler;
+};
 export type CreateProfileApi = {
     work<T>(name: string, fn: () => T): Promise<T>;
 }
@@ -207,11 +213,13 @@ async function createTree_(
     };
 }
 
-export async function createProfile(
-    data: V8CpuProfile,
-    dictionary: Dictionary,
-    { work }: CreateProfileApi
-) {
+export async function createProfile(data: V8CpuProfile, options?: Partial<CreateProfileOptions>) {
+    const {
+        dictionary = new Dictionary(),
+        runtime = null,
+        ownership = null,
+        work = noopWorkHandler
+    } = options || {};
     const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
     const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
