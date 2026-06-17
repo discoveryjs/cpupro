@@ -83,6 +83,7 @@ export class Dictionary {
     #anonymousFunctionNameIndex: number = 1;
     #anonymousModuleByScriptId: Map<CpuProScript, string>;
     #packageNameByOriginMap: Map<string, string>;
+    #unknownOwner: CpuProOwner;
 
     constructor() {
         this.callFrames = Object.assign([], { wellKnownIndex: Object.create(null) });
@@ -97,6 +98,7 @@ export class Dictionary {
         this.#packagesMap = new Map();
         this.#categoriesMap = new Map();
         this.#ownersMap = new Map();
+        this.#unknownOwner = this.resolveOwner('(unknown)'); // goes first as used for modules without owner, including well-known modules/call frames
 
         this.#callFramesByScript = new Map();
         this.#scriptCallFrames = new WeakMap();
@@ -115,13 +117,17 @@ export class Dictionary {
 
         // fulfill the well known call frames map for fast access
         for (const [name, id] of wellKnownCallFrameName) {
-            this.callFrames.wellKnownIndex[id] = this.resolveCallFrameIndex({
+            const callFrameIndex = this.resolveCallFrameIndex({
                 scriptId: 0,
                 url: '',
                 functionName: name,
                 lineNumber: -1,
                 columnNumber: -1
             }, null as unknown as IProfileScriptsMap);
+            const callFrame = this.callFrames[callFrameIndex];
+
+            callFrame.module.owner = this.resolveOwner(callFrame.module.name!);
+            this.callFrames.wellKnownIndex[id] = callFrameIndex;
         }
 
         this.#unknownLocationIndex = this.callFrames.wellKnownIndex.unknown;
@@ -724,9 +730,6 @@ export class Dictionary {
 
         if (module === undefined) {
             const pkg = this.resolvePackage(type, path);
-            const owner = this.owners.length > 0
-                ? this.owners[this.#modulesMap.size % this.owners.length]
-                : this.resolveOwner('(unknown)');
 
             module = {
                 id: this.#modulesMap.size + 1, // starts with 1
@@ -736,8 +739,10 @@ export class Dictionary {
                 script,
                 category: pkg.category,
                 package: pkg,
-                owner,
-                packageRelPath: null
+                packageRelPath: null,
+                owner: pkg.registry
+                    ? this.resolveOwner('package: ' + pkg.name)
+                    : this.#unknownOwner
             };
 
             this.#modulesMap.set(moduleKey, module);

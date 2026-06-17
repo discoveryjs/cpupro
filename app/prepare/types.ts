@@ -303,8 +303,8 @@ export type CpuProModule = {
     script: CpuProScript | null;
     category: CpuProCategory;
     package: CpuProPackage;
-    owner: CpuProOwner;
     packageRelPath: string | null;
+    owner: CpuProOwner;
 }
 
 export type PackageType = // alphabetical order

@@ -1,7 +1,7 @@
 discovery.page.define('owners', [
     {
         view: 'context',
-        data: 'scopeTree().owners.all.dict.entries',
+        data: 'scopeTree().owners.filtered.dict.entries',
         modifiers: [
             {
                 view: 'page-header',
