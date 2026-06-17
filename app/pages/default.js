@@ -412,9 +412,10 @@ const flamecharts = {
             {
                 view: 'toggle-group',
                 name: 'dataset',
+                value: '="getSessionSetting".callAction("main-flamechart-dataset", "packages")',
                 data: [
                     { text: 'Categories', value: 'categories' },
-                    { text: 'Packages', value: 'packages', active: true },
+                    { text: 'Packages', value: 'packages' },
                     { text: 'Modules', value: 'modules' },
                     { text: 'Call frames', value: 'callFrames' }
                 ]
@@ -473,6 +474,9 @@ const flamecharts = {
         lockScrolling: true,
         postRender(el, config, data, context) {
             el.classList.toggle('lock-scrolling', !context.params.flamechartFullpage);
+            if (context.dataset) {
+                context.actions.setSessionSetting?.('main-flamechart-dataset', context.dataset);
+            }
         }
     }
 };
