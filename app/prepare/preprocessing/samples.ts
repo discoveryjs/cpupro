@@ -68,15 +68,38 @@ export function remapTreeSamples(
     sampleIdToEntryTreeNode: Int32Array,
     trees: CpuProCallTree[]
 ) {
-    let sampleToNode = remapSamples(samples, sampleIdToEntryTreeNode);
     const sampledTrees: SampledCpuProCallTree[] = [];
+    const sampleToNode = remapSamples(samples, sampleIdToEntryTreeNode);
+    const sampleToNodeBySourceTree = new Map<CallTree<unknown> | null, Uint32Array>(
+        [[null, sampleToNode]]
+    );
 
-    for (const tree of trees) {
-        sampleToNode = sampleToNode.map(id => tree.sourceIdToNode[id]);
-        sampledTrees.push(createSampledCallTree(
-            tree as CallTree<CpuProNode>,
-            sampleToNode
-        ) as SampledCpuProCallTree);
+    while (sampledTrees.length < trees.length) {
+        let foundNewTree = false;
+
+        for (const tree of trees) {
+            if (sampleToNodeBySourceTree.has(tree)) {
+                continue;
+            }
+
+            const sourceTreeSampleToNode = sampleToNodeBySourceTree.get(tree.sourceTree);
+
+            if (sourceTreeSampleToNode !== undefined) {
+                const treeSampleToNode = tree.sourceIdToNode;
+                const sampleToNode = sourceTreeSampleToNode.map(id => treeSampleToNode[id]);
+
+                foundNewTree = true;
+                sampleToNodeBySourceTree.set(tree, sampleToNode);
+                sampledTrees.push({
+                    tree,
+                    sampleToNode
+                } as SampledCpuProCallTree);
+            }
+        }
+
+        if (!foundNewTree) {
+            throw new Error('Failed to remap samples for all trees');
+        }
     }
 
     return sampledTrees;

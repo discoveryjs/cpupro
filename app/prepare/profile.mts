@@ -7,13 +7,13 @@ import { createTimeline, createMemline } from './lines/index.mjs';
 import { extractCallFramesFromNodes } from './preprocessing/call-frames.js';
 import { createNodeIndexById, createNodeScriptOffsets, createNodeParent, GeneratedNodes } from './preprocessing/nodes.js';
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
-import { createLocationsTreeSource } from './preprocessing/locations.js';
+import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
-import { createTreeSet } from './computations/build-trees.js';
+import { createTreeSet, createTreeSourceFromParent, TreeSource } from './computations/build-trees.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { CpuProThread, V8CpuProfile } from './types.js';
+import { CpuProCallFrame, CpuProLocation, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { ProfileLine } from './lines/types.js';
 import { createLineBoundaries } from './misc/line-boundaries.js';
@@ -137,35 +137,28 @@ function scriptOffsetsFromLineColumns(
     return result;
 }
 
-async function createTree_(
+export async function createTree_(
     dictionary: Dictionary,
-    nodeParent: Uint32Array,
-    nodeScriptOffsets: Int32Array,
-    nodeCallFrames: Uint32Array,
+    treeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
     samples: Uint32Array,
-    sampleScriptOffsets: Int32Array | null,
-    generatedNodes: GeneratedNodes,
-    { work }: CreateProfileApi
+    work: WorkHandler
 ) {
     // call frame positions
-    const { locationsTreeSource } = await work('process locations', () =>
-        createLocationsTreeSource(
-            dictionary,
-            nodeParent,
-            nodeScriptOffsets,
-            nodeCallFrames,
-            samples,
-            sampleScriptOffsets
-        )
+
+    const treeSetSource = createTreeSourceFromParent(
+        treeSource.parent,
+        treeSource.sourceIdToNode,
+        treeSource.nodes,
+        treeSource.dictionary
     );
 
     //
     // Usage vectors
     //
 
-    const usage = await work('usage', () =>
-        new Usage(dictionary, nodeCallFrames, generatedNodes)
-    );
+    // const usage = await work('usage', () =>
+    //     new Usage(dictionary, nodeCallFrames, generatedNodes)
+    // );
 
     //
     // Create profile's data derivatives
@@ -182,11 +175,8 @@ async function createTree_(
     } = await work('build trees', () =>
         createTreeSet(
             dictionary,
-            nodeParent,
-            Int32Array.from({ length: nodeParent.length }, (_, i) => i),
-            nodeCallFrames,
-            locationsTreeSource,
-            usage
+            treeSetSource
+            // usage
         )
     );
 
@@ -208,8 +198,8 @@ async function createTree_(
     );
 
     return {
-        sampledTreeSet,
-        usage // FIXME: temporary, remove after usage is moved
+        sampledTreeSet
+        // usage // FIXME: temporary, remove after usage is moved
     };
 }
 
@@ -373,16 +363,29 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         )
     );
 
-    const { sampledTreeSet, usage } = await work('create tree breakdown', () =>
-        createTree_(
+    const treeBreakdownBasis = await work('create tree source', () =>
+        createLocationsFromScriptOffsets(
             dictionary,
             nodeParent,
             nodeScriptOffsets,
             callFrameByNodeIndex,
             samples,
-            sampleScriptOffsets,
-            generatedNodes,
-            { work }
+            sampleScriptOffsets
+        ) || {
+            parent: nodeParent,
+            sourceIdToNode: Int32Array.from({ length: nodeParent.length }, (_, i) => i),
+            nodes: callFrameByNodeIndex,
+            dictionary: dictionary.callFrames
+        }
+    );
+
+    const usage = new Usage(dictionary, callFrameByNodeIndex, generatedNodes);
+    const { sampledTreeSet } = await work('create tree breakdown', () =>
+        createTree_(
+            dictionary,
+            treeBreakdownBasis,
+            samples,
+            work
         )
     );
 
@@ -472,10 +475,11 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     // create profile
     const profile = {
         name: data._name,
-        runtime: detectRuntime(usage.categories, usage.packages, data._runtime), // FIXME: categories/packages must be related to profile
+        runtime: detectRuntime(usage.categories, usage.packages, runtime || data._runtime), // FIXME: categories/packages must be related to profile
         thread: null as unknown as CpuProThread, // to be set by caller
 
-        ...usage,
+        // ...usage,
+        ...dictionary,
         codes,
         codesByCallFrame,
         codesByScript,

@@ -75,7 +75,7 @@ export function ensureLocations(
  *
  * Returns a location tree for aggregating metrics by execution point.
  */
-export function createLocationsTreeSource(
+export function createLocationsFromScriptOffsets(
     dict: Dictionary,
     nodeParent: Uint32Array,
     nodeScriptOffsets: Int32Array,
@@ -84,7 +84,7 @@ export function createLocationsTreeSource(
     sampleScriptOffsets: Int32Array | null
 ) {
     if (sampleScriptOffsets === null) {
-        return { locationsTreeSource: null };
+        return null;
     }
 
     const callFrames = dict.callFrames;
@@ -150,25 +150,20 @@ export function createLocationsTreeSource(
 
     // concat arrays for tree source
     const locationArraysLength = treeLocationNodes.length + sampledLocationNodes.length;
-    const locationNodes = new Uint32Array(locationArraysLength);
-    const locationParents = new Uint32Array(locationArraysLength);
-
-    locationNodes.set(treeLocationNodes);
-    locationNodes.set(sampledLocationNodes, treeLocationNodes.length);
-    locationParents.set(nodeParent);
-    locationParents.set(sampledLocationParents, nodeParent.length);
-
-    // create tree source for locations
+    const nodes = new Uint32Array(locationArraysLength);
+    const parent = new Uint32Array(locationArraysLength);
     const sourceIdToNode = new Int32Array(locationNodeMap.values());
-    const locationsTreeSource = createTreeSourceFromParent(
-        locationParents,
-        sourceIdToNode,
-        locationNodes,
-        dict.locations
-    );
+
+    nodes.set(treeLocationNodes);
+    nodes.set(sampledLocationNodes, treeLocationNodes.length);
+    parent.set(nodeParent);
+    parent.set(sampledLocationParents, nodeParent.length);
 
     return {
-        locationsTreeSource
+        nodes,
+        parent,
+        sourceIdToNode,
+        dictionary: dict.locations
     };
 }
 

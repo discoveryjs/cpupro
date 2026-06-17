@@ -1,4 +1,4 @@
-import type { CreateProfileApi, Profile } from '../profile.mjs';
+import type { Profile } from '../profile.mjs';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProOwner, CpuProPackage, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineTree, ProfileMemline } from './types.js';
 import { computeTreeMetrics, remapTreeSamples, SampledCpuProCallTree } from '../preprocessing/samples.js';
@@ -55,7 +55,12 @@ function createAllocationLocationTreeSamples(
         nodeIndexById,
         locationNodes,
         dictionary.locations
-    );
+    ) || {
+        nodeParent,
+        nodeIndexById,
+        callFrameByNodeIndex,
+        dictionary: dictionary.callFrames
+    };
     const {
         sourceIdToNode: treeSourceIdToNode,
         locationsTree,
@@ -66,9 +71,6 @@ function createAllocationLocationTreeSamples(
         ownersTree
     } = createTreeSet(
         dictionary,
-        nodeParent,
-        nodeIndexById,
-        callFrameByNodeIndex,
         locationsTreeSource
     );
 
@@ -95,7 +97,7 @@ function createAllocationLocationTreeSamples(
 export async function createMemline(
     data: V8CpuProfile,
     dictionary: Dictionary,
-    scriptsMap: ProfileScriptsMap,
+    profileScriptsMap: ProfileScriptsMap,
     cpuSamples: Uint32Array,
     sampledTreeList: SampledCpuProCallTree[],
     options?: Partial<CreateMemlineOptions>
@@ -187,14 +189,16 @@ export async function createMemline(
         )
     );
 
-    const vectorLocations = createVectorLocations(
-        dictionary,
-        scriptsMap,
-        _cpuproAllocationScriptIds,
-        _cpuproAllocationLocations,
-        _cpuproAllocationContextInfo,
-        _cpuproAllocationBuiltinNames,
-        _cpuproAllocationVmStateNames
+    const vectorLocations = await work('create vector locations', () =>
+        createVectorLocations(
+            dictionary,
+            profileScriptsMap,
+            _cpuproAllocationScriptIds,
+            _cpuproAllocationLocations,
+            _cpuproAllocationContextInfo,
+            _cpuproAllocationBuiltinNames,
+            _cpuproAllocationVmStateNames
+        )
     );
 
     const allocationLocationMetrics = vectorLocations !== null
