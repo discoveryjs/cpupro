@@ -120,11 +120,14 @@ export async function extractTimelineData(
 export async function createTimeline(
     data: V8CpuProfile,
     axis: Axis,
-    samples: Uint32Array,
     timeDeltas: Uint32Array,
-    sampledTreeList: SampledCpuProCallTree[],
+    sampledTreeSet: {
+        samples: Uint32Array<ArrayBufferLike>;
+        sampledTrees: SampledCpuProCallTree[];
+    },
     { work }: CreateProfileApi
 ): Promise<TimelineLine | null> {
+    const { samples, sampledTrees } = sampledTreeSet;
     const sourceInfo = {
         nodes: data.nodes.length,
         samples: data.samples.length,
@@ -132,14 +135,14 @@ export async function createTimeline(
     };
 
     let sampledTreeOffset = 0;
-    const sampledLocationsTree = sampledTreeList.length > 5
-        ? sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProLocation>
+    const sampledLocationsTree = sampledTrees.length > 5
+        ? sampledTrees[sampledTreeOffset++] as SampledTree<CpuProLocation>
         : null;
-    const sampledCallFramesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProCallFrame>;
-    const sampledModulesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProModule>;
-    const sampledPackagesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProPackage>;
-    const sampledCategoriesTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProCategory>;
-    const sampledOwnersTree = sampledTreeList[sampledTreeOffset++] as SampledTree<CpuProOwner>;
+    const sampledCallFramesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProCallFrame>;
+    const sampledModulesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProModule>;
+    const sampledPackagesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProPackage>;
+    const sampledCategoriesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProCategory>;
+    const sampledOwnersTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProOwner>;
 
     // build samples lists & trees
     const {

@@ -27,6 +27,7 @@ export const wellKnownCallFrameName = new Map<WellKnownName, WellKnownType>([
     ['(unknown)', 'unknown'],
     ['(root)', 'root'],
     ['(program)', 'program'],
+    ['(internals)', 'internals'],
     ['(garbage collector)', 'gc'],
     ['(idle)', 'idle'],
     ['(idle external)', 'idle-external'],

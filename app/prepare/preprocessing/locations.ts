@@ -1,6 +1,5 @@
 import type { CpuProCallFrame, CpuProScript, IProfileScriptsMap } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
-import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import { CallTree } from '../computations/call-tree.js';
 import { scriptFromScriptId } from './scripts.js';
 import { GeneratedNodes } from './nodes.js';
@@ -175,13 +174,11 @@ function callFramesMapFromDict(dict: Record<number, string>): (CpuProCallFrame |
     return Array.from({ length: maxId + 1 }, () => null);
 }
 
-function buildContextDicts(
+function buildContextVmStateDict(
     dictionary: Dictionary,
-    builtinsNames: Record<number, string>,
     vmStateNames: Record<number, string>
 ) {
     const vmStateCallFrames = callFramesMapFromDict(vmStateNames);
-    const builtinsCallFrames = callFramesMapFromDict(builtinsNames);
 
     for (const [code, name] of Object.entries(vmStateNames)) {
         vmStateCallFrames[code] = dictionary.resolveCallFrame({
@@ -193,6 +190,15 @@ function buildContextDicts(
         }, null as unknown as IProfileScriptsMap);
     }
 
+    return vmStateCallFrames;
+}
+
+function buildContextBuiltinDict(
+    dictionary: Dictionary,
+    builtinsNames: Record<number, string>
+) {
+    const builtinsCallFrames = callFramesMapFromDict(builtinsNames);
+
     for (const [code, name] of Object.entries(builtinsNames)) {
         builtinsCallFrames[code] = dictionary.resolveCallFrame({
             functionName: `(builtin) ${name}`,
@@ -203,10 +209,7 @@ function buildContextDicts(
         }, null as unknown as IProfileScriptsMap);
     }
 
-    return {
-        vmStateCallFrames,
-        builtinsCallFrames
-    };
+    return builtinsCallFrames;
 }
 
 const emptyDict = Object.freeze({});
@@ -220,16 +223,19 @@ export function createVectorLocations(
     vmStateNames: Record<number, string> | null
 ): {
     generatedNodes: GeneratedNodes;
-    sampleToNode: Uint32Array;
+    samples: Uint32Array;
 } | null {
     if (scriptIds === null || scriptOffsets === null || scriptIds.length !== scriptOffsets.length) {
         return null;
     }
 
-    const { vmStateCallFrames, builtinsCallFrames } = buildContextDicts(
+    const vmStateCallFrames = buildContextVmStateDict(
         dictionary,
-        builtinsNames ?? emptyDict,
         vmStateNames ?? emptyDict
+    );
+    const builtinsCallFrames = buildContextBuiltinDict(
+        dictionary,
+        builtinsNames ?? emptyDict
     );
 
     const generatedNodes = new GeneratedNodes(dictionary, 0);
@@ -246,7 +252,8 @@ export function createVectorLocations(
     let nodeIndex = 0;
 
     // root node (unknown call frame, self-parent, unknown location)
-    generatedNodes.addNode(0, 0, 0);
+    locationIndexToNodeIndex[1] = generatedNodes.addNode(1, 0, 1);
+    locationIndexToNodeIndex[0] = generatedNodes.addNode(0, 0, 0);
 
     for (let i = 0; i < scriptOffsets.length; i++) {
         const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
@@ -342,6 +349,6 @@ export function createVectorLocations(
 
     return {
         generatedNodes,
-        sampleToNode
+        samples: sampleToNode
     };
 }

@@ -1,4 +1,7 @@
 import type { Model } from '@discoveryjs/discovery';
+import type { CpuProCallFrame, CpuProLocation, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
+import type { ProfileLine } from './lines/types.js';
+import type { Ownership } from './formats/types.js';
 import { convertToInt32Array, convertToUint32Array } from './misc/utils.js';
 import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis, enumerateLongTimeDeltas, LongTimeDeltas } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
@@ -10,14 +13,12 @@ import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createTreeSet, createTreeSourceFromParent, TreeSource } from './computations/build-trees.js';
-import { ProfileScriptsMap } from './preprocessing/scripts.js';
+import { ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
-import { CpuProCallFrame, CpuProLocation, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
 import { createLineMapping } from './computations/line-mapping.js';
-import { ProfileLine } from './lines/types.js';
-import { createLineBoundaries } from './misc/line-boundaries.js';
 import { remapTreeSamples } from './preprocessing/samples.js';
+import { processSourceMaps } from './profile-sm.mjs';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
 const experimentalFeatures = false;
@@ -25,6 +26,7 @@ const experimentalFeatures = false;
 export type Profile = Awaited<ReturnType<typeof createProfile>>;
 export type CreateProfileOptions = {
     dictionary: Dictionary;
+    ownership: Ownership | null;
     runtime: RuntimeCode | null;
     work: WorkHandler;
 };
@@ -75,69 +77,7 @@ export function toggleProfile(model: Model, profile: Profile) {
     return true;
 }
 
-// FIXME: quick & dirty implementation
-function scriptOffsetsFromLineColumns(
-    nodes: V8CpuProfile['nodes'],
-    samples: V8CpuProfile['samples'],
-    callFrames: V8CpuProfile['_callFrames'],
-    scripts?: V8CpuProfile['_scripts'],
-    lines?: V8CpuProfile['lines'],
-    columns?: V8CpuProfile['columns']
-): number[] | null {
-    if (!Array.isArray(scripts)) {
-        return null;
-    }
-
-    if (!Array.isArray(lines) || !Array.isArray(columns) || lines.length !== columns.length || lines.length === 0) {
-        return null;
-    }
-
-    const scriptLineBoundaries = Object.create(null) as Record<number, {
-        lineBoundaries: ReturnType<typeof createLineBoundaries>;
-        lineOffset: number;
-        columnOffset: number;
-    }>;
-    for (let i = 0; i < scripts.length; i++) {
-        const script = scripts[i];
-        if (script && script.source) {
-            scriptLineBoundaries[script.id] = {
-                lineBoundaries: createLineBoundaries(script.source),
-                lineOffset: script.lineOffset ?? 0,
-                columnOffset: script.columnOffset ?? 0
-            };
-        }
-    }
-
-    const nodeById = Object.create(null) as Record<number, V8CpuProfile['nodes'][0]>;
-    for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        nodeById[node.id] = node;
-    }
-
-    const result = new Array<number>(samples.length);
-    for (let i = 0; i < samples.length; i++) {
-        const callFrameRaw = nodeById[samples[i]].callFrame;
-        const callFrame = typeof callFrameRaw === 'number' ? callFrames![callFrameRaw] : callFrameRaw;
-        const scriptId = Number(callFrame.scriptId);
-        const scriptEntry = scriptLineBoundaries[scriptId];
-        const line = lines[i];
-        let offset = -1;
-
-        if (scriptEntry && line) {
-            const column = columns[i];
-            offset = scriptEntry.lineBoundaries.getOffset(
-                line - scriptEntry.lineOffset,
-                column - (line === scriptEntry.lineOffset ? scriptEntry.columnOffset : 0)
-            );
-        }
-
-        result[i] = offset;
-    }
-
-    return result;
-}
-
-export async function createTree_(
+export async function createSampledTreeSet(
     dictionary: Dictionary,
     treeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
     samples: Uint32Array,
@@ -197,10 +137,7 @@ export async function createTree_(
         )
     );
 
-    return {
-        sampledTreeSet
-        // usage // FIXME: temporary, remove after usage is moved
-    };
+    return sampledTreeSet;
 }
 
 export async function createProfile(data: V8CpuProfile, options?: Partial<CreateProfileOptions>) {
@@ -363,7 +300,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         )
     );
 
-    const treeBreakdownBasis = await work('create tree source', () =>
+    const callStackBreakdownBasis = await work('create tree source', () =>
         createLocationsFromScriptOffsets(
             dictionary,
             nodeParent,
@@ -380,10 +317,10 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     );
 
     const usage = new Usage(dictionary, callFrameByNodeIndex, generatedNodes);
-    const { sampledTreeSet } = await work('create tree breakdown', () =>
-        createTree_(
+    const sampledTreeSet = await work('create tree breakdown', () =>
+        createSampledTreeSet(
             dictionary,
-            treeBreakdownBasis,
+            callStackBreakdownBasis,
             samples,
             work
         )
@@ -393,7 +330,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const timeline = await createTimeline(
         data,
         axis,
-        samples,
         timeDeltas,
         sampledTreeSet,
         { work }
@@ -408,7 +344,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         data,
         dictionary,
         profileScriptsMap,
-        samples,
         sampledTreeSet,
         { work }
     );

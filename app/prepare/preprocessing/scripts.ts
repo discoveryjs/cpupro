@@ -1,5 +1,6 @@
+import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
-import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfileScript } from '../types.js';
+import { createLineBoundaries } from '../misc/line-boundaries.js';
 // import { SourceMapConsumer } from 'source-map-js';
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
@@ -230,4 +231,66 @@ export function createScript(id: number, url: string, source: string | null = nu
         callFrames: [],
         originalFor: null
     };
+}
+
+// FIXME: quick & dirty implementation
+export function scriptOffsetsFromLineColumns(
+    nodes: V8CpuProfile['nodes'],
+    samples: V8CpuProfile['samples'],
+    callFrames: V8CpuProfile['_callFrames'],
+    scripts?: V8CpuProfile['_scripts'],
+    lines?: V8CpuProfile['lines'],
+    columns?: V8CpuProfile['columns']
+): number[] | null {
+    if (!Array.isArray(scripts)) {
+        return null;
+    }
+
+    if (!Array.isArray(lines) || !Array.isArray(columns) || lines.length !== columns.length || lines.length === 0) {
+        return null;
+    }
+
+    const scriptLineBoundaries = Object.create(null) as Record<number, {
+        lineBoundaries: ReturnType<typeof createLineBoundaries>;
+        lineOffset: number;
+        columnOffset: number;
+    }>;
+    for (let i = 0; i < scripts.length; i++) {
+        const script = scripts[i];
+        if (script && script.source) {
+            scriptLineBoundaries[script.id] = {
+                lineBoundaries: createLineBoundaries(script.source),
+                lineOffset: script.lineOffset ?? 0,
+                columnOffset: script.columnOffset ?? 0
+            };
+        }
+    }
+
+    const nodeById = Object.create(null) as Record<number, V8CpuProfile['nodes'][0]>;
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        nodeById[node.id] = node;
+    }
+
+    const result = new Array<number>(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+        const callFrameRaw = nodeById[samples[i]].callFrame;
+        const callFrame = typeof callFrameRaw === 'number' ? callFrames![callFrameRaw] : callFrameRaw;
+        const scriptId = Number(callFrame.scriptId);
+        const scriptEntry = scriptLineBoundaries[scriptId];
+        const line = lines[i];
+        let offset = -1;
+
+        if (scriptEntry && line) {
+            const column = columns[i];
+            offset = scriptEntry.lineBoundaries.getOffset(
+                line - scriptEntry.lineOffset,
+                column - (line === scriptEntry.lineOffset ? scriptEntry.columnOffset : 0)
+            );
+        }
+
+        result[i] = offset;
+    }
+
+    return result;
 }

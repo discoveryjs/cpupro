@@ -161,6 +161,7 @@ export type WellKnownName =
     | '(root)'
     | '(garbage collector)'
     | '(program)'
+    | '(internals)'
     | '(idle)'
     | '(no samples)'
     | '(parser)'

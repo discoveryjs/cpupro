@@ -1,7 +1,7 @@
-import type { Profile } from '../profile.mjs';
+import { createSampledTreeSet, type Profile } from '../profile.mjs';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProOwner, CpuProPackage, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineTree, ProfileMemline } from './types.js';
-import { computeTreeMetrics, remapTreeSamples, SampledCpuProCallTree } from '../preprocessing/samples.js';
+import { computeTreeMetrics, SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { AllocationLifespan, typeColor } from '../const.js';
@@ -10,7 +10,7 @@ import { Dictionary } from '../dictionary.js';
 import { createLineTree } from './trees.js';
 import { SampledTree } from '../computations/metrics.js';
 import type { GeneratedNodes } from '../preprocessing/nodes.js';
-import { createTreeSet, createTreeSourceFromParent } from '../computations/build-trees.js';
+import type { TreeSource } from '../computations/build-trees.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 
 export type CreateMemlineOptions = {
@@ -20,9 +20,9 @@ export type CreateMemlineOptions = {
 const metricName: Record<Metric, string> = {
     axis: 'Memory allocated',
     samplingInterval: 'Sampling interval',
-    selfValue: 'Self memory',
-    nestedValue: 'Nested memory',
-    totalValue: 'Total memory'
+    selfValue: 'Self alloc',
+    nestedValue: 'Nested alloc',
+    totalValue: 'Total alloc'
 };
 const metricDefinitions: Record<Metric, string> = {
     axis: [
@@ -40,54 +40,30 @@ const metricDefinitions: Record<Metric, string> = {
     totalValue: 'The complete memory allocated by a function, including both \'self memory\' and \'nested memory\'.'
 };
 
-function createAllocationLocationTreeSamples(
+function createAllocationLocationBreakdownBasis(
     dictionary: Dictionary,
-    generatedNodes: GeneratedNodes,
-    sampleToNode: Uint32Array
-) {
-    const callFrameByNodeIndex = Uint32Array.from(generatedNodes.callFrames);
+    generatedNodes: GeneratedNodes
+): TreeSource<CpuProLocation> {
     const nodeIndexById = Int32Array.from({ length: generatedNodes.count }, (_, index) => index);
     const nodeParent = Uint32Array.from(generatedNodes.nodeParentId);
     const locationNodes = new Uint32Array(generatedNodes.parentScriptOffsets); // parentScriptOffsets used to store location indices
 
-    const locationsTreeSource = createTreeSourceFromParent(
-        nodeParent,
-        nodeIndexById,
-        locationNodes,
-        dictionary.locations
-    ) || {
-        nodeParent,
-        nodeIndexById,
-        callFrameByNodeIndex,
-        dictionary: dictionary.callFrames
+    debugger;
+    return {
+        parent: nodeParent,
+        sourceIdToNode: nodeIndexById,
+        nodes: locationNodes,
+        dictionary: dictionary.locations
     };
-    const {
-        sourceIdToNode: treeSourceIdToNode,
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree,
-        ownersTree
-    } = createTreeSet(
-        dictionary,
-        locationsTreeSource
-    );
 
-    const sampledTreeList = remapTreeSamples(
-        sampleToNode,
-        treeSourceIdToNode,
-        [
-            ...(locationsTree ? [locationsTree] : []),
-            callFramesTree,
-            modulesTree,
-            packagesTree,
-            categoriesTree,
-            ownersTree
-        ]
-    );
-
-    return { sampledTreeList };
+    // call frames
+    // const callFrameByNodeIndex = Uint32Array.from(generatedNodes.callFrames);
+    // {
+    //     nodeParent,
+    //     nodeIndexById,
+    //     callFrameByNodeIndex,
+    //     dictionary: dictionary.callFrames
+    // }
 }
 
 /**
@@ -98,13 +74,19 @@ export async function createMemline(
     data: V8CpuProfile,
     dictionary: Dictionary,
     profileScriptsMap: ProfileScriptsMap,
-    cpuSamples: Uint32Array,
-    sampledTreeList: SampledCpuProCallTree[],
+    cpuSampledTreeSet: {
+        samples: Uint32Array<ArrayBufferLike>;
+        sampledTrees: SampledCpuProCallTree[];
+    },
     options?: Partial<CreateMemlineOptions>
 ): Promise<ProfileMemline | null> {
     const {
         work = noopWorkHandler
     } = options || {};
+    const {
+        samples: cpuSamples,
+        sampledTrees: sampledTreeList
+    } = cpuSampledTreeSet;
     const {
         _cpuproAllocationMapping,
         _cpuproAllocationIds,
@@ -201,12 +183,18 @@ export async function createMemline(
         )
     );
 
+    let allocationLocationBreakdownBasis: TreeSource<CpuProLocation> | null = null;
     const allocationLocationMetrics = vectorLocations !== null
-        ? await work('compute memline location metrics', () => {
-            const locationTreeSamples = createAllocationLocationTreeSamples(
+        ? await work('compute memline location metrics', async () => {
+            allocationLocationBreakdownBasis = createAllocationLocationBreakdownBasis(
                 dictionary,
-                vectorLocations.generatedNodes,
-                vectorLocations.sampleToNode
+                vectorLocations.generatedNodes
+            );
+            const locationTreeSamples = await createSampledTreeSet(
+                dictionary,
+                allocationLocationBreakdownBasis,
+                vectorLocations.samples,
+                work
             );
 
             if (locationTreeSamples === null) {

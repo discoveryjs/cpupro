@@ -42,25 +42,29 @@ export function createSampledCallTree<T extends CpuProNode>(
 // but it is possible with corrupted or incomplete input data, so it probably makes sense to handle such cases
 export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
     const tmpMap = new Uint32Array(sampleIdMap.length);
+    const remappedSamples: Uint32Array = new Uint32Array(samples.length);
     const samplesMap: number[] = []; // -> callFramesTree.nodes
     let sampledNodesCount = 0;
 
     // remap samples -> samplesMap, populate samplesMap
     for (let i = 0; i < samples.length; i++) {
         const id = samples[i];
-        const newSampleId = tmpMap[id];
+        const newSample = tmpMap[id];
 
-        if (newSampleId === 0) {
+        if (newSample === 0) {
             samplesMap.push(sampleIdMap[id]);
             tmpMap[id] = ++sampledNodesCount;
-            samples[i] = sampledNodesCount - 1;
+            remappedSamples[i] = sampledNodesCount - 1;
         } else {
-            samples[i] = newSampleId - 1;
+            remappedSamples[i] = newSample - 1;
         }
     }
 
     // convert to typed array for faster processing
-    return convertToUint32Array(samplesMap);
+    return {
+        samples: remappedSamples,
+        sampleToNode: convertToUint32Array(samplesMap)
+    };
 }
 
 export function remapTreeSamples(
@@ -69,7 +73,7 @@ export function remapTreeSamples(
     trees: CpuProCallTree[]
 ) {
     const sampledTrees: SampledCpuProCallTree[] = [];
-    const sampleToNode = remapSamples(samples, sampleIdToEntryTreeNode);
+    const { samples: newSamples, sampleToNode } = remapSamples(samples, sampleIdToEntryTreeNode);
     const sampleToNodeBySourceTree = new Map<CallTree<unknown> | null, Uint32Array>(
         [[null, sampleToNode]]
     );
@@ -102,7 +106,10 @@ export function remapTreeSamples(
         }
     }
 
-    return sampledTrees;
+    return {
+        samples: newSamples,
+        sampledTrees
+    };
 }
 
 export function computeTreeMetrics(
