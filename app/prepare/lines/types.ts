@@ -1,6 +1,6 @@
 import { LineMapping } from '../computations/line-mapping';
 import { CallTree } from '../computations/call-tree';
-import { DictDimension, DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered, TreeDimension, TreeMetrics, TreeValueBounds } from '../computations/metrics';
+import { DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered, TreeMetrics, TreeValueBounds } from '../computations/metrics';
 import { Profile } from '../profile.mjs';
 import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types';
 
@@ -26,7 +26,7 @@ export type LineTreeDimension<T extends CpuProNode> = {
     bounds: TreeValueBounds<T>;
 };
 
-export type ProfileLineTree = {
+export type ProfileLineBreakdown = {
     kind: string;
     line: ProfileLine;
     samplesMetrics: SamplesMetrics;
@@ -72,31 +72,12 @@ export interface ProfileLine {
     axisEndNoSamples: number;
     axisTotal: number;
 
+    // Stream of signals (e.g. time deltas, memory allocations) for this line in its primary axis
     values: Uint32Array;
-
-    // Dictionary-based dimensions (aggregated by entity, no tree structure needed)
-    dict: {
-        locations: DictDimension<CpuProLocation> | null;
-        callFrames: DictDimension<CpuProCallFrame> | null;
-        modules: DictDimension<CpuProModule> | null;
-        packages: DictDimension<CpuProPackage> | null;
-        categories: DictDimension<CpuProCategory> | null;
-        owners: DictDimension<CpuProOwner> | null;
-    };
-
-    // Tree-based dimensions (requires call tree structure)
-    tree: {
-        locations: TreeDimension<CpuProLocation> | null;
-        callFrames: TreeDimension<CpuProCallFrame> | null;
-        modules: TreeDimension<CpuProModule> | null;
-        packages: TreeDimension<CpuProPackage> | null;
-        categories: TreeDimension<CpuProCategory> | null;
-        owners: TreeDimension<CpuProOwner> | null;
-    };
 
     // Line-owned tree views. Several lines may reuse the same tree structure,
     // while keeping independent sample-to-node mappings and metrics.
-    trees: ProfileLineTree[];
+    trees: ProfileLineBreakdown[];
 
     // Mappings to other lines (key = target line kind)
     mappings: Record<ProfileLineType, LineMapping>;

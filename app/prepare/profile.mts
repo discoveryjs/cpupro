@@ -312,7 +312,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             parent: nodeParent,
             sourceIdToNode: Int32Array.from({ length: nodeParent.length }, (_, i) => i),
             nodes: callFrameByNodeIndex,
-            dictionary: dictionary.callFrames
+            dictionary: dictionary.callFrames as CpuProCallFrame[]
         }
     );
 
@@ -409,7 +409,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     // create profile
     const profile = {
-        name: data._name,
+        name: data._name ?? null,
         runtime: detectRuntime(usage.categories, usage.packages, runtime || data._runtime), // FIXME: categories/packages must be related to profile
         thread: null as unknown as CpuProThread, // to be set by caller
 

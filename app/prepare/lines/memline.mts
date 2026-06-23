@@ -1,17 +1,15 @@
-import { createSampledTreeSet, type Profile } from '../profile.mjs';
-import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProOwner, CpuProPackage, V8CpuProfile } from '../types.js';
-import type { Metric, ProfileLineTree, ProfileMemline } from './types.js';
-import { computeTreeMetrics, SampledCpuProCallTree } from '../preprocessing/samples.js';
+import type { Profile } from '../profile.mjs';
+import type { V8CpuProfile } from '../types.js';
+import type { Metric, ProfileMemline } from './types.js';
+import { SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { AllocationLifespan, typeColor } from '../const.js';
-import { sum } from '../misc/utils.js';
 import { Dictionary } from '../dictionary.js';
-import { createLineTree } from './trees.js';
-import { SampledTree } from '../computations/metrics.js';
-import type { GeneratedNodes } from '../preprocessing/nodes.js';
-import type { TreeSource } from '../computations/build-trees.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
+import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
+import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
+import { sum } from '../misc/utils.js';
 
 export type CreateMemlineOptions = {
     work: WorkHandler;
@@ -40,32 +38,6 @@ const metricDefinitions: Record<Metric, string> = {
     totalValue: 'The complete memory allocated by a function, including both \'self memory\' and \'nested memory\'.'
 };
 
-function createAllocationLocationBreakdownBasis(
-    dictionary: Dictionary,
-    generatedNodes: GeneratedNodes
-): TreeSource<CpuProLocation> {
-    const nodeIndexById = Int32Array.from({ length: generatedNodes.count }, (_, index) => index);
-    const nodeParent = Uint32Array.from(generatedNodes.nodeParentId);
-    const locationNodes = new Uint32Array(generatedNodes.parentScriptOffsets); // parentScriptOffsets used to store location indices
-
-    debugger;
-    return {
-        parent: nodeParent,
-        sourceIdToNode: nodeIndexById,
-        nodes: locationNodes,
-        dictionary: dictionary.locations
-    };
-
-    // call frames
-    // const callFrameByNodeIndex = Uint32Array.from(generatedNodes.callFrames);
-    // {
-    //     nodeParent,
-    //     nodeIndexById,
-    //     callFrameByNodeIndex,
-    //     dictionary: dictionary.callFrames
-    // }
-}
-
 /**
  * Create memory allocation line from combined profile allocation data.
  * Maps allocation events to CPU samples, then uses CPU profile's trees to compute metrics.
@@ -83,10 +55,6 @@ export async function createMemline(
     const {
         work = noopWorkHandler
     } = options || {};
-    const {
-        samples: cpuSamples,
-        sampledTrees: sampledTreeList
-    } = cpuSampledTreeSet;
     const {
         _cpuproAllocationMapping,
         _cpuproAllocationIds,
@@ -106,72 +74,43 @@ export async function createMemline(
         return null;
     }
 
-    // Build allocation sample vector: map each allocation to its CPU sample node
-    // _cpuproAllocationMapping[cpuSampleIdx] = last allocation ID when CPU sample taken
-    // We need reverse: for each allocation, which CPU sample was it captured in?
-    const allocationCount = _cpuproAllocationIds.length;
-    const allocationCpuSamples = new Uint32Array(allocationCount);
-    const allocationSizes = new Uint32Array(allocationCount);
-    let samplesInterval = _cpuproAllocationSizes[0];
+    // const vmstate = new Uint32Array(16);
+    // const builtins = new Map();
+    // let internals = 0;
+    // for (let i = 0; i < _cpuproAllocationContextInfo!.length; i++) {
+    //     vmstate[_cpuproAllocationContextInfo![i] & 0x0f] += _cpuproAllocationSizes![i];
+    //     if (_cpuproAllocationContextInfo![i] > 0x0f) {
+    //         internals += _cpuproAllocationSizes![i];
+    //         const id = _cpuproAllocationContextInfo![i] >> 4;
+    //         builtins.set(id, (builtins.get(id) || 0) + _cpuproAllocationSizes![i]);
+    //     }
+    // }
+    // console.log('Internals', internals);
+    // for (let i = 0; i < vmstate.length; i++) {
+    //     if (vmstate[i] > 0) {
+    //         console.log(_cpuproAllocationVmStateNames![i], vmstate[i]);
+    //     }
+    // }
+    // console.log('Builtins:');
+    // for (const [id, size] of [...builtins.entries()].sort((a, b) => b[1] - a[1])) {
+    //     console.log(`  ${_cpuproAllocationBuiltinNames![id]}: ${size}`);
+    // }
 
+    let samplesInterval = _cpuproAllocationSizes[0];
     for (let i = 1; i < _cpuproAllocationSizes.length; i++) {
         if (_cpuproAllocationSizes[i] < samplesInterval) {
             samplesInterval = _cpuproAllocationSizes[i];
         }
     }
 
-    await work('map allocations to CPU samples', () => {
-        let allocIdx = 0;
+    // Exclude GCed allocations from size
+    // for (let i = 0; i < _cpuproAllocationSizes.length; i++) {
+    //     if (_cpuproAllocationGc![i] > 0) {
+    //         _cpuproAllocationSizes[i] = 0;
+    //     }
+    // }
 
-        for (let cpuIdx = 0; cpuIdx < _cpuproAllocationMapping.length; cpuIdx++) {
-            const targetAllocId = _cpuproAllocationMapping[cpuIdx];
-
-            if (targetAllocId === undefined) {
-                continue;
-            }
-
-            const cpuSample = cpuSamples[cpuIdx];
-
-            // All allocations up to targetAllocId belong to this CPU sample
-            while (allocIdx < allocationCount && _cpuproAllocationIds[allocIdx] <= targetAllocId) {
-                allocationCpuSamples[allocIdx] = cpuSample;
-                allocationSizes[allocIdx] = _cpuproAllocationSizes[allocIdx] || 0;
-                allocIdx++;
-            }
-        }
-    });
-
-    let memlineSampledTreeOffset = 0;
-    const memlineSampledLocationsTree = sampledTreeList.length > 5
-        ? sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProLocation>
-        : null;
-    const memlineSampledCallFramesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProCallFrame>;
-    const memlineSampledModulesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProModule>;
-    const memlineSampledPackagesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProPackage>;
-    const memlineSampledCategoriesTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProCategory>;
-    const memlineSampledOwnersTree = sampledTreeList[memlineSampledTreeOffset++] as SampledTree<CpuProOwner>;
-
-    // Now use computeTreeMetrics with memline's compact sample domain to get full dimensions
-    const {
-        recomputeMetrics,
-        samplesMetrics,
-        samplesMetricsFiltered,
-        dict,
-        tree
-    } = await work('compute memline metrics', () =>
-        computeTreeMetrics(
-            allocationCpuSamples,
-            allocationSizes,
-            memlineSampledCallFramesTree,
-            memlineSampledModulesTree,
-            memlineSampledPackagesTree,
-            memlineSampledCategoriesTree,
-            memlineSampledOwnersTree,
-            memlineSampledLocationsTree
-        )
-    );
-
-    const vectorLocations = await work('create vector locations', () =>
+    const vectorLocations = await work('create allocation locations vector', () =>
         createVectorLocations(
             dictionary,
             profileScriptsMap,
@@ -183,48 +122,8 @@ export async function createMemline(
         )
     );
 
-    let allocationLocationBreakdownBasis: TreeSource<CpuProLocation> | null = null;
-    const allocationLocationMetrics = vectorLocations !== null
-        ? await work('compute memline location metrics', async () => {
-            allocationLocationBreakdownBasis = createAllocationLocationBreakdownBasis(
-                dictionary,
-                vectorLocations.generatedNodes
-            );
-            const locationTreeSamples = await createSampledTreeSet(
-                dictionary,
-                allocationLocationBreakdownBasis,
-                vectorLocations.samples,
-                work
-            );
-
-            if (locationTreeSamples === null) {
-                return null;
-            }
-
-            const [
-                allocationLocationsTree,
-                allocationCallFramesTree,
-                allocationModulesTree,
-                allocationPackagesTree,
-                allocationCategoriesTree,
-                allocationOwnersTree
-            ] = locationTreeSamples.sampledTreeList;
-
-            return computeTreeMetrics(
-                vectorLocations.sampleToNode,
-                allocationSizes,
-                allocationCallFramesTree as SampledTree<CpuProCallFrame>,
-                allocationModulesTree as SampledTree<CpuProModule>,
-                allocationPackagesTree as SampledTree<CpuProPackage>,
-                allocationCategoriesTree as SampledTree<CpuProCategory>,
-                allocationOwnersTree as SampledTree<CpuProOwner>,
-                allocationLocationsTree as SampledTree<CpuProLocation>
-            );
-        })
-        : null;
-
     // Calculate total allocation size as axis total
-    const totalAllocationSize = sum(allocationSizes);
+    const totalAllocationSize = sum(_cpuproAllocationSizes);
 
     // Allocation types
     let allocationTypeVector: Uint32Array | null = null;
@@ -287,14 +186,14 @@ export async function createMemline(
         allocationLifespans = Uint8Array.from(_cpuproAllocationGc, gc => gc & 3);
     }
 
-    const lineTrees: ProfileLineTree[] = [];
+    const allocationSizes = new Uint32Array(_cpuproAllocationSizes);
     const line: ProfileMemline = {
         type: 'memline',
         kind: 'memory' as const,
         profile: null as unknown as Profile, // to be set by caller
         sourceInfo: {
             nodes: 0, // Allocation events don't have nodes (they reference CPU nodes)
-            samples: allocationCount,
+            samples: _cpuproAllocationSizes.length,
             samplesInterval
         },
 
@@ -321,11 +220,7 @@ export async function createMemline(
         axisTotal: totalAllocationSize,
 
         values: allocationSizes,
-
-        dict,
-        tree,
-        trees: lineTrees,
-
+        trees: [],
         mappings: Object.create(null),
 
         // memline-specific properties
@@ -337,29 +232,41 @@ export async function createMemline(
         valueLifespansDict: allocationLifespanDict,
         valueSpaces: allocationSpaces,
         valueSpacesDict: allocationSpaceNames
+
+        // __allocationCpuSamples: allocationCpuSamples,
+        // __allocationLocationBreakdownBasis: allocationLocationBreakdownBasis,
+        // __allocationLocationSamples: vectorLocations ? vectorLocations.samples : null
     };
 
-    lineTrees.push(createLineTree(
-        'call-stack',
-        line,
-        { dict, tree },
-        { samplesMetrics, samplesMetricsFiltered, recomputeMetrics }
-    ));
+    if (_cpuproAllocationMapping && _cpuproAllocationIds && _cpuproAllocationSizes) {
+        const cpuSamplesBreakdown = await work('map allocations to CPU samples', () => {
+            return createMemlineCpuSamplesBreakdown(
+                'call-stack',
+                line,
+                _cpuproAllocationMapping,
+                _cpuproAllocationIds,
+                _cpuproAllocationSizes,
+                cpuSampledTreeSet,
+                work
+            );
+        });
 
-    if (allocationLocationMetrics !== null) {
-        lineTrees.push(createLineTree(
-            'locations',
-            line,
-            {
-                dict: allocationLocationMetrics.dict,
-                tree: allocationLocationMetrics.tree
-            },
-            {
-                samplesMetrics: allocationLocationMetrics.samplesMetrics,
-                samplesMetricsFiltered: allocationLocationMetrics.samplesMetricsFiltered,
-                recomputeMetrics: allocationLocationMetrics.recomputeMetrics
-            }
-        ));
+        line.trees.push(cpuSamplesBreakdown);
+    }
+
+    if (vectorLocations !== null) {
+        const locationBreakdown = await work('create location breakdown', () =>
+            createMemlineLocationsBreakdown(
+                'location',
+                line,
+                dictionary,
+                allocationSizes,
+                vectorLocations,
+                work
+            )
+        );
+
+        line.trees.push(locationBreakdown);
     }
 
     return line;

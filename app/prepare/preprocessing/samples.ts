@@ -74,7 +74,7 @@ export function remapTreeSamples(
 ) {
     const sampledTrees: SampledCpuProCallTree[] = [];
     const { samples: newSamples, sampleToNode } = remapSamples(samples, sampleIdToEntryTreeNode);
-    const sampleToNodeBySourceTree = new Map<CallTree<unknown> | null, Uint32Array>(
+    const sampleToNodeBySourceTree = new Map<CpuProCallTree | null, Uint32Array>(
         [[null, sampleToNode]]
     );
 
@@ -86,7 +86,7 @@ export function remapTreeSamples(
                 continue;
             }
 
-            const sourceTreeSampleToNode = sampleToNodeBySourceTree.get(tree.sourceTree);
+            const sourceTreeSampleToNode = sampleToNodeBySourceTree.get(tree.sourceTree as CpuProCallTree | null);
 
             if (sourceTreeSampleToNode !== undefined) {
                 const treeSampleToNode = tree.sourceIdToNode;

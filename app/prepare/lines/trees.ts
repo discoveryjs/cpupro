@@ -1,8 +1,58 @@
-import type { DictDimension, SamplesMetrics, SamplesMetricsFiltered, TreeDimension } from '../computations/metrics.js';
+import type { DictDimension, SampledTree, SamplesMetrics, SamplesMetricsFiltered, TreeDimension } from '../computations/metrics.js';
+import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
-import type { LineTreeDimension, ProfileLine, ProfileLineTree } from './types.js';
+import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
+import { computeTreeMetrics, SampledCpuProCallTree } from '../preprocessing/samples.js';
 
-export function createLineTreeDimension<T extends CpuProNode>(
+export async function createLineBreakdown(
+    kind: string,
+    line: ProfileLine,
+    values: Uint32Array,
+    { samples, sampledTrees }: {
+        samples: Uint32Array<ArrayBufferLike>;
+        sampledTrees: SampledCpuProCallTree[];
+    },
+    work: WorkHandler
+) {
+    let sampledTreeOffset = 0;
+    const sampledLocationsTree = sampledTrees.length > 5
+        ? sampledTrees[sampledTreeOffset++] as SampledTree<CpuProLocation>
+        : null;
+    const sampledCallFramesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProCallFrame>;
+    const sampledModulesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProModule>;
+    const sampledPackagesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProPackage>;
+    const sampledCategoriesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProCategory>;
+    const sampledOwnersTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProOwner>;
+
+    // build samples lists & trees
+    const {
+        recomputeMetrics,
+        samplesMetrics,
+        samplesMetricsFiltered,
+        dict,
+        tree
+    } = await work('process samples', () =>
+        computeTreeMetrics(
+            samples,
+            values,
+            sampledCallFramesTree,
+            sampledModulesTree,
+            sampledPackagesTree,
+            sampledCategoriesTree,
+            sampledOwnersTree,
+            sampledLocationsTree
+        )
+    );
+
+    return createLineTree(
+        kind,
+        line,
+        { dict, tree },
+        { samplesMetrics, samplesMetricsFiltered, recomputeMetrics }
+    );
+}
+
+export function createBreakdownDimension<T extends CpuProNode>(
     dict: DictDimension<T> | null,
     tree: TreeDimension<T> | null
 ): LineTreeDimension<T> | null {
@@ -25,7 +75,7 @@ export function createLineTreeDimension<T extends CpuProNode>(
     };
 }
 
-export function createLineTree(
+function createLineTree(
     kind: string,
     line: ProfileLine,
     dimensions: {
@@ -51,18 +101,18 @@ export function createLineTree(
         samplesMetricsFiltered: SamplesMetricsFiltered;
         recomputeMetrics: () => void;
     }
-): ProfileLineTree {
+): ProfileLineBreakdown {
     return {
         kind,
         line,
         samplesMetrics: metrics.samplesMetrics,
         samplesMetricsFiltered: metrics.samplesMetricsFiltered,
         recomputeMetrics: metrics.recomputeMetrics,
-        locations: createLineTreeDimension(dimensions.dict.locations, dimensions.tree.locations),
-        callFrames: createLineTreeDimension(dimensions.dict.callFrames, dimensions.tree.callFrames),
-        modules: createLineTreeDimension(dimensions.dict.modules, dimensions.tree.modules),
-        packages: createLineTreeDimension(dimensions.dict.packages, dimensions.tree.packages),
-        categories: createLineTreeDimension(dimensions.dict.categories, dimensions.tree.categories),
-        owners: createLineTreeDimension(dimensions.dict.owners, dimensions.tree.owners)
+        locations: createBreakdownDimension(dimensions.dict.locations, dimensions.tree.locations),
+        callFrames: createBreakdownDimension(dimensions.dict.callFrames, dimensions.tree.callFrames),
+        modules: createBreakdownDimension(dimensions.dict.modules, dimensions.tree.modules),
+        packages: createBreakdownDimension(dimensions.dict.packages, dimensions.tree.packages),
+        categories: createBreakdownDimension(dimensions.dict.categories, dimensions.tree.categories),
+        owners: createBreakdownDimension(dimensions.dict.owners, dimensions.tree.owners)
     };
 }

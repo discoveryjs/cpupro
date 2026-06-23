@@ -1,4 +1,4 @@
-import { Metric, ProfileLine, ProfileLineTree, ProfileLineType } from '../prepare/lines/types.js';
+import { Metric, ProfileLine, ProfileLineBreakdown, ProfileLineType } from '../prepare/lines/types.js';
 import { Profile } from '../prepare/profile.mjs';
 
 type Method = (this: { context: MethodContext }, ...args: unknown[]) => unknown;
@@ -8,7 +8,7 @@ type MethodContext = {
     primaryTreeKind: string | null;
     scopeProfile: Profile | null;
     scopeLine: ProfileLine | null;
-    scopeTree: ProfileLineTree | null;
+    scopeTree: ProfileLineBreakdown | null;
     data: null | {
         profiles: Profile[];
     };
@@ -43,16 +43,16 @@ function isProfileLine(line: unknown): line is ProfileLine {
     return profileLine === findProfileLine(profile, profileLine.type);
 }
 
-function findProfileLineTree(line: ProfileLine, treeKind: string | null = null): ProfileLineTree | null {
+function findProfileLineTree(line: ProfileLine, treeKind: string | null = null): ProfileLineBreakdown | null {
     return line.trees?.find(tree => !treeKind || tree.kind === treeKind) ?? null;
 }
 
-function isProfileLineTree(tree: unknown): tree is ProfileLineTree {
+function isProfileLineTree(tree: unknown): tree is ProfileLineBreakdown {
     if (!tree || typeof tree !== 'object') {
         return false;
     }
 
-    const lineTree = tree as ProfileLineTree;
+    const lineTree = tree as ProfileLineBreakdown;
     const line = lineTree.line;
 
     if (!isProfileLine(line)) {
@@ -81,7 +81,7 @@ export function getProfilePrimaryLine(context: MethodContext, profile: unknown =
     );
 }
 
-export function getProfileLineTree(context: MethodContext, line: unknown = null, tree: string | null = null): ProfileLineTree | null {
+export function getProfileLineTree(context: MethodContext, line: unknown = null, tree: string | null = null): ProfileLineBreakdown | null {
     const targetLine = resolveScopeProfileLine(line, context);
 
     return targetLine && findProfileLineTree(
@@ -111,8 +111,8 @@ export function resolveScopeProfileLineTree(
     tree: unknown,
     line: unknown,
     context: MethodContext
-): ProfileLineTree | null {
-    let resolvedTree: ProfileLineTree | null = null;
+): ProfileLineBreakdown | null {
+    let resolvedTree: ProfileLineBreakdown | null = null;
 
     if (!tree) {
         resolvedTree = context.scopeTree || getProfileLineTree(context, line);

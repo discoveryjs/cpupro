@@ -473,7 +473,7 @@ export function createTreeSet(
     const modulesTree = buildCallTree('modules', callFramesTree, dict.callFrameToModule, usage.modules);
     const packagesTree = buildCallTree('packages', modulesTree, dict.moduleToPackage, usage.packages);
     const categoriesTree = buildCallTree('categories', packagesTree, dict.packageToCategory, usage.categories);
-    const ownersTree = buildCallTree('owners', modulesTree, dict.moduleToOwner);
+    const ownersTree = buildCallTree('owners', modulesTree, dict.moduleToOwner, usage.owners);
 
     return {
         sourceIdToNode: initialTreeSource.sourceIdToNode,

@@ -34,7 +34,7 @@ export function traverseFirstNextTree(firstChild: number[] | Uint32Array, nextSi
     return result;
 }
 
-export function dumpFirstNextTree(firstChild: Uint32Array, nextSibling: Uint32Array, value) {
+export function dumpFirstNextTree(firstChild: Uint32Array, nextSibling: Uint32Array, value: (index: number) => string | number) {
     const result: string[] = [];
     const stack = [0];
     const depths = new Map([[0, 0]]);

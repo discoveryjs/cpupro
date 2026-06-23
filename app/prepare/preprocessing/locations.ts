@@ -181,7 +181,7 @@ function buildContextVmStateDict(
     const vmStateCallFrames = callFramesMapFromDict(vmStateNames);
 
     for (const [code, name] of Object.entries(vmStateNames)) {
-        vmStateCallFrames[code] = dictionary.resolveCallFrame({
+        vmStateCallFrames[Number(code)] = dictionary.resolveCallFrame({
             functionName: `(${name})`,
             scriptId: 0,
             url: null,
@@ -200,7 +200,7 @@ function buildContextBuiltinDict(
     const builtinsCallFrames = callFramesMapFromDict(builtinsNames);
 
     for (const [code, name] of Object.entries(builtinsNames)) {
-        builtinsCallFrames[code] = dictionary.resolveCallFrame({
+        builtinsCallFrames[Number(code)] = dictionary.resolveCallFrame({
             functionName: `(builtin) ${name}`,
             scriptId: 0,
             url: null,
