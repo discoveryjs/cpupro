@@ -23,6 +23,11 @@
     margin-left: -6px;
 }
 
+.subject-badge_original {
+    --discovery-view-badge-dark-color: #3a392a;
+    --discovery-view-badge-text-color: #c2bf9e;
+}
+
 .subject-badge:is(
     .subject-badge_type__script,
     .subject-badge_type__node,

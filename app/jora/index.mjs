@@ -42,7 +42,8 @@ function shortNum(current, units, base = 1000) {
 }
 
 export const assertions = {
-    ...profileAssertions
+    ...profileAssertions,
+    original: 'script.originalFor'
 };
 export const methods = {
     ...binMethods,

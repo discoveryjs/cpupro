@@ -34,7 +34,7 @@ discovery.view.define('module-badge', {
             match: #.filter
         }`,
     whenData: true,
-    className: '=`module subject-badge subject-badge_type__${object.package | registry or type}`',
+    className: '=`module subject-badge subject-badge_type__${object.package | registry or type}${object is original ? " subject-badge_original" : ""}`',
     content: 'text-match',
     postRender(el, _, data) {
         const { registry, cdn } = data.object.package;
@@ -60,7 +60,7 @@ discovery.view.define('call-frame-badge', {
             match: #.filter
         }`,
     whenData: true,
-    className: '=`call-frame subject-badge subject-badge_type__${object.module.package | registry or type}`',
+    className: '=`call-frame subject-badge subject-badge_type__${object.module.package | registry or type}${object is original ? " subject-badge_original" : ""}`',
     content: 'text-match',
     postRender(el, _, data) {
         const { registry, cdn } = data.object.package;
