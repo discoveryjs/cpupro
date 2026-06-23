@@ -139,8 +139,8 @@ function getOrCreateEventChannel(event: { pid: number; tid: number }, eventChann
     let eventChannel = eventChannels.get(threadId);
 
     if (!eventChannel) {
-        const events = [];
-        const userTimings = [];
+        const events: UniformTraceEvent[] = [];
+        const userTimings: UniformTraceEvent[] = [];
 
         eventChannels.set(threadId, eventChannel = {
             thread: {
@@ -254,6 +254,7 @@ export function extractFromChromiumPerformanceProfile(
     let metadata: ChromiumTraceEventsMetadata = {};
     let sourceMaps: ProfileSourceMap[] = [];
     const sourceMapByUrl = new Map<string, ProfileSourceMap>();
+    const sourceMapByUrlDuplicates = new Set<string>();
     const sourceMapBySourceMapUrl = new Map<string, ProfileSourceMap>();
 
     // JSON Object Format
@@ -265,12 +266,18 @@ export function extractFromChromiumPerformanceProfile(
 
     // Index source maps by URL for quick lookup
     for (const sourceMap of sourceMaps) {
-        if (sourceMap.url) {
-            sourceMapByUrl.set(sourceMap.url, sourceMap);
-        }
-
         if (sourceMap.sourceMapUrl) {
             sourceMapBySourceMapUrl.set(sourceMap.sourceMapUrl, sourceMap);
+        }
+
+        if (sourceMap.url && !sourceMapByUrlDuplicates.has(sourceMap.url)) {
+            if (sourceMapByUrl.has(sourceMap.url)) {
+                // when several source maps have the same URL, we cannot reliably resolve them, so we ignore all of them
+                sourceMapByUrlDuplicates.add(sourceMap.url);
+                sourceMapByUrl.delete(sourceMap.url);
+            } else {
+                sourceMapByUrl.set(sourceMap.url, sourceMap);
+            }
         }
     }
 
@@ -513,21 +520,21 @@ export function extractFromChromiumPerformanceProfile(
             for (const script of profile._scripts) {
                 let sourceMap: ProfileSourceMap | null = null;
 
-                if (script.url) {
-                    sourceMap = sourceMapByUrl.get(script.url) || null;
+                if (script.sourceMapUrl && sourceMap === null) {
+                    sourceMap = sourceMapBySourceMapUrl.get(script.sourceMapUrl) ?? null;
+
+                    if (sourceMap === null) {
+                        try {
+                            const sourceMapUrl = new URL(script.sourceMapUrl, script.url || undefined).toString();
+                            sourceMap = sourceMapBySourceMapUrl.get(sourceMapUrl) ?? null;
+                        } catch (error) {
+                            console.warn('Error resolving source map url for script:', script, error);
+                        }
+                    }
                 }
 
-                if (script.sourceMapUrl && sourceMap === null) {
-                    try {
-                        const sourceMapUrl = new URL(script.sourceMapUrl, script.url || undefined).toString();
-
-                        sourceMap =
-                            sourceMapBySourceMapUrl.get(script.sourceMapUrl) ||
-                            sourceMapBySourceMapUrl.get(sourceMapUrl) ||
-                            null;
-                    } catch (error) {
-                        console.warn('Error resolving source map url for script:', script, error);
-                    }
+                if (script.url && sourceMap === null) {
+                    sourceMap = sourceMapByUrl.get(script.url) || null;
                 }
 
                 if (sourceMap) {
