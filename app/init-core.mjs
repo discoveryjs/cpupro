@@ -82,7 +82,7 @@ model.on('data', () => {
         } catch {}
     }
 
-    if (!primaryLineType || !profiles.some(profile => profile.lines.find(line => line.type === primaryLineType))) {
+    if (!primaryLineType || !profiles?.some(profile => profile.lines.find(line => line.type === primaryLineType))) {
         primaryLineType = defaultProfile?.lines?.[0].type || null;
     }
 

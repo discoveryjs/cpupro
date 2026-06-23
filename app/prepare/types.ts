@@ -175,6 +175,7 @@ export type WellKnownType = // alphabetical order
     | 'atomics-wait'
     | 'bytecode-compiler'
     | 'compiler'
+    | 'internals'
     | 'gc'
     | 'idle-external'
     | 'idle'

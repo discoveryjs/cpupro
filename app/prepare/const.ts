@@ -104,6 +104,7 @@ export const vmFunctionStateTierHotness: Record<V8CallFrameCodeType, CpuProCallF
 
 export const knownChromeExtensions = {
     'fmkadmapgofadopljbjfkapdkoienihi': 'React Developer Tools',
+    'gpphkfbcpidddadnkolkpfckpihlkkil': 'React Developer Tools',
     'lmhkpmbekcpmknklioeibfkpmmfibljd': 'Redux DevTools',
     'nhdogjmejiglipccpnnnanhbledajbpd': 'Vue.js devtools',
     'ienfalfjdbdpebioblfackkekamfmbnh': 'Angular DevTools',
