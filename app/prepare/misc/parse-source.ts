@@ -77,7 +77,7 @@ function binarySearchFunctionRangeIndex(starts: number[], position: number) {
 export function findFunctionAtPosition(functionRanges: FunctionRanges, position: number) {
     let candidate: FunctionRange | null = null;
 
-    if (functionRanges.starts) {
+    if (functionRanges.starts.length > 0) {
         const rangeIndex = binarySearchFunctionRangeIndex(
             functionRanges.starts,
             position
@@ -137,7 +137,7 @@ export function findFunctionAtLineColumn(functionRanges: FunctionRanges, line: n
             if (candidate === null || range.end - range.start < candidate.end - candidate.start) {
                 candidate = range;
             }
-        } else if (candidate !== null) {
+        } else if (!startsBefore) {
             break;
         }
     }
@@ -206,6 +206,8 @@ export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, 
     return -1;
 }
 
+const JSX_REGEX = /\.[mc]?[tj]sx($|[\?\#\|])/;
+const TS_REGEX = /\.[mc]?ts($|[\?\#\|])/;
 export function getFunctionRanges(code: string, url?: string | null): FunctionRanges {
     let ast: ASTNode | null = null;
     const functionRanges: FunctionRanges = {
@@ -217,12 +219,16 @@ export function getFunctionRanges(code: string, url?: string | null): FunctionRa
     try {
         ast = parse(code, {
             sourceType: 'unambiguous',
-            plugins: ['typescript', 'jsx', 'decorators']
+            plugins: JSX_REGEX.test(url || '')
+                ? ['typescript', 'jsx', 'decorators']
+                : TS_REGEX.test(url || '')
+                    ? ['typescript', 'decorators']
+                    : []
             // ranges: true,
             // errorRecovery: true
         }) as ASTNode;
     } catch (e) {
-        console.error(`Failed to parse ${url ? `"${url}"` : 'source'} for function ranges:`);
+        console.error(`Failed to parse ${url ? `"${url}"` : 'source'} for function ranges:`, e.message);
         return functionRanges;
     }
 
@@ -240,7 +246,8 @@ export function getFunctionRanges(code: string, url?: string | null): FunctionRa
             n.type === 'ClassMethod' ||
             n.type === 'ClassPrivateMethod' ||
             n.type === 'ObjectMethod' ||
-            n.type === 'TSDeclareFunction'
+            n.type === 'TSDeclareFunction' ||
+            n.type === 'TSEnumDeclaration'
         );
     }
 
@@ -313,6 +320,8 @@ export function getFunctionRanges(code: string, url?: string | null): FunctionRa
             const callFrameStart = findCallFrameStart(node) || nodeStart;
             let callFrameStartLine = node.loc.start.line;
             let callFrameStartColumn = node.loc.start.column;
+            let nodeStartWithComments = nodeStart;
+            let locStart = node.loc.start;
 
             if (callFrameStart > nodeStart) {
                 let lineDiff = 0;
@@ -338,16 +347,24 @@ export function getFunctionRanges(code: string, url?: string | null): FunctionRa
                     : columnDiff;
             }
 
+            if (node.leadingComments && node.leadingComments.length > 0) {
+                nodeStartWithComments = node.leadingComments[0].start;
+                locStart = node.leadingComments[0].loc.start;
+            }
+
             functionRanges.ranges.push({
                 type: node.type,
                 name: getFunctionName(node, parent),
-                start: node.start,
+                start: nodeStartWithComments,
                 callFrameStart,
                 callFrameStartLine,
                 callFrameStartColumn,
-                // slice: code.slice(node.start, node.end),
+                // slice: code.slice(nodeStartWithComments, node.end),
                 end: node.end,
-                loc: node.loc
+                loc: {
+                    start: locStart,
+                    end: node.loc.end
+                }
             });
         }
 
