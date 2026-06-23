@@ -6,6 +6,7 @@ import { createSampledTreeSet } from '../profile.mjs';
 import { CpuProLocation } from '../types.js';
 import { createLineBreakdown } from './trees.js';
 import { ProfileLine } from './types.js';
+import { createInt32Progression } from '../misc/utils.js';
 
 export async function createMemlineLocationsBreakdown(
     kind: string,
@@ -32,20 +33,25 @@ export async function createMemlineLocationsBreakdown(
         work
     );
 
-    return createLineBreakdown(
+    const breakdown = createLineBreakdown(
         kind,
         line,
         allocationSizes,
         locationTreeSamples,
         work
     );
+
+    line.__allocationLocationBreakdownBasis = allocationLocationBreakdownBasis;
+    line.__vectorLocations = vectorLocations;
+
+    return breakdown;
 }
 
 function createAllocationLocationBreakdownBasis(
     dictionary: Dictionary,
     generatedNodes: GeneratedNodes
 ): TreeSource<CpuProLocation> {
-    const nodeIndexById = Int32Array.from({ length: generatedNodes.count }, (_, index) => index);
+    const nodeIndexById = createInt32Progression(generatedNodes.count);
     const nodeParent = Uint32Array.from(generatedNodes.nodeParentId);
     const locationNodes = new Uint32Array(generatedNodes.parentScriptOffsets); // parentScriptOffsets used to store location indices
 

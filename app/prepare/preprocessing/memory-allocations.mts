@@ -1,7 +1,7 @@
 import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Profile } from '../profile.mjs';
-import { min, sum } from '../misc/utils.js';
+import { createInt32Progression, min, sum } from '../misc/utils.js';
 
 export function processMemoryAllocations(
     allocations: number[],
@@ -95,7 +95,7 @@ function buildCommonTree(dict: Dictionary, profiles: Profile[]) {
         }
     }
 
-    const commonNodeMap = Int32Array.from({ length: commonNodes.length }, (_, idx) => idx);
+    const commonNodeMap = createInt32Progression(commonNodes.length);
     const source = createTreeSourceFromParent(
         new Uint32Array(commonParent),
         commonNodeMap,

@@ -3,22 +3,13 @@ import { CallTree } from './call-tree.js';
 import type { CpuProCallFrame, CpuProLocation, CpuProCategory, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Usage } from '../usage.js';
+import { createUint32Progression } from '../misc/utils.js';
 
 interface BuildTreeSource<S> {
     dictionary: S[];
     parent: Uint32Array;
     nodes: Uint32Array;
 }
-
-export type TreeSet = {
-    sourceIdToNode: Int32Array;
-    locationsTree: CallTree<CpuProLocation> | null;
-    callFramesTree: CallTree<CpuProCallFrame>;
-    modulesTree: CallTree<CpuProModule>;
-    packagesTree: CallTree<CpuProPackage>;
-    categoriesTree: CallTree<CpuProCategory>;
-    ownersTree: CallTree<CpuProOwner>;
-};
 
 export interface TreeSource<S> extends BuildTreeSource<S> {
     sourceIdToNode: Int32Array;
@@ -321,7 +312,7 @@ function createDictionaryMap<S, D>(
     if (mapping === selfDictionaryMappingFn) {
         return {
             dictionary: dictionary as unknown as D[],
-            sourceDictionaryMap: Uint32Array.from(dictionary, (_, idx) => idx)
+            sourceDictionaryMap: createUint32Progression(dictionary.length)
         };
     }
 
@@ -444,19 +435,38 @@ function buildCallTree<S extends CpuProNode, D extends CpuProNode = S>(
     return tree;
 }
 
-function buildTreeSource(
-    nodeParent: Uint32Array,
-    nodeIndexById: Int32Array,
-    callFrameByNodeIndex: Uint32Array,
-    callFrames: CpuProCallFrame[]
-) {
-    const t = Date.now();
+export class TreeSet {
+    source: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>;
+    initial: CallTree<CpuProLocation> | CallTree<CpuProCallFrame>;
+    locations: CallTree<CpuProLocation> | null;
+    callFrames: CallTree<CpuProCallFrame>;
+    modules: CallTree<CpuProModule>;
+    packages: CallTree<CpuProPackage>;
+    categories: CallTree<CpuProCategory>;
+    owners: CallTree<CpuProOwner>;
 
-    const treeSource = createTreeSourceFromParent(nodeParent, nodeIndexById, callFrameByNodeIndex, callFrames);
+    constructor(
+        dict: Dictionary,
+        initialTreeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
+        usage: Usage | Dictionary = dict
+    ) {
+        this.source = initialTreeSource;
+        this.locations = initialTreeSource.dictionary === dict.locations
+            ? buildCallTree('locations', initialTreeSource as TreeSource<CpuProLocation>)
+            : null;
+        this.callFrames = this.locations !== null
+            ? buildCallTree('callFrames', this.locations, dict.locationToCallFrame, usage.callFrames)
+            : buildCallTree('callFrames', initialTreeSource as TreeSource<CpuProCallFrame>);
+        this.initial = this.locations || this.callFrames;
+        this.modules = buildCallTree('modules', this.callFrames, dict.callFrameToModule, usage.modules);
+        this.packages = buildCallTree('packages', this.modules, dict.moduleToPackage, usage.packages);
+        this.categories = buildCallTree('categories', this.packages, dict.packageToCategory, usage.categories);
+        this.owners = buildCallTree('owners', this.modules, dict.moduleToOwner, usage.owners);
+    }
 
-    TIMINGS && console.log('buildTreeSource()', Date.now() - t);
-
-    return treeSource;
+    get sourceIdToNode() {
+        return this.source.sourceIdToNode;
+    }
 }
 
 export function createTreeSet(
@@ -464,24 +474,5 @@ export function createTreeSet(
     initialTreeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
     usage: Usage | Dictionary = dict
 ): TreeSet {
-    const locationsTree = initialTreeSource.dictionary === dict.locations
-        ? buildCallTree('locations', initialTreeSource as TreeSource<CpuProLocation>)
-        : null;
-    const callFramesTree = locationsTree !== null
-        ? buildCallTree('callFrames', locationsTree, dict.locationToCallFrame, usage.callFrames)
-        : buildCallTree('callFrames', initialTreeSource as TreeSource<CpuProCallFrame>);
-    const modulesTree = buildCallTree('modules', callFramesTree, dict.callFrameToModule, usage.modules);
-    const packagesTree = buildCallTree('packages', modulesTree, dict.moduleToPackage, usage.packages);
-    const categoriesTree = buildCallTree('categories', packagesTree, dict.packageToCategory, usage.categories);
-    const ownersTree = buildCallTree('owners', modulesTree, dict.moduleToOwner, usage.owners);
-
-    return {
-        sourceIdToNode: initialTreeSource.sourceIdToNode,
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree,
-        ownersTree
-    };
+    return new TreeSet(dict, initialTreeSource, usage);
 }

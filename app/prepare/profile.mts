@@ -2,7 +2,7 @@ import type { Model } from '@discoveryjs/discovery';
 import type { CpuProCallFrame, CpuProLocation, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
 import type { ProfileLine } from './lines/types.js';
 import type { Ownership } from './formats/types.js';
-import { convertToInt32Array, convertToUint32Array } from './misc/utils.js';
+import { convertToInt32Array, convertToUint32Array, createInt32Progression } from './misc/utils.js';
 import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis, enumerateLongTimeDeltas, LongTimeDeltas } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
 import { reparentGcNodes } from './preprocessing/gc-samples.js';
@@ -18,7 +18,7 @@ import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { remapTreeSamples } from './preprocessing/samples.js';
-import { processSourceMaps } from './profile-sm.mjs';
+import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
 const experimentalFeatures = false;
@@ -104,15 +104,7 @@ export async function createSampledTreeSet(
     // Create profile's data derivatives
     //
 
-    const {
-        sourceIdToNode,
-        locationsTree,
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree,
-        ownersTree
-    } = await work('build trees', () =>
+    const treeSet = await work('build trees', () =>
         createTreeSet(
             dictionary,
             treeSetSource
@@ -125,14 +117,14 @@ export async function createSampledTreeSet(
     const sampledTreeSet = await work('remap samples', () =>
         remapTreeSamples(
             samples,
-            sourceIdToNode,
+            treeSet.sourceIdToNode,
             [
-                ...(locationsTree ? [locationsTree] : []),
-                callFramesTree,
-                modulesTree,
-                packagesTree,
-                categoriesTree,
-                ownersTree
+                ...(treeSet.locations ? [treeSet.locations] : []),
+                treeSet.callFrames,
+                treeSet.modules,
+                treeSet.packages,
+                treeSet.categories,
+                treeSet.owners
             ]
         )
     );
@@ -310,7 +302,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             sampleScriptOffsets
         ) || {
             parent: nodeParent,
-            sourceIdToNode: Int32Array.from({ length: nodeParent.length }, (_, i) => i),
+            sourceIdToNode: createInt32Progression(nodeParent.length),
             nodes: callFrameByNodeIndex,
             dictionary: dictionary.callFrames as CpuProCallFrame[]
         }
@@ -431,6 +423,48 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     for (const line of lines) {
         line.profile = profile;
+    }
+
+    if (timeline) {
+        await createSourceMappedBreakdown(
+            'call-stack-sm',
+            timeline,
+            dictionary,
+            profileScriptsMap,
+            callStackBreakdownBasis,
+            timeline.trees[0].samplesMetrics.samples,
+            timeline.trees[0].samplesMetrics.values,
+            ownership,
+            work
+        );
+    }
+
+    if (memline) {
+        await createSourceMappedBreakdown(
+            'call-stack-sm',
+            memline,
+            dictionary,
+            profileScriptsMap,
+            callStackBreakdownBasis,
+            memline.trees[0].samplesMetrics.samples, // memline.__allocationCpuSamples,
+            memline.trees[0].samplesMetrics.values, // memline.values,
+            ownership,
+            work
+        );
+
+        if (memline.__allocationLocationBreakdownBasis) {
+            await createSourceMappedBreakdown(
+                'locations-sm',
+                memline,
+                dictionary,
+                profileScriptsMap,
+                memline.__allocationLocationBreakdownBasis,
+                memline.__vectorLocations.samples, // memline.trees[1].samplesMetrics.samples,
+                memline.trees[1].samplesMetrics.values,
+                ownership,
+                work
+            );
+        }
     }
 
     return profile;

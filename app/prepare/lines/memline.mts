@@ -232,10 +232,6 @@ export async function createMemline(
         valueLifespansDict: allocationLifespanDict,
         valueSpaces: allocationSpaces,
         valueSpacesDict: allocationSpaceNames
-
-        // __allocationCpuSamples: allocationCpuSamples,
-        // __allocationLocationBreakdownBasis: allocationLocationBreakdownBasis,
-        // __allocationLocationSamples: vectorLocations ? vectorLocations.samples : null
     };
 
     if (_cpuproAllocationMapping && _cpuproAllocationIds && _cpuproAllocationSizes) {

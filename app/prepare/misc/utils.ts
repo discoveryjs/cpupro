@@ -37,6 +37,25 @@ export function convertToInt32Array(source: number[], extraLength: number = 0) {
     return result;
 }
 
+export function createUint32Progression(length: number) {
+    const result = new Uint32Array(length);
+
+    for (let i = 0; i < length; i++) {
+        result[i] = i;
+    }
+
+    return result;
+}
+export function createInt32Progression(length: number) {
+    const result = new Int32Array(length);
+
+    for (let i = 0; i < length; i++) {
+        result[i] = i;
+    }
+
+    return result;
+}
+
 // Convert bytes into WebAssembly memory pages
 const WASM_PAGE_SIZE = 64 * 1024;
 export function bytesToWasmMemoryPages(bytes: number) {
