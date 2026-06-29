@@ -733,8 +733,8 @@ export function computeMetrics<T extends readonly SampledTree<CpuProNode>[]>(
     computeAll(computeMetricsApi, bufferMap, false);
 
     const samplesMetrics = new SamplesMetrics(
-        samplesMap.samples,
-        samplesMap.values,
+        samples,
+        values,
         samplesMap.cumulative,
         samplesMap.samplesCount.slice(),
         samplesMap.samplesTotal.slice()
