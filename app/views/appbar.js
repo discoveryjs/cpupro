@@ -10,7 +10,7 @@ discovery.view.define('appbar', [
         },
         {
             view: 'toggle-group',
-            data: '#.data.profiles.lines.trees.kind',
+            data: 'scopeLine().trees.kind.sort()',
             // whenData: 'size() > 1',
             value: '=#.primaryTreeKind',
             onChange: '==>"selectPrimaryTree".callAction($)'
