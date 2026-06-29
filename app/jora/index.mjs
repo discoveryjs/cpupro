@@ -1,4 +1,4 @@
-import { allocTimespan, typeColor, typeColorComponents, typeOrder, vmFunctionStateTierHotness } from '../prepare/const.js';
+import { typeColor, typeColorComponents, typeOrder, vmFunctionStateTierHotness } from '../prepare/const.js';
 import { methods as binMethods } from './bin.js';
 import { methods as callTreeMethods, makeSamplesMask } from './call-tree.js';
 import { methods as disassembleMethods } from './disassemble.js';
@@ -153,15 +153,24 @@ export const methods = {
         return { up, down };
     },
     allocationsMatrix(treeMetrics, sampleTimings, test, profile) {
-        profile = getProfileOrScopeProfile(profile, this.context);
+        const memline = getProfileOrScopeProfile(profile, this.context)?.memline;
+        const allocationTypeAttribute = memline?.attributes.find(attr => attr.name === 'allocationType') || null;
+        const allocationLifespanAttribute = memline?.attributes.find(attr => attr.name === 'allocationLifespan') || null;
 
-        if (!profile || !profile.memline) {
+        if (!allocationTypeAttribute || !allocationLifespanAttribute) {
             return [];
         }
 
-        const { valueLifespans, valueTypes, valueTypesDict } = profile.memline;
+        const {
+            values: valueLifespans,
+            dict: valueLifespansDict
+        } = allocationLifespanAttribute;
+        const {
+            values: valueTypes,
+            dict: valueTypesDict
+        } = allocationTypeAttribute;
         const { samples, values } = sampleTimings;
-        const timespanCount = allocTimespan.length;
+        const timespanCount = valueLifespansDict.length;
         const typeCount = valueTypesDict.length;
         const counts = new Uint32Array(timespanCount * typeCount);
         const sums = new Uint32Array(timespanCount * typeCount);
@@ -196,7 +205,7 @@ export const methods = {
                 }
             };
 
-            for (let j = 0; j < allocTimespan.length; j++) {
+            for (let j = 0; j < valueLifespansDict.length; j++) {
                 const index = i * timespanCount + j;
                 const count = counts[index];
 
@@ -207,7 +216,7 @@ export const methods = {
                     entry.total.max = Math.max(entry.total.max, maxs[index]);
                 }
 
-                entry[allocTimespan[j]] = {
+                entry[valueLifespansDict[j]] = {
                     count: counts[index],
                     sum: sums[index],
                     min: mins[index],

@@ -162,6 +162,9 @@ export const methods: Record<string, Method> = {
     primaryBreakdown(line: ProfileLine) {
         return getProfileLineBreakdown(this.context, line);
     },
+    lineAttribute(line: ProfileLine, attributeName: string) {
+        return line.attributes?.find(attr => attr.name === attributeName) ?? null;
+    },
     metricName(metric: Metric, line?: ProfileLine | ProfileLineType) {
         return resolveScopeProfileLine(line, this.context)?.metricName(metric);
     },

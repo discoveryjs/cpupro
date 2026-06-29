@@ -4,12 +4,17 @@ import type { Metric, ProfileMemline } from './types.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
-import { AllocationLifespan, typeColor } from '../const.js';
 import { Dictionary } from '../dictionary.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { sum } from '../misc/utils.js';
+import {
+    createMemlineAllocationLifespanAttribute,
+    createMemlineAllocationSpaceAttribute,
+    createMemlineAllocationTypeAttribute,
+    createMemlineGcEpochAttribute
+} from './memline-attributes.mjs';
 
 export type CreateMemlineOptions = {
     work: WorkHandler;
@@ -46,7 +51,7 @@ export async function createMemline(
     data: V8CpuProfile,
     dictionary: Dictionary,
     profileScriptsMap: ProfileScriptsMap,
-    cpuSampledTreeSet: {
+    callStackTreeSet: {
         samples: Uint32Array<ArrayBufferLike>;
         sampledTrees: SampledCpuProCallTree[];
     },
@@ -63,14 +68,11 @@ export async function createMemline(
         _cpuproAllocationLocations = null,
         _cpuproAllocationContextInfo = null,
         _cpuproAllocationBuiltinNames = null,
-        _cpuproAllocationVmStateNames = null,
-        _cpuproAllocationGc = null,
-        _cpuproAllocationTypes = null,
-        _cpuproAllocationTypeNames = null
+        _cpuproAllocationVmStateNames = null
     } = data;
 
     // Check if allocation data is present
-    if (!_cpuproAllocationMapping || !_cpuproAllocationIds || !_cpuproAllocationSizes) {
+    if (!_cpuproAllocationSizes) {
         return null;
     }
 
@@ -96,20 +98,29 @@ export async function createMemline(
     //     console.log(`  ${_cpuproAllocationBuiltinNames![id]}: ${size}`);
     // }
 
-    let samplesInterval = _cpuproAllocationSizes[0];
-    for (let i = 1; i < _cpuproAllocationSizes.length; i++) {
-        if (_cpuproAllocationSizes[i] < samplesInterval) {
-            samplesInterval = _cpuproAllocationSizes[i];
+    // Convert allocation sizes to typed array for faster processing
+    const allocationSizes = new Uint32Array(_cpuproAllocationSizes);
+
+    let samplesInterval = allocationSizes[0];
+    for (let i = 1; i < allocationSizes.length; i++) {
+        if (allocationSizes[i] < samplesInterval) {
+            samplesInterval = allocationSizes[i];
         }
     }
 
     // Exclude GCed allocations from size
-    // for (let i = 0; i < _cpuproAllocationSizes.length; i++) {
-    //     if (_cpuproAllocationGc![i] > 0) {
-    //         _cpuproAllocationSizes[i] = 0;
+    // if (data._cpuproAllocationGc) {
+    //     for (let i = 0; i < allocationSizes.length; i++) {
+    //         if (data._cpuproAllocationGc![i] > 0) {
+    //             allocationSizes[i] = 0;
+    //         }
     //     }
     // }
 
+    // Calculate total allocation size as axis total
+    const totalAllocationSize = sum(allocationSizes);
+
+    // Create vector of allocation locations for breakdown
     const vectorLocations = await work('create allocation locations vector', () =>
         createVectorLocations(
             dictionary,
@@ -122,71 +133,24 @@ export async function createMemline(
         )
     );
 
-    // Calculate total allocation size as axis total
-    const totalAllocationSize = sum(_cpuproAllocationSizes);
+    // Memline attributes
+    const attributes = await work('create memline attributes', () => [
+        createMemlineAllocationTypeAttribute(
+            data._cpuproAllocationTypes || null,
+            data._cpuproAllocationTypeNames || null
+        ),
+        createMemlineAllocationSpaceAttribute(
+            data._cpuproAllocationSpaces || null,
+            data._cpuproAllocationSpaceNames || null
+        ),
+        createMemlineGcEpochAttribute(
+            data._cpuproAllocationGc || null
+        ),
+        createMemlineAllocationLifespanAttribute(
+            data._cpuproAllocationGc || null
+        )
+    ].filter(attr => attr !== null));
 
-    // Allocation types
-    let allocationTypeVector: Uint32Array | null = null;
-    let allocationTypeNames: string[] | null = null;
-    if (_cpuproAllocationTypes) {
-        const map = new Map<number, number>();
-
-        allocationTypeVector = new Uint32Array(_cpuproAllocationTypes);
-        allocationTypeNames = Object.entries(_cpuproAllocationTypeNames || {})
-            .sort((a, b) => Number(a[0]) - Number(b[0]))
-            .map(([id, name]) => {
-                map.set(Number(id), map.size);
-                return name.replace(/_TYPE$/, '');
-            });
-
-        for (let i = 0; i < allocationTypeVector.length; i++) {
-            allocationTypeVector[i] = map.get(allocationTypeVector[i]) || 0;
-        }
-    }
-
-    // Allocation spaces
-    let allocationSpaces: Uint32Array | null = null;
-    let allocationSpaceNames: string[] | null = null;
-    if (data._cpuproAllocationSpaces) {
-        const map = new Map<number, number>();
-
-        allocationSpaces = new Uint32Array(data._cpuproAllocationSpaces);
-        allocationSpaceNames = Object.entries(data._cpuproAllocationSpaceNames || {})
-            .sort((a, b) => Number(a[0]) - Number(b[0]))
-            .map(([id, name]) => {
-                map.set(Number(id), map.size);
-                return name.replace(/large_object_/, 'lo_');
-            });
-
-        for (let i = 0; i < allocationSpaces.length; i++) {
-            allocationSpaces[i] = map.get(allocationSpaces[i]) || 0;
-        }
-    }
-
-    // GC states
-    let allocationGcEpochs: Uint32Array | null = null;
-    let allocationGcEpochDict: ProfileMemline['valueGcEpochsDict'] = null;
-    let allocationLifespans: Uint8Array | null = null;
-    const allocationLifespanDict: AllocationLifespan[] = ['alive', 'short-lived', 'long-lived'];
-    if (_cpuproAllocationGc) {
-        const epochs = new Set<number>(_cpuproAllocationGc);
-        const epochToIndex = new Map<number, number>();
-
-        allocationGcEpochDict = [];
-        for (const epoch of [...epochs].sort((a, b) => a - b)) {
-            epochToIndex.set(epoch, epochToIndex.size);
-            allocationGcEpochDict.push({
-                type: epoch === 0 ? 'none' : epoch & 1 ? 'minor' : 'major',
-                epoch: epoch >> 2,
-                color: typeColor[epoch === 0 ? 'alive' : epoch & 1 ? 'short-lived' : 'long-lived']
-            });
-        }
-
-        allocationGcEpochs = Uint32Array.from(_cpuproAllocationGc, gc => epochToIndex.get(gc)!);
-        allocationLifespans = Uint8Array.from(_cpuproAllocationGc, gc => gc & 3);
-    }
-
-    const allocationSizes = new Uint32Array(_cpuproAllocationSizes);
     const line: ProfileMemline = {
         type: 'memline',
         kind: 'memory' as const,
@@ -220,29 +184,20 @@ export async function createMemline(
         axisTotal: totalAllocationSize,
 
         values: allocationSizes,
+        attributes,
         breakdowns: [],
-        mappings: Object.create(null),
-
-        // memline-specific properties
-        valueTypes: allocationTypeVector,
-        valueTypesDict: allocationTypeNames,
-        valueGcEpochs: allocationGcEpochs,
-        valueGcEpochsDict: allocationGcEpochDict,
-        valueLifespans: allocationLifespans,
-        valueLifespansDict: allocationLifespanDict,
-        valueSpaces: allocationSpaces,
-        valueSpacesDict: allocationSpaceNames
+        mappings: Object.create(null)
     };
 
-    if (_cpuproAllocationMapping && _cpuproAllocationIds && _cpuproAllocationSizes) {
+    if (_cpuproAllocationMapping && _cpuproAllocationIds) {
         const cpuSamplesBreakdown = await work('map allocations to CPU samples', () => {
             return createMemlineCpuSamplesBreakdown(
                 'call-stack',
                 line,
                 _cpuproAllocationMapping,
                 _cpuproAllocationIds,
-                _cpuproAllocationSizes,
-                cpuSampledTreeSet,
+                allocationSizes,
+                callStackTreeSet,
                 work
             );
         });

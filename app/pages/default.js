@@ -117,19 +117,19 @@ const categoriesTimeline = {
                 deleteTotal: $delete.sum(),
                 maxNewDelete: [$new.max(), $delete.max()].max()
             },
-            lineMappingControl: $profile.lines.(
-                { ...binLineToAxisLine(null, null, $scopeLine, 500)[0], color: "#65b4fda0" }
-            ),
-            memline: $profile | memline ? {
-                byType: (memline | valueTypes and valueTypesDict)
-                    ? memline.binLineToAxisLine(memline.valueTypes, memline.valueTypesDict, $scopeLine, 500),
-                bySpace: (memline | valueSpaces and valueSpacesDict)
-                    ? memline.binLineToAxisLine(memline.valueSpaces, memline.valueSpacesDict, $scopeLine, 500),
-                byGc: (memline | valueLifespans and valueLifespansDict)
-                    ? memline.binLineToAxisLine(memline.valueLifespans, memline.valueLifespansDict, $scopeLine, 500),
-                byGcEpoch: (memline | valueGcEpochs and valueGcEpochsDict)
-                    ? memline.binLineToAxisLine(memline.valueGcEpochs, memline.valueGcEpochsDict, $scopeLine, 500)
-            }
+            lineMappingControl: $profile.lines.({
+                ...binLineToAxisLine(null, $scopeLine, 500)[0],
+                color: "#65b4fda0"
+            }),
+            memline: $profile | $memline; $memline ? [
+                { key: "byType",    value: 'allocationType' },
+                { key: "bySpace",   value: 'allocationSpace' },
+                { key: "byGc",      value: 'allocationLifespan' },
+                { key: "byGcEpoch", value: 'allocationGcEpoch' }
+            ].($attribute: $memline.lineAttribute(value);
+                { key, value: $attribute
+                    ? $memline.binLineToAxisLine($attribute, $scopeLine, 500) }
+            ).fromEntries()
         }
     `,
     content: [

@@ -84,6 +84,7 @@ export async function createTimeline(
         axisTotal: axis.total,
 
         values: timeDeltas,
+        attributes: [],
         breakdowns: [],
         mappings: Object.create(null)
     };

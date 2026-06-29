@@ -1,5 +1,5 @@
 import { typeColor, vmFunctionStateTiers } from '../prepare/const.js';
-import { ProfileLine, ProfileLineBreakdown, ProfileLineType } from '../prepare/lines/types.js';
+import { ProfileLine, ProfileLineAttribute, ProfileLineBreakdown, ProfileLineType } from '../prepare/lines/types.js';
 import { sum } from '../prepare/misc/utils.js';
 import { Profile } from '../prepare/profile.mjs';
 import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepare/types.js';
@@ -68,7 +68,6 @@ type BinOptions = {
     total?: number;
     line?: ProfileLine | ProfileLineType;
     tree?: ProfileLineBreakdown | string;
-
 }
 
 export const methods = {
@@ -99,8 +98,8 @@ export const methods = {
         return bins;
     },
 
-    binCalls(treeMetrics, test, n = 500, lineTree?: ProfileLineBreakdown | string) {
-        const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, null, this.context) as ProfileLineBreakdown;
+    binCalls(treeMetrics, test, n = 500, breakdown?: ProfileLineBreakdown | string) {
+        const resolvedLineTree = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
         const { samples, values } = resolvedLineTree.samplesMetrics;
         const mask = makeSamplesMask(treeMetrics, test);
@@ -221,8 +220,7 @@ export const methods = {
 
     binLineToAxisLine(
         valuesLine: ProfileLine,
-        attribute: Uint32Array | null,
-        attributeDict: string[] | null,
+        attribute: ProfileLineAttribute | null,
         axisLine?: ProfileLine,
         n = 500
     ) {
@@ -235,6 +233,8 @@ export const methods = {
         const axisMetrics = getCallStackSamplesMetrics(axisLine);
         const { axisTotal } = axisLine;
         const binSumVector = new Uint32Array(n);
+        const attributeValues = attribute?.values || null;
+        const attributeDict = attribute?.dict || null;
         const vectors = attribute
             ? Array.from({ length: attributeDict?.length || 0 }, () => new Uint32Array(n))
             : [binSumVector];
@@ -245,7 +245,7 @@ export const methods = {
                 const value = values[i];
                 const absValue = axisMetrics.cumulative[mappingToLine[i]];
                 const binIndex = Math.min(n - 1, Math.floor(absValue / step)) | 0;
-                const vector = vectors[attribute?.[i] ?? 0];
+                const vector = vectors[attributeValues?.[i] ?? 0];
 
                 vector[binIndex] += value;
 
@@ -255,7 +255,7 @@ export const methods = {
             }
         } else {
             for (let i = 0, binIndex = 0, binValue = 0; i < values.length; i++) {
-                const vector = vectors[attribute?.[i] ?? 0];
+                const vector = vectors[attributeValues?.[i] ?? 0];
                 let value = values[i];
 
                 while (binValue + value >= step) {
@@ -285,7 +285,7 @@ export const methods = {
 
         return vectors.map((vector, index) => {
             return {
-                entry: attributeDict?.[index] ?? valuesLine.type,
+                entry: attribute?.dict[index] ?? valuesLine.type,
                 color: attributeDict ? typeColor[attributeDict[index]] : 'green',
                 value: sum(vector),
                 max,

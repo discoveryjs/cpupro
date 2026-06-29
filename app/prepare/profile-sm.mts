@@ -24,6 +24,10 @@ export async function createSourceMappedBreakdown(
         return;
     }
 
+    if (!dictionary.locations.some(loc => loc.script?.sourceMap)) {
+        return;
+    }
+
     const startTime = Date.now();
     const execToOriginalMap = await work('process source maps', () => {
         const smByScript = new Map<CpuProScript, SourceMapConsumer>();
@@ -142,7 +146,7 @@ export async function createSourceMappedBreakdown(
         work
     );
 
-    line.trees.push(breakdown);
+    line.breakdowns.push(breakdown);
 
-    console.log('Build sampledTreeList', Date.now() - startTime);
+    console.log('createSourceMappedBreakdown', Date.now() - startTime);
 }

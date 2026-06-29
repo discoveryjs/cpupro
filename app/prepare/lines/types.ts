@@ -40,6 +40,32 @@ export type ProfileLineBreakdown = {
     owners: LineTreeDimension<CpuProOwner> | null;
 };
 
+export type ProfileLineAllocationTypeAttribute = {
+    name: 'allocationType';
+    values: Uint32Array;
+    dict: string[];
+};
+export type ProfileLineAllocationGcEpochAttribute = {
+    name: 'allocationGcEpoch';
+    values: Uint32Array;
+    dict: GcEpochDictEntry[];
+};
+export type ProfileLineAllocationLifespanAttribute = {
+    name: 'allocationLifespan';
+    values: Uint8Array;
+    dict: string[];
+};
+export type ProfileLineAllocationSpaceAttribute = {
+    name: 'allocationSpace';
+    values: Uint32Array;
+    dict: string[];
+};
+export type ProfileLineAttribute =
+    | ProfileLineAllocationTypeAttribute
+    | ProfileLineAllocationGcEpochAttribute
+    | ProfileLineAllocationLifespanAttribute
+    | ProfileLineAllocationSpaceAttribute;
+
 export type Axis = {
     start: number;
     startNoSamples: number;
@@ -74,6 +100,7 @@ export interface ProfileLine {
 
     // Stream of signals (e.g. time deltas, memory allocations) for this line in its primary axis
     values: Uint32Array;
+    attributes: ProfileLineAttribute[];
 
     // Line-owned tree breakdowns. Several lines may reuse the same tree structure,
     // while keeping independent sample-to-node mappings and metrics.
@@ -91,16 +118,6 @@ export type TimelineLine = ProfileLine & {
 export type ProfileMemline = ProfileLine & {
     type: 'memline';
     kind: 'memory';
-
-    // Memory-specific metadata
-    valueTypes: Uint32Array | null;
-    valueTypesDict: Record<number, string> | null;
-    valueGcEpochs: Uint32Array | null;
-    valueGcEpochsDict: GcEpochDictEntry[] | null;
-    valueLifespans: Uint8Array | null;
-    valueLifespansDict: string[] | null;
-    valueSpaces: Uint32Array | null;
-    valueSpacesDict: string[] | null;
 };
 
 export type GcEpochDictEntry = {

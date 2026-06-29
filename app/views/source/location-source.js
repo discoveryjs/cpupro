@@ -23,7 +23,7 @@ discovery.view.define('location-source', {
         $sourceSliceEnd: $sourceSliceEndRaw - $scriptOffset | $ < $postlude ? $sourceSliceEndRaw : $scriptOffset + $postlude;
         $lineNum: $source.slice(0, $scriptOffset).match(/\\r\\n?|\\n/g).size();
 
-        $selfValueTooltipView: $line | type = 'memline' and valueLifespans and valueTypes
+        $selfValueTooltipView: $line | type = 'memline' and and lineAttribute('allocationType') and lineAttribute('allocationLifespan')
             ? 'allocation-samples-matrix:values.allocationsMatrix(metrics, value.entry).sort(total.sum or 0 desc)';
         $misattributedMessage: { view: 'block', when: 'noloc', className: 'misattributed-message', content: 'text:"Misattributed samples due to missed data in the profile (e.g. position table or call site location)"' };
         $selfValueMisattributedTooltipView: {
