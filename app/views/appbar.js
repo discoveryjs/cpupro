@@ -10,10 +10,10 @@ discovery.view.define('appbar', [
         },
         {
             view: 'toggle-group',
-            data: 'scopeLine().trees.kind.sort()',
+            data: 'scopeLine().breakdowns.kind.sort()',
             // whenData: 'size() > 1',
-            value: '=#.primaryTreeKind',
-            onChange: '==>"selectPrimaryTree".callAction($)'
+            value: '=#.primaryBreakdownKind',
+            onChange: '==>"selectPrimaryBreakdown".callAction($)'
         },
         {
             view: 'block',

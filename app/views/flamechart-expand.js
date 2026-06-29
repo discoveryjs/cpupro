@@ -3,7 +3,7 @@ const { SubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 
 function getTreeDimension(line, tree) {
-    for (const dimensionTrees of line.trees) {
+    for (const dimensionTrees of line.breakdowns) {
         for (const dimensionName of ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners']) {
             const dimension = dimensionTrees[dimensionName];
 

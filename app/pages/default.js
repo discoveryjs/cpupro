@@ -49,8 +49,8 @@ const categoriesTimeline = {
     view: 'block',
     className: 'category-timelines',
     data: `
-        $scopeTree: scopeTree();
-        $scopeLine: $scopeTree.line;
+        $scopeBreakdown: scopeBreakdown();
+        $scopeLine: $scopeBreakdown.line;
         $profile: $scopeLine.profile;
         $binCount: 500;
         $totalValue: $scopeLine.axisTotal;
@@ -58,12 +58,12 @@ const categoriesTimeline = {
 
         {
             line: $scopeLine,
-            tree: $scopeTree,
-            samples: $scopeTree.categories.all.dict.entries.[totalValue and entry.name != 'root'].({
+            tree: $scopeBreakdown,
+            samples: $scopeBreakdown.categories.all.dict.entries.[totalValue and entry.name != 'root'].({
                 $category: entry;
-                $treeMetrics: $scopeTree.categories.all.nodes;
+                $treeMetrics: $scopeBreakdown.categories.all.nodes;
                 $subtree: $treeMetrics.subtreeSamples($category);
-                $totalValueBins: $subtree.mask.binCallsFromMask($binCount, $scopeTree);
+                $totalValueBins: $subtree.mask.binCallsFromMask($binCount, $scopeBreakdown);
 
                 $category,
                 timings: $,
@@ -469,8 +469,8 @@ const flamecharts = {
     },
     content: {
         view: 'flamechart',
-        tree: '=scopeTree()[#.dataset].tree',
-        timings: '=scopeTree()[#.dataset].filtered.nodes',
+        tree: '=scopeBreakdown()[#.dataset].tree',
+        timings: '=scopeBreakdown()[#.dataset].filtered.nodes',
         lockScrolling: true,
         postRender(el, config, data, context) {
             el.classList.toggle('lock-scrolling', !context.params.flamechartFullpage);

@@ -3,9 +3,9 @@ discovery.view.define('location-source', {
     className: '=syntax = "js" ? "cpupro-source" : "cpupro-source unavailable"',
     actionCopySource: false,
     data: `{
-        $tree: scopeTree();
-        $line: $tree.line;
-        $locations: $tree | locations or callFrames;
+        $scopeBreakdown: scopeBreakdown();
+        $line: $scopeBreakdown.line;
+        $locations: $scopeBreakdown | locations or callFrames;
         $locationValues: #.nonFilteredTimings
             ? $locations.all
             : $locations.filtered;
@@ -35,7 +35,7 @@ discovery.view.define('location-source', {
             content: [$misattributedMessage, {
                 view: 'table',
                 data: \`
-                    $tree: scopeTree() | locations or callFrames | filtered.nodes;
+                    $tree: scopeBreakdown() | locations or callFrames | filtered.nodes;
                     $tree
                         .select("nodes", value.entry).node.nodeIndex
                         .($tree.select("children", $))
@@ -80,7 +80,7 @@ discovery.view.define('location-source', {
                     content: $sampleMarkContent,
                     value: $,
                     values: $values.nodes,
-                    metrics: $tree.samplesMetricsFiltered,
+                    metrics: $scopeBreakdown.samplesMetricsFiltered,
                     prop: 'selfValue',
                     postfix: $unit,
                     tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)

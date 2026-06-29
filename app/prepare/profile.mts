@@ -346,16 +346,16 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     // Create mappings between lines if both exist
     if (memline && timeline && memline.mappings && timeline.mappings) {
-        const memlineCallStackTree = memline.trees.find(tree => tree.kind === 'call-stack')!;
-        const timelineCallStackTree = timeline.trees.find(tree => tree.kind === 'call-stack')!;
+        const memlineCallStackBreakdown = memline.breakdowns.find(tree => tree.kind === 'call-stack')!;
+        const timelineCallStackBreakdown = timeline.breakdowns.find(tree => tree.kind === 'call-stack')!;
 
         const memlineToTimeline = createLineMapping(
-            memlineCallStackTree.samplesMetrics,
-            timelineCallStackTree.samplesMetrics
+            memlineCallStackBreakdown.samplesMetrics,
+            timelineCallStackBreakdown.samplesMetrics
         );
         const timelineToMemline = createLineMapping(
-            timelineCallStackTree.samplesMetrics,
-            memlineCallStackTree.samplesMetrics
+            timelineCallStackBreakdown.samplesMetrics,
+            memlineCallStackBreakdown.samplesMetrics
         );
 
         memline.mappings.timeline = memlineToTimeline;
@@ -432,8 +432,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             dictionary,
             profileScriptsMap,
             callStackBreakdownBasis,
-            timeline.trees[0].samplesMetrics.samples,
-            timeline.trees[0].samplesMetrics.values,
+            timeline.breakdowns[0].samplesMetrics.samples,
+            timeline.breakdowns[0].samplesMetrics.values,
             ownership,
             work
         );
@@ -446,8 +446,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             dictionary,
             profileScriptsMap,
             callStackBreakdownBasis,
-            memline.trees[0].samplesMetrics.samples, // memline.__allocationCpuSamples,
-            memline.trees[0].samplesMetrics.values, // memline.values,
+            memline.breakdowns[0].samplesMetrics.samples, // memline.__allocationCpuSamples,
+            memline.breakdowns[0].samplesMetrics.values, // memline.values,
             ownership,
             work
         );
@@ -459,8 +459,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
                 dictionary,
                 profileScriptsMap,
                 memline.__allocationLocationBreakdownBasis,
-                memline.__vectorLocations.samples, // memline.trees[1].samplesMetrics.samples,
-                memline.trees[1].samplesMetrics.values,
+                memline.__vectorLocations.samples, // memline.breakdowns[1].samplesMetrics.samples,
+                memline.breakdowns[1].samplesMetrics.values,
                 ownership,
                 work
             );

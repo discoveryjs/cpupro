@@ -220,7 +220,7 @@ export async function createMemline(
         axisTotal: totalAllocationSize,
 
         values: allocationSizes,
-        trees: [],
+        breakdowns: [],
         mappings: Object.create(null),
 
         // memline-specific properties
@@ -247,7 +247,7 @@ export async function createMemline(
             );
         });
 
-        line.trees.push(cpuSamplesBreakdown);
+        line.breakdowns.push(cpuSamplesBreakdown);
     }
 
     if (vectorLocations !== null) {
@@ -262,7 +262,7 @@ export async function createMemline(
             )
         );
 
-        line.trees.push(locationBreakdown);
+        line.breakdowns.push(locationBreakdown);
     }
 
     return line;

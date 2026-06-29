@@ -5,7 +5,7 @@ discovery.page.define('locations', {
     content: {
         view: 'table',
         className: 'locations-table',
-        data: 'scopeTree() | locations or callFrames | filtered.dict.entries.sort(selfValue desc, totalValue desc)',
+        data: 'scopeBreakdown() | locations or callFrames | filtered.dict.entries.sort(selfValue desc, totalValue desc)',
         postRender(el, _, data, context) {
             if (context.locationsSource) {
                 context.actions.setSessionSetting?.('call-frame-source__line-locations', context.locationsSource);

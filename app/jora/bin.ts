@@ -4,10 +4,10 @@ import { sum } from '../prepare/misc/utils.js';
 import { Profile } from '../prepare/profile.mjs';
 import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepare/types.js';
 import { makeSamplesMask } from './call-tree.js';
-import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineTree } from './profile.js';
+import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown } from './profile.js';
 
 function getCallStackSamplesMetrics(line: ProfileLine) {
-    return line.trees.find(tree => tree.kind === 'call-stack')!.samplesMetrics;
+    return line.breakdowns.find(tree => tree.kind === 'call-stack')!.samplesMetrics;
 }
 
 function makeSampleBins(
@@ -73,9 +73,9 @@ type BinOptions = {
 
 export const methods = {
     binCallsFromMask(mask: Uint8Array, n = 500, lineTree?: ProfileLineBreakdown | string) {
-        const resolvedLineTree = resolveScopeProfileLineTree(lineTree, null, this.context) as ProfileLineBreakdown;
+        const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, null, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
-        const { samples, values } = resolvedLineTree.samplesMetricsFiltered;
+        const { samples, values } = resolvedLineTree.samplesMetrics;
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
         return Array.from(bins);
@@ -90,7 +90,7 @@ export const methods = {
             line,
             tree: lineTree
         } = options || {};
-        const resolvedLineTree = resolveScopeProfileLineTree(lineTree, line, this.context) as ProfileLineBreakdown;
+        const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, line, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
         const { samples, values } = resolvedLineTree.samplesMetrics;
         const mask = makeSamplesMask(treeMetrics, test);
@@ -100,7 +100,7 @@ export const methods = {
     },
 
     binCalls(treeMetrics, test, n = 500, lineTree?: ProfileLineBreakdown | string) {
-        const resolvedLineTree = resolveScopeProfileLineTree(lineTree, null, this.context) as ProfileLineBreakdown;
+        const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, null, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
         const { samples, values } = resolvedLineTree.samplesMetrics;
         const mask = makeSamplesMask(treeMetrics, test);

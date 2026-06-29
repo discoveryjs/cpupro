@@ -75,9 +75,9 @@ export interface ProfileLine {
     // Stream of signals (e.g. time deltas, memory allocations) for this line in its primary axis
     values: Uint32Array;
 
-    // Line-owned tree views. Several lines may reuse the same tree structure,
+    // Line-owned tree breakdowns. Several lines may reuse the same tree structure,
     // while keeping independent sample-to-node mappings and metrics.
-    trees: ProfileLineBreakdown[];
+    breakdowns: ProfileLineBreakdown[];
 
     // Mappings to other lines (key = target line kind)
     mappings: Record<ProfileLineType, LineMapping>;

@@ -162,7 +162,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 } satisfies PrepareFunction);
 
 function measureWorkTime(profile: Profile) {
-    const callStack = profile.timeline?.trees.find(tree => tree.kind === 'call-stack') ?? null;
+    const callStack = profile.timeline?.breakdowns.find(tree => tree.kind === 'call-stack') ?? null;
     const categories = callStack?.categories?.all.dict.entries ?? [];
 
     return categories.reduce((res, category) => {

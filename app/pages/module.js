@@ -13,13 +13,13 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: scopeTree().modules.all.nodes }'
+        data: '{ subject: @, tree: scopeBreakdown().modules.all.nodes }'
     },
 
     {
         view: 'update-on-line-metrics-changes',
-        metrics: '=scopeTree().modules.filtered.dict',
-        content: `page-indicator-metrics:scopeTree().modules | {
+        metrics: '=scopeBreakdown().modules.filtered.dict',
+        content: `page-indicator-metrics:scopeBreakdown().modules | {
             full: all.dict.entries[=>entry = @],
             filtered: filtered.dict.entries[=>entry = @]
         }`
@@ -50,11 +50,11 @@ const pageContent = [
             { view: 'block', className: 'text-divider' },
             {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeTree().modules.filtered.dict',
-                content: 'duration:scopeTree().modules.filtered.dict.entries[=>entry=@].nestedValue'
+                metrics: '=scopeBreakdown().modules.filtered.dict',
+                content: 'duration:scopeBreakdown().modules.filtered.dict.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:scopeTree() | {
+        content: `nested-timings-tree:scopeBreakdown() | {
             subject: @,
             tree: modules.tree,
             metrics: modules.filtered.dict
@@ -69,8 +69,8 @@ const pageContent = [
             'text:"Call frames "',
             {
                 view: 'update-on-line-metrics-changes',
-                data: 'scopeTree().callFrames.filtered.dict.entries.[entry.module = @]',
-                metrics: '=scopeTree().callFrames.filtered.dict',
+                data: 'scopeBreakdown().callFrames.filtered.dict.entries.[entry.module = @]',
+                metrics: '=scopeBreakdown().callFrames.filtered.dict',
                 content: 'sampled-count-total{ count(=> totalValue?), total: size() }'
             }
         ],
@@ -78,7 +78,7 @@ const pageContent = [
             view: 'content-filter',
             className: 'table-content-filter',
             data: `
-                scopeTree() | callFrames.filtered.dict.entries
+                scopeBreakdown() | callFrames.filtered.dict.entries
                     .[entry.module = @]
                     .zip(=> entry, line.profile.codesByCallFrame, => callFrame)
                     .({
@@ -93,7 +93,7 @@ const pageContent = [
             `,
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeTree().callFrames.filtered.dict',
+                metrics: '=scopeBreakdown().callFrames.filtered.dict',
                 content: {
                     view: 'table',
                     data: `
@@ -142,7 +142,7 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('module-flame-graphs', true),
-        tree: '=scopeTree().modules.tree',
+        tree: '=scopeBreakdown().modules.tree',
         value: '='
     }
 ];

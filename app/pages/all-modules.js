@@ -2,7 +2,7 @@ discovery.page.define('modules', [
     {
         view: 'context',
         data: `
-            scopeTree() | modules.all.dict.entries
+            scopeBreakdown() | modules.all.dict.entries
                 .zip(=> entry, line.profile.scripts, => module)
                 .({
                     $entry: left.entry;

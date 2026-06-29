@@ -5,10 +5,10 @@ type Method = (this: { context: MethodContext }, ...args: unknown[]) => unknown;
 type MethodContext = {
     primaryProfile: Profile | null;
     primaryLineType: ProfileLineType;
-    primaryTreeKind: string | null;
+    primaryBreakdownKind: string | null;
     scopeProfile: Profile | null;
     scopeLine: ProfileLine | null;
-    scopeTree: ProfileLineBreakdown | null;
+    scopeBreakdown: ProfileLineBreakdown | null;
     data: null | {
         profiles: Profile[];
     };
@@ -43,23 +43,23 @@ function isProfileLine(line: unknown): line is ProfileLine {
     return profileLine === findProfileLine(profile, profileLine.type);
 }
 
-function findProfileLineTree(line: ProfileLine, treeKind: string | null = null): ProfileLineBreakdown | null {
-    return line.trees?.find(tree => !treeKind || tree.kind === treeKind) ?? null;
+function findProfileLineBreakdown(line: ProfileLine, breakdownKind: string | null = null): ProfileLineBreakdown | null {
+    return line.breakdowns.find(breakdown => !breakdownKind || breakdown.kind === breakdownKind) ?? null;
 }
 
-function isProfileLineTree(tree: unknown): tree is ProfileLineBreakdown {
-    if (!tree || typeof tree !== 'object') {
+function isProfileLineBreakdown(breakdown: unknown): breakdown is ProfileLineBreakdown {
+    if (!breakdown || typeof breakdown !== 'object') {
         return false;
     }
 
-    const lineTree = tree as ProfileLineBreakdown;
-    const line = lineTree.line;
+    const lineBreakdown = breakdown as ProfileLineBreakdown;
+    const line = lineBreakdown.line;
 
     if (!isProfileLine(line)) {
         return false;
     }
 
-    return lineTree === findProfileLineTree(line, lineTree.kind);
+    return lineBreakdown === findProfileLineBreakdown(line, lineBreakdown.kind);
 }
 
 function getScopeProfile(context: MethodContext): Profile | null {
@@ -72,21 +72,21 @@ export function getProfileOrScopeProfile(profile: unknown, context: MethodContex
         : getScopeProfile(context);
 }
 
-export function getProfilePrimaryLine(context: MethodContext, profile: unknown = null, line: string | null = null): ProfileLine | null {
+export function getProfilePrimaryLine(context: MethodContext, profile: unknown = null, lineType: string | null = null): ProfileLine | null {
     const targetProfile = getProfileOrScopeProfile(profile, context);
 
     return targetProfile && findProfileLine(
         targetProfile,
-        typeof line === 'string' ? line : context.primaryLineType
+        typeof lineType === 'string' ? lineType : context.primaryLineType
     );
 }
 
-export function getProfileLineTree(context: MethodContext, line: unknown = null, tree: string | null = null): ProfileLineBreakdown | null {
+export function getProfileLineBreakdown(context: MethodContext, line: unknown = null, breakdownKind: string | null = null): ProfileLineBreakdown | null {
     const targetLine = resolveScopeProfileLine(line, context);
 
-    return targetLine && findProfileLineTree(
+    return targetLine && findProfileLineBreakdown(
         targetLine,
-        typeof tree === 'string' ? tree : context.primaryTreeKind
+        typeof breakdownKind === 'string' ? breakdownKind : context.primaryBreakdownKind
     );
 }
 
@@ -107,23 +107,23 @@ export function resolveScopeProfileLine(
     return resolvedLine;
 }
 
-export function resolveScopeProfileLineTree(
-    tree: unknown,
+export function resolveScopeProfileLineBreakdown(
+    breakdown: unknown,
     line: unknown,
     context: MethodContext
 ): ProfileLineBreakdown | null {
-    let resolvedTree: ProfileLineBreakdown | null = null;
+    let resolvedBreakdown: ProfileLineBreakdown | null = null;
 
-    if (!tree) {
-        resolvedTree = context.scopeTree || getProfileLineTree(context, line);
-    } else if (typeof tree === 'string') {
-        resolvedTree = resolveScopeProfileLine(line, context)?.trees
-            .find(p => p.kind === tree) ?? null;
-    } else if (isProfileLineTree(tree)) {
-        resolvedTree = tree;
+    if (!breakdown) {
+        resolvedBreakdown = context.scopeBreakdown || getProfileLineBreakdown(context, line);
+    } else if (typeof breakdown === 'string') {
+        resolvedBreakdown = resolveScopeProfileLine(line, context)?.breakdowns
+            .find(p => p.kind === breakdown) ?? null;
+    } else if (isProfileLineBreakdown(breakdown)) {
+        resolvedBreakdown = breakdown;
     }
 
-    return resolvedTree;
+    return resolvedBreakdown;
 }
 
 export const assertions: Record<string, Method> = {
@@ -142,11 +142,11 @@ export const methods: Record<string, Method> = {
     scopeProfile() {
         return getScopeProfile(this.context);
     },
-    scopeLine(_: unknown, line: string | null = null) {
-        return this.context.scopeLine || getProfilePrimaryLine(this.context, null, line);
+    scopeLine(_: unknown, lineType: string | null = null) {
+        return this.context.scopeLine || getProfilePrimaryLine(this.context, null, lineType);
     },
-    scopeTree(_: unknown, tree: string | null = null) {
-        return this.context.scopeTree || getProfileLineTree(this.context, null, tree);
+    scopeBreakdown(_: unknown, breakdownKind: string | null = null) {
+        return this.context.scopeBreakdown || getProfileLineBreakdown(this.context, null, breakdownKind);
     },
     primaryLine(profile: Profile) {
         return getProfilePrimaryLine(this.context, profile);
@@ -159,8 +159,8 @@ export const methods: Record<string, Method> = {
             lineType ? line.type === lineType : line.type !== primaryLineType
         ) ?? null;
     },
-    primaryTree(line: ProfileLine) {
-        return getProfileLineTree(this.context, line);
+    primaryBreakdown(line: ProfileLine) {
+        return getProfileLineBreakdown(this.context, line);
     },
     metricName(metric: Metric, line?: ProfileLine | ProfileLineType) {
         return resolveScopeProfileLine(line, this.context)?.metricName(metric);

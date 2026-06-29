@@ -84,7 +84,7 @@ export async function createTimeline(
         axisTotal: axis.total,
 
         values: timeDeltas,
-        trees: [],
+        breakdowns: [],
         mappings: Object.create(null)
     };
 
@@ -95,7 +95,7 @@ export async function createTimeline(
         sampledTreeSet,
         work
     );
-    line.trees.push(callStackBreakdown);
+    line.breakdowns.push(callStackBreakdown);
 
     return line;
 }

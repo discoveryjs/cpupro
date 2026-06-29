@@ -1,9 +1,9 @@
 import { regexpSourceView, unavailableSourceView } from './common.js';
 
 const sourceQuery = `{
-    $tree: scopeTree();
-    $line: $tree.line;
-    $locations: $tree | locations or callFrames;
+    $scopeBreakdown: scopeBreakdown();
+    $line: $scopeBreakdown.line;
+    $locations: $scopeBreakdown | locations or callFrames;
     $locationValues: #.nonFilteredTimings
         ? $locations.all
         : $locations.filtered;
@@ -20,7 +20,7 @@ const sourceQuery = `{
     $end;
     $unit: 0.valueAndUnit().unit;
     $callFrameCodes: #.currentProfile.codesByCallFrame[=> callFrame = @];
-    $values: $locationValues;// or ($tree | #.nonFilteredTimings ? callFrames.all.dict : callFrames.filtered.dict);
+    $values: $locationValues;
 
     $formatting: #.sourceFormatting = 'beautified' ? $sourceSlice.jsBeautifyRanges().(
         content
@@ -145,7 +145,7 @@ const sourceQuery = `{
         content: [$misattributedMessage, {
             view: 'table',
             data: \`
-                $tree: scopeTree() | locations or callFrames | filtered.nodes;
+                $tree: scopeBreakdown() | locations or callFrames | filtered.nodes;
                 $tree
                     .select("nodes", value.entry).node.nodeIndex
                     .($tree.select("children", $))
@@ -182,7 +182,7 @@ const sourceQuery = `{
                 content: $sampleMarkContent,
                 value: $values.dict.entries[entryIndex],
                 values: $values.nodes,
-                metrics: $tree.samplesMetricsFiltered,
+                metrics: $scopeBreakdown.samplesMetricsFiltered,
                 prop: 'selfValue',
                 postfix: $unit,
                 tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)

@@ -28,7 +28,7 @@ export const pageIndicators = {
                         'Each sample represents the CPU\'s state, including the call stack, at a specific time interval, revealing which functions are executing at each point.',
                         'For efficiency, CPUpro merges sequentially identical samples, reducing the workload of processing samples.',
                         '- Captured samples: `{{scopeLine().sourceInfo.samples}}`',
-                        '- Deduplicated samples: `{{scopeTree().samplesMetrics.samples.size()}}`'
+                        '- Deduplicated samples: `{{scopeBreakdown().samplesMetrics.samples.size()}}`'
                     ),
                     value: '=scopeLine().sourceInfo.samples'
                 },
@@ -46,12 +46,12 @@ export const pageIndicators = {
                 {
                     title: 'Call tree nodes',
                     hint: 'md:"#### Call tree nodes\\n\\nA **call tree** is a data structure that represents the hierarchy of function calls during the execution of a program. It demostrates the actual sequences of function calls that occurred during the profiling session.\\n\\nThe metric indicates **the size of the tree** (the number of leafs). Typically, the number of distinct functions is less than the call tree\'s size, reflecting multiple calls to the same functions from various parts of the program."',
-                    value: '=scopeTree().callFrames.tree.nodes.size()'
+                    value: '=scopeBreakdown().callFrames.tree.nodes.size()'
                 },
                 {
                     title: 'Call frames',
                     hint: 'md:"#### Call frames\\n\\nThe count of unique functions encountered during profiling. This metric helps identify the diversity of function executions regardless of their position in the call stacks.\\n\\nUniqueness is determined by attributes such as `scriptId`, `function name`, `url`, `line number`, and `column number`."',
-                    value: '=scopeTree().callFrames.tree.dictionary.size()'
+                    value: '=scopeBreakdown().callFrames.tree.dictionary.size()'
                 }
             ]
         },
@@ -60,10 +60,10 @@ export const pageIndicators = {
             className: 'filters',
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeTree().samplesMetricsFiltered',
+                metrics: '=scopeBreakdown().samplesMetricsFiltered',
                 content: {
                     view: 'context',
-                    when: 'scopeTree().samplesMetricsFiltered.rangeStart != null',
+                    when: 'scopeBreakdown().samplesMetricsFiltered.rangeStart != null',
                     content: [
                         {
                             view: 'block',
@@ -72,12 +72,12 @@ export const pageIndicators = {
                         {
                             view: 'page-indicator',
                             title: 'Samples',
-                            value: '=scopeTree().samplesMetricsFiltered.rangeSamples'
+                            value: '=scopeBreakdown().samplesMetricsFiltered.rangeSamples'
                         },
                         {
                             view: 'page-indicator',
                             title: 'Range',
-                            value: '=`${scopeTree().samplesMetricsFiltered.rangeStart.formatMicrosecondsTime()} – ${scopeTree().samplesMetricsFiltered.rangeEnd.formatMicrosecondsTime()}`'
+                            value: '=`${scopeBreakdown().samplesMetricsFiltered.rangeStart.formatMicrosecondsTime()} – ${scopeBreakdown().samplesMetricsFiltered.rangeEnd.formatMicrosecondsTime()}`'
                         }
                     ]
                 }

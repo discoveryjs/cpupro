@@ -14,7 +14,7 @@ export const hierarchicalComponentsTables = {
             'text:"Packages "',
             {
                 view: 'update-on-line-metrics-changes',
-                data: 'scopeTree().packages.filtered.dict',
+                data: 'scopeBreakdown().packages.filtered.dict',
                 content: 'text-numeric:entries.[totalValue].size()'
             },
             { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${packages.size()}`' },
@@ -24,7 +24,7 @@ export const hierarchicalComponentsTables = {
             'text:"Modules "',
             {
                 view: 'update-on-line-metrics-changes',
-                data: 'scopeTree().modules.filtered.dict',
+                data: 'scopeBreakdown().modules.filtered.dict',
                 content: 'text-numeric:entries.[totalValue].size()'
             },
             { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${modules.size()}`' },
@@ -34,7 +34,7 @@ export const hierarchicalComponentsTables = {
             'text:"Call frames "',
             {
                 view: 'update-on-line-metrics-changes',
-                data: 'scopeTree().callFrames.filtered.dict',
+                data: 'scopeBreakdown().callFrames.filtered.dict',
                 content: 'text-numeric:entries.[totalValue].size()'
             },
             { view: 'text-numeric', className: 'total-number', data: '` ⁄ ${callFrames.size()}`' },
@@ -51,7 +51,7 @@ export const hierarchicalComponentsTables = {
 function createPackagesList() {
     return {
         view: 'section',
-        data: 'scopeTree().packages.filtered.dict',
+        data: 'scopeBreakdown().packages.filtered.dict',
         header: [],
         content: {
             view: 'content-filter',
@@ -89,7 +89,7 @@ function createPackagesList() {
 function createModulesList() {
     return {
         view: 'section',
-        data: 'scopeTree().modules.filtered.dict',
+        data: 'scopeBreakdown().modules.filtered.dict',
         header: [],
         content: {
             view: 'content-filter',
@@ -130,7 +130,7 @@ function createModulesList() {
 function createCallFrameList() {
     return {
         view: 'section',
-        data: `scopeTree() | callFrames.filtered.dict.entries.zip(
+        data: `scopeBreakdown() | callFrames.filtered.dict.entries.zip(
             => entry,
             line.profile.codesByCallFrame,
             => callFrame
@@ -140,7 +140,7 @@ function createCallFrameList() {
             view: 'content-filter',
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeTree().callFrames.filtered.dict',
+                metrics: '=scopeBreakdown().callFrames.filtered.dict',
                 debounce: true,
                 content: {
                     view: 'table',

@@ -1,7 +1,7 @@
 const { SubsetCallTree, AncestorSubsetCallTree } = require('../prepare/computations/call-tree.js');
 const { SubsetTreeMetrics, AncestorSubsetTreeMetrics } = require('../prepare/computations/metrics.js');
 const { sessionExpandState } = require('./common.js');
-const { resolveScopeProfileLine, resolveScopeProfileLineTree } = require('../jora/profile.js');
+const { resolveScopeProfileLine, resolveScopeProfileLineBreakdown } = require('../jora/profile.js');
 
 const descendantTree = {
     view: 'block',
@@ -192,15 +192,15 @@ const pageContent = [
 
     {
         view: 'subject-with-nested-timeline',
-        data: '{ subject: @, tree: scopeTree().callFrames.all.nodes }'
+        data: '{ subject: @, tree: scopeBreakdown().callFrames.all.nodes }'
     },
 
     {
         view: 'update-on-line-metrics-changes',
-        metrics: '=scopeTree().callFrames.filtered.dict',
+        metrics: '=scopeBreakdown().callFrames.filtered.dict',
         content: `page-indicator-metrics:{
-            full: scopeTree().callFrames.all.dict.entries[=>entry = @],
-            filtered: scopeTree().callFrames.filtered.dict.entries[=>entry = @]
+            full: scopeBreakdown().callFrames.all.dict.entries[=>entry = @],
+            filtered: scopeBreakdown().callFrames.filtered.dict.entries[=>entry = @]
         }`
     },
 
@@ -228,16 +228,16 @@ const pageContent = [
         view: 'expand',
         when: 'scopeLine("memline") | valueLifespans and valueTypes',
         className: 'trigger-outside',
-        data: '{ callFrame: @, matrix: scopeTree() | callFrames.all.nodes.allocationsMatrix(samplesMetrics, @) }',
+        data: '{ callFrame: @, matrix: scopeBreakdown() | callFrames.all.nodes.allocationsMatrix(samplesMetrics, @) }',
         ...sessionExpandState('callframe-allocations-matrix', true, '$'),
         header: 'text:"Allocation types"',
         content: {
             view: 'update-on-line-metrics-changes',
-            metrics: '=scopeTree().callFrames.filtered.dict',
+            metrics: '=scopeBreakdown().callFrames.filtered.dict',
             content: {
                 view: 'allocation-samples-matrix',
                 data: `
-                    $filtered: scopeTree() | callFrames.filtered.nodes.allocationsMatrix(
+                    $filtered: scopeBreakdown() | callFrames.filtered.nodes.allocationsMatrix(
                         samplesMetricsFiltered,
                         @.callFrame
                     );
@@ -275,11 +275,11 @@ const pageContent = [
             { view: 'block', className: 'text-divider' },
             {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeTree().callFrames.filtered.dict',
-                content: 'metric:scopeTree().callFrames.filtered.dict.entries[=>entry=@].nestedValue'
+                metrics: '=scopeBreakdown().callFrames.filtered.dict',
+                content: 'metric:scopeBreakdown().callFrames.filtered.dict.entries[=>entry=@].nestedValue'
             }
         ],
-        content: `nested-timings-tree:scopeTree() | {
+        content: `nested-timings-tree:scopeBreakdown() | {
             subject: @,
             tree: callFrames.tree,
             metrics: callFrames.filtered.dict
@@ -313,7 +313,7 @@ const pageContent = [
                 ],
                 content: {
                     view: 'update-on-line-metrics-changes',
-                    metrics: '=scopeTree().callFrames.filtered.dict',
+                    metrics: '=scopeBreakdown().callFrames.filtered.dict',
                     debounce: 150,
                     beforeContent(data, context) {
                         if (context.consolidateCallFrames) {
@@ -338,7 +338,7 @@ const pageContent = [
     {
         view: 'flamechart-expand',
         ...sessionExpandState('callframe-flame-graphs', true),
-        tree: '=scopeTree().callFrames.tree',
+        tree: '=scopeBreakdown().callFrames.tree',
         subsetTreeValues: '=#.subsetTreeValues'
     }
 ];
@@ -346,7 +346,7 @@ const pageContent = [
 discovery.page.define('call-frame', {
     view: 'switch',
     context: '{ ...#, scopeProfile: #.primaryProfile, scopeLine: #.scopeProfile.primaryLine() }',
-    data: 'scopeTree().callFrames.all.dict.dictionary[=>id = +#.id]',
+    data: 'scopeBreakdown().callFrames.all.dict.dictionary[=>id = +#.id]',
     content: [
         { when: 'no $', content: {
             view: 'alert-warning',
@@ -355,12 +355,12 @@ discovery.page.define('call-frame', {
         { content: {
             view: 'context',
             context: (data, context) => {
-                const scopeTree = resolveScopeProfileLineTree(null, null, context);
+                const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, context);
                 const scopeLine = resolveScopeProfileLine(null, context);
                 const scopeProfile = scopeLine.profile;
-                const samplesMetrics = scopeTree.samplesMetricsFiltered;
-                const scopeTreeMetrics = scopeTree.callFrames.filtered.nodes;
-                const findRelatedTree = line => line.trees.find(tree =>
+                const samplesMetrics = scopeBreakdown.samplesMetricsFiltered;
+                const scopeTreeMetrics = scopeBreakdown.callFrames.filtered.nodes;
+                const findRelatedTree = line => line.breakdowns.find(tree =>
                     tree.callFrames.tree === scopeTreeMetrics.tree
                 );
                 const secondaryLine = scopeProfile.lines.find(

@@ -91,7 +91,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         this.render(barEl, {
             view: 'sample-histogram',
             data: `
-                $tree: profile.timeline.trees[];
+                $tree: profile.timeline.breakdowns[];
                 $treeMetrics: $tree.categories.all.nodes;
                 $binCount: 750;
                 $min: profiles.profile.timeline.axisStart.min();

@@ -1,7 +1,7 @@
 discovery.page.define('packages', [
     {
         view: 'context',
-        data: 'scopeTree().packages.all.dict.entries',
+        data: 'scopeBreakdown().packages.all.dict.entries',
         modifiers: [
             {
                 view: 'page-header',

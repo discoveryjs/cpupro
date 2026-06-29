@@ -136,7 +136,7 @@ discovery.page.define('call-frames', [
         view: 'context',
         context: '{ ...#, scopeProfile: #.primaryProfile }',
         data: `
-            scopeTree() | callFrames.all.dict.entries
+            scopeBreakdown() | callFrames.all.dict.entries
                 .zip(=> entry, line.profile.codesByCallFrame, => callFrame)
                 .({
                     $entry: left.entry;
@@ -173,7 +173,7 @@ discovery.page.define('call-frames', [
             data: '.[name ~= #.filter]',
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeTree().callFrames.filtered.dict',
+                metrics: '=scopeBreakdown().callFrames.filtered.dict',
                 content: {
                     view: 'context',
                     data: `.({

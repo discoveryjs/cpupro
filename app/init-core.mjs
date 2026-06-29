@@ -3,22 +3,23 @@ import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRu
 
 const model = discovery;
 
-function normPrimaryTree(treeKind) {
-    const line = model.context.primaryProfile?.lines
-        ?.find(line => line.type === model.context.primaryLineType);
-    const supported = line?.trees.some(tree => tree.kind === treeKind);
+function normPrimaryBreakdownKind(treeKind) {
+    const line = model.context.primaryProfile?.lines.find(line =>
+        line.type === model.context.primaryLineType
+    );
+    const supported = line?.breakdowns.some(tree => tree.kind === treeKind);
 
     if (supported) {
         return treeKind;
     }
 
-    return line?.trees?.[0]?.kind || null;
+    return line?.breakdowns[0]?.kind || null;
 }
 
 model.action.define('selectProfile', (profile) => {
     model.setContext({
         primaryProfile: profile,
-        primaryTreeKind: normPrimaryTree(model.context.primaryTreeKind)
+        primaryBreakdownKind: normPrimaryBreakdownKind(model.context.primaryBreakdownKind)
     });
 });
 model.action.define('selectPrimaryLine', (lineType) => {
@@ -29,13 +30,13 @@ model.action.define('selectPrimaryLine', (lineType) => {
         sessionStorage.setItem('cpupro:primary-line-type', lineType);
     } catch {}
 
-    model.action.call('selectPrimaryTree', model.context.primaryTreeKind);
+    model.action.call('selectPrimaryBreakdown', model.context.primaryBreakdownKind);
 });
-model.action.define('selectPrimaryTree', (treeKind) => {
-    const nextTreeKind = normPrimaryTree(treeKind);
+model.action.define('selectPrimaryBreakdown', (treeKind) => {
+    const nextTreeKind = normPrimaryBreakdownKind(treeKind);
 
     model.setContext({
-        primaryTreeKind: nextTreeKind
+        primaryBreakdownKind: nextTreeKind
     });
     try {
         sessionStorage.setItem('cpupro:primary-tree-kind', nextTreeKind);
@@ -64,17 +65,17 @@ model.on('unloadData', () => {
         profiles: [],
         primaryProfile: null,
         // primaryLineType: null, // keep selected line type
-        // primaryTreeKind: null, // keep selected tree kind
+        // primaryBreakdownKind: null, // keep selected tree kind
         scopeProfile: null, // always null by default, views can override it
         scopeLine: null,
-        scopeTree: null
+        scopeBreakdown: null
     });
 });
 model.on('data', () => {
     const { currentSamplesConvolutionRule } = model.context;
     const { defaultProfile, profiles } = model.data;
     let primaryLineType = model.context.primaryLineType || null;
-    let primaryTreeKind = model.context.primaryTreeKind || null;
+    let primaryBreakdownKind = model.context.primaryBreakdownKind || null;
 
     if (!primaryLineType) {
         try {
@@ -88,14 +89,14 @@ model.on('data', () => {
 
     const primaryLine = defaultProfile?.lines.find(line => line.type === primaryLineType);
 
-    if (!primaryTreeKind) {
+    if (!primaryBreakdownKind) {
         try {
-            primaryTreeKind = sessionStorage.getItem('cpupro:primary-tree-kind');
+            primaryBreakdownKind = sessionStorage.getItem('cpupro:primary-tree-kind');
         } catch {}
     }
 
-    if (!primaryTreeKind || !primaryLine?.trees?.some(tree => tree.kind === primaryTreeKind)) {
-        primaryTreeKind = primaryLine?.trees?.[0]?.kind || null;
+    if (!primaryBreakdownKind || !primaryLine?.breakdowns?.some(tree => tree.kind === primaryBreakdownKind)) {
+        primaryBreakdownKind = primaryLine?.breakdowns?.[0]?.kind || null;
     }
 
     const primaryBucket = {
@@ -118,10 +119,10 @@ model.on('data', () => {
         })),
         primaryProfile: defaultProfile,
         primaryLineType,
-        primaryTreeKind,
+        primaryBreakdownKind,
         scopeProfile: null, // always null by default, views can override it
         scopeLine: null,    // always null by default, views can override it
-        scopeTree: null     // always null by default, views can override it
+        scopeBreakdown: null     // always null by default, views can override it
     });
 
     if (currentSamplesConvolutionRule) {

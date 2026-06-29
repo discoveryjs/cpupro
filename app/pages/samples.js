@@ -23,12 +23,12 @@ discovery.page.define('samples', {
         {
             view: 'block',
             content: [
-                'text:"Samples: " + scopeTree().samplesMetrics.samples.size()',
+                'text:"Samples: " + scopeBreakdown().samplesMetrics.samples.size()',
                 'text:" / Bins: " + binCount',
                 'text:" / Bin size: " + (totalValue / binCount).toFixed(1)',
-                'text:" / Expected samples per bin: " + (scopeTree().samplesMetrics.samples.size() / binCount).toFixed(1)',
+                'text:" / Expected samples per bin: " + (scopeBreakdown().samplesMetrics.samples.size() / binCount).toFixed(1)',
                 'text:" / Actual samples per bin: " + (sampleDiscreteBins | { min(), max() } | `${min} ... ${max}`)',
-                'struct:scopeTree().samplesMetrics.values'
+                'struct:scopeBreakdown().samplesMetrics.values'
             ]
         },
         {
