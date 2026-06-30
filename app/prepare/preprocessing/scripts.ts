@@ -7,7 +7,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
     #scriptById: Map<number | string, CpuProScript>;
     #scriptIdFromString: Map<string, number>;
-    $scriptIndexByUrl: Map<string, number[]>;
+    #scriptIndexByUrl: Map<string, number[]>;
     #scriptByUrl: Map<string, CpuProScript[]>;
     #originalScriptByUrl: Map<string, CpuProScript>;
 
@@ -15,7 +15,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         this.dict = dict;
         this.#scriptById = new Map();
         this.#scriptIdFromString = new Map();
-        this.$scriptIndexByUrl = new Map();
+        this.#scriptIndexByUrl = new Map();
         this.#scriptByUrl = this.#createScriptByUrlMap(dict.scripts);
         this.#originalScriptByUrl = new Map();
 
@@ -98,13 +98,13 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     }
 
     #getScriptIndexByUrl(scriptId: number, url: string): number {
-        let byUrl = this.$scriptIndexByUrl.get(url);
+        let byUrl = this.#scriptIndexByUrl.get(url);
         let seed = -1;
 
         if (byUrl === undefined) {
             seed = 0;
             byUrl = [scriptId];
-            this.$scriptIndexByUrl.set(url, byUrl);
+            this.#scriptIndexByUrl.set(url, byUrl);
         } else {
             seed = byUrl.indexOf(scriptId);
 

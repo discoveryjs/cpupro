@@ -226,7 +226,7 @@ const pageContent = [
 
     {
         view: 'expand',
-        when: 'scopeLine("memline") | and lineAttribute("allocationType") and lineAttribute("allocationLifespan")',
+        when: 'scopeLine("memline") | lineAttribute("allocationType") and lineAttribute("allocationLifespan")',
         className: 'trigger-outside',
         data: '{ callFrame: @, matrix: scopeBreakdown() | callFrames.all.nodes.allocationsMatrix(samplesMetrics, @) }',
         ...sessionExpandState('callframe-allocations-matrix', true, '$'),
