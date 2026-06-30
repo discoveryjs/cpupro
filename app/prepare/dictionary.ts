@@ -822,6 +822,7 @@ export class Dictionary {
                     path = 'file://' + url;
                     break;
 
+                case 'blob':
                 case 'file':
                 case 'http':
                 case 'https':
