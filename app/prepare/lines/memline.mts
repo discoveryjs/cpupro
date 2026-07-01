@@ -10,6 +10,7 @@ import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdow
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { sum } from '../misc/utils.js';
 import {
+    createMemlineAllocationCodeTypeAttribute,
     createMemlineAllocationLifespanAttribute,
     createMemlineAllocationSpaceAttribute,
     createMemlineAllocationTypeAttribute,
@@ -148,6 +149,11 @@ export async function createMemline(
         ),
         createMemlineAllocationLifespanAttribute(
             data._cpuproAllocationGc || null
+        ),
+        createMemlineAllocationCodeTypeAttribute(
+            data._cpuproAllocationCodeType || null,
+            data._cpuproAllocationCodeTypeNames || null,
+            data._cpuproAllocationContextInfo || null
         )
     ].filter(attr => attr !== null));
 

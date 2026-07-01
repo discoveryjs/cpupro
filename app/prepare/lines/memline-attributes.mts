@@ -1,6 +1,7 @@
 import { AllocationLifespan, typeColor } from '../const.js';
 import {
     GcEpochDictEntry,
+    ProfileLineAllocationCodeTypeAttribute,
     ProfileLineAllocationGcEpochAttribute,
     ProfileLineAllocationLifespanAttribute,
     ProfileLineAllocationSpaceAttribute,
@@ -115,5 +116,43 @@ export function createMemlineAllocationSpaceAttribute(
         name: 'allocationSpace',
         values: allocationSpaces || new Uint32Array(0),
         dict: allocationSpaceNames || []
+    };
+}
+
+const normCodeTypeNames = {
+    'unknown': 'Unknown',
+    'ignition': 'Ignition',
+    'baseline': 'Sparkplug',
+    'maglev': 'Maglev',
+    'turbofan': 'Turbofan'
+};
+export function createMemlineAllocationCodeTypeAttribute(
+    _cpuproAllocationCodeType: number[] | Uint32Array | null,
+    _cpuproAllocationCodeTypeNames: Record<number, string> | null,
+    _cpuproAllocationContextInfo: number[] | Uint32Array | null
+): ProfileLineAllocationCodeTypeAttribute | null {
+    if (!_cpuproAllocationCodeType) {
+        return null;
+    }
+
+    const allocationCodeTypes = new Uint8Array(_cpuproAllocationCodeType);
+    const allocationCodeTypeNames = Object.values(_cpuproAllocationCodeTypeNames || {})
+        .map(name => normCodeTypeNames[name] || name);
+
+    if (_cpuproAllocationContextInfo) {
+        const buildinType = allocationCodeTypeNames.push('Builtin') - 1;
+        const otherType = allocationCodeTypeNames.push('Other') - 1;
+
+        for (let i = 0; i < allocationCodeTypes.length; i++) {
+            if (_cpuproAllocationContextInfo[i] !== 0) {
+                allocationCodeTypes[i] = _cpuproAllocationContextInfo[i] & 0x0f ? otherType : buildinType;
+            }
+        }
+    }
+
+    return {
+        name: 'allocationCodeType',
+        values: allocationCodeTypes,
+        dict: allocationCodeTypeNames
     };
 }

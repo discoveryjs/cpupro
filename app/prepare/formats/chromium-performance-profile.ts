@@ -48,6 +48,8 @@ type AllocationSamples = {
     typesDict?: Record<string, string>;
     spaces?: number[];
     spacesDict?: Record<string, string>;
+    codeTypes?: number[];
+    codeTypesDict?: Record<string, string>;
     gc?: number[];
 };
 type AllocationGc = {
@@ -579,6 +581,8 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces', allocationsCount);
             profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
             profile._cpuproAllocationGc = buildChunkedVector(allocationChunks, 'gc', allocationsCount);
+            profile._cpuproAllocationCodeType = buildChunkedVector(allocationChunks, 'codeTypes', allocationsCount);
+            profile._cpuproAllocationCodeTypeNames = buildChunkedMap(profile._cpuproAllocationCodeType, allocationChunks, 'codeTypesDict');
 
             updateAllocationsGc(ids, allocationGcs, profile._cpuproAllocationGc);
         }
@@ -610,9 +614,13 @@ export function extractFromChromiumPerformanceProfile(
 
 function buildChunkedVector(
     chunks: AllocationSamples[],
-    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict'>,
+    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict' | 'codeTypeDict'>,
     totalLength: number = 0
 ): number[] | undefined {
+    if (!chunks.length || chunks[0][key] === undefined) {
+        return undefined;
+    }
+
     const vector: number[] = totalLength > 0
         ? new Int32Array(totalLength) as unknown as number[]
         : chunks.map(chunk =>
@@ -635,7 +643,7 @@ function buildChunkedVector(
 function buildChunkedMap(
     vector: number[] | undefined,
     chunks: AllocationSamples[],
-    key: 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict'
+    key: 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict' | 'codeTypesDict'
 ): Record<string, string> | undefined {
     if (!vector || vector.length === 0) {
         return undefined;

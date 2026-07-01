@@ -47,6 +47,8 @@ export type V8CpuProfileCpuproExtensions = {
     _cpuproAllocationTypeNames?: Record<number, string>; // human-readable type names
     _cpuproAllocationSpaces?: number[]; // V8 map space IDs
     _cpuproAllocationSpaceNames?: Record<number, string>; // human-readable space names
+    _cpuproAllocationCodeType?: number[]; // V8 map code type IDs
+    _cpuproAllocationCodeTypeNames?: Record<number, string>; // human-readable code type names
     _cpuproAllocationLocations?: number[]; // allocation script offsets
     _cpuproAllocationContextInfo?: number[]; // vm state + builtin id
     _cpuproAllocationBuiltinNames?: Record<number, string>; // human-readable builtin names

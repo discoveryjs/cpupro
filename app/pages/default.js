@@ -3,6 +3,7 @@ const { supportedFormats } = require('../prepare/index.js');
 const { sessionExpandState } = require('./common.js');
 const { categoriesFractionBars } = require('./default-page/categories-fraction-bar.js');
 const { chartUsedHeap } = require('./default-page/chart-used-heap.js');
+const { histAllocationCodeType } = require('./default-page/hist-allocation-code-type.js');
 const { histAllocationGcs } = require('./default-page/hist-allocation-gcs.js');
 const { histAllocationLifespan } = require('./default-page/hist-allocation-lifespan.js');
 const { histAllocationSpaces } = require('./default-page/hist-allocation-spaces.js');
@@ -59,7 +60,7 @@ const categoriesTimeline = {
         {
             line: $scopeLine,
             tree: $scopeBreakdown,
-            samples: $scopeBreakdown.categories.all.dict.entries.[totalValue and entry.name != 'root'].({
+            samples: $scopeBreakdown.categories.all.dict.entries.[totalValue and (entry.name != 'root' or selfValue)].({
                 $category: entry;
                 $treeMetrics: $scopeBreakdown.categories.all.nodes;
                 $subtree: $treeMetrics.subtreeSamples($category);
@@ -122,10 +123,11 @@ const categoriesTimeline = {
                 color: "#65b4fda0"
             }),
             memline: $profile | $memline; $memline ? [
-                { key: "byType",    value: 'allocationType' },
-                { key: "bySpace",   value: 'allocationSpace' },
-                { key: "byGc",      value: 'allocationLifespan' },
-                { key: "byGcEpoch", value: 'allocationGcEpoch' }
+                { key: "byType",     value: 'allocationType' },
+                { key: "bySpace",    value: 'allocationSpace' },
+                { key: "byGc",       value: 'allocationLifespan' },
+                { key: "byGcEpoch",  value: 'allocationGcEpoch' },
+                { key: "byCodeType", value: 'allocationCodeType' }
             ].($attribute: $memline.lineAttribute(value);
                 { key, value: $attribute
                     ? $memline.binLineToAxisLine($attribute, $scopeLine, 500) }
@@ -397,6 +399,7 @@ const categoriesTimeline = {
         histAllocationTypes,
         histAllocationLifespan,
         histAllocationGcs,
+        histAllocationCodeType,
         histAllocationSpaces,
         chartUsedHeap,
         userTimingsTimeline

@@ -60,11 +60,17 @@ export type ProfileLineAllocationSpaceAttribute = {
     values: Uint32Array;
     dict: string[];
 };
+export type ProfileLineAllocationCodeTypeAttribute = {
+    name: 'allocationCodeType';
+    values: Uint8Array;
+    dict: string[];
+};
 export type ProfileLineAttribute =
     | ProfileLineAllocationTypeAttribute
     | ProfileLineAllocationGcEpochAttribute
     | ProfileLineAllocationLifespanAttribute
-    | ProfileLineAllocationSpaceAttribute;
+    | ProfileLineAllocationSpaceAttribute
+    | ProfileLineAllocationCodeTypeAttribute;
 
 export type Axis = {
     start: number;
