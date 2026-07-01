@@ -516,33 +516,10 @@ export function extractFromChromiumPerformanceProfile(
         };
 
         if (thread.scripts) {
-            profile._scripts = Array.from(thread.scripts.values());
+            const scripts = Array.from(thread.scripts.values());
 
-            // Attach source maps if available
-            for (const script of profile._scripts) {
-                let sourceMap: ProfileSourceMap | null = null;
-
-                if (script.sourceMapUrl && sourceMap === null) {
-                    sourceMap = sourceMapBySourceMapUrl.get(script.sourceMapUrl) ?? null;
-
-                    if (sourceMap === null) {
-                        try {
-                            const sourceMapUrl = new URL(script.sourceMapUrl, script.url || undefined).toString();
-                            sourceMap = sourceMapBySourceMapUrl.get(sourceMapUrl) ?? null;
-                        } catch (error) {
-                            console.warn('Error resolving source map url for script:', script, error);
-                        }
-                    }
-                }
-
-                if (script.url && sourceMap === null) {
-                    sourceMap = sourceMapByUrl.get(script.url) || null;
-                }
-
-                if (sourceMap) {
-                    script.sourceMap = sourceMap.sourceMap;
-                }
-            }
+            profile._scripts = scripts;
+            attachSourceMapsToScripts(scripts, sourceMapByUrl, sourceMapBySourceMapUrl);
         }
 
         for (const chunk of chunks) {
@@ -610,6 +587,35 @@ export function extractFromChromiumPerformanceProfile(
 
         ownership: metadata.ownership ?? null
     };
+}
+
+function attachSourceMapsToScripts(
+    scripts: V8CpuProfileScript[],
+    sourceMapByUrl: Map<string, ProfileSourceMap>,
+    sourceMapBySourceMapUrl: Map<string, ProfileSourceMap>
+) {
+    for (const script of scripts) {
+        const { sourceMapUrl, url: scriptUrl } = script;
+        let sourceMap: ProfileSourceMap | null = sourceMapUrl
+            ? sourceMapBySourceMapUrl.get(sourceMapUrl) ?? null
+            : null;
+
+        if (sourceMap === null && sourceMapUrl) {
+            const absoluteSourceMapUrl = URL.parse(sourceMapUrl, scriptUrl || undefined);
+
+            if (absoluteSourceMapUrl) {
+                sourceMap = sourceMapBySourceMapUrl.get(absoluteSourceMapUrl.toString()) ?? null;
+            }
+        }
+
+        if (sourceMap === null && scriptUrl) {
+            sourceMap = sourceMapByUrl.get(scriptUrl) ?? null;
+        }
+
+        if (sourceMap) {
+            script.sourceMap = sourceMap.sourceMap;
+        }
+    }
 }
 
 function buildChunkedVector(
