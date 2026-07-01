@@ -104,7 +104,10 @@ export const methods = {
         return (value / 1000).toFixed(1) + 'Kb';
     },
     bytes(current, bytes = 'b', base = 1000) {
-        return shortNum(current, [bytes || '', 'Kb', 'Mb', 'Gb'], base);
+        if (typeof bytes !== 'string') {
+            bytes = bytes ? 'b' : '';
+        }
+        return shortNum(current, [bytes, 'Kb', 'Mb', 'Gb'], base);
     },
     shortNum(current) {
         return shortNum(current, ['', 'K', 'M', 'G']);
