@@ -446,22 +446,21 @@ export class TreeSet {
     owners: CallTree<CpuProOwner>;
 
     constructor(
-        dict: Dictionary,
-        initialTreeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
-        usage: Usage | Dictionary = dict
+        dict: Dictionary | Usage,
+        initialTreeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>
     ) {
         this.source = initialTreeSource;
         this.locations = initialTreeSource.dictionary === dict.locations
             ? buildCallTree('locations', initialTreeSource as TreeSource<CpuProLocation>)
             : null;
         this.callFrames = this.locations !== null
-            ? buildCallTree('callFrames', this.locations, dict.locationToCallFrame, usage.callFrames)
+            ? buildCallTree('callFrames', this.locations, dict.locationToCallFrame!, dict.callFrames)
             : buildCallTree('callFrames', initialTreeSource as TreeSource<CpuProCallFrame>);
         this.initial = this.locations || this.callFrames;
-        this.modules = buildCallTree('modules', this.callFrames, dict.callFrameToModule, usage.modules);
-        this.packages = buildCallTree('packages', this.modules, dict.moduleToPackage, usage.packages);
-        this.categories = buildCallTree('categories', this.packages, dict.packageToCategory, usage.categories);
-        this.owners = buildCallTree('owners', this.modules, dict.moduleToOwner, usage.owners);
+        this.modules = buildCallTree('modules', this.callFrames, dict.callFrameToModule, dict.modules);
+        this.packages = buildCallTree('packages', this.modules, dict.moduleToPackage, dict.packages);
+        this.categories = buildCallTree('categories', this.packages, dict.packageToCategory, dict.categories);
+        this.owners = buildCallTree('owners', this.modules, dict.moduleToOwner, dict.owners);
     }
 
     get sourceIdToNode() {
@@ -470,9 +469,8 @@ export class TreeSet {
 }
 
 export function createTreeSet(
-    dict: Dictionary,
-    initialTreeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
-    usage: Usage | Dictionary = dict
+    dict: Dictionary | Usage,
+    initialTreeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>
 ): TreeSet {
-    return new TreeSet(dict, initialTreeSource, usage);
+    return new TreeSet(dict, initialTreeSource);
 }

@@ -83,37 +83,43 @@ export async function createSampledTreeSet(
     samples: Uint32Array,
     work: WorkHandler
 ) {
-    // call frame positions
-
-    const treeSetSource = createTreeSourceFromParent(
-        treeSource.parent,
-        treeSource.sourceIdToNode,
-        treeSource.nodes,
-        treeSource.dictionary
-    );
-
     //
     // Usage vectors
     //
 
-    // const usage = await work('usage', () =>
-    //     new Usage(dictionary, nodeCallFrames, generatedNodes)
-    // );
+    const useUsage = true;
+    const usage = useUsage ? await work('usage', () =>
+        new Usage(dictionary, treeSource)
+    ) : null;
+    const treeSetDictionary = usage
+        ? treeSource.dictionary === dictionary.locations
+            ? usage.locations!
+            : usage.callFrames
+        : treeSource.dictionary;
+    const treeSetNodes = usage
+        ? treeSource.nodes.map(dictIndex => usage.mapToUsage[dictIndex])
+        : treeSource.nodes;
+
+    // Create tree source for usage vectors
+    const treeSetSource = createTreeSourceFromParent(
+        treeSource.parent,
+        treeSource.sourceIdToNode,
+        treeSetNodes,
+        treeSetDictionary
+    );
 
     //
     // Create profile's data derivatives
     //
 
-    const treeSet = await work('build trees', () =>
+    const treeSet = await work('create tree set', () =>
         createTreeSet(
-            dictionary,
+            usage || dictionary,
             treeSetSource
-            // usage
         )
     );
 
     // re-map samples
-    // FIXME: remap callFramesTree only, before createTreeSet()?
     const sampledTreeSet = await work('remap samples', () =>
         remapTreeSamples(
             samples,
