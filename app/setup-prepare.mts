@@ -10,24 +10,52 @@ import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
 import { createWorkHandler } from './prepare/misc/work.js';
 
-export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
-    const work = createWorkHandler(async function<T>(name: string, fn: () => T): Promise<T> {
+const now = typeof performance !== 'undefined' && performance.now
+    ? performance.now.bind(performance)
+    : Date.now.bind(Date);
+
+function createContextFreeWorkHandler(setWorkTitle) {
+    return createWorkHandler(async function<T>(name: string, fn: () => T): Promise<T> {
+        const startTime = now();
         await setWorkTitle(name);
-        const startTime = Date.now();
 
         try {
-            return fn();
+            return await fn();
         } finally {
-            TIMINGS && console.info('>', name, Date.now() - startTime);
+            TIMINGS && console.info('>', name, (now() - startTime).toFixed(1).replace(/\.0$/, '') + 'ms');
+            if (performance && performance.measure) {
+                performance.measure(name, { start: startTime });
+            }
         }
     });
+}
+
+// A quick hack to free memory by breaking the reference to the original input object
+function cleanupInput(input: unknown) {
+    for (const key of Object.keys(input as Record<string, unknown>)) {
+        delete (input as Record<string, unknown>)[key];
+    }
+
+    return null;
+}
+
+export default (async function(input: unknown, { rejectData, markers, setWorkTitle }: PrepareContextApi) {
+    // Create work handler in a separate function to avoid capturing the context
+    // of this function and its arguments
+    const work = createContextFreeWorkHandler(setWorkTitle);
 
     //
     // Extract & validate profile data
     //
+
     const profilingDataset = await work('extract profiling data', () =>
         extractAndValidate(input, rejectData)
     );
+
+    // FIXME: breaks the reference to the original input object, allowing it to be garbage collected;
+    // that's a temporary workaround to avoid keeping the entire input in memory while processing the dataset.
+    // Setting input to null is not effective because Discovery.js keeps a reference to the input object in upper contexts.
+    input = cleanupInput(input);
 
     //
     // Process profiles

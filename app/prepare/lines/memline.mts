@@ -1,6 +1,6 @@
 import type { Profile } from '../profile.mjs';
 import type { V8CpuProfile } from '../types.js';
-import type { Metric, ProfileMemline } from './types.js';
+import type { Metric, ProfileLineMethods, ProfileMemline } from './types.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
@@ -42,6 +42,23 @@ const metricDefinitions: Record<Metric, string> = {
     selfValue: 'The memory allocated by a function\'s own code, excluding any memory allocated by other functions it calls.',
     nestedValue: 'The memory allocated by functions that are called by a given function, excluding the memory taken during the original function\'s own code execution.',
     totalValue: 'The complete memory allocated by a function, including both \'self memory\' and \'nested memory\'.'
+};
+const memlineMethods: ProfileLineMethods = {
+    formatValue(value: number, precision = 1): string {
+        return `${(value / 1000).toFixed(precision)}Kb`;
+    },
+    valueWithUnit(value: number, precision = 1) {
+        return {
+            value: (value / 1000).toFixed(precision),
+            unit: 'Kb'
+        };
+    },
+    metricName(metric: Metric): string {
+        return metricName[metric];
+    },
+    metricDefinition(metric: Metric): string {
+        return metricDefinitions[metric];
+    }
 };
 
 /**
@@ -167,22 +184,6 @@ export async function createMemline(
             samplesInterval
         },
 
-        formatValue(value: number, precision = 1): string {
-            return `${(value / 1000).toFixed(precision)}Kb`;
-        },
-        valueWithUnit(value: number, precision = 1) {
-            return {
-                value: (value / 1000).toFixed(precision),
-                unit: 'Kb'
-            };
-        },
-        metricName(metric: Metric): string {
-            return metricName[metric];
-        },
-        metricDefinition(metric: Metric): string {
-            return metricDefinitions[metric];
-        },
-
         axisStart: 0,
         axisStartNoSamples: 0,
         axisEnd: totalAllocationSize,
@@ -192,7 +193,12 @@ export async function createMemline(
         values: allocationSizes,
         attributes,
         breakdowns: [],
-        mappings: Object.create(null)
+        mappings: Object.create(null),
+
+        // Important: The methods MUST be defined outside of the function to avoid retaining
+        // the context of this function, which would prevent garbage collection of the temporary data
+        // used to create the line.
+        ...memlineMethods
     };
 
     if (_cpuproAllocationMapping && _cpuproAllocationIds) {

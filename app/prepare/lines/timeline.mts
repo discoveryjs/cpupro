@@ -1,5 +1,5 @@
 import type { Profile } from '../profile.mjs';
-import type { Axis, Metric, TimelineLine } from './types.js';
+import type { Axis, Metric, ProfileLineMethods, TimelineLine } from './types.js';
 import type { V8CpuProfile } from '../types.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createLineBreakdown } from './trees.js';
@@ -31,6 +31,23 @@ const metricDefinitions: Record<Metric, string> = {
     nestedValue: 'The time accounted for the execution of functions that are called by a given function, excluding the time taken to execute the original function\'s own code itself.',
     totalValue: 'The complete time taken to execute a function. It includes both \'self time\', which is the time the function spends executing its own code, and \'nested time\', which is the time spent executing all other functions that are called from within this function.'
 };
+const timelineMethods: ProfileLineMethods = {
+    formatValue(value: number, precision = 1) {
+        return `${(value / 1000).toFixed(precision)} ms`;
+    },
+    valueWithUnit(value: number, precision = 1) {
+        return {
+            value: (value / 1000).toFixed(precision),
+            unit: 'ms'
+        };
+    },
+    metricName(metric: Metric): string {
+        return metricName[metric];
+    },
+    metricDefinition(metric: Metric): string {
+        return metricDefinitions[metric];
+    }
+};
 
 /**
  * Create timeline (CPU time profiling line) from processed profile data.
@@ -61,22 +78,6 @@ export async function createTimeline(
         profile: null as unknown as Profile, // to be set by caller
         sourceInfo,
 
-        formatValue(value: number, precision = 1) {
-            return `${(value / 1000).toFixed(precision)} ms`;
-        },
-        valueWithUnit(value: number, precision = 1) {
-            return {
-                value: (value / 1000).toFixed(precision),
-                unit: 'ms'
-            };
-        },
-        metricName(metric: Metric): string {
-            return metricName[metric];
-        },
-        metricDefinition(metric: Metric): string {
-            return metricDefinitions[metric];
-        },
-
         axisStart: axis.start,
         axisStartNoSamples: axis.startNoSamples,
         axisEnd: axis.end,
@@ -86,7 +87,12 @@ export async function createTimeline(
         values: timeDeltas,
         attributes: [],
         breakdowns: [],
-        mappings: Object.create(null)
+        mappings: Object.create(null),
+
+        // Important: The methods MUST be defined outside of the function to avoid retaining
+        // the context of this function, which would prevent garbage collection of the temporary data
+        // used to create the line.
+        ...timelineMethods
     };
 
     const callStackBreakdown = await createLineBreakdown(

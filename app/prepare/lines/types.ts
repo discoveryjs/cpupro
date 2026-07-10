@@ -81,7 +81,14 @@ export type Axis = {
     samplesInterval: number;
 }
 
-export interface ProfileLine {
+export type ProfileLineMethods = {
+    formatValue(value: number, precision?: number): string;
+    valueWithUnit(value: number, precision?: number): { value: string; unit: string };
+    metricName(metric: Metric): string;
+    metricDefinition(metric: Metric): string;
+}
+
+export type ProfileLine = {
     type: ProfileLineType;
     kind: LineKind;
     profile: Profile;
@@ -91,11 +98,6 @@ export interface ProfileLine {
         samples: number;
         samplesInterval: number;
     };
-
-    formatValue(value: number, precision?: number): string;
-    valueWithUnit(value: number, precision?: number): { value: string; unit: string };
-    metricName(metric: Metric): string;
-    metricDefinition(metric: Metric): string;
 
     // Axis metadata
     axisStart: number;
@@ -114,7 +116,7 @@ export interface ProfileLine {
 
     // Mappings to other lines (key = target line kind)
     mappings: Record<ProfileLineType, LineMapping>;
-};
+} & ProfileLineMethods;
 
 export type TimelineLine = ProfileLine & {
     type: 'timeline';
