@@ -80,9 +80,9 @@ export function createLocationsFromScriptOffsets(
     nodeScriptOffsets: Int32Array,
     nodeCallFrames: Uint32Array,
     samples: Uint32Array,
-    sampleScriptOffsets: Int32Array | null
+    sampledScriptOffsets: Int32Array | null
 ) {
-    if (sampleScriptOffsets === null) {
+    if (sampledScriptOffsets === null) {
         return null;
     }
 
@@ -93,7 +93,7 @@ export function createLocationsFromScriptOffsets(
     const sampledLocationNodes: number[] = [];
     const sampledLocationParents: number[] = [];
 
-    // Locations from nodes -> callFramePositions + nodes
+    // Locations from node (parent node) + script offset
     // -> nodes
     for (let i = 0; i < nodeScriptOffsets.length; i++) {
         const callFrameIndex = nodeCallFrames[nodeParent[i]];
@@ -114,13 +114,13 @@ export function createLocationsFromScriptOffsets(
 
     // Locations from samples
     // sampleLocations -> callFramePositions + nodes
-    if (sampleScriptOffsets !== null) {
+    if (sampledScriptOffsets !== null) {
         // nodes indecies created after samples
         const sampleNodeIndexBase = treeLocationNodes.length;
 
         for (let i = 0; i < samples.length; i++) {
             const nodeIndex = samples[i];
-            const scriptOffset = sampleScriptOffsets[i];
+            const scriptOffset = sampledScriptOffsets[i];
             const nodeRef = locationNodeRef(nodeIndex, scriptOffset);
             let sampleNodeIndex = locationNodeMap.get(nodeRef);
 

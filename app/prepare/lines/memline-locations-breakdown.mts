@@ -1,11 +1,11 @@
 import type { Dictionary } from '../dictionary.js';
 import type { WorkHandler } from '../misc/work.js';
-import { GeneratedNodes } from '../preprocessing/nodes.js';
+import type { GeneratedNodes } from '../preprocessing/nodes.js';
 import type { TreeSource } from '../computations/build-trees.js';
+import type { CpuProLocation } from '../types.js';
+import type { ProfileLine } from './types.js';
 import { createSampledTreeSet } from '../profile.mjs';
-import { CpuProLocation } from '../types.js';
 import { createLineBreakdown } from './trees.js';
-import { ProfileLine } from './types.js';
 import { createInt32Progression } from '../misc/utils.js';
 
 export async function createMemlineLocationsBreakdown(

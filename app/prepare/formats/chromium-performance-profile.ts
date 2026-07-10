@@ -452,6 +452,8 @@ export function extractFromChromiumPerformanceProfile(
                 if (endTime && endTime > profileData.endTime) {
                     profileData.endTime = endTime;
                 }
+
+                break;
             }
 
             default: {
@@ -698,20 +700,29 @@ function buildChunkedArray(
 }
 
 function updateAllocationsGc(
-    allocactionIds: number[] | undefined,
+    allocationIds: number[] | undefined,
     allocationGcChunks: AllocationGc[],
     allocationGcs: number[] | undefined
 ) {
-    if (!allocationGcChunks.length || !allocationGcs || !allocactionIds) {
+    if (!allocationGcChunks.length || !allocationGcs || !allocationIds) {
         return;
     }
 
     // Check if allocation ids are monotonic, which allows to optimize GC mapping
     let monotonicIds = true;
 
-    for (let i = 1; i < allocactionIds.length; i++) {
-        if (allocactionIds[i] !== allocactionIds[i - 1] + 1) {
+    for (let i = 1; i < allocationIds.length; i++) {
+        if (allocationIds[i] !== allocationIds[i - 1] + 1) {
             monotonicIds = false;
+            const indexNextExpected = allocationIds.indexOf(allocationIds[i - 1] + 1, i);
+            console.warn('Allocation ids are not monotonic, which will make GC mapping slower', {
+                index: i,
+                id: allocationIds[i - 1],
+                nextId: allocationIds[i],
+                nextIndex: indexNextExpected,
+                length: allocationIds.length,
+                lastId: allocationIds[allocationIds.length - 1]
+            });
             break;
         }
     }
@@ -719,8 +730,8 @@ function updateAllocationsGc(
     // If ids are monotonic, we can directly calculate the index in the GC array based on the id,
     // otherwise we need to build a map (which is 3x times slower)
     if (monotonicIds) {
-        const firstId = allocactionIds[0];
-        const lastId = allocactionIds[allocactionIds.length - 1];
+        const firstId = allocationIds[0];
+        const lastId = allocationIds[allocationIds.length - 1];
 
         for (const allocationGc of allocationGcChunks) {
             for (const [key, value] of Object.entries(allocationGc)) {
@@ -736,7 +747,7 @@ function updateAllocationsGc(
             }
         }
     } else {
-        const idToIndexMap = new Map<number, number>(allocactionIds.map((id, index) => [id, index]) || []);
+        const idToIndexMap = new Map<number, number>(allocationIds.map((id, index) => [id, index]) || []);
 
         for (const allocationGc of allocationGcChunks) {
             for (const [key, value] of Object.entries(allocationGc)) {
