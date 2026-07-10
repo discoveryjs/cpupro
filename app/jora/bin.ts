@@ -19,43 +19,57 @@ function makeSampleBins(
     skip = 0
 ) {
     const bins = new Float64Array(n);
-    const step = total / n;
-    let binIdx = Math.floor(skip / step);
+    const rems = new Float64Array(n);
+    const realStep = total / n;
+    const roundStep = Math.ceil(realStep);
+    // If the rounded step leaves a remainder that is less than the step size,
+    // that means that the remainer will be located in the last bin,
+    // and allow to use the rounded step that moves computations into integer space,
+    // which is faster than using floating point numbers.
+    const step = roundStep * n - total < roundStep ? roundStep : realStep;
+    const len = samples.length;
+    let binIdx = Math.floor(skip / step) | 0;
     let end = (binIdx + 1) * step;
     let offset = skip;
+    let acc = 0;
 
-    for (let i = 0; i < samples.length; i++) {
+    // Two pass implementation of binning samples into bins, with remainders applied to the next bin
+    // allow to keep the main loop simpler (without inner loops) and faster,
+    // while still keeping the same time complexity of O(n).
+    for (let i = 0; i < len; i++) {
         const accept = mask[samples[i]];
         const delta = values[i];
 
-        if (offset + delta < end) {
-            if (accept) {
-                bins[binIdx] += delta;
-            }
-        } else {
-            if (accept) {
-                const dx = end - offset;
-                let x = delta - dx;
+        offset += delta;
 
-                bins[binIdx++] += dx;
-                end += step;
-
-                while (x > step) {
-                    bins[binIdx++] += step;
-                    x -= step;
-                    end += step;
-                }
-
-                bins[binIdx] += x;
-            } else {
-                while (offset + delta > end) {
-                    binIdx += 1;
-                    end += step;
-                }
-            }
+        if (accept) {
+            acc += delta;
         }
 
-        offset += delta;
+        // if offset exceeds the end of the current bin, we need to move to the next bin
+        if (offset >= end) {
+            bins[binIdx] = acc;
+
+            if (accept) {
+                bins[binIdx] -= offset - end;
+                rems[binIdx] = offset - end;
+            }
+
+            binIdx = Math.floor(offset / step) | 0;
+            end = (binIdx + 1) * step;
+            acc = 0;
+        }
+    }
+
+    bins[binIdx] = acc;
+
+    // apply remainders to bins
+    for (let i = 0; i < n; i++) {
+        for (let rem = rems[i], j = i + 1; rem > 0; j++) {
+            const delta = Math.min(rem, step);
+            bins[j] += delta;
+            rem -= delta;
+        }
     }
 
     return bins;
