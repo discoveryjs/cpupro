@@ -350,43 +350,18 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         lines.push(memline);
     }
 
-    // Create mappings between lines if both exist
-    if (memline && timeline && memline.mappings && timeline.mappings) {
-        const memlineCallStackBreakdown = memline.breakdowns.find(tree => tree.kind === 'call-stack')!;
-        const timelineCallStackBreakdown = timeline.breakdowns.find(tree => tree.kind === 'call-stack')!;
-
-        const memlineToTimeline = createLineMapping(
-            memlineCallStackBreakdown.samplesMetrics,
-            timelineCallStackBreakdown.samplesMetrics
-        );
-        const timelineToMemline = createLineMapping(
-            timelineCallStackBreakdown.samplesMetrics,
-            memlineCallStackBreakdown.samplesMetrics
-        );
-
-        memline.mappings.timeline = memlineToTimeline;
-        timeline.mappings.memline = timelineToMemline;
-
+    // Create mappings between lines if both exist and allocation mapping is present
+    if (memline && timeline) {
         if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
-            timelineToMemline._mapping.set(data._cpuproAllocationMapping);
+            const { left, right } = createLineMapping(
+                memline,
+                data._cpuproAllocationIds,
+                timeline,
+                data._cpuproAllocationMapping
+            );
 
-            const mapping = timelineToMemline._mapping;
-            const memlineSamples = data._cpuproAllocationIds; // [0, 1, 2, 3, 4, ...]
-            const memlineToTimelineMap = memlineToTimeline._mapping;
-            // [0, 0, 1, 1, 1, 3, 3, ...] -> timeline sample ids
-            // we attach memline sample id to the cpu sample id it was recorded after
-
-            const lastCpuSampleIndex = mapping.length - 1;
-            for (let i = 0, k = 0; i < memlineSamples.length; i++) {
-                const allocId = memlineSamples[i];
-                let cpuSampleLastSeen = mapping[k];
-
-                while (k < lastCpuSampleIndex && allocId > cpuSampleLastSeen) {
-                    cpuSampleLastSeen = mapping[++k];
-                }
-
-                memlineToTimelineMap[i] = k;
-            }
+            memline.mappings.timeline = left;
+            timeline.mappings.memline = right;
         }
     }
 

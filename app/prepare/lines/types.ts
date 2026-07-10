@@ -1,4 +1,3 @@
-import { LineMapping } from '../computations/line-mapping';
 import { CallTree } from '../computations/call-tree';
 import { DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered, TreeMetrics, TreeValueBounds } from '../computations/metrics';
 import { Profile } from '../profile.mjs';
@@ -88,6 +87,12 @@ export type ProfileLineMethods = {
     metricDefinition(metric: Metric): string;
 }
 
+export type ProfileLineMapping = {
+    line: ProfileLine;
+    inverse: ProfileLineMapping;
+    _mapping: Uint32Array;
+};
+
 export type ProfileLine = {
     type: ProfileLineType;
     kind: LineKind;
@@ -115,7 +120,7 @@ export type ProfileLine = {
     breakdowns: ProfileLineBreakdown[];
 
     // Mappings to other lines (key = target line kind)
-    mappings: Record<ProfileLineType, LineMapping>;
+    mappings: Record<ProfileLineType, ProfileLineMapping>;
 } & ProfileLineMethods;
 
 export type TimelineLine = ProfileLine & {
