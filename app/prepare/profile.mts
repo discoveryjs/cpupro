@@ -13,7 +13,7 @@ import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createTreeSet, createTreeSourceFromParent, TreeSource } from './computations/build-trees.js';
-import { ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
+import { collectProfileUsedScriptIds, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
 import { createLineMapping } from './computations/line-mapping.js';
@@ -148,6 +148,18 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
     const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
+    const profileScriptsMap = new ProfileScriptsMap(dictionary, data._scripts);
+
+    // Prepare script sources in advance, so that they are available for line-column
+    // and script-offset mapping to functions (call frames).
+    // The parsing might be done in a workers, which is not only about performance,
+    // but also about memory pressure while parsing large amount of script sources.
+    const preparseStart = performance.now();
+    const preparseScriptSourcesResult = prepareScriptSources(
+        profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data))
+    ).finally(() => {
+        performance.measure('preparseScriptSources', { start: preparseStart });
+    });
 
     // Extract script offset first, since they depends on timestamps order,
     // and should be moved together with timeDeltas if the order is adjusted in fixTimeDeltasOrderIfNeeded()
@@ -262,7 +274,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     // Consume dictionaries
     //
 
-    const profileScriptsMap = new ProfileScriptsMap(dictionary, data._scripts);
     const {
         callFrameByIndex,
         callFrameByNodeIndex
@@ -314,7 +325,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         }
     );
 
-    const usage = new Usage(dictionary, callFrameByNodeIndex, generatedNodes);
+    const usage = dictionary; // new Usage(dictionary, callFrameByNodeIndex, generatedNodes);
     const sampledTreeSet = await work('create tree breakdown', () =>
         createSampledTreeSet(
             dictionary,
@@ -343,6 +354,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         dictionary,
         profileScriptsMap,
         sampledTreeSet,
+        preparseScriptSourcesResult,
         { work }
     );
 
@@ -446,6 +458,9 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
                 work
             );
         }
+
+        delete memline.__allocationLocationBreakdownBasis;
+        delete memline.__vectorLocations;
     }
 
     return profile;

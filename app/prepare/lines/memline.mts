@@ -73,6 +73,7 @@ export async function createMemline(
         samples: Uint32Array<ArrayBufferLike>;
         sampledTrees: SampledCpuProCallTree[];
     },
+    preparseScriptSourcesResult: Promise<void>,
     options?: Partial<CreateMemlineOptions>
 ): Promise<ProfileMemline | null> {
     const {
@@ -137,19 +138,6 @@ export async function createMemline(
 
     // Calculate total allocation size as axis total
     const totalAllocationSize = sum(allocationSizes);
-
-    // Create vector of allocation locations for breakdown
-    const vectorLocations = await work('create allocation locations vector', () =>
-        createVectorLocations(
-            dictionary,
-            profileScriptsMap,
-            _cpuproAllocationScriptIds,
-            _cpuproAllocationLocations,
-            _cpuproAllocationContextInfo,
-            _cpuproAllocationBuiltinNames,
-            _cpuproAllocationVmStateNames
-        )
-    );
 
     // Memline attributes
     const attributes = await work('create memline attributes', () => [
@@ -216,6 +204,23 @@ export async function createMemline(
 
         line.breakdowns.push(cpuSamplesBreakdown);
     }
+
+    // Wait for script sources to be parsed in a worker, so that they are available
+    // for call frame resolution by line-column or script-offset.
+    await work('parse script sources', () => preparseScriptSourcesResult);
+
+    // Create vector of allocation locations for breakdown
+    const vectorLocations = await work('create allocation locations vector', () =>
+        createVectorLocations(
+            dictionary,
+            profileScriptsMap,
+            _cpuproAllocationScriptIds,
+            _cpuproAllocationLocations,
+            _cpuproAllocationContextInfo,
+            _cpuproAllocationBuiltinNames,
+            _cpuproAllocationVmStateNames
+        )
+    );
 
     if (vectorLocations !== null) {
         const locationBreakdown = await work('create location breakdown', () =>
