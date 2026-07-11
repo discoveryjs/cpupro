@@ -14,6 +14,7 @@ import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createTreeSet, createTreeSourceFromParent, TreeSource } from './computations/build-trees.js';
 import { collectProfileUsedScriptIds, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
+import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
 import { createLineMapping } from './computations/line-mapping.js';

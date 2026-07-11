@@ -1,8 +1,9 @@
-import type { CpuProCallFrame, CpuProCategory, CpuProModule, CpuProOwner, CpuProPackage, CpuProScript } from './types.js';
+import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProOwner, CpuProPackage, CpuProScript } from './types.js';
 import type { Dictionary } from './dictionary.js';
-import { GeneratedNodes } from './preprocessing/nodes.js';
+import { TreeSource } from './computations/build-trees.js';
 
 export class Usage {
+    locations: CpuProLocation[] | null;
     callFrames: CpuProCallFrame[];
     scripts: CpuProScript[];
     modules: CpuProModule[];
@@ -10,6 +11,7 @@ export class Usage {
     categories: CpuProCategory[];
     owners: CpuProOwner[];
 
+    locationToCallFrame: Uint32Array | null;
     callFrameToModule: Uint32Array;
     moduleToScript: Uint32Array;
     moduleToPackage: Uint32Array;
@@ -18,27 +20,43 @@ export class Usage {
 
     constructor(
         dict: Dictionary,
-        callFrameByNodeIndex: Uint32Array,
-        generatedNodes: GeneratedNodes
+        treeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>
     ) {
-        const usedCallFrame = new Uint8Array(dict.callFrames.length);
+        if (treeSource.dictionary === dict.locations) {
+            const usedLocations = new Int32Array(dict.locations.length).fill(-1);
+            const locations: CpuProLocation[] = [];
 
-        for (let i = 0; i < callFrameByNodeIndex.length; i++) {
-            usedCallFrame[callFrameByNodeIndex[i]] = 1;
-        }
+            for (let i = 0; i < treeSource.nodes.length; i++) {
+                const dictIndex = treeSource.nodes[i];
 
-        for (let i = 0; i < generatedNodes.callFrames.length; i++) {
-            usedCallFrame[generatedNodes.callFrames[i]] = 1;
-        }
-
-        for (let i = 0; i < usedCallFrame.length; i++) {
-            if (usedCallFrame[i] === 0) {
-                const { kind } = dict.callFrames[i];
-                usedCallFrame[i] = Number(kind === 'function' || kind === 'script' || kind === 'regexp');
+                if (usedLocations[dictIndex] === -1) {
+                    usedLocations[dictIndex] = locations.push(treeSource.dictionary[dictIndex]) - 1;
+                }
             }
+
+            this.mapToUsage = usedLocations;
+            this.locations = locations;
+            [this.callFrames, this.locationToCallFrame] = getUsed(dict.callFrames, this.locations, dict.locationToCallFrame);
+        } else if (treeSource.dictionary === dict.callFrames) {
+            const usedCallFrames = new Uint32Array(dict.callFrames.length).fill(-1);
+            const callFrames: CpuProCallFrame[] = [];
+
+            for (let i = 0; i < treeSource.nodes.length; i++) {
+                const dictIndex = treeSource.nodes[i];
+
+                if (usedCallFrames[dictIndex] === -1) {
+                    usedCallFrames[dictIndex] = callFrames.push(treeSource.dictionary[dictIndex]) - 1;
+                }
+            }
+
+            this.mapToUsage = usedCallFrames;
+            this.locations = null;
+            this.locationToCallFrame = null;
+            this.callFrames = callFrames;
+        } else {
+            throw new Error('Unsupported tree source dictionary');
         }
 
-        this.callFrames = dict.callFrames.filter((_, idx) => usedCallFrame[idx]);
         [this.modules, this.callFrameToModule] = getUsed(dict.modules, this.callFrames, dict.callFrameToModule);
         [this.scripts, this.moduleToScript] = getUsed(dict.scripts, this.modules, dict.moduleToScript);
         [this.packages, this.moduleToPackage] = getUsed(dict.packages, this.modules, dict.moduleToPackage);
@@ -55,22 +73,23 @@ function getUsed<T, S>(
     dict: T[],
     dictToSourceIndex: Uint32Array
 ] {
-    const used = new Set(usedDictionary.map(fn).filter(Boolean));
-    const usedDictToSourceIndex = new Uint32Array(used.size);
-    const usedDict: T[] = new Array(used.size);
+    const usedDictToSourceIndex = new Uint32Array(usedDictionary.length);
+    const used = new Map<T, number>();
 
-    for (let i = 0, k = 0; i < sourceDictionary.length; i++) {
-        const entry = sourceDictionary[i];
+    for (let i = 0; i < usedDictionary.length; i++) {
+        const entry = fn(usedDictionary[i])!;
+        let entryIndex = used.get(entry);
 
-        if (used.has(entry)) {
-            usedDictToSourceIndex[k] = i;
-            usedDict[k] = entry;
-            k++;
+        if (entryIndex === undefined) {
+            entryIndex = used.size;
+            used.set(entry, entryIndex);
         }
+
+        usedDictToSourceIndex[i] = entryIndex;
     }
 
     return [
-        usedDict,
+        [...used.keys()],
         usedDictToSourceIndex
     ];
 }
