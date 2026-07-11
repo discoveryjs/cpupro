@@ -401,8 +401,9 @@ export type DictionaryMetric<T> = {
 
 export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
     dictionary: T[];
+    #entries: WeakRef<DictionaryMetric<T>[]>;
     entries: DictionaryMetric<T>[];
-    entriesMap: Map<T, DictionaryMetric<T>>;
+    #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
     samplesCount: Uint32Array;
     selfValues: Uint32Array;
     totalValues: Uint32Array;
@@ -419,25 +420,46 @@ export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
         this.samplesCount = samplesCount;
         this.selfValues = selfValues;
         this.totalValues = totalValues;
-        this.entries = dictionary.map((entry, entryIndex) => ({
-            entryIndex,
-            entry,
-            samples: samplesCount[entryIndex],
-            selfValue: selfValues[entryIndex],
-            nestedValue: totalValues[entryIndex] - selfValues[entryIndex],
-            totalValue: totalValues[entryIndex]
-        }));
-        this.entriesMap = this.entries.reduce(
-            (map, element) => map.set(element.entry, element),
-            new Map()
-        );
+
+        Object.defineProperty(this, 'entries', {
+            get: () => {
+                let entries = this.#entries?.deref();
+                if (entries === undefined) {
+                    this.#entries = new WeakRef(entries = this.dictionary.map((entry, entryIndex) => ({
+                        entryIndex,
+                        entry,
+                        samples: this.samplesCount[entryIndex],
+                        selfValue: this.selfValues[entryIndex],
+                        nestedValue: this.totalValues[entryIndex] - this.selfValues[entryIndex],
+                        totalValue: this.totalValues[entryIndex]
+                    })));
+                }
+                return entries;
+            }
+        });
     }
 
+    get entriesMap() {
+        let map = this.#entriesMap?.deref();
+
+        if (map === undefined) {
+            this.#entriesMap = new WeakRef(map = this.entries.reduce(
+                (map, element) => map.set(element.entry, element),
+                new Map()
+            ));
+        }
+
+        return map;
+    }
     getEntry(sourceEntry: T): DictionaryMetric<T> | null {
         return this.entriesMap.get(sourceEntry) || null;
     }
 
     sync() {
+        if (!this.#entries?.deref()) {
+            return;
+        }
+
         const { entries, samplesCount, selfValues, totalValues } = this;
 
         for (let i = 0; i < entries.length; i++) {
@@ -460,18 +482,38 @@ export type DictionaryBounds<T> = {
     lastSeen: number;
 };
 
+const notInitedBounds = new Uint32Array();
 export class TreeValueBounds<T extends CpuProNode> {
-    entries: DictionaryBounds<T>[];
-    entriesMap: Map<T, DictionaryMetric<T>>;
+    #entries: WeakRef<DictionaryBounds<T>[]>;
+    #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
+    tree: CallTree<T>;
+    sampleToNode: Uint32Array;
+    cumulative: Uint32Array;
+    samples: Uint32Array;
     firstSeen: Uint32Array;
     lastSeen: Uint32Array;
 
     constructor(tree: CallTree<T>, sampleToNode: Uint32Array, cumulative: Uint32Array, samples: Uint32Array) {
-        const { dictionary, nodes, parent } = tree;
+        this.tree = tree;
+        this.sampleToNode = sampleToNode;
+        this.cumulative = cumulative;
+        this.samples = samples;
+
+        this.firstSeen = notInitedBounds;
+        this.lastSeen = notInitedBounds;
+    }
+
+    #computeIfNeeded() {
+        if (this.firstSeen !== notInitedBounds) {
+            return;
+        }
+
+        const { tree, sampleToNode, cumulative, samples } = this;
+        const { /* dictionary,*/ nodes, parent } = tree;
         const firstSeen = new Uint32Array(nodes.length).fill(0xffffffff);
         const lastSeen = new Uint32Array(nodes.length);
-        const firstSeenDict = new Uint32Array(dictionary.length).fill(0xffffffff);
-        const lastSeenDict = new Uint32Array(dictionary.length);
+        // const firstSeenDict = new Uint32Array(dictionary.length).fill(0xffffffff);
+        // const lastSeenDict = new Uint32Array(dictionary.length);
 
         for (let i = 0; i < samples.length; i++) {
             const nodeId = sampleToNode[samples[i]];
@@ -488,7 +530,7 @@ export class TreeValueBounds<T extends CpuProNode> {
 
         for (let i = nodes.length - 1; i > 0; i--) {
             const parentId = parent[i];
-            const dictId = nodes[i];
+            // const dictId = nodes[i];
             const fs = firstSeen[i];
             const ls = lastSeen[i];
 
@@ -496,32 +538,51 @@ export class TreeValueBounds<T extends CpuProNode> {
                 firstSeen[parentId] = fs;
             }
 
-            if (firstSeenDict[dictId] > fs) {
-                firstSeenDict[dictId] = fs;
-            }
+            // if (firstSeenDict[dictId] > fs) {
+            //     firstSeenDict[dictId] = fs;
+            // }
 
             if (lastSeen[parentId] < ls) {
                 lastSeen[parentId] = ls;
             }
 
-            if (lastSeenDict[dictId] < ls) {
-                lastSeenDict[dictId] = ls;
-            }
+            // if (lastSeenDict[dictId] < ls) {
+            //     lastSeenDict[dictId] = ls;
+            // }
         }
 
         this.firstSeen = firstSeen;
         this.lastSeen = lastSeen;
+    }
 
-        this.entries = dictionary.map((entry, entryIndex) => ({
-            entryIndex,
-            entry,
-            firstSeen: firstSeenDict[entryIndex],
-            lastSeen: lastSeenDict[entryIndex]
-        }));
-        this.entriesMap = this.entries.reduce(
-            (map, element) => map.set(element.entry, element),
-            new Map()
-        );
+    get entries() {
+        let entries = this.#entries?.deref();
+
+        if (entries === undefined) {
+            this.#computeIfNeeded();
+            this.#entries = new WeakRef(entries = this.tree.dictionary.map((entry, entryIndex) => ({
+                entryIndex,
+                entry,
+                firstSeen: this.firstSeen[entryIndex],
+                lastSeen: this.lastSeen[entryIndex]
+            })));
+        }
+
+        return entries;
+    }
+
+    get entriesMap() {
+        let map = this.#entriesMap?.deref();
+        debugger;
+
+        if (map === undefined) {
+            this.#entriesMap = new WeakRef(map = this.entries.reduce(
+                (map, element) => map.set(element.entry, element),
+                new Map()
+            ));
+        }
+
+        return map;
     }
 }
 
