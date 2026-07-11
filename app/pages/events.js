@@ -15,11 +15,13 @@ discovery.page.define('events', {
                 { name: 'MinorGC', color: '#f7b26b38' },
                 { name: 'MajorGC', color: '#f78c6b38' },
                 { name: 'Layout', color: '#6ba0f738' },
-                { name: 'UpdateLayoutTree', color: '#6bf78c38' }
+                { name: 'UpdateLayoutTree', color: '#6bf78c38' },
+                { name: 'Paint', color: '#6bacf738' },
+                { name: 'AnimationFrame::StyleAndLayout', text: 'Recalculate Styles', color: '#6bfff738' }
             ],
             checkbox: {
                 checked: '=name in ["MajorGC", "MinorGC"]',
-                content: 'text:name'
+                content: 'text:text or name'
             }
         }
     ],
