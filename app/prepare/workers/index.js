@@ -12,7 +12,6 @@ function createWorker(code, options) {
 
 export function createParseWorker() {
     return createWorker(code, {
-        type: 'module',
         name: 'cpupro-parse-source-worker'
     });
 }
