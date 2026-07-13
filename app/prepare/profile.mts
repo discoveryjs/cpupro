@@ -13,7 +13,7 @@ import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createTreeSet, createTreeSourceFromParent, TreeSource } from './computations/build-trees.js';
-import { collectProfileUsedScriptIds, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
+import { collectProfileUsedScriptIds, OriginalScriptsMap, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
@@ -27,6 +27,7 @@ const experimentalFeatures = false;
 export type Profile = Awaited<ReturnType<typeof createProfile>>;
 export type CreateProfileOptions = {
     dictionary: Dictionary;
+    originalScripts: OriginalScriptsMap;
     ownership: Ownership | null;
     runtime: RuntimeCode | null;
     work: WorkHandler;
@@ -142,6 +143,7 @@ export async function createSampledTreeSet(
 export async function createProfile(data: V8CpuProfile, options?: Partial<CreateProfileOptions>) {
     const {
         dictionary = new Dictionary(),
+        originalScripts = new OriginalScriptsMap(dictionary),
         runtime = null,
         ownership = null,
         work = noopWorkHandler
@@ -149,7 +151,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
     const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
-    const profileScriptsMap = new ProfileScriptsMap(dictionary, data._scripts);
+    const profileScriptsMap = new ProfileScriptsMap(dictionary, originalScripts, data._scripts);
 
     // Prepare script sources in advance, so that they are available for line-column
     // and script-offset mapping to functions (call frames).

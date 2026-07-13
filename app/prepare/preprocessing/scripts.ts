@@ -3,21 +3,53 @@ import type { Dictionary } from '../dictionary.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
 import { utils } from '@discoveryjs/discovery';
 
+export class OriginalScriptsMap {
+    #scriptsByUrl: Map<string, CpuProScript[]>;
+    #nextScriptId: number = -1;
+
+    constructor(public dict: Dictionary) {
+        this.#scriptsByUrl = new Map();
+    }
+
+    resolveScript(url: string, source: string | null, from: CpuProScript | null = null): CpuProScript {
+        const scripts = this.#scriptsByUrl.get(url);
+        let script = scripts?.find(s => s.source === source && s.originalFor === from);
+
+        if (!script) {
+            script = createScript(this.#nextScriptId--, url, source);
+            script.module = this.dict.resolveModule(script);
+            script.originalFor = from;
+
+            if (scripts) {
+                scripts.push(script);
+            } else {
+                this.#scriptsByUrl.set(url, [script]);
+            }
+        }
+
+        return script;
+    }
+}
+
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
     #scriptById: Map<number | string, CpuProScript>;
     #scriptIdFromString: Map<string, number>;
     #scriptIndexByUrl: Map<string, number[]>;
     #scriptByUrl: Map<string, CpuProScript[]>;
-    #originalScriptByUrl: Map<string, CpuProScript>;
+    #originalScripts: OriginalScriptsMap;
 
-    constructor(dict: Dictionary, scripts?: V8CpuProfileScript[] | null) {
+    constructor(
+        dict: Dictionary,
+        originalScripts: OriginalScriptsMap,
+        scripts?: V8CpuProfileScript[] | null
+    ) {
         this.dict = dict;
         this.#scriptById = new Map();
         this.#scriptIdFromString = new Map();
         this.#scriptIndexByUrl = new Map();
         this.#scriptByUrl = this.#createScriptByUrlMap(dict.scripts);
-        this.#originalScriptByUrl = new Map();
+        this.#originalScripts = originalScripts || new OriginalScriptsMap(dict);
 
         this.#addScripts(scripts);
     }
@@ -116,13 +148,9 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     }
 
     resolveOriginalScript(url: string, source: string | null, from: CpuProScript | null = null): CpuProScript {
-        let script = this.#originalScriptByUrl.get(url);
+        const script = this.#originalScripts.resolveScript(url, source, from);
 
-        if (!script) {
-            script = createScript(-this.#originalScriptByUrl.size - 1, url, source);
-            script.module = this.dict.resolveModule(script);
-            script.originalFor = from;
-            this.#originalScriptByUrl.set(url, script);
+        if (!this.#scriptById.has(script.id)) {
             this.#scriptById.set(script.id, script);
             this.dict.scripts.push(script);
         }
