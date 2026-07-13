@@ -482,8 +482,8 @@ export type DictionaryBounds<T> = {
     lastSeen: number;
 };
 
-const notInitedBounds = new Uint32Array();
 export class TreeValueBounds<T extends CpuProNode> {
+    #seenVectors: WeakRef<{ firstSeen: Uint32Array; lastSeen: Uint32Array }>;
     #entries: WeakRef<DictionaryBounds<T>[]>;
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
     tree: CallTree<T>;
@@ -499,13 +499,23 @@ export class TreeValueBounds<T extends CpuProNode> {
         this.cumulative = cumulative;
         this.samples = samples;
 
-        this.firstSeen = notInitedBounds;
-        this.lastSeen = notInitedBounds;
+        Object.defineProperties(this, {
+            firstSeen: {
+                enumerable: true,
+                get: () => this.#getOrComputeSeenVectors().firstSeen
+            },
+            lastSeen: {
+                enumerable: true,
+                get: () => this.#getOrComputeSeenVectors().lastSeen
+            }
+        });
     }
 
-    #computeIfNeeded() {
-        if (this.firstSeen !== notInitedBounds) {
-            return;
+    #getOrComputeSeenVectors() {
+        let seenVectors = this.#seenVectors?.deref();
+
+        if (seenVectors !== undefined) {
+            return seenVectors;
         }
 
         const { tree, sampleToNode, cumulative, samples } = this;
@@ -551,20 +561,21 @@ export class TreeValueBounds<T extends CpuProNode> {
             // }
         }
 
-        this.firstSeen = firstSeen;
-        this.lastSeen = lastSeen;
+        this.#seenVectors = new WeakRef(seenVectors = { firstSeen, lastSeen });
+        return seenVectors;
     }
 
     get entries() {
         let entries = this.#entries?.deref();
 
         if (entries === undefined) {
-            this.#computeIfNeeded();
-            this.#entries = new WeakRef(entries = this.tree.dictionary.map((entry, entryIndex) => ({
+            const { tree, firstSeen, lastSeen } = this;
+
+            this.#entries = new WeakRef(entries = tree.dictionary.map((entry, entryIndex) => ({
                 entryIndex,
                 entry,
-                firstSeen: this.firstSeen[entryIndex],
-                lastSeen: this.lastSeen[entryIndex]
+                firstSeen: firstSeen[entryIndex],
+                lastSeen: lastSeen[entryIndex]
             })));
         }
 
