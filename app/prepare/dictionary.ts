@@ -26,7 +26,12 @@ import {
     WellKnownType
 } from './types.js';
 import { scriptFromScriptId } from './preprocessing/scripts.js';
-import { getFunctionAtScriptOffset, getFunctionEndFromScriptLineColumn, getScriptLineColumnFromOffset, getScriptOffsetFromLineColumn } from './misc/parse-source.js';
+import {
+    getFunctionAtScriptOffset,
+    getFunctionEndFromScriptLineColumn,
+    getScriptLineColumnFromOffset,
+    getScriptOffsetFromLineColumn
+} from './misc/script-function-resolution.js';
 
 const callFrameKindPrefixes: [prefix: string, kind: CpuProCallFrameKind][] = [
     ['(builtin) ', 'builtin'],
