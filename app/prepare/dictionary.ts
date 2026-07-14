@@ -207,7 +207,7 @@ export class Dictionary {
         const functionName = script !== null
             ? inputCallFrame.functionName || ''
             : wellKnownNameAliases.get(inputCallFrame.functionName as WellKnownName) || inputCallFrame.functionName || '';
-        const lineNumber = script !== null ? normalizeLoc(inputCallFrame.lineNumber) : -1;
+        const lineNumber = script !== null ? normalizeLoc(inputCallFrame.lineNumber) : -1; // TODO: add to diagnostics if lineNumber is not -1 for a script=null
         const columnNumber = script !== null ? normalizeLoc(inputCallFrame.columnNumber) : -1;
         const scriptLineNumber = correctLineColumn && script !== null && lineNumber !== -1
             ? lineNumber - script.lineOffset
@@ -236,12 +236,14 @@ export class Dictionary {
                 start,
                 end,
                 regexp,
-                location: null,
+                location: null as unknown as CpuProLocation, // will be set below
+                noLocLocation: null as unknown as CpuProLocation, // will be set below
                 category: module.category,
                 package: module.package,
                 module
             };
 
+            // call it first since resolveLocation() can potentially access to start/end fields
             setCallFrameLazyStartEndIfNeeded(
                 callFrame,
                 scriptLineNumber,
@@ -251,19 +253,26 @@ export class Dictionary {
                 end
             );
 
+            // registrate the call frame in the dictionary before any calls to resolveLocation()
             callFrameIndex = this.callFrames.push(callFrame) - 1;
             callFrameByFunctionName.set(functionName, callFrameIndex);
-            callFrame.location = this.resolveLocation(callFrame, null, -1, -1, -1);
+            callFrame.noLocLocation = this.resolveLocation(callFrame, null, -1, -1, -1);
 
             if (sourceScript) {
-                sourceScript.callFrames.push(callFrame);
-
                 const callFrameStartLocation = this.resolveLocation(callFrame, sourceScript, start, scriptLineNumber, scriptColumnNumber);
+
+                sourceScript.callFrames.push(callFrame);
+                callFrame.location = callFrameStartLocation;
+
                 if (callFrameStartLocation.scriptOffset !== start) {
                     Object.defineProperty(callFrame, 'start', {
                         value: callFrameStartLocation.scriptOffset
                     });
                 }
+            } else {
+                // when no script, there is no location, so we use the noLocLocation for the callFrame.location as well;
+                // for now we ignore line/column for script=null cases anyway
+                callFrame.location = callFrame.noLocLocation;
             }
         }
 
@@ -435,10 +444,10 @@ export class Dictionary {
 
         scriptOffset = normalizeLoc(scriptOffset);
         line = normalizeLoc(line);
-        column = line === -1 ? -1 : normalizeLoc(column);
+        column = line === -1 ? -1 : normalizeLoc(column); // TODO: add to diagnostics if column is not -1 but line is -1
 
         if (column === -1) {
-            line = -1;
+            line = -1; // TODO: add to diagnostics if column is -1 but line is not -1
         } else if (correctLineColumn && resolvedScript !== null) {
             line -= resolvedScript.lineOffset;
             if (line === 0) {
