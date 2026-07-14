@@ -421,22 +421,14 @@ export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
         this.selfValues = selfValues;
         this.totalValues = totalValues;
 
-        Object.defineProperty(this, 'entries', {
-            get: () => {
-                let entries = this.#entries?.deref();
-                if (entries === undefined) {
-                    this.#entries = new WeakRef(entries = this.dictionary.map((entry, entryIndex) => ({
-                        entryIndex,
-                        entry,
-                        samples: this.samplesCount[entryIndex],
-                        selfValue: this.selfValues[entryIndex],
-                        nestedValue: this.totalValues[entryIndex] - this.selfValues[entryIndex],
-                        totalValue: this.totalValues[entryIndex]
-                    })));
-                }
-                return entries;
-            }
-        });
+        this.entries = this.dictionary.map((entry, entryIndex) => ({
+            entryIndex,
+            entry,
+            samples: samplesCount[entryIndex],
+            selfValue: selfValues[entryIndex],
+            nestedValue: totalValues[entryIndex] - selfValues[entryIndex],
+            totalValue: totalValues[entryIndex]
+        }));
     }
 
     get entriesMap() {
@@ -456,10 +448,6 @@ export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
     }
 
     sync() {
-        if (!this.#entries?.deref()) {
-            return;
-        }
-
         const { entries, samplesCount, selfValues, totalValues } = this;
 
         for (let i = 0; i < entries.length; i++) {
