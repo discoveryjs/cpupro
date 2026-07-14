@@ -128,7 +128,7 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
         }
     } else if (isV8LogProfile(data) || isCPUProfile(data)) {
         result = createProfilingDataset([
-            createProfilingSession(processProfiles([data], extensions, rejectData))
+            createProfilingSession(processProfiles([{ ...data }], extensions, rejectData))
         ]);
     } else {
         rejectData('Unknown format');

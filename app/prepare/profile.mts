@@ -153,16 +153,18 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
     const profileScriptsMap = new ProfileScriptsMap(dictionary, originalScripts, data._scripts);
 
-    // Prepare script sources in advance, so that they are available for line-column
+    // Prepare script sources in advance (if any), so that they are available for line-column
     // and script-offset mapping to functions (call frames).
     // The parsing might be done in a workers, which is not only about performance,
     // but also about memory pressure while parsing large amount of script sources.
     const preparseStart = performance.now();
-    const preparseScriptSourcesResult = prepareScriptSources(
-        profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data))
-    ).finally(() => {
-        performance.measure('preparseScriptSources', { start: preparseStart });
-    });
+    const preparseScriptSourcesResult = profileScriptsMap.size > 0
+        ? prepareScriptSources(
+            profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data))
+        ).finally(() => {
+            performance.measure('preparseScriptSources', { start: preparseStart });
+        })
+        : Promise.resolve();
 
     // Extract script offset first, since they depends on timestamps order,
     // and should be moved together with timeDeltas if the order is adjusted in fixTimeDeltasOrderIfNeeded()

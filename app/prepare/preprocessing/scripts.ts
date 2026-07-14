@@ -98,15 +98,17 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         }
     }
 
+    get size() {
+        return this.#scriptById.size;
+    }
     get(scriptId: number | string) {
         return this.#scriptById.get(scriptId);
     }
     has(scriptId: number | string) {
         return this.#scriptById.has(scriptId);
     }
-    set(scriptId: number | string, script: CpuProScript) {
-        this.#scriptById.set(scriptId, script);
-        return this;
+    set(scriptId: number | string, script: CpuProScript): this {
+        return this.#scriptById.set(scriptId, script) && this;
     }
     entries() {
         return this.#scriptById.entries();

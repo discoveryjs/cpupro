@@ -9,6 +9,8 @@ import { ProfileLineType } from './prepare/lines/types.js';
 import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
 import { createWorkHandler } from './prepare/misc/work.js';
+import { OriginalScriptsMap } from './prepare/preprocessing/scripts.js';
+import { terminateParseWorkerPool } from './prepare/misc/script-function-resolution.js';
 
 const now = typeof performance !== 'undefined' && performance.now
     ? performance.now.bind(performance)
@@ -32,8 +34,12 @@ function createContextFreeWorkHandler(setWorkTitle) {
 
 // A quick hack to free memory by breaking the reference to the original input object
 function cleanupInput(input: unknown) {
-    for (const key of Object.keys(input as Record<string, unknown>)) {
-        delete (input as Record<string, unknown>)[key];
+    if (Array.isArray(input)) {
+        input.length = 0;
+    } else if (input && typeof input === 'object') {
+        for (const key of Object.keys(input as Record<string, unknown>)) {
+            delete (input as Record<string, unknown>)[key];
+        }
     }
 
     return null;
@@ -67,6 +73,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     for (let sessionIndex = 0; sessionIndex < profilingDataset.sessions.length; sessionIndex++) {
         const rawSession = profilingDataset.sessions[sessionIndex];
         const dict = new Dictionary();
+        const originalScripts = new OriginalScriptsMap(dict);
 
         // Seed owners from session ownership metadata (if any) so the dictionary
         // contains real area names before modules are resolved. Real per-module
@@ -104,6 +111,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
             const profile = await createProfile(profileData, {
                 dictionary: dict,
+                originalScripts,
                 runtime: null,
                 ownership: rawSession.ownership ?? null,
                 work: sessionProfiles.length > 1
@@ -177,6 +185,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         });
     }
 
+    // terminate parse worker pool to free memory
+    terminateParseWorkerPool();
+
+    // finalize result
     const defaultSession = sessions[0] ?? null;
     const defaultProfile = defaultSession?.defaultProfile ?? null;
     const result = {

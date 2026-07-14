@@ -38,7 +38,7 @@ export class Usage {
             this.locations = locations;
             [this.callFrames, this.locationToCallFrame] = getUsed(dict.callFrames, this.locations, dict.locationToCallFrame);
         } else if (treeSource.dictionary === dict.callFrames) {
-            const usedCallFrames = new Uint32Array(dict.callFrames.length).fill(-1);
+            const usedCallFrames = new Int32Array(dict.callFrames.length).fill(-1);
             const callFrames: CpuProCallFrame[] = [];
 
             for (let i = 0; i < treeSource.nodes.length; i++) {
