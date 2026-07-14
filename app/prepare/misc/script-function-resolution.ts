@@ -187,52 +187,184 @@ export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, 
     return -1;
 }
 
-const parseInWorker = (function createParseInWorker() {
-    const workerPool: Worker[] = [];
+type ParseWorkerPayload = Array<{
+    id: number;
+    url: string;
+    source: string;
+}>;
+type ParseWorkerResult = Array<{
+    id: number;
+    ranges: FunctionRanges;
+}>;
+type WorkerEntry = {
+    worker: Worker;
+    ttl: number;
+    finish: Promise<void> | null;
+    controller: AbortController | null;
+    terminateTimer: ReturnType<typeof setTimeout> | null;
+};
 
-    return function parseInWorker(payload, onResult) {
-        return new Promise<void>((resolve) => {
-            let worker = workerPool.pop() || createParseWorker();
+const parseWorkerPool = (function createParseWorkerPool() {
+    const MAX_WORKERS = Math.min(6, Math.max(1, Math.ceil(navigator.hardwareConcurrency / 2)));
+    const WORKER_TTL = 10_000; // 10 seconds
+    let workerPool: WorkerEntry[] = [];
+    let workerRequestQueue: Array<PromiseWithResolvers<WorkerEntry>> = [];
 
-            worker.postMessage(payload);
-            worker.addEventListener('message', (event) => {
-                const { data } = event;
+    async function getWorkerEntry() {
+        let entry = workerPool.find(w => !w.controller);
 
-                workerPool.push(worker);
-                worker = null as unknown as Worker;
+        if (!entry) {
+            if (workerPool.length >= MAX_WORKERS) {
+                const workerRequest = Promise.withResolvers<WorkerEntry>();
 
-                onResult(data);
-                resolve();
-            }, { once: true });
-        });
+                workerRequestQueue.push(workerRequest);
+                entry = await workerRequest.promise;
+            } else {
+                workerPool.push(entry = {
+                    worker: createParseWorker(),
+                    ttl: WORKER_TTL,
+                    finish: null,
+                    controller: null,
+                    terminateTimer: null
+                });
+            }
+        }
+
+        if (entry.terminateTimer) {
+            clearTimeout(entry.terminateTimer);
+        }
+
+        if (!entry.controller) {
+            entry.controller = new AbortController();
+        }
+
+        return entry;
+    }
+
+    function releaseWorkerEntry(entry: WorkerEntry) {
+        entry.finish = null;
+        entry.controller?.abort();
+        entry.controller = null;
+
+        if (workerPool.includes(entry)) {
+            const workerRequest = workerRequestQueue.shift();
+
+            if (workerRequest) {
+                // assign controller to entry here, since request is resolved via await
+                // and can be captured by another request
+                entry.controller = new AbortController();
+                workerRequest.resolve(entry);
+            } else {
+                entry.terminateTimer = setTimeout(() => {
+                    entry.worker.terminate();
+                    workerPool = workerPool.filter(e => e !== entry);
+                }, entry.ttl);
+            }
+        } else {
+            entry.worker.terminate();
+        }
+    }
+
+    return {
+        MAX_WORKERS,
+        parsingScripts: new WeakSet<CpuProScript>(),
+
+        async parse(payload: ParseWorkerPayload) {
+            const entry = await getWorkerEntry();
+            const { signal: aboutSignal } = entry.controller!;
+            const result = new Promise<ParseWorkerResult>((resolve, reject) => {
+                entry.worker.postMessage(payload);
+                entry.worker.addEventListener('message', (event) => {
+                    resolve(event.data);
+                }, { once: true, signal: aboutSignal });
+                entry.worker.addEventListener('error', (event) => {
+                    reject(new Error(`Worker error: ${event.message}`));
+                    event.preventDefault();
+                }, { once: true, signal: aboutSignal });
+                entry.worker.addEventListener('messageerror', (event) => {
+                    reject(new Error(`Worker message error: ${event.data}`));
+                }, { once: true, signal: aboutSignal });
+                aboutSignal.addEventListener('abort', () => {
+                    reject(new Error('Worker request aborted'));
+                }, { once: true });
+            });
+
+            entry.finish = result.then(
+                () => releaseWorkerEntry(entry),
+                () => releaseWorkerEntry(entry)
+            );
+
+            return result;
+        },
+
+        async waitAll() {
+            // wait for all reuests to finish, then all workers are idle
+            await Promise.all(workerRequestQueue.map(request => request.promise));
+            await Promise.all(workerPool.map(entry => entry.finish).filter(Boolean));
+        },
+
+        terminate(immediately: boolean = false) {
+            const entries = [...workerPool];
+
+            workerPool = [];
+
+            for (const entry of entries) {
+                if (entry.terminateTimer) {
+                    clearTimeout(entry.terminateTimer);
+                }
+
+                if (entry.controller && !immediately) {
+                    entry.ttl = 0;
+                    workerPool.push(entry);
+                } else {
+                    releaseWorkerEntry(entry);
+                }
+            }
+
+            if (immediately) {
+                const requests = [...workerRequestQueue];
+
+                workerRequestQueue = [];
+
+                for (const request of requests) {
+                    request.reject(new Error('Worker pool terminated'));
+                }
+            }
+        }
     };
 }());
 
-export function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProScript>) {
+export function terminateParseWorkerPool(immediately: boolean = false): void {
+    parseWorkerPool.terminate(immediately);
+}
+
+export async function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProScript>): Promise<void> {
+    const parsingScripts = parseWorkerPool.parsingScripts;
     const scriptsToParse: CpuProScript[] = [];
     let totalSourceSize = 0;
 
     for (const script of scripts) {
-        // Skip scripts that have already been processed
-        if (scriptFunctionRanges.has(script)) {
-            continue;
-        }
-
         // Skip scripts that are have no source code
         if (!script.source || !script.source.length) {
             continue;
         }
 
+        // Skip scripts that have already been processed
+        if (scriptFunctionRanges.has(script) || parsingScripts.has(script)) {
+            continue;
+        }
+
         totalSourceSize += script.source.length;
         scriptsToParse.push(script);
+        parsingScripts.add(script);
     }
 
     if (scriptsToParse.length === 0) {
-        return Promise.resolve();
+        return;
     }
 
     const workerCount = Math.min(
-        6,
+        parseWorkerPool.MAX_WORKERS,
         scriptsToParse.length,
         Math.ceil(totalSourceSize / 4_000_000),
         Math.max(1, Math.floor(navigator.hardwareConcurrency / 2))
@@ -254,23 +386,28 @@ export function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProScript>
         scriptBucketsSizes[minBucketIndex] += scriptsToParse[i].source!.length;
     }
 
-    const result = Promise.all(Array.from({ length: workerCount }, (_, bucketIndex) => {
+    await Promise.all(Array.from({ length: workerCount }, async (_, bucketIndex) => {
         const scriptsForWorker = scriptBuckets[bucketIndex];
 
-        return parseInWorker(scriptsForWorker.map(script => ({
-            id: script.id,
-            url: script.url,
-            source: script.source!
-        })), (scriptParsedResults) => {
+        try {
+            const scriptParsedResults = await parseWorkerPool.parse(scriptsForWorker.map(script => ({
+                id: script.id, // for debugging purposes
+                url: script.url,
+                source: script.source!
+            })));
+
             for (let i = 0; i < scriptParsedResults.length; i++) {
-                const ranges = scriptParsedResults[i]?.ranges ?? null;
+                const ranges = scriptParsedResults[i].ranges;
                 const script = scriptsForWorker[i];
 
-                script.sourceFunctionRanges = ranges;
+                // FIXME: types will be fixed later
+                script.functionRanges = ranges.ranges;
                 scriptFunctionRanges.set(script, ranges);
             }
-        });
+        } finally {
+            for (const script of scriptsForWorker) {
+                parsingScripts.delete(script);
+            }
+        }
     }));
-
-    return result.then(() => void 0);
 }
