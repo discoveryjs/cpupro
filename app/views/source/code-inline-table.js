@@ -45,7 +45,11 @@ discovery.view.define('code-inline-table-viewer', {
                         whenData: true,
                         content: 'html:replace(/:/, `<span class=\"delim\">:</span>`)'
                     },
-                    'call-frame-source-point{ when: no parent, data: value }'
+                    {
+                        view: 'call-frame-source-point',
+                        when: 'no parent',
+                        data: '{ ...value, callFrame: parent ? parent.value.callFrame : value.ownerCallFrame }'
+                    }
                 ]
             } },
             { when: '#.mode="table"', content: {

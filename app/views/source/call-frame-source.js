@@ -19,7 +19,7 @@ const sourceQuery = `{
     $start;
     $end;
     $unit: 0.valueAndUnit().unit;
-    $callFrameCodes: #.currentProfile.codesByCallFrame[=> callFrame = @];
+    $callFrameCodes: scopeProfile().codesByCallFrame[=> callFrame = @];
     $values: $locationValues;
 
     $formatting: #.sourceFormatting = 'beautified' ? $sourceSlice.jsBeautifyRanges().(
