@@ -2,7 +2,7 @@ import { sessionExpandState } from '../common.js';
 
 export const histAllocationLifespan = {
     view: 'expand',
-    data: 'memline.byGc.[value].sort(name.order() asc)',
+    data: 'memline.byLifespan.[value].sort(name.order() asc)',
     whenData: true,
     ...sessionExpandState('default-allocation-lifespans', false, '$'),
     header: [

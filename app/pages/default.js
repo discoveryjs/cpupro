@@ -60,7 +60,9 @@ const categoriesTimeline = {
         {
             line: $scopeLine,
             tree: $scopeBreakdown,
-            samples: $scopeBreakdown.categories.all.dict.entries.[totalValue and (entry.name != 'root' or selfValue)].({
+            samples: $scopeBreakdown.categories.all.dict.entries
+                .[totalValue and (entry.name != 'root' or selfValue)]
+                .sort(entry.name.order() asc).({
                 $category: entry;
                 $treeMetrics: $scopeBreakdown.categories.all.nodes;
                 $subtree: $treeMetrics.subtreeSamples($category);
@@ -125,7 +127,7 @@ const categoriesTimeline = {
             memline: $profile | $memline; $memline ? [
                 { key: "byType",     value: 'allocationType' },
                 { key: "bySpace",    value: 'allocationSpace' },
-                { key: "byGc",       value: 'allocationLifespan' },
+                { key: "byLifespan", value: 'allocationLifespan' },
                 { key: "byGcEpoch",  value: 'allocationGcEpoch' },
                 { key: "byCodeType", value: 'allocationCodeType' }
             ].($attribute: $memline.lineAttribute(value);

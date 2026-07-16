@@ -23,7 +23,7 @@ export const histAllocationSpaces = {
                             itemConfig: {
                                 view: 'labeled-value',
                                 color: '=color',
-                                text: '=entry',
+                                text: '=entry.name',
                                 value: 'text:100 * value / total | `${toFixed(2)}%`'
                             }
                         }
@@ -43,7 +43,7 @@ export const histAllocationSpaces = {
                     view: 'block',
                     className: 'label',
                     postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                    content: 'text:entry'
+                    content: 'text:entry.name'
                 },
                 {
                     view: 'block',

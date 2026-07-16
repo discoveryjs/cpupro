@@ -1,5 +1,6 @@
 import { AllocationLifespan, typeColor } from '../const.js';
 import {
+    AllocationSpaceDictEntry,
     GcEpochDictEntry,
     ProfileLineAllocationCodeTypeAttribute,
     ProfileLineAllocationGcEpochAttribute,
@@ -45,19 +46,35 @@ export function createMemlineGcEpochAttribute(
     }
 
     const epochs = new Set<number>(_cpuproAllocationGc);
+    const sortedEpochs = [...epochs].sort((a, b) => a - b);
     const epochToIndex = new Map<number, number>();
 
     const allocationGcEpochs = new Uint32Array(_cpuproAllocationGc);;
     const allocationGcEpochDict: GcEpochDictEntry[] = [];
+    let prevEpochId = -1;
 
-    for (const epoch of [...epochs].sort((a, b) => a - b)) {
-        epochToIndex.set(epoch, epochToIndex.size);
+    for (const epoch of sortedEpochs) {
+        const currentEpochId = epoch >> 2;
+
+        // Fill in any missing epochs with "unknown" entries
+        while (prevEpochId !== -1 && ++prevEpochId < currentEpochId) {
+            allocationGcEpochDict.push({
+                type: 'unknown',
+                epoch: prevEpochId,
+                color: typeColor.unknown
+            });
+        }
+
+        epochToIndex.set(epoch, allocationGcEpochDict.length);
         allocationGcEpochDict.push({
             type: epoch === 0 ? 'none' : epoch & 1 ? 'minor' : 'major',
             epoch: epoch >> 2,
             color: typeColor[epoch === 0 ? 'alive' : epoch & 1 ? 'short-lived' : 'long-lived']
         });
+
+        prevEpochId = currentEpochId || prevEpochId;
     }
+    console.log(allocationGcEpochDict);
 
     for (let i = 0; i < allocationGcEpochs.length; i++) {
         allocationGcEpochs[i] = epochToIndex.get(allocationGcEpochs[i])!;
@@ -101,11 +118,19 @@ export function createMemlineAllocationSpaceAttribute(
 
     const map = new Map<number, number>();
     const allocationSpaces = new Uint32Array(_cpuproAllocationSpaces);
-    const allocationSpaceNames = Object.entries(_cpuproAllocationSpaceNames || {})
+    const allocationSpaceNames: AllocationSpaceDictEntry[] = Object.entries(_cpuproAllocationSpaceNames || {})
         .sort((a, b) => Number(a[0]) - Number(b[0]))
         .map(([id, name]) => {
             map.set(Number(id), map.size);
-            return name.replace(/large_object_/, 'lo_');
+            return {
+                code: name,
+                color: typeColor[name.replace(/large_object_/, 'lo_')],
+                name: name
+                    .replace(/_space$/, '')
+                    .replace(/_/g, ' ')
+                    .replace(/^(?=large object)/, 'old ')
+                    .replace(/^./, str => str.toUpperCase())
+            };
         });
 
     for (let i = 0; i < allocationSpaces.length; i++) {

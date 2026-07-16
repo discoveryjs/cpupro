@@ -30,7 +30,7 @@ export const chartUsedHeap = {
                         content: [
                             { view: 'block', className: 'labeled-value-group', content: { view: 'labeled-value-list', data: `[
                                 { label: 'Range', value: \`\${min.bytes()} – \${max.bytes()}\` },
-                                { label: 'Range size', value: \`\${(max - min).bytes()}\` }
+                                { label: 'Range size', value: (max - min).bytes() }
                             ]`, label: 'text:label', value: 'text:value' } },
                             { view: 'block', className: 'labeled-value-group', content: { view: 'labeled-value-list', data: `[
                                 { label: 'Allocated', value: up.bytes() },

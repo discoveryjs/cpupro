@@ -2,7 +2,7 @@ import { sessionExpandState } from '../common.js';
 
 export const histAllocationGcs = {
     view: 'expand',
-    data: 'memline.byGcEpoch.[value].sort(name.order() asc)',
+    data: 'memline.byGcEpoch.sort(name.order() asc)',
     whenData: true,
     ...sessionExpandState('default-allocation-gcs', false, '$'),
     header: [
@@ -43,8 +43,8 @@ export const histAllocationGcs = {
                 {
                     view: 'block',
                     className: 'label',
-                    postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                    content: 'text:entry.type = "none" ? "survived" : entry.type + "#" + entry.epoch'
+                    postRender: (el, _, data) => el.style.setProperty('--color', data.entry.color),
+                    content: 'text:entry.type = "none" ? "survived" : entry.type + " #" + entry.epoch'
                 },
                 {
                     view: 'block',

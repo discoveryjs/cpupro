@@ -298,9 +298,14 @@ export const methods = {
         const max = Math.max(...binSumVector);
 
         return vectors.map((vector, index) => {
+            const entry = attributeDict ? attributeDict[index] : null;
+            const color: string = typeof entry === 'string'
+                ? typeColor[entry]
+                : entry?.color || 'green';
+
             return {
                 entry: attribute?.dict[index] ?? valuesLine.type,
-                color: attributeDict ? typeColor[attributeDict[index]] : 'green',
+                color,
                 value: sum(vector),
                 max,
                 total: valuesLine.axisTotal,

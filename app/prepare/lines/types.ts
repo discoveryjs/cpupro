@@ -57,7 +57,7 @@ export type ProfileLineAllocationLifespanAttribute = {
 export type ProfileLineAllocationSpaceAttribute = {
     name: 'allocationSpace';
     values: Uint32Array;
-    dict: string[];
+    dict: AllocationSpaceDictEntry[];
 };
 export type ProfileLineAllocationCodeTypeAttribute = {
     name: 'allocationCodeType';
@@ -134,7 +134,12 @@ export type ProfileMemline = ProfileLine & {
 };
 
 export type GcEpochDictEntry = {
-    type: 'minor' | 'major' | 'none'; // 'none' for allocations not collected by GC
+    type: 'minor' | 'major' | 'none' | 'unknown'; // 'none' for allocations not collected by GC, 'unknown' for missed epochs
     epoch: number;
+    color: string;
+};
+export type AllocationSpaceDictEntry = {
+    code: string;
+    name: string;
     color: string;
 };
