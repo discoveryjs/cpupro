@@ -554,6 +554,24 @@ const noDataPageContent = {
 
 const pageContent = [
     {
+        view: 'button',
+        when: false,
+        data: 'scopeBreakdown()',
+        text: 'test mask',
+        onClick(_, breakdown) {
+            if (breakdown.samplesMetricsFiltered.hasMask()) {
+                breakdown.samplesMetricsFiltered.resetMask();
+            } else {
+                breakdown.samplesMetricsFiltered.updateMask(mask => {
+                    for (let i = 0; i < mask.length; i++) {
+                        mask[i] = 1;
+                    }
+                });
+            }
+        }
+    },
+
+    {
         view: 'timeline-profiles',
         when: experimentalFeatures,
         data: '#.profiles',

@@ -123,9 +123,19 @@ export class SamplesMetrics extends MetricsObserver {
     }
 }
 
+function isMaskEmpty(mask: Uint32Array) {
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i] !== 0) {
+            return false;
+        }
+    }
+
+    return true;
+}
 export class SamplesMetricsFiltered extends SamplesMetrics {
     samplesMask: Uint32Array;
     originalValues: Uint32Array;
+    originalSamples: Uint32Array;
     rangeStart: number | null = null;
     rangeEnd: number | null = null;
     rangeSamples: number | null = null;
@@ -148,6 +158,47 @@ export class SamplesMetricsFiltered extends SamplesMetrics {
 
         this.samplesMask = samplesMask;
         this.originalValues = values;
+        this.originalSamples = samples;
+    }
+
+    resetMask() {
+        this.samplesMask.fill(0);
+
+        if (this.samples !== this.originalSamples) {
+            this.samples.set(this.originalSamples);
+            this.originalSamples = this.samples;
+        }
+
+        this.notify();
+    }
+
+    hasMask() {
+        return this.originalSamples !== this.samples;
+    }
+
+    updateMask(fn: (mask: Uint32Array) => void) {
+        const { samples } = this;
+        let { originalSamples } = this;
+        const hasMaskedSamples = originalSamples !== samples;
+
+        fn(this.samplesMask);
+
+        // mask is empty and no samples are masked, no need to update
+        if (isMaskEmpty(this.samplesMask) && !hasMaskedSamples) {
+            return;
+        }
+
+        if (!hasMaskedSamples) {
+            this.originalSamples = originalSamples = samples.slice();
+        }
+
+        for (let i = 0; i < samples.length; i++) {
+            samples[i] = this.samplesMask[i] === 0
+                ? originalSamples[i]
+                : 0;
+        }
+
+        this.notify();
     }
 
     resetRange() {
@@ -401,7 +452,6 @@ export type DictionaryMetric<T> = {
 
 export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
     dictionary: T[];
-    #entries: WeakRef<DictionaryMetric<T>[]>;
     entries: DictionaryMetric<T>[];
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
     samplesCount: Uint32Array;
