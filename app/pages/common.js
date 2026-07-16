@@ -1,6 +1,6 @@
-export const timingCols = [
+export const valueCols = [
     {
-        header: '="selfValue".metricName()',
+        header: { className: 'timings', text: '="selfValue".metricName()' },
         className: 'timings self-time',
         sorting: 'selfValue desc, totalValue desc',
         colSpan: '=totalValue ? 1 : 3',
@@ -14,7 +14,7 @@ export const timingCols = [
         }
     },
     {
-        header: '="nestedValue".metricName()',
+        header: { className: 'timings', text: '="nestedValue".metricName()' },
         className: 'timings',
         sorting: 'nestedValue desc, totalValue desc',
         when: 'totalValue',
@@ -22,7 +22,7 @@ export const timingCols = [
         content: 'metric:nestedValue'
     },
     {
-        header: '="totalValue".metricName()',
+        header: { className: 'timings', text: '="totalValue".metricName()' },
         className: 'timings',
         sorting: 'totalValue desc, selfValue desc',
         when: 'totalValue',
@@ -49,7 +49,7 @@ export const callFramesCol = (data, moduleCol = false) => ({
                 })
             `,
             cols: [
-                ...timingCols,
+                ...valueCols,
                 ...moduleCol ? [{
                     header: 'Module',
                     className: 'subject-name',

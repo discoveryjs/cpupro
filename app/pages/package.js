@@ -1,4 +1,4 @@
-import { callFramesCol, sessionExpandState, timingCols } from './common.js';
+import { callFramesCol, sessionExpandState, valueCols } from './common.js';
 
 const pageContent = [
     {
@@ -83,7 +83,7 @@ const pageContent = [
                         .sort(selfValue desc, totalValue desc)
                     `,
                     cols: [
-                        ...timingCols,
+                        ...valueCols,
                         {
                             header: 'Module',
                             className: 'subject-name',

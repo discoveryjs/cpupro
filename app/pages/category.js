@@ -1,4 +1,4 @@
-import { callFramesCol, sessionExpandState, timingCols } from './common.js';
+import { callFramesCol, sessionExpandState, valueCols } from './common.js';
 
 const pageContent = [
     {
@@ -88,7 +88,7 @@ const pageContent = [
                             .sort(selfValue desc, totalValue desc)
                         `,
                         cols: [
-                            ...timingCols,
+                            ...valueCols,
                             {
                                 header: 'Package',
                                 className: 'subject-name',
@@ -106,7 +106,7 @@ const pageContent = [
                                         className: 'full-width-table',
                                         data: '.({ ..., selfValue: module.selfValue, nestedValue: module.nestedValue, totalValue: module.totalValue })',
                                         cols: [
-                                            ...timingCols,
+                                            ...valueCols,
                                             {
                                                 header: 'Module',
                                                 className: 'subject-name',
@@ -166,7 +166,7 @@ const pageContent = [
                         .sort(selfValue desc, totalValue desc)
                     `,
                     cols: [
-                        ...timingCols,
+                        ...valueCols,
                         {
                             header: 'Module',
                             className: 'subject-name',

@@ -1,4 +1,4 @@
-import { sessionExpandState, timingCols } from './common.js';
+import { sessionExpandState, valueCols } from './common.js';
 
 const pageContent = [
     {
@@ -107,7 +107,7 @@ const pageContent = [
                         .sort(selfValue desc, totalValue desc, loc ascN)
                     `,
                     cols: [
-                        ...timingCols,
+                        ...valueCols,
                         {
                             header: '',
                             colWhen: '$[=>right]',

@@ -1,3 +1,6 @@
+import { allPageHeader, allPageSummary, allPageTable } from './all-page-common.js';
+import { valueCols } from './common.js';
+
 discovery.page.define('modules', [
     {
         view: 'context',
@@ -19,61 +22,23 @@ discovery.page.define('modules', [
                 })
         `,
         modifiers: [
-            {
-                view: 'page-header',
-                className: 'all-page-header',
-                prelude: [
-                    'badge{ text: "Packages", className: #.page = "packages" ? "selected", href: #.page != "packages" ? "#packages" }',
-                    'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
-                    'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }'
-                ],
-                content: [
-                    'h1:"All modules"',
-                    {
-                        view: 'input',
-                        name: 'filter',
-                        type: 'regexp',
-                        placeholder: 'Filter'
-                    }
-                ]
-            }
+            allPageHeader([
+                'h1:"All modules"',
+                {
+                    view: 'input',
+                    name: 'filter',
+                    type: 'regexp',
+                    placeholder: 'Filter'
+                }
+            ])
         ],
         content: {
             view: 'context',
             data: '.[name ~= #.filter or nameWithPackageName ~= #.filter]',
             content: [
-                {
-                    view: 'table',
-                    className: 'all-page-table',
-                    limit: 50,
-                    data: '.sort(selfValue desc, totalValue desc)',
+                allPageTable({
                     cols: [
-                        { header: { className: 'timings', text: '="selfValue".metricName()' },
-                            className: 'timings',
-                            colSpan: '=totalValue ? 1 : 3',
-                            sorting: 'selfValue desc, totalValue desc',
-                            contentWhen: 'selfValue or no totalValue',
-                            content: {
-                                view: 'switch',
-                                content: [
-                                    { when: 'totalValue', content: 'metric:selfValue' },
-                                    { content: 'no-samples' }
-                                ]
-                            }
-                        },
-                        { header: { className: 'timings', text: '="nestedValue".metricName()' },
-                            className: 'timings',
-                            when: 'totalValue',
-                            sorting: 'nestedValue desc, totalValue desc',
-                            contentWhen: 'nestedValue',
-                            content: 'metric:nestedValue'
-                        },
-                        { header: { className: 'timings', text: '="totalValue".metricName()' },
-                            className: 'timings',
-                            when: 'totalValue',
-                            sorting: 'totalValue desc, selfValue desc',
-                            content: 'metric:totalValue'
-                        },
+                        ...valueCols,
                         { header: { className: 'category', text: 'Category' },
                             sorting: 'categoryName ascN',
                             data: 'entry.category',
@@ -93,16 +58,9 @@ discovery.page.define('modules', [
                             }
                         }
                     ]
-                },
+                }),
 
-                {
-                    view: 'block',
-                    className: 'app-page-summary',
-                    content: [
-                        { view: 'block', content: ['text:"Modules:"', 'text-numeric:size()'] },
-                        { view: 'block', content: ['text:`${"totalValue".metricName()}:`', 'metric:sum(=>selfValue)'] }
-                    ]
-                }
+                allPageSummary('text:"Modules:"')
             ]
         }
     }

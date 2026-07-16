@@ -1,10 +1,11 @@
 .page-locations .view-cell-details-content .view-source__content {
     max-height: 70vh;
 }
-.page-locations > .locations-table {
+.page-locations > .all-page-table {
+    --sticky-offset: -34px;
     width: 100%;
 }
-.page-locations > .locations-table > .view-table-header {
-    z-index: 20;
+.page-locations > .all-page-table > .view-table-header {
+    top: 86px;
     white-space: nowrap;
 }

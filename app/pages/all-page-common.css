@@ -1,16 +1,18 @@
 .all-page-header {
     margin-bottom: -18px;
+    anchor-name: --all-page-header;
 }
 .all-page-header > .view-page-header__content {
     margin-bottom: 21px;
 }
 
 .all-page-table {
+    --sticky-offset: 0px;
     min-width: 100%;
     border-bottom: 1em solid transparent;
 }
 .all-page-table > thead {
-    top: 120px;
+    top: calc(120px + var(--sticky-offset));
     z-index: 101;
 }
 .all-page-table > thead .view-table-header-cell {
@@ -28,12 +30,12 @@
     width: 100%;
 }
 .all-page-table > tbody > .view-table-cell-details-row > .view-cell-details-content > .view-table > thead {
-    top: 168.5px;
+    top: calc(168.5px + var(--sticky-offset));
     z-index: 11;
 }
 .all-page-table > tbody > .view-table-row:has(+ .view-table-cell-details-row) {
     position: sticky;
-    top: 144px;
+    top: calc(144px + var(--sticky-offset));
     z-index: 12;
     background: var(--discovery-background-color);
 }
@@ -43,7 +45,7 @@
 }
 .all-page-table .view-call-frame-source .view-source__prelude {
     position: sticky;
-    top: 168.5px;
+    top: calc(168.5px + var(--sticky-offset));
     z-index: 2;
     background-color: rgb(53 53 53);
     border-top: 1px solid var(--discovery-background-color);
@@ -53,7 +55,7 @@
 }
 .all-page-table > tbody > .view-table-cell-details-row > .view-cell-details-content > .view-call-frame-codes-table > tbody > .view-table-row:has(+.view-table-cell-details-row) {
     position: sticky;
-    top: 193px;
+    top: calc(193px + var(--sticky-offset));
     z-index: 11;
     background-color: var(--discovery-background-color);
 }
@@ -61,7 +63,7 @@
     height: calc(100vh - 260px - var(--discovery-page-padding-bottom));
 }
 
-.app-page-summary {
+.all-page-summary {
     position: fixed;
     z-index: 110;
     inset: auto 0 0 0;
@@ -84,15 +86,15 @@
     box-shadow: 0 0 3px rgba(0, 0, 0, .5);
     font-size: 90%;
 }
-.app-page-summary .view-text-numeric {
+.all-page-summary .view-text-numeric {
     color: #9ea867;
 }
-.app-page-summary > .view-block {
+.all-page-summary > .view-block {
     display: flex;
     gap: 1ex;
     opacity: .9;
 }
-.app-page-summary > .view-block:not(:first-child)::before {
+.all-page-summary > .view-block:not(:first-child)::before {
     content: '';
     display: inline-block;
     align-self: center;
