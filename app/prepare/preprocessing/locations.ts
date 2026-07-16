@@ -174,6 +174,67 @@ function callFramesMapFromDict(dict: Record<number, string>): (CpuProCallFrame |
     return Array.from({ length: maxId + 1 }, () => null);
 }
 
+function resolveVmStateCallFrame(
+    dictionary: Dictionary,
+    name: string
+): CpuProCallFrame {
+    return dictionary.resolveCallFrame({
+        functionName: `(${name})`,
+        scriptId: 0,
+        url: null,
+        lineNumber: -1,
+        columnNumber: -1
+    }, null as unknown as IProfileScriptsMap);
+}
+
+function resolveBuiltinCallFrame(
+    dictionary: Dictionary,
+    name: string
+): CpuProCallFrame {
+    return dictionary.resolveCallFrame({
+        functionName: `(builtin) ${name}`,
+        scriptId: 0,
+        url: null,
+        lineNumber: -1,
+        columnNumber: -1
+    }, null as unknown as IProfileScriptsMap);
+}
+
+function resolveCallFrameFromContextInfo(
+    dictionary: Dictionary,
+    contextInfoValue: number,
+    vmStateCallFrames: (CpuProCallFrame | null)[],
+    builtinsCallFrames: (CpuProCallFrame | null)[]
+): CpuProCallFrame {
+    let callFrame: CpuProCallFrame | null;
+
+    if (contextInfoValue === 0) {
+        // Safeguard: check we are not trying to resolve a call frame for context info value 0, which is invalid
+        throw new Error('Context info value cannot be zero when resolving call frame');
+    }
+
+    if (contextInfoValue <= 0x0f) {
+        callFrame = vmStateCallFrames[contextInfoValue];
+
+        if (!callFrame) {
+            // TODO: add a diagnostic here to indicate that an unknown VM state code was encountered
+            callFrame = resolveVmStateCallFrame(dictionary, `unknown-vm-state[${contextInfoValue}]`);
+            callFrame.kind = 'vm-state';
+            vmStateCallFrames[contextInfoValue] = callFrame;
+        }
+    } else {
+        callFrame = builtinsCallFrames[contextInfoValue >> 4];
+
+        if (!callFrame) {
+            // TODO: add a diagnostic here to indicate that an unknown builtin code was encountered
+            callFrame = resolveBuiltinCallFrame(dictionary, `unknown-builtin[${contextInfoValue >> 4}]`);
+            builtinsCallFrames[contextInfoValue >> 4] = callFrame;
+        }
+    }
+
+    return callFrame;
+}
+
 function buildContextVmStateDict(
     dictionary: Dictionary,
     vmStateNames: Record<number, string>
@@ -181,13 +242,7 @@ function buildContextVmStateDict(
     const vmStateCallFrames = callFramesMapFromDict(vmStateNames);
 
     for (const [code, name] of Object.entries(vmStateNames)) {
-        vmStateCallFrames[Number(code)] = dictionary.resolveCallFrame({
-            functionName: `(${name})`,
-            scriptId: 0,
-            url: null,
-            lineNumber: -1,
-            columnNumber: -1
-        }, null as unknown as IProfileScriptsMap);
+        vmStateCallFrames[Number(code)] = resolveVmStateCallFrame(dictionary, name);
     }
 
     return vmStateCallFrames;
@@ -200,13 +255,7 @@ function buildContextBuiltinDict(
     const builtinsCallFrames = callFramesMapFromDict(builtinsNames);
 
     for (const [code, name] of Object.entries(builtinsNames)) {
-        builtinsCallFrames[Number(code)] = dictionary.resolveCallFrame({
-            functionName: `(builtin) ${name}`,
-            scriptId: 0,
-            url: null,
-            lineNumber: -1,
-            columnNumber: -1
-        }, null as unknown as IProfileScriptsMap);
+        builtinsCallFrames[Number(code)] = resolveBuiltinCallFrame(dictionary, name);
     }
 
     return builtinsCallFrames;
@@ -219,8 +268,8 @@ export function createVectorLocations(
     scriptIds: RawScriptIds | null,
     scriptOffsets: NumericVector | null,
     contextInfo: NumericVector | null,
-    builtinsNames: Record<number, string> | null,
-    vmStateNames: Record<number, string> | null
+    vmStateNames: Record<number, string> | null,
+    builtinsNames: Record<number, string> | null
 ): {
     generatedNodes: GeneratedNodes;
     samples: Uint32Array;
@@ -277,19 +326,27 @@ export function createVectorLocations(
         }
 
         if (locationIndex === -1) {
-            locationIndex = scriptId !== 0
-                ? dictionary.resolveLocationIndex(
+            if (scriptId !== 0) {
+                // Normal location in a script
+                locationIndex = dictionary.resolveLocationIndex(
                     null,
                     prevScript,
                     scriptOffset
-                )
-                : contextInfoValue !== 0
-                    ? dictionary.resolveLocationIndex(
-                        contextInfoValue <= 0x0f
-                            ? vmStateCallFrames[contextInfoValue]
-                            : builtinsCallFrames[contextInfoValue >> 4]
+                );
+            } else if (contextInfoValue !== 0) {
+                // VM state or builtin context info
+                locationIndex = dictionary.resolveLocationIndex(
+                    resolveCallFrameFromContextInfo(
+                        dictionary,
+                        contextInfoValue,
+                        vmStateCallFrames,
+                        builtinsCallFrames
                     )
-                    : 0; // unknown location
+                );
+            } else {
+                // Unknown location (no script, no context info)
+                locationIndex = 0;
+            }
 
             if (locationIndex >= locationIndexToNodeIndex.length) {
                 locationIndexToNodeIndex.push(-1);
@@ -323,18 +380,20 @@ export function createVectorLocations(
 
             if (contextInfoValue !== 0 && scriptIds[i] !== 0) {
                 const ref = nodesCount * contextInfoValue + sampleToNode[i];
-                const callFrame = contextInfoValue <= 0x0f
-                    ? vmStateCallFrames[contextInfoValue]
-                    : builtinsCallFrames[contextInfoValue >> 4];
                 let contextNodeIndex = contextNodesMap.get(ref);
 
                 if (contextNodeIndex === undefined) {
+                    const callFrame = resolveCallFrameFromContextInfo(
+                        dictionary,
+                        contextInfoValue,
+                        vmStateCallFrames,
+                        builtinsCallFrames
+                    );
+
                     contextNodesMap.set(ref, contextNodeIndex = generatedNodes.addNode(
-                        callFrame!.id - 1,
+                        callFrame.id - 1,
                         sampleToNode[i],
-                        dictionary.resolveLocationIndex(
-                            callFrame
-                        )
+                        dictionary.resolveLocationIndex(callFrame)
                     ));
                 }
 

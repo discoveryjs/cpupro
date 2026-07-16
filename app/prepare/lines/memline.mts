@@ -217,8 +217,8 @@ export async function createMemline(
             _cpuproAllocationScriptIds,
             _cpuproAllocationLocations,
             _cpuproAllocationContextInfo,
-            _cpuproAllocationBuiltinNames,
-            _cpuproAllocationVmStateNames
+            _cpuproAllocationVmStateNames,
+            _cpuproAllocationBuiltinNames
         )
     );
 
