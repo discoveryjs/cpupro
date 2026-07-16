@@ -9,7 +9,7 @@ export const userTimingsTimeline = {
         minX: $min,
         maxX: timeline.axisEnd,
         spans: thread.userTimings
-            .({ start: tm, end: tm + duration, text: name })
+            .({ start: tm, end: tm + duration, text: name, event: $ })
             .[start is number and start >= 0],
         intervals: thread.events.[name="MinorGC" or name="MajorGC"]
             .({ start: tm, end: tm + duration, name, color: name = 'MinorGC' ? '#f7b26b38' : '#f78c6b38' })
@@ -49,7 +49,30 @@ function userTimingsTimelineBody() {
             spans: '=spans',
             intervals: '=intervals',
             minX: '=minX',
-            maxX: '=maxX'
+            maxX: '=maxX',
+            tooltipClassName: 'events-track-timeline-tooltip',
+            tooltipContent: [
+                'badge:"User Timing"',
+                'header:text',
+                {
+                    view: 'labeled-value-list',
+                    kind: 'inline-grid',
+                    label: 'text:text',
+                    value: {
+                        view: 'switch',
+                        content: [
+                            { when: 'text="Duration"', content: 'metric' },
+                            { content: 'text:value.formatMicrosecondsTimeFixed()' }
+                        ]
+                    },
+                    data: `[
+                        { text: 'Duration', value: end - start },
+                        { text: 'Start', value: #.spanStart },
+                        { text: 'End', value: #.spanEnd }
+                    ]`
+                },
+                'struct{ data: event.data, whenData: true, expanded: 2 }'
+            ]
         }
     ];
 }

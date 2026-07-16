@@ -8,8 +8,9 @@ discovery.view.define('labeled-value-list', function(el, config, data, context) 
     );
 
     // 'inline' | 'list' | 'grid'
-    el.dataset.kind = kind;
+    el.dataset.kind = kind !== 'inline-grid' ? kind : 'grid';
     el.style.setProperty('--column-count', columns);
+    el.classList.toggle('inline', kind === 'inline-grid');
 
     if (emptyText !== false && emptyText !== '') {
         el.setAttribute('emptyText', emptyText || 'Empty list');

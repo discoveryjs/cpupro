@@ -15,6 +15,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     const samplesMetrics = scopeBreakdown.samplesMetricsFiltered;
     const {
         tooltipContent = defaultTooltipContent,
+        tooltipClassName,
         ruler = 'relative',
         spans = [],
         intervals = [],
@@ -25,7 +26,11 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     } = config;
 
     const tooltip = new Tooltip(discovery, (el, span) =>
-        this.render(el, tooltipContent, span, context)
+        this.render(el, tooltipContent, span, {
+            ...context,
+            spanStart: span.start - scopeLineStart,
+            spanEnd: span.end - scopeLineStart
+        })
     );
 
     const destroyEl = utils.createElement('destroy-track-timeline');
@@ -34,6 +39,10 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
 
     el.classList.add('no-view-time-ruler-tooltip');
     el.append(canvasEl, overlayEl, destroyEl);
+
+    if (typeof tooltipClassName === 'string') {
+        tooltip.el.classList.add(tooltipClassName);
+    }
 
     const trackTimeline = new TrackTimeline(el, {
         ruler,

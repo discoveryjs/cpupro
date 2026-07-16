@@ -9,6 +9,10 @@ export default function(host, render) {
     });
 
     return {
+        get el() {
+            return popup?.el;
+        },
+
         show(span) {
             if (popup === null) {
                 return;

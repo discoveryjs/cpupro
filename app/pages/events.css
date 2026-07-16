@@ -18,3 +18,7 @@
     gap: 4px;
     padding-left: 2ex;
 }
+
+.events-track-timeline-tooltip > .view-header {
+    margin: 2px 0 6px;
+}

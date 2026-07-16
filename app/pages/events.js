@@ -43,7 +43,8 @@ discovery.page.define('events', {
                     spans: events.[tm > 0 and duration > 0 and name!="Animation"].({
                         start: tm | $cutMin(),
                         end: tm + duration | $cutMin(),
-                        text: name + (name = 'EventDispatch' ? ' / ' + data.type : '')
+                        text: name + (name = 'EventDispatch' ? ' / ' + data.type : ''),
+                        event: $
                     }),
                     intervals: events.[$intervals[name]].({
                         start: tm | $cutMin(),
@@ -55,9 +56,6 @@ discovery.page.define('events', {
                         // { start: timeline.axisStart + timeline.axisStartNoSamples - $minX, end: timeline.axisEnd - $minX, color: "orange" },
                     ] : [])
                 });
-                x: $intervals,
-                xxx: events.[name in $intervals],
-                zzz: events.(name),
                 spans: $spans,
                 $minX,
                 maxX: $maxX | $cutMin()
@@ -70,7 +68,30 @@ discovery.page.define('events', {
                 unit: 'us',
                 intervals: '=intervals',
                 minX: '=minX',
-                maxX: '=maxX'
+                maxX: '=maxX',
+                tooltipClassName: 'events-track-timeline-tooltip',
+                tooltipContent: [
+                    'badge:event.cat',
+                    'header:text',
+                    {
+                        view: 'labeled-value-list',
+                        kind: 'inline-grid',
+                        label: 'text:text',
+                        value: {
+                            view: 'switch',
+                            content: [
+                                { when: 'text="Duration"', content: 'metric' },
+                                { content: 'text:value.formatMicrosecondsTimeFixed()' }
+                            ]
+                        },
+                        data: `[
+                            { text: 'Duration', value: end - start },
+                            { text: 'Start', value: #.spanStart },
+                            { text: 'End', value: #.spanEnd }
+                        ]`
+                    },
+                    'struct{ data: event.data, whenData: true, expanded: 2 }'
+                ]
             }
         ]
     }
