@@ -84,7 +84,7 @@ export function fixTimeDeltasOrderIfNeeded(timeDeltas: number[], samples: number
                 swap(samples, i, i - 1);
 
                 // swap sampleScriptOffsets
-                if (Array.isArray(sampleScriptOffsets)) {
+                if (sampleScriptOffsets !== null) {
                     swap(sampleScriptOffsets, i, i - 1);
                 }
 
