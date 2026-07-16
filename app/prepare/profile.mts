@@ -137,7 +137,11 @@ export async function createSampledTreeSet(
         )
     );
 
-    return sampledTreeSet;
+    return {
+        ...sampledTreeSet,
+        treeSet,
+        dictionary: usage || dictionary
+    };
 }
 
 export async function createProfile(data: V8CpuProfile, options?: Partial<CreateProfileOptions>) {
@@ -330,7 +334,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         }
     );
 
-    const usage = dictionary; // new Usage(dictionary, callFrameByNodeIndex, generatedNodes);
     const sampledTreeSet = await work('create tree breakdown', () =>
         createSampledTreeSet(
             dictionary,
@@ -398,6 +401,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     );
 
     // create profile
+    const usage = sampledTreeSet.dictionary;
     const profile = {
         name: data._name ?? null,
         runtime: detectRuntime(usage.categories, usage.packages, runtime || data._runtime), // FIXME: categories/packages must be related to profile

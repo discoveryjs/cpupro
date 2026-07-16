@@ -22,3 +22,6 @@
 .events-track-timeline-tooltip > .view-header {
     margin: 2px 0 6px;
 }
+.events-track-timeline-tooltip .view-labeled-value > .labeled-value__value {
+    font-size: unset;
+}

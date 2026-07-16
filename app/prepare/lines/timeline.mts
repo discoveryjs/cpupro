@@ -14,7 +14,8 @@ const metricName: Record<Metric, string> = {
     samplingInterval: 'Sampling interval',
     selfValue: 'Self time',
     nestedValue: 'Nested time',
-    totalValue: 'Total time'
+    totalValue: 'Total time',
+    interval: 'Duration'
 };
 const metricDefinitions: Record<Metric, string> = {
     axis: [
@@ -29,7 +30,8 @@ const metricDefinitions: Record<Metric, string> = {
     samplingInterval: '',
     selfValue: 'The time spent executing a function\'s own code, excluding any time used by other functions it calls.',
     nestedValue: 'The time accounted for the execution of functions that are called by a given function, excluding the time taken to execute the original function\'s own code itself.',
-    totalValue: 'The complete time taken to execute a function. It includes both \'self time\', which is the time the function spends executing its own code, and \'nested time\', which is the time spent executing all other functions that are called from within this function.'
+    totalValue: 'The complete time taken to execute a function. It includes both \'self time\', which is the time the function spends executing its own code, and \'nested time\', which is the time spent executing all other functions that are called from within this function.',
+    interval: 'The time duration of a specific range.'
 };
 const timelineMethods: ProfileLineMethods = {
     formatValue(value: number, precision = 1) {
@@ -103,6 +105,7 @@ export async function createTimeline(
         work
     );
     line.breakdowns.push(callStackBreakdown);
+    line.values = callStackBreakdown.samplesMetricsFiltered.samples;
 
     return line;
 }

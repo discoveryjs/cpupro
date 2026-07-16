@@ -10,7 +10,8 @@ export type Metric =
     | 'samplingInterval'
     | 'selfValue'
     | 'nestedValue'
-    | 'totalValue';
+    | 'totalValue'
+    | 'interval';
 
 export type LineTreeMetricState<T extends CpuProNode> = {
     nodes: TreeMetrics<T>;

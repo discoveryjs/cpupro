@@ -163,9 +163,9 @@ const categoriesTimeline = {
                     className: 'timeline-segment-info',
                     data: 'samples',
                     content: [
-                        { view: 'block', content: 'text:`Range: ${#.timeStart.formatMicrosecondsTime(line.axisTotal)} – ${#.timeEnd.formatMicrosecondsTime(line.axisTotal)}`' },
-                        { view: 'block', content: ['text:`Duration: `', 'duration:{ time: #.timeEnd - #.timeStart, total: line.axisTotal }'] },
-                        { view: 'block', content: 'text:`Samples: ${$[].binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' }
+                        { view: 'block', content: 'text:`Range: ${#.timeStart.formatValue()} – ${#.timeEnd.formatValue()}`' },
+                        { view: 'block', content: ['text:`${"interval".metricName()}: `', 'duration:{ time: #.timeEnd - #.timeStart, total: line.axisTotal }'] },
+                        { view: 'block', content: 'text-numeric:`Samples: ${$[].binSamples[#.segmentStart:#.segmentEnd + 1].sum()}`' }
                     ]
                 },
                 {

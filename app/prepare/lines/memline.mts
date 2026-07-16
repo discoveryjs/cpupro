@@ -26,7 +26,8 @@ const metricName: Record<Metric, string> = {
     samplingInterval: 'Sampling interval',
     selfValue: 'Self alloc',
     nestedValue: 'Nested alloc',
-    totalValue: 'Total alloc'
+    totalValue: 'Total alloc',
+    interval: 'Memory allocated'
 };
 const metricDefinitions: Record<Metric, string> = {
     axis: [
@@ -41,7 +42,8 @@ const metricDefinitions: Record<Metric, string> = {
     samplingInterval: 'The minimum memory allocated between samples taken during the profiling session.',
     selfValue: 'The memory allocated by a function\'s own code, excluding any memory allocated by other functions it calls.',
     nestedValue: 'The memory allocated by functions that are called by a given function, excluding the memory taken during the original function\'s own code execution.',
-    totalValue: 'The complete memory allocated by a function, including both \'self memory\' and \'nested memory\'.'
+    totalValue: 'The complete memory allocated by a function, including both \'self memory\' and \'nested memory\'.',
+    interval: 'The memory allocated during a specific range.'
 };
 const memlineMethods: ProfileLineMethods = {
     formatValue(value: number, precision = 1): string {

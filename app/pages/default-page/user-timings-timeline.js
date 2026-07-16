@@ -57,7 +57,6 @@ function userTimingsTimelineBody() {
                 {
                     view: 'labeled-value-list',
                     kind: 'inline-grid',
-                    label: 'text:text',
                     value: {
                         view: 'switch',
                         content: [
@@ -67,11 +66,31 @@ function userTimingsTimelineBody() {
                     },
                     data: `[
                         { text: 'Duration', value: end - start },
-                        { text: 'Start', value: #.spanStart },
-                        { text: 'End', value: #.spanEnd }
+                        { text: 'Start', value: #.spanStart | $ > 0 ?: 0 },
+                        { text: 'End', value: #.spanEnd | $ > 0 ?: 0 }
                     ]`
                 },
-                'struct{ data: event.data, whenData: true, expanded: 2 }'
+                {
+                    view: 'context',
+                    data: `event.data.detail.jsonParse() |
+                        is not error and devtools
+                        ? devtools.entries().(key != "properties"
+                            ? { ..., color: "#519151" }
+                            : value.({ key: "property:" + $[0], value: $[1] })
+                        )`,
+                    whenData: true,
+                    content: [
+                        'html:"<br>"',
+                        'badge:"DevTools detail"',
+                        {
+                            view: 'labeled-value-list',
+                            kind: 'grid',
+                            label: 'text:key',
+                            value: 'text:value'
+                        }
+                    ]
+                }
+                // 'struct{ data: event.data, whenData: true, expanded: 2 }'
             ]
         }
     ];
