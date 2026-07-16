@@ -1,0 +1,18 @@
+<!DOCTYPE html> 
+<button id="start">Start</button>
+<div id="result"></div>
+<script type="module">
+    function test() {
+        document.getElementById('result').textContent = 'Running...';
+        let duration = 50;
+        for (let i = 0; i < 20; i++) {
+            const start = performance.now();
+            while (performance.now() - start < duration) {}
+            performance.measure('test' + i, { duration });
+            // duration += 10;
+        }
+        document.getElementById('result').textContent = 'Done';
+    }
+
+    document.getElementById('start').addEventListener('click', test);
+</script>

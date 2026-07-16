@@ -11,23 +11,21 @@ import { createProfileSession } from './prepare/profile-session.mjs';
 import { createWorkHandler } from './prepare/misc/work.js';
 import { OriginalScriptsMap } from './prepare/preprocessing/scripts.js';
 import { terminateParseWorkerPool } from './prepare/misc/script-function-resolution.js';
+import { now, perfMeasure } from './prepare/misc/time-utils.js';
 
-const now = typeof performance !== 'undefined' && performance.now
-    ? performance.now.bind(performance)
-    : Date.now.bind(Date);
-
-function createContextFreeWorkHandler(setWorkTitle) {
-    return createWorkHandler(async function<T>(name: string, fn: () => T): Promise<T> {
+function createContextFreeWorkHandler(setWorkTitle: (title: string) => Promise<void>) {
+    return createWorkHandler(async function<T>({ name, prefix }, fn: () => T): Promise<T> {
         const startTime = now();
-        await setWorkTitle(name);
+        const fullName = prefix ? `${prefix} — ${name}` : name;
+        await setWorkTitle(fullName);
 
         try {
             return await fn();
         } finally {
-            TIMINGS && console.info('>', name, (now() - startTime).toFixed(1).replace(/\.0$/, '') + 'ms');
-            if (performance && performance.measure) {
-                performance.measure(name, { start: startTime });
-            }
+            TIMINGS && console.info('>', fullName, (now() - startTime).toFixed(1).replace(/\.0$/, '') + 'ms');
+            // use end:now() since Chromium's performance.measure() implementation is not accurate enough
+            // when end is not specified
+            perfMeasure(name, { start: startTime, end: now() });
         }
     });
 }
@@ -109,7 +107,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 dict.setPackageNameForOrigin(new URL(origin).host, name);
             }
 
-            const profile = await createProfile(profileData, {
+            const profile = await work.measure('create profile', () => createProfile(profileData, {
                 dictionary: dict,
                 originalScripts,
                 runtime: null,
@@ -117,7 +115,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 work: sessionProfiles.length > 1
                     ? runSessionTask.withPrefix(`Profile ${i + 1}/${sessionProfiles.length}`)
                     : runSessionTask
-            });
+            }));
 
             if (profile.name === undefined) {
                 profile.name = 'Profile #' + (i + 1);

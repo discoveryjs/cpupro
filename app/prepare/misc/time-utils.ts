@@ -2,6 +2,16 @@ function padZeroLeft(n: number, d: number) {
     return String(n).padStart(d, '0');
 }
 
+export const now = typeof performance !== 'undefined' && performance.now
+    ? performance.now.bind(performance)
+    : Date.now.bind(Date);
+export const perfMeasure: typeof performance.measure = typeof performance !== 'undefined' && performance.measure
+    ? performance.measure.bind(performance)
+    : () => {};
+export const perfMark: typeof performance.mark = typeof performance !== 'undefined' && performance.mark
+    ? performance.mark.bind(performance)
+    : () => {};
+
 export function formatMicrosecondsTime(time: number, duration: number, fixed = false) {
     time = Math.round(time);
 
