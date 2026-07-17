@@ -1,7 +1,8 @@
 {
     "include": [
         "app/**/*.ts",
-        "app/**/*.mts"
+        "app/**/*.mts",
+        "test/**/*.ts"
     ],
     "compilerOptions": {
         "module": "NodeNext",

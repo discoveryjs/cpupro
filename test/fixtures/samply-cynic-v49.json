@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "interval": 1,
+    "preprocessedProfileVersion": 49,
+    "product": "cynic-test262",
+    "sampleUnits": { "time": "ms" },
+    "initialSelectedThreads": [0]
+  },
+  "libs": [
+    { "name": "cynic-test262", "path": "/opt/cynic/cynic-test262" }
+  ],
+  "threads": [
+    {
+      "name": "cynic-test262",
+      "isMainThread": true,
+      "pid": "100",
+      "tid": "100",
+      "processName": "cynic-test262",
+      "frameTable": {
+        "length": 3,
+        "address": [16, 32, 48],
+        "column": [null, null, null],
+        "func": [0, 1, 2],
+        "line": [null, null, null]
+      },
+      "funcTable": {
+        "length": 3,
+        "columnNumber": [null, null, null],
+        "fileName": [null, null, null],
+        "lineNumber": [null, null, null],
+        "name": [0, 1, 2],
+        "resource": [0, 0, 0]
+      },
+      "resourceTable": {
+        "length": 1,
+        "lib": [0],
+        "name": [3]
+      },
+      "samples": {
+        "length": 3,
+        "stack": [2, 1, 2],
+        "time": [0.5, 1.5, 3],
+        "weight": [1, 1, 1],
+        "weightType": "samples"
+      },
+      "stackTable": {
+        "length": 3,
+        "frame": [0, 1, 2],
+        "prefix": [null, 0, 1]
+      },
+      "stringArray": [
+        "main",
+        "lantern.runFrames",
+        "Heap.collect",
+        "cynic-test262"
+      ]
+    }
+  ]
+}

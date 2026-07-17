@@ -131,7 +131,7 @@
 .page-default .view-page-indicators .runtime .value {
     text-align: left;
 }
-.page-default .view-page-indicators .runtime:is(.nodejs, .deno, .chromium, .edge, .electron, .unknown) .value::before {
+.page-default .view-page-indicators .runtime:is(.nodejs, .deno, .chromium, .edge, .electron, .unknown.v8) .value::before {
     content: "";
     display: inline-block;
     vertical-align: baseline;
@@ -161,7 +161,7 @@
 .page-default .view-page-indicators .runtime:is(.electron) .value::before {
     background-image: var(--runtime-electron);
 }
-.page-default .view-page-indicators .runtime:is(.unknown) .value::before {
+.page-default .view-page-indicators .runtime:is(.unknown.v8) .value::before {
     background-image: var(--runtime-unknown);
 }
 

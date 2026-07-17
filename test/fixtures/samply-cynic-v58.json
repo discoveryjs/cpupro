@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "interval": 1,
+    "preprocessedProfileVersion": 58,
+    "product": "cynic",
+    "sampleUnits": { "time": "ms" },
+    "initialSelectedThreads": [0]
+  },
+  "libs": [
+    { "name": "cynic", "path": "/opt/cynic/cynic" }
+  ],
+  "shared": {
+    "stringArray": [
+      "main",
+      "Heap.collect",
+      "cynic"
+    ]
+  },
+  "threads": [
+    {
+      "name": "cynic",
+      "isMainThread": true,
+      "processName": "cynic",
+      "frameTable": {
+        "length": 2,
+        "address": [16, 32],
+        "func": [0, 1]
+      },
+      "funcTable": {
+        "length": 2,
+        "name": [0, 1],
+        "resource": [0, 0]
+      },
+      "resourceTable": {
+        "length": 1,
+        "lib": [0],
+        "name": [2]
+      },
+      "samples": {
+        "length": 2,
+        "stack": [1, 1],
+        "timeDeltas": [0.5, 1],
+        "weight": [1, 1],
+        "weightType": "samples"
+      },
+      "stackTable": {
+        "length": 2,
+        "frame": [0, 1],
+        "prefix": [null, 0]
+      }
+    }
+  ]
+}

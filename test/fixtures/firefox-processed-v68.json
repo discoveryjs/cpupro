@@ -1,0 +1,65 @@
+{
+  "meta": {
+    "interval": 1,
+    "preprocessedProfileVersion": 68,
+    "product": "Firefox",
+    "sampleUnits": { "time": "ms" },
+    "initialSelectedThreads": [0]
+  },
+  "libs": [
+    { "name": "firefox", "path": "/Applications/Firefox.app/Contents/MacOS/firefox" }
+  ],
+  "shared": {
+    "frameTable": {
+      "length": 2,
+      "address": [16, -1],
+      "column": [null, 5],
+      "func": [0, 1],
+      "line": [null, 12]
+    },
+    "funcTable": {
+      "length": 2,
+      "columnNumber": [null, 5],
+      "lineNumber": [null, 12],
+      "name": [0, 1],
+      "resource": [0, -1],
+      "source": [null, 0]
+    },
+    "resourceTable": {
+      "length": 1,
+      "lib": [0],
+      "name": [2]
+    },
+    "sources": {
+      "length": 1,
+      "filename": [3]
+    },
+    "stackTable": {
+      "length": 2,
+      "frame": [0, 1],
+      "prefixOffset": [0, 1]
+    },
+    "stringArray": [
+      "XREMain::XRE_main",
+      "runScript",
+      "firefox",
+      "file:///work/example.js"
+    ]
+  },
+  "threads": [
+    {
+      "name": "GeckoMain",
+      "isMainThread": true,
+      "pid": "200",
+      "tid": "200",
+      "processName": "Firefox",
+      "samples": {
+        "length": 2,
+        "stack": [1, 1],
+        "timeDeltas": [0.25, 1],
+        "weight": [1, 1],
+        "weightType": "samples"
+      }
+    }
+  ]
+}
