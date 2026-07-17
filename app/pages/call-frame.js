@@ -229,7 +229,7 @@ const pageContent = [
         when: 'scopeLine("memline") | lineAttribute("allocationType") and lineAttribute("allocationLifespan")',
         className: 'trigger-outside',
         data: '{ callFrame: @, matrix: scopeBreakdown() | callFrames.all.nodes.allocationsMatrix(samplesMetrics, @) }',
-        ...sessionExpandState('callframe-allocations-matrix', true, '$'),
+        ...sessionExpandState('callframe-allocations-matrix', false, '$'),
         header: 'text:"Allocation types"',
         content: {
             view: 'update-on-line-metrics-changes',
