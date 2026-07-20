@@ -219,7 +219,7 @@ function hasSamples(thread: GeckoThread): boolean {
     return isSamples(thread.samples) && thread.samples.stack.length > 0;
 }
 
-function selectedThread(profile: GeckoProfile): GeckoThread {
+function selectThread(profile: GeckoProfile): GeckoThread {
     const selectedIndexes = Array.isArray(profile.meta.initialSelectedThreads)
         ? profile.meta.initialSelectedThreads
         : [];
@@ -373,7 +373,16 @@ function convertThread(profile: GeckoProfile, thread: GeckoThread): V8CpuProfile
     const stackPrefixOffsets = optionalColumn(tables.stackTable, 'prefixOffset');
     const stackLength = tables.stackTable.length;
     const children = Array.from({ length: stackLength + 1 }, () => [] as number[]);
-    const nodes: V8CpuProfileNode[] = [];
+    const nodes: V8CpuProfileNode[] = [{
+        id: 1,
+        callFrame: {
+            scriptId: '0',
+            url: '',
+            functionName: '(root)',
+            lineNumber: -1,
+            columnNumber: -1
+        }
+    }];
 
     for (let stackIndex = 0; stackIndex < stackLength; stackIndex++) {
         const frameIndex = indexAt(stackFrames, stackIndex);
@@ -410,17 +419,6 @@ function convertThread(profile: GeckoProfile, thread: GeckoThread): V8CpuProfile
             callFrame: callFrameForFrame(profile, tables, frameIndex)
         });
     }
-
-    nodes.unshift({
-        id: 1,
-        callFrame: {
-            scriptId: '0',
-            url: '',
-            functionName: '(root)',
-            lineNumber: -1,
-            columnNumber: -1
-        }
-    });
 
     for (let i = 0; i < nodes.length; i++) {
         if (children[i].length > 0) {
@@ -512,8 +510,11 @@ function convertThread(profile: GeckoProfile, thread: GeckoThread): V8CpuProfile
 }
 
 export function extractFromGeckoProfile(profile: GeckoProfile): V8CpuProfileSet {
+    const threadsWithSamples = profile.threads.filter(hasSamples);
+    const selectedThread = selectThread(profile);
+
     return {
-        indexToView: 0,
-        profiles: [convertThread(profile, selectedThread(profile))]
+        indexToView: threadsWithSamples.indexOf(selectedThread),
+        profiles: threadsWithSamples.map(thread => convertThread(profile, thread))
     };
 }
