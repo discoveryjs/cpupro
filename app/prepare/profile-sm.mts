@@ -62,15 +62,13 @@ export async function createSourceMappedBreakdown(
         return;
     }
 
-    const startTime = Date.now();
+    // const startTime = Date.now();
     const execToOriginalMap = await work('process source maps', async () => {
         const execToOriginalMap = createInt32Progression(dictionary.locations.length);
         let resolved = 0;
         let notResolved = 0;
         let noLC = 0;
         let noMap = 0;
-
-        console.log('->>> locations', dictionary.locations.length, 'callFrames', dictionary.callFrames.length);
 
         const callFramesToResolve: {
             callFrame: CpuProCallFrame;
@@ -126,7 +124,6 @@ export async function createSourceMappedBreakdown(
             }
         }
 
-        console.log('~~~', ensureScriptIsParsed);
         await prepareScriptSources(ensureScriptIsParsed);
         for (const { callFrame, originalPos, originalScript } of callFramesToResolve) {
             callFrame.__originalCallFrame = dictionary.resolveCallFrame({
@@ -141,7 +138,6 @@ export async function createSourceMappedBreakdown(
                 columnNumber: originalPos.column !== null ? originalPos.column : -1
             }, scriptsMap);
         }
-
 
         const locationToResolve: {
             i: number;
@@ -233,16 +229,16 @@ export async function createSourceMappedBreakdown(
             execToOriginalMap[i] = locIndex;
         }
 
-        console.log({
-            resolved,
-            notResolved,
-            noLC,
-            noMap,
-            total: resolved + notResolved + noLC + noMap,
-            callFrames: dictionary.callFrames.length,
-            locations: dictionary.locations.length,
-            time: Date.now() - startTime
-        });
+        // console.log('!!!! source-maps', {
+        //     time: Date.now() - startTime,
+        //     resolved,
+        //     notResolved,
+        //     noLC,
+        //     noMap,
+        //     total: resolved + notResolved + noLC + noMap,
+        //     callFrames: dictionary.callFrames.length,
+        //     locations: dictionary.locations.length
+        // });
 
         return execToOriginalMap;
     });
@@ -279,6 +275,4 @@ export async function createSourceMappedBreakdown(
     );
 
     line.breakdowns.push(breakdown);
-
-    console.log('createSourceMappedBreakdown', Date.now() - startTime);
 }

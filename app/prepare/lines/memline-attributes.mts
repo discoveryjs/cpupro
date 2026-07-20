@@ -74,7 +74,6 @@ export function createMemlineGcEpochAttribute(
 
         prevEpochId = currentEpochId || prevEpochId;
     }
-    console.log(allocationGcEpochDict);
 
     for (let i = 0; i < allocationGcEpochs.length; i++) {
         allocationGcEpochs[i] = epochToIndex.get(allocationGcEpochs[i])!;
