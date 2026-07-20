@@ -6,6 +6,7 @@ import type { V8CpuProfile, V8CpuProfileCpuproExtensions } from './types.js';
 import { FEATURE_MULTI_PROFILES } from './const.js';
 import { UniformProfile, UniformProfilingDataset, UniformProfilingSession } from './formats/types.js';
 import { V8LogProfile } from './formats/v8-log-processed/types.js';
+import { extractFromGeckoProfile, isGeckoProfile } from './formats/gecko-profile.js';
 
 export const supportedFormats = [
     '* [V8 log](https://v8.dev/docs/profile) (.log)',
@@ -130,6 +131,8 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
         result = createProfilingDataset([
             createProfilingSession(processProfiles([{ ...data }], extensions, rejectData))
         ]);
+    } else if (isGeckoProfile(data)) {
+        result = createProfilingDataset([extractFromGeckoProfile(data)]);
     } else {
         rejectData('Unknown format');
         throw new Error('Unknown format');
