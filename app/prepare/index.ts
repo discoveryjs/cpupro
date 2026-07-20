@@ -1,6 +1,7 @@
 import { convertParentIntoChildrenIfNeeded, isCPUProfile, normalizeCpuProfile, unrollHeadToNodesIfNeeded, unwrapSamplesIfNeeded } from './formats/cpuprofile.js';
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
+import { extractFromGeckoProfile, isGeckoProfile } from './formats/gecko-profile.js';
 import { convertV8LogIntoCpuProfile, isV8LogProfile } from './formats/v8-log-processed.js';
 import type { V8CpuProfile, V8CpuProfileCpuproExtensions, V8CpuProfileSet } from './types.js';
 import { V8LogProfile } from './formats/v8-log-processed/types.js';
@@ -10,6 +11,7 @@ export const supportedFormats = [
     '* [V8 log](https://v8.dev/docs/profile) (.log)',
     '* [V8 log preprocessed](https://v8.dev/docs/profile#web-ui-for---prof) with --preprocess (.json)',
     '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
+    '* [Firefox Profiler processed Gecko profile](https://github.com/firefox-devtools/profiler/blob/main/docs-developer/processed-profile-format.md), including Samply recordings (.json)',
     '* [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) (.json)',
     '* [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces) (.devtools)'
 ];
@@ -54,7 +56,9 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
     }
 
     // see https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#heading=h.lc5airzennvk
-    if (isChromiumPerformanceProfile(data)) {
+    if (isGeckoProfile(data)) {
+        inputProfiles = extractFromGeckoProfile(data);
+    } else if (isChromiumPerformanceProfile(data)) {
         inputProfiles = extractFromChromiumPerformanceProfile(data);
     } else if (Array.isArray(data)) {
         // in case input is array of { profile } object

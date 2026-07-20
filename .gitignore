@@ -1,5 +1,6 @@
 /.discoveryjs-cache/
 /.gh-pages/
+/.test-build/
 /.vscode/
 /build/
 /node_modules/

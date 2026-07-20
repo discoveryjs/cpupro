@@ -37,10 +37,10 @@ const pageIndicators = {
     view: 'page-indicators',
     content: [
         {
-            className: '=`runtime ${runtime.code}`',
+            className: '=`runtime ${runtime.code}${runtime.engine = "V8" ? " v8" : ""}`',
             title: 'Runtime',
-            hint: 'md:"#### Runtime\\n\\nThe runtime is heuristically determined based on modules identified within the profile."',
-            value: '=runtime | code != "unknown" ? name : `Unknown/${engine}`'
+            hint: 'md:"#### Runtime\\n\\nThe runtime is determined from profile metadata and modules identified within the profile."',
+            value: '=runtime | code = "unknown" and engine != "Unknown" ? `Unknown/${engine}` : name'
         },
         {
             view: 'page-indicator-group',

@@ -2,13 +2,14 @@
 
 # CPUpro
 
-Rethinking of CPU profile analysis and processing. Focused on profiles and logs of any size collected in V8 runtimes: Node.js, Deno and Chromium browsers.
+Rethinking of CPU profile analysis and processing. Focused on profiles and logs of any size collected in V8 runtimes, Firefox, and native applications through Samply.
 
 Supported formats:
 
 * [V8 log](https://v8.dev/docs/profile) (.log)
 * [V8 log preprocessed](https://v8.dev/docs/profile#web-ui-for---prof) with --preprocess (.json)
 * [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)
+* [Firefox Profiler processed Gecko profile](https://github.com/firefox-devtools/profiler/blob/main/docs-developer/processed-profile-format.md), including [Samply](https://github.com/mstange/samply) recordings (.json)
 * [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) (.json)
 * [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces) (.devtools)
 

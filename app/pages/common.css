@@ -4,6 +4,8 @@
     --runtime-chromium: url("../img/runtime-chromium.svg");
     --runtime-edge: url("../img/runtime-edge.svg");
     --runtime-electron: url("../img/runtime-electron.svg");
+    --runtime-firefox: url("../img/runtime-firefox.svg");
+    --runtime-cynic: url("../img/runtime-cynic.svg");
     --runtime-unknown: url("../img/runtime-v8.svg");
 }
 .discovery-root-darkmode {

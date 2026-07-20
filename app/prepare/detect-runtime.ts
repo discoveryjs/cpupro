@@ -2,9 +2,11 @@ import { CpuProCategory, CpuProPackage, RuntimeCode } from './types.js';
 
 const runtimes = {
     chromium: 'Chromium',
+    cynic: 'Cynic',
     deno: 'Deno',
     edge: 'Edge',
     electron: 'Electron',
+    firefox: 'Firefox',
     nodejs: 'Node.js',
     unknown: 'Unknown'
 } as const;
@@ -20,8 +22,16 @@ export function detectRuntime(categories: CpuProCategory[], packages: CpuProPack
                         : 'unknown'
     );
 
+    const engine = code === 'firefox'
+        ? 'SpiderMonkey'
+        : code === 'cynic'
+            ? 'Cynic'
+            : code === 'unknown' && runtime === 'unknown'
+                ? 'Unknown'
+                : 'V8';
+
     return {
-        engine: 'V8',
+        engine,
         code,
         name: runtimes[code]
     };

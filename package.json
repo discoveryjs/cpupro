@@ -32,7 +32,8 @@
     },
     "scripts": {
         "start": "discovery",
-        "lint": "eslint lib app",
+        "test": "node -e \"require('node:fs').rmSync('.test-build',{recursive:true,force:true})\" && tsc --outDir .test-build --noEmit false && node --test .test-build/test/*.test.js",
+        "lint": "eslint lib app test",
         "typecheck": "tsc --noEmit",
         "build": "npm run build-wasm && npm run build-app && npm run build-report-template",
         "build-wasm": "node scripts/wat-compile.js",
