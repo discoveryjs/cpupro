@@ -600,7 +600,7 @@ export class Dictionary {
                     type = 'script';
 
                     if (/^https?:/.test(modulePath)) {
-                        const { origin, host } = new URL(modulePath);
+                        const { origin, host } = safeParseURLWithFallback(modulePath);
 
                         ref = origin;
                         name = this.#packageNameByOriginMap.get(host) || host;
@@ -691,7 +691,7 @@ export class Dictionary {
             }
 
             case 'chrome-extension': {
-                const { origin, host } = new URL(modulePath);
+                const { origin, host } = safeParseURLWithFallback(modulePath);
 
                 ref = origin;
                 type = 'chrome-extension';
@@ -945,7 +945,7 @@ function isVsCodeDebug(modulePath: string) {
 }
 
 function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
-    const moduleUrl = /^https?:\/\//.test(modulePath) ? new URL(modulePath) : null;
+    const moduleUrl = /^https?:\/\//.test(modulePath) ? safeParseURL(modulePath) : null;
 
     if (moduleUrl !== null && Object.hasOwn(knownRegistry, moduleUrl.origin)) {
         const registry = knownRegistry[moduleUrl.origin];
@@ -993,6 +993,31 @@ function resolveRegistryPackage(modulePath: string): RegistryPackage | null {
     }
 
     return null;
+}
+
+function safeParseURL(url: string) {
+    if (URL.canParse(url)) {
+        return new URL(url);
+    }
+
+    const match = url.match(/^([a-z\d]{2,}):\/\/([^/]+)/i);
+    if (match !== null) {
+        return {
+            origin: match[0],
+            pathname: url.slice(match[0].length),
+            host: match[2]
+        };
+    }
+
+    return null;
+}
+
+function safeParseURLWithFallback(url: string) {
+    return safeParseURL(url) || {
+        origin: (url.match(/^([a-z\d]{2,}):\/\//i)?.[0] || 'unknown://') + 'unknown',
+        pathname: '/',
+        host: 'unknown'
+    };
 }
 
 function locFromLineColumn(line: number, column: number) {
