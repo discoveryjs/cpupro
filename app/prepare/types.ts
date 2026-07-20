@@ -144,9 +144,11 @@ export type V8HeapEvent = {
 
 export type RuntimeCode = // alphabetical order
     | 'chromium'
+    | 'cynic'
     | 'deno'
     | 'edge'
     | 'electron'
+    | 'firefox'
     | 'nodejs'
     | 'unknown'
     ;
