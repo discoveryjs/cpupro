@@ -499,17 +499,23 @@ function convertThread(profile: GeckoProfile, thread: GeckoThread): V8CpuProfile
     const interval = typeof profile.meta.interval === 'number'
         ? micros(profile.meta.interval)
         : undefined;
-    const sampledEnd = timeDeltas.reduce((sum, delta) => sum + delta, 0);
-    const declaredEnd = [thread.unregisterTime, thread.processShutdownTime]
-        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-        .reduce((end, value) => Math.max(end, micros(value)), 0);
+    // const sampledEnd = timeDeltas.reduce((sum, delta) => sum + delta, 0);
+    // const declaredEnd = [thread.unregisterTime, thread.processShutdownTime]
+    //     .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    //     .reduce((end, value) => Math.max(end, micros(value)), 0);
+    // const startTime = (profile.meta.profilingStartTime ?? 0) + (profile.meta.startTime ?? 0);
+    // const endTime = Math.max(declaredEnd, sampledEnd + (interval || 0));
+    const startTime = Math.floor((profile.meta.profilingStartTime ?? 0) * 1000) || 0;
+    const endTime = Math.floor((profile.meta.profilingEndTime ?? 0) * 1000) || 0;
+
+    timeDeltas[0] -= startTime;
 
     return {
         _name: thread.name || thread.processName || null,
         _runtime: detectGeckoRuntime(profile, thread),
         _samplesInterval: interval,
-        startTime: 0,
-        endTime: Math.max(declaredEnd, sampledEnd + (interval || 0)),
+        startTime,
+        endTime,
         nodes,
         samples,
         timeDeltas
@@ -539,7 +545,7 @@ export function extractFromGeckoProfile(profile: GeckoProfile): UniformProfiling
 
         name: null,
         runtime: 'unknown',
-        startTime: isNaN(startTime) ? null : new Date(startTime).toDateString(),
+        startTime: isNaN(startTime) ? null : new Date(startTime).toISOString(),
         source: null,
         dataOrigin: null,
 
