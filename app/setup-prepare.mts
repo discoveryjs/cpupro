@@ -12,6 +12,7 @@ import { createWorkHandler } from './prepare/misc/work.js';
 import { OriginalScriptsMap } from './prepare/preprocessing/scripts.js';
 import { terminateParseWorkerPool } from './prepare/misc/script-function-resolution.js';
 import { now, perfMeasure } from './prepare/misc/time-utils.js';
+import { extractThreadCounters } from './prepare/preprocessing/counters.js';
 
 function createContextFreeWorkHandler(setWorkTitle: (title: string) => Promise<void>) {
     return createWorkHandler(async function<T>({ name, prefix }, fn: () => T): Promise<T> {
@@ -167,6 +168,14 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         await runSessionTask('process display names', () =>
             processDisplayNames(dict.modules)
         );
+
+        await runSessionTask('collect counters', () => {
+            for (const process of session.processes) {
+                for (const thread of process.threads) {
+                    extractThreadCounters(thread);
+                }
+            }
+        });
 
         // trigger call frame resolution for all locations
         dict.locations.forEach(location => location.callFrame);

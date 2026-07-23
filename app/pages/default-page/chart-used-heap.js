@@ -6,10 +6,8 @@ export const chartUsedHeap = {
     data: `scopeProfile() | {
         minX: timeline.axisStart + timeline.axisStartNoSamples,
         maxX: timeline.axisEnd,
-        points: thread.events.[name="UpdateCounters" or name="MinorGC" or name="MajorGC"].(
-            name="UpdateCounters" ? { x: tm, y: data.jsHeapSizeUsed or data.usedHeapSizeAfter, event: $ }
-            : [{ x: tm, y: data.usedHeapSizeBefore, event: $ }, { x: tm + duration, y: data.usedHeapSizeAfter, event: $ }]
-        )
+        points: thread.counters[=>name="used-heap-size"].values
+            .({ x: tm, y: value, event })
     }`,
     className: '=no points ? "unavailable"',
     header: [

@@ -226,7 +226,20 @@ export type CpuProThread = {
     process: CpuProProcess | null;
     profiles: Profile[];
     events: UniformTraceEvent[];
+    counters: CpuProCounterEntry[];
     userTimings: UniformTraceEvent[]; // subset of user defined events, e.g. cat="blink.user_timing" in Chromium traces
+}
+
+export type CpuProCounterEntry = {
+    name: string;
+    thread: CpuProThread;
+    unit: string | null;
+    values: {
+        counter: CpuProCounterEntry;
+        tm: number;
+        value: number;
+        event: UniformTraceEvent | null;
+    }[];
 }
 
 export type SourceMap = {

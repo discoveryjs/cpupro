@@ -232,6 +232,31 @@ export const methods = {
             }
         }
         return result;
+    },
+
+    combineCounters(counters, identity = counter => undefined) {
+        const defaultId = Symbol('default');
+        const lastValues = new Map();
+        const result = [];
+        let value = 0;
+
+        for (const counter of counters.toSorted((a, b) => a.tm - b.tm)) {
+            const id = identity(counter) ?? defaultId;
+            const lastValue = lastValues.get(id) ?? 0;
+            const delta = counter.value - lastValue;
+
+            value += delta;
+
+            result.push({
+                tm: counter.tm,
+                value,
+                event: counter.event
+            });
+
+            lastValues.set(id, counter.value);
+        }
+
+        return result;
     }
 };
 

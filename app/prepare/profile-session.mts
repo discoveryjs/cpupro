@@ -2,21 +2,21 @@ import { Dictionary } from './dictionary.js';
 import { UniformProfile, UniformProfilingSession } from './formats/types.js';
 import { CpuProProcess, CpuProSession, CpuProThread } from './types.js';
 
-export type ThreadProfile = {
+export type DatasetProfile = {
     thread: CpuProThread;
     profile: UniformProfile;
 };
-export type ProfileSession = {
+export type DatasetSession = {
     session: CpuProSession;
-    profiles: ThreadProfile[];
+    profiles: DatasetProfile[];
 }
 
-export function createProfileSession(rawSession: UniformProfilingSession, dict: Dictionary): ProfileSession {
+export function createProfileSession(rawSession: UniformProfilingSession, dict: Dictionary): DatasetSession {
     const processes: CpuProProcess[] = [];
     const processesMap = new Map<number | null, CpuProProcess>();
     const threads: CpuProThread[] = [];
     const threadsMap = new Map<string, CpuProThread>();
-    const profiles: ThreadProfile[] = [];
+    const profiles: DatasetProfile[] = [];
     const session: CpuProSession = {
         name: rawSession.name ?? null,
         runtime: rawSession.runtime ?? null,
@@ -112,6 +112,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
             process: null,
             profiles: [],
             events: [],
+            counters: [],
             userTimings: []
         };
 
