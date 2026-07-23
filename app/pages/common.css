@@ -310,6 +310,9 @@ h2 .logo {
     margin: 10px -10px 0;
     padding: 4px 10px;
 }
+.view-time-ruler-tooltip > .details-sections > .details-section .labeled-value__value {
+    text-align: right;
+}
 
 .view-time-ruler-tooltip .category-timings-list {
     display: grid;

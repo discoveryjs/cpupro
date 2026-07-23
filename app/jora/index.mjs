@@ -25,7 +25,7 @@ function shortNum(current, units, base = 1000) {
     const sign = current < 0 ? '-' : '';
     let unitIdx = 0;
 
-    current = Math.abs(current);
+    current = Math.round(Math.abs(current));
 
     while (current > base && unitIdx < units.length - 1) {
         current /= base;
@@ -234,7 +234,44 @@ export const methods = {
         return result;
     },
 
-    combineCounters(counters, identity = counter => undefined) {
+    selectCountersWithOuters(counters, start, end) {
+        const firstIndex = counters.findIndex(counter => counter.tm >= start);
+        const lastIndex = counters.findLastIndex(counter => counter.tm <= end);
+
+        if (firstIndex === -1 || lastIndex === -1) {
+            return [];
+        }
+
+        const result = counters.slice(firstIndex, lastIndex + 1);
+
+        if (firstIndex > 0) {
+            const outerCounter = counters[firstIndex - 1];
+            const firstCounter = counters[firstIndex];
+            const fraction = (start - outerCounter.tm) / (firstCounter.tm - outerCounter.tm);
+            const value = outerCounter.value +
+                (firstCounter.value - outerCounter.value) * fraction;
+
+            result.unshift({ tm: start, value, event: outerCounter.event });
+        } else {
+            result.unshift({ tm: start, value: counters[firstIndex].value, event: counters[firstIndex].event });
+        }
+
+        if (lastIndex < counters.length - 1) {
+            const outerCounter = counters[lastIndex + 1];
+            const lastCounter = counters[lastIndex];
+            const fraction = (end - lastCounter.tm) / (outerCounter.tm - lastCounter.tm);
+            const value = lastCounter.value +
+                (outerCounter.value - lastCounter.value) * fraction;
+
+            result.push({ tm: end, value, event: outerCounter.event });
+        } else {
+            result.push({ tm: end, value: counters[lastIndex].value, event: counters[lastIndex].event });
+        }
+
+        return result;
+    },
+
+    combineCounters(counters, identity = () => undefined) {
         const defaultId = Symbol('default');
         const lastValues = new Map();
         const result = [];

@@ -199,6 +199,52 @@ const categoriesTimeline = {
                         {
                             view: 'block',
                             className: 'details-section',
+                            data: `$profile: scopeProfile(); {
+                                $base: $profile.timeline.axisStart + $profile.timeline.axisStartNoSamples;
+                                $start: $base + #.timeStart;
+                                $end: $base + #.timeEnd;
+                                $points: $profile.thread.counters[=>name="used-heap-size"].values
+                                    .selectCountersWithOuters($start, $end)
+                                    .[tm >= $start and tm <= $end];
+                                min: $points.min(=>tm),
+                                max: $points.max(=>tm),
+                                $start,
+                                $end,
+                                $points.({ x: tm, y: value, event })
+                            }`,
+                            whenData: 'points',
+                            content: [
+                                {
+                                    view: 'block',
+                                    className: 'details-section-title',
+                                    content: 'text:"Used heap size"'
+                                },
+                                {
+                                    view: 'labeled-value-list',
+                                    kind: 'grid',
+                                    data: `{ min: points.y.min(), max: points.y.max() } | [
+                                        { label: 'Range', value: \`\${min.bytes()} – \${max.bytes()}\` },
+                                        { label: 'Range size', value: (max - min).bytes() }
+                                    ]`,
+                                    label: 'text:label',
+                                    value: 'text:value'
+                                },
+                                {
+                                    view: 'labeled-value-list',
+                                    kind: 'grid',
+                                    data: `points.updownSum(=>y) | [
+                                        { label: 'Allocated', value: up.bytes() },
+                                        { label: 'Garbage Collected', value: down.bytes() },
+                                        { label: 'Net Change', value: (up - down).bytes() }
+                                    ]`,
+                                    label: 'text:label',
+                                    value: 'text:value'
+                                }
+                            ]
+                        },
+                        {
+                            view: 'block',
+                            className: 'details-section',
                             when: 'functionCodes or heap',
                             content: [
                                 {
