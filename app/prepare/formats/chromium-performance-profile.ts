@@ -410,11 +410,7 @@ export function extractFromChromiumPerformanceProfile(
                     duration: event.dur ?? 0,
                     eventId: null,
                     sampleTraceId: null,
-                    data: {
-                        reason: event.args?.type || '',
-                        usedHeapSizeBefore: event.args?.usedHeapSizeBefore || 0,
-                        usedHeapSizeAfter: event.args?.usedHeapSizeAfter || 0
-                    }
+                    data: event.args
                 });
 
                 break;

@@ -7,6 +7,10 @@
 .view-cpupro-chart path {
     fill: var(--color, #888);
 }
+.view-cpupro-chart path.line {
+    fill: none;
+    stroke: var(--color, #888);
+}
 .view-cpupro-chart .y-tick {
     stroke: #555;
 }

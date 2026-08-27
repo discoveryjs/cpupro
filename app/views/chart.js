@@ -4,8 +4,11 @@ discovery.view.define('cpupro-chart', function(el, config, data) {
     const points = ensureArray(config.points || data);
     const x = points.map(p => p.x ?? p[0]);
     const y = points.map(p => p.y ?? p[1]);
+    const totalPoints = ensureArray(config.pointsTotal);
+    const totalX = totalPoints.map(p => p.x ?? p[0]);
+    const totalY = totalPoints.map(p => p.y ?? p[1]);
     const minY = config.minY ?? Math.min(...y);
-    const maxY = config.maxY ?? Math.max(...y);
+    const maxY = config.maxY ?? Math.max(...y, ...totalY);
     const minX = config.minX ?? Math.min(...x);
     const maxX = config.maxX ?? Math.max(...x);
     const height = config.height || 150;
@@ -26,6 +29,16 @@ discovery.view.define('cpupro-chart', function(el, config, data) {
     svgEl.setAttribute('height', height);
     svgEl.append(...generateYLines(ticks));
     svgEl.append(pathEl);
+
+    if (totalPoints.length > 0) {
+        const pathTotalEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+        pathTotalEl.setAttribute('d', generateCurve(totalX, totalY, height, minX, maxX, minY, maxY, true));
+        pathTotalEl.setAttribute('stroke-dasharray', '4 1');
+        pathTotalEl.classList.add('line');
+        svgEl.append(pathTotalEl);
+    }
+
     el.append(...generateYLabels(ticks, config.labelFormat));
     el.append(svgEl);
 });
@@ -93,7 +106,7 @@ function generateYLines(ticks) {
     return lines;
 }
 
-function generateCurve(x, y, height, minX, maxX, minY, maxY) {
+function generateCurve(x, y, height, minX, maxX, minY, maxY, line = false) {
     const scaleX = (val) => 1000 * (val - minX) / (maxX - minX);
     const scaleY = (val) => padTop + (height - padTop - padBottom) * (1 - (val - minY) / (maxY - minY));
     const chartMinY = Math.max(0, minY - (maxY - minY) * pad);
@@ -105,8 +118,13 @@ function generateCurve(x, y, height, minX, maxX, minY, maxY) {
     let yspan = 0;
     let d = '';
 
-    d += `M ${scaleX(minX)} ${scaleY(chartMinY)} `;
-    d += `V ${prevScaledY} `;
+    if (line) {
+        d += `M ${scaleX(minX)} ${prevScaledY} `;
+    } else {
+        d += `M ${scaleX(minX)} ${scaleY(chartMinY)} `;
+        d += `V ${prevScaledY} `;
+    }
+
     d += `H ${scaleX(x[0])} `;
 
     for (let i = 1; i < x.length; i++) {
@@ -126,7 +144,11 @@ function generateCurve(x, y, height, minX, maxX, minY, maxY) {
         }
     }
 
-    d += `L ${scaleX(maxX)} ${scaleY(y[y.length - 1])} V ${scaleY(chartMinY)} Z`;
+    if (line) {
+        d += `H ${scaleX(maxX)}`;
+    } else {
+        d += `L ${scaleX(maxX)} ${scaleY(y[y.length - 1])} V ${scaleY(chartMinY)} Z`;
+    }
 
     return d;
 }

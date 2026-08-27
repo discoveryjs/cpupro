@@ -7,6 +7,8 @@ export const chartUsedHeap = {
         minX: timeline.axisStart + timeline.axisStartNoSamples,
         maxX: timeline.axisEnd,
         points: thread.counters[=>name="used-heap-size"].values
+            .({ x: tm, y: value, event }),
+        pointsTotal: thread.counters[=>name="total-heap-size"].values
             .({ x: tm, y: value, event })
     }`,
     className: '=no points ? "unavailable"',
@@ -61,6 +63,7 @@ function chartUsedHeapBody() {
             minX: '=minX',
             maxX: '=maxX',
             points: '=points',
+            pointsTotal: '=pointsTotal',
             labelFormat: '==>bytes()',
             height: 120,
             color: '#e8bc6da0'
