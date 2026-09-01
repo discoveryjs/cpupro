@@ -7,3 +7,5 @@
 /experiments/
 *.wasm
 .DS_Store
+/specs/
+/a_b_c/
