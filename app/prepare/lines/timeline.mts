@@ -105,7 +105,6 @@ export async function createTimeline(
         work
     );
     line.breakdowns.push(callStackBreakdown);
-    line.values = callStackBreakdown.samplesMetricsFiltered.samples;
 
     return line;
 }
