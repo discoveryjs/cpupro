@@ -1,5 +1,6 @@
 import { CallTree } from '../computations/call-tree';
-import { DictionaryMetrics, SamplesMetrics, SamplesMetricsFiltered, TreeMetrics, TreeValueBounds } from '../computations/metrics';
+import { DictionaryMetrics, TreeMetrics, TreeValueBounds } from '../computations/metrics';
+import { Population, PopulationFiltered } from '../computations/population';
 import { Profile } from '../profile.mjs';
 import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types';
 
@@ -29,8 +30,8 @@ export type LineTreeDimension<T extends CpuProNode> = {
 export type ProfileLineBreakdown = {
     kind: string;
     line: ProfileLine;
-    samplesMetrics: SamplesMetrics;
-    samplesMetricsFiltered: SamplesMetricsFiltered;
+    samplesMetrics: Population;
+    samplesMetricsFiltered: PopulationFiltered;
     recomputeMetrics: () => void;
     locations: LineTreeDimension<CpuProLocation> | null;
     callFrames: LineTreeDimension<CpuProCallFrame> | null;

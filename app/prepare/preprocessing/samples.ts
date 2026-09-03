@@ -11,6 +11,7 @@ import {
     CpuProOwner,
     CpuProLocation
 } from '../types.js';
+import { PopulationFiltered, Population } from '../computations/population.js';
 
 export type CpuProCallTree =
     | CallTree<CpuProLocation>
@@ -132,10 +133,10 @@ export function computeTreeMetrics(
         ownersTree,
         ...locationsTree ? [locationsTree] : []
     ] as unknown as SampledTree<CpuProNode>[];
+    const population = new Population(samples, values);
+    const populationFiltered = new PopulationFiltered(population);
     const {
         recomputeMetrics,
-        samplesMetrics,
-        samplesMetricsFiltered,
         dimensions: [
             callFrameDimension,
             moduleDimension,
@@ -144,7 +145,7 @@ export function computeTreeMetrics(
             ownerDimension,
             locationDimension = null
         ]
-    } = computeMetrics(samples, values, metricTrees);
+    } = computeMetrics(populationFiltered, metricTrees);
 
     // Reorganize dimensions into dict/tree structure
     const dict = {
@@ -169,8 +170,8 @@ export function computeTreeMetrics(
 
     return {
         recomputeMetrics,
-        samplesMetrics,
-        samplesMetricsFiltered,
+        samplesMetrics: population,
+        samplesMetricsFiltered: populationFiltered,
         dict,
         tree
     };

@@ -1,6 +1,6 @@
 /* eslint-env browser */
 import { base64 } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
-import computeMetricsWasmSourceBase64 from './metrics.wasm'; // Keep using same WASM for now
+import computeMetricsWasmSourceBase64 from './compute.wasm'; // Keep using same WASM for now
 import { CallTree } from './call-tree';
 import { CpuProNode } from '../types';
 
@@ -9,17 +9,17 @@ export type BufferDimensionMap<T> = {
     dictMap: BufferDictionaryMetricsMap<T>;
 };
 
-export type BufferMap<T> = {
+export type MetricsBufferMap<T> = {
     memory: WebAssembly.Memory | Uint8Array | null;
-    samples: BufferSamplesMetricsMap;
+    samplesCount: Uint32Array;
+    samplesTotal: Uint32Array;
     dimensions: BufferDimensionMap<T>[];
 };
 
-export type BufferSamplesMetricsMap = {
+export type PopulationBufferMap = {
+    memory: WebAssembly.Memory | Uint8Array | null;
     samples: Uint32Array;
-    samplesMask: Uint32Array;
     values: Uint32Array;
-    cumulative: Uint32Array;
     samplesCount: Uint32Array;
     samplesTotal: Uint32Array;
 };
@@ -80,9 +80,9 @@ type ComputeMetricsWasmModuleInstance = {
     }
 }
 
-export type ComputeMetricsApi = {
+export type ComputeApi = {
     computeMetrics(
-        map: BufferSamplesMetricsMap,
+        map: PopulationBufferMap,
         clear: boolean
     ): void;
     computeTreeMetrics<T extends CpuProNode>(
@@ -103,7 +103,7 @@ function createWasmModule(source: string, imports = {}) {
     return new WebAssembly.Instance(module, importObject);
 }
 
-export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeMetricsApi {
+export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeApi {
     const wasmModule = createWasmModule(computeMetricsWasmSourceBase64, { memory }) as ComputeMetricsWasmModuleInstance;
     const {
         accumulateSampleCount,
@@ -196,7 +196,7 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeM
     };
 }
 
-export function createJavaScriptApi(): ComputeMetricsApi {
+export function createJavaScriptApi(): ComputeApi {
     function accumulateSampleCount(source: Uint32Array, map: Uint32Array, dest: Uint32Array) {
         for (let i = source.length - 1; i >= 0; i--) {
             if (source[i] !== 0) {

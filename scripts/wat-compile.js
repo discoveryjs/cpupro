@@ -5,7 +5,7 @@ const wabtPromise = require('wabt')();
 
 const debug = process.argv.includes('--debug');
 const files = [
-    '../app/prepare/computations/metrics.wat'
+    '../app/prepare/computations/compute.wat'
 ].map(relpath => path.join(__dirname, relpath));
 
 async function compileWatToWasm() {

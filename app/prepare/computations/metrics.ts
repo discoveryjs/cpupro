@@ -1,50 +1,29 @@
 import { USE_WASM } from '../const.js';
+import { Observer } from './misc.js';
 import { CpuProNode } from '../types.js';
 import { CallTree, AncestorSubsetCallTree } from './call-tree.js';
 import {
     BufferDictionaryMetricsMap,
     BufferDimensionMap,
-    BufferMap,
-    BufferSamplesMetricsMap,
+    MetricsBufferMap,
     BufferTreeMetricsMap,
-    ComputeMetricsApi,
+    ComputeApi,
     createJavaScriptApi,
     createWasmApi
-} from './metrics-wasm-wrapper.js';
+} from './compute-wasm-wrapper.js';
+import { Population, PopulationFiltered } from './population.js';
 
-const computeMetricsJavaScriptApi = createJavaScriptApi();
-const { computeTreeMetrics } = computeMetricsJavaScriptApi;
+const computeJavaScriptApi = createJavaScriptApi();
+const { computeTreeMetrics } = computeJavaScriptApi;
 
-function binarySearch(array: Uint32Array, value: number): number {
-    let left = 0;
-    let right = array.length - 1;
-
-    while (left <= right) {
-        const mid = (left + right) >> 1;
-        const midValue = array[mid];
-
-        if (midValue === value) {
-            return mid;
-        }
-
-        if (midValue < value) {
-            left = mid + 1;
-        } else {
-            right = mid - 1;
-        }
-    }
-
-    return right === -1 ? 0 : right;
-}
-
-function computeCumulative(cumulative: Uint32Array, values: Uint32Array) {
-    for (let i = 1; i < cumulative.length; i++) {
-        cumulative[i] = values[i - 1] + cumulative[i - 1];
-    }
-}
-
-function computeAll<T extends CpuProNode>(api: ComputeMetricsApi, bufferMap: BufferMap<T>, clear = true) {
-    api.computeMetrics(bufferMap.samples, clear);
+function computeAll<T extends CpuProNode>(
+    api: ComputeApi,
+    bufferMap: MetricsBufferMap<T>,
+    population: Population | PopulationFiltered,
+    clear = true
+) {
+    bufferMap.samplesCount.set(population.samplesCount);
+    bufferMap.samplesTotal.set(population.samplesTotal);
 
     for (const { treeMap: tree, dictMap: dict } of bufferMap.dimensions) {
         api.computeTreeMetrics(tree, clear);
@@ -76,185 +55,7 @@ export type SampledTree<T> = {
     sampleToNode: Uint32Array;
 };
 
-export type Listener = { fn: () => void };
-export class MetricsObserver {
-    #subscriptions: Listener[] = [];
-
-    subscribe(fn: () => void) {
-        let listener: Listener | null = { fn };
-        this.#subscriptions.push(listener);
-
-        return () => {
-            if (listener !== null) {
-                this.#subscriptions = this.#subscriptions.filter(el => el !== listener);
-                listener = null;
-            }
-        };
-    }
-
-    notify() {
-        for (const { fn } of this.#subscriptions) {
-            fn();
-        }
-    }
-}
-
-export class SamplesMetrics extends MetricsObserver {
-    samples: Uint32Array;
-    values: Uint32Array;
-    cumulative: Uint32Array;
-    samplesCount: Uint32Array;
-    samplesTotal: Uint32Array;
-
-    constructor(
-        samples: Uint32Array,
-        values: Uint32Array,
-        cumulative: Uint32Array,
-        samplesCount: Uint32Array,
-        samplesTotal: Uint32Array
-    ) {
-        super();
-
-        this.samples = samples;
-        this.values = values;
-        this.cumulative = cumulative;
-        this.samplesCount = samplesCount;
-        this.samplesTotal = samplesTotal;
-    }
-}
-
-function isMaskEmpty(mask: Uint32Array) {
-    for (let i = 0; i < mask.length; i++) {
-        if (mask[i] !== 0) {
-            return false;
-        }
-    }
-
-    return true;
-}
-export class SamplesMetricsFiltered extends SamplesMetrics {
-    samplesMask: Uint32Array;
-    originalValues: Uint32Array;
-    originalSamples: Uint32Array;
-    rangeStart: number | null = null;
-    rangeEnd: number | null = null;
-    rangeSamples: number | null = null;
-
-    constructor(
-        samples: Uint32Array,
-        samplesMask: Uint32Array,
-        values: Uint32Array,
-        cumulative: Uint32Array,
-        samplesCount: Uint32Array,
-        samplesTotal: Uint32Array
-    ) {
-        super(
-            samples,
-            values,
-            cumulative,
-            samplesCount,
-            samplesTotal
-        );
-
-        this.samplesMask = samplesMask;
-        this.originalValues = values;
-        this.originalSamples = samples;
-    }
-
-    resetMask() {
-        this.samplesMask.fill(0);
-
-        if (this.samples !== this.originalSamples) {
-            this.samples.set(this.originalSamples);
-            this.originalSamples = this.samples;
-        }
-
-        this.notify();
-    }
-
-    hasMask() {
-        return this.originalSamples !== this.samples;
-    }
-
-    updateMask(fn: (mask: Uint32Array) => void) {
-        const { samples } = this;
-        let { originalSamples } = this;
-        const hasMaskedSamples = originalSamples !== samples;
-
-        fn(this.samplesMask);
-
-        // mask is empty and no samples are masked, no need to update
-        if (isMaskEmpty(this.samplesMask) && !hasMaskedSamples) {
-            return;
-        }
-
-        if (!hasMaskedSamples) {
-            this.originalSamples = originalSamples = samples.slice();
-        }
-
-        for (let i = 0; i < samples.length; i++) {
-            samples[i] = this.samplesMask[i] === 0
-                ? originalSamples[i]
-                : 0;
-        }
-
-        this.notify();
-    }
-
-    resetRange() {
-        this.rangeStart = null;
-        this.rangeEnd = null;
-        this.rangeSamples = null;
-
-        if (this.values !== this.originalValues) {
-            this.values.set(this.originalValues);
-            this.originalValues = this.values;
-        }
-
-        this.notify();
-    }
-
-    setRange(start: number | null, end: number | null) {
-        const { values, cumulative } = this;
-        let { originalValues } = this;
-
-        if (start === null || end === null) {
-            this.resetRange();
-            return;
-        }
-
-        if (values === originalValues) {
-            // Store the state of values before the first changes to be able to fill it according
-            // to filters or restore it. We can't replace values with its copy since it may be part
-            // of Wasm memory, which is used by Wasm code for computations
-            this.originalValues = originalValues = values.slice();
-        }
-
-        values.fill(0);
-
-        const startIndex = binarySearch(cumulative, start);
-        const endIndex = binarySearch(cumulative, end);
-
-        this.rangeStart = start;
-        this.rangeEnd = end;
-        this.rangeSamples = endIndex - startIndex + 1;
-
-        if (startIndex !== endIndex) {
-            values[startIndex] = originalValues[startIndex] - (start - cumulative[startIndex]);
-            values[endIndex] = end - cumulative[endIndex];
-
-            if (startIndex + 1 < endIndex) {
-                values.set(originalValues.subarray(startIndex + 1, endIndex), startIndex + 1);
-            }
-        } else {
-            values[startIndex] = end - start;
-        }
-
-        this.notify();
-    }
-}
-
-export class TreeMetrics<T extends CpuProNode> extends MetricsObserver {
+export class TreeMetrics<T extends CpuProNode> extends Observer {
     tree: CallTree<T>;
     sampleToNode: Uint32Array;
     samplesCount: Uint32Array;
@@ -341,9 +142,9 @@ function projectSampleToNode<T extends CpuProNode>(tree: CallTree<T>, sourceMetr
 // It uses sampleToNode to land samples to existing nodes and the rest
 // to a special (last) element in samplesCount/selfValues/nestedValues arrays.
 export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
-    samplesMetrics: SamplesMetrics;
+    population: Population | PopulationFiltered;
 
-    constructor(tree: CallTree<T>, samplesMetrics: SamplesMetrics, sourceMetrics: TreeMetrics<T>) {
+    constructor(tree: CallTree<T>, population: Population | PopulationFiltered, sourceMetrics: TreeMetrics<T>) {
         const size = tree.nodes.length + 1; // add extra element for excluded metrics
         const sampleToNode = projectSampleToNode(tree, sourceMetrics);
 
@@ -355,8 +156,8 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
             new Uint32Array(size)
         );
 
-        this.samplesMetrics = samplesMetrics;
-        this.subscribe = samplesMetrics.subscribe.bind(samplesMetrics);
+        this.population = population;
+        this.subscribe = this.population.subscribe.bind(this.population);
         this.recompute(false);
     }
 
@@ -375,8 +176,8 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
     recompute(clear = true) {
         computeTreeMetrics({
             tree: this.tree,
-            sourceSamplesCount: this.samplesMetrics.samplesCount,
-            sourceSamplesTotal: this.samplesMetrics.samplesTotal,
+            sourceSamplesCount: this.population.samplesCount,
+            sourceSamplesTotal: this.population.samplesTotal,
             sampleToNode: this.sampleToNode,
             parent: this.tree.parent,
             samplesCount: this.samplesCount,
@@ -450,7 +251,7 @@ export type DictionaryMetric<T> = {
     totalValue: number;
 };
 
-export class DictionaryMetrics<T extends CpuProNode> extends MetricsObserver {
+export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     dictionary: T[];
     entries: DictionaryMetric<T>[];
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
@@ -659,26 +460,18 @@ function createMapsFromTree<T>(sampledTree: SampledTree<T>) {
     };
 }
 
-function createTreeComputeBuffer<T>(
-    samples: Uint32Array,
-    values: Uint32Array,
+function createComputeBuffer<T>(
     trees: SampledTree<T>[],
+    samplesMapSize: number,
     useWasm = true
 ) {
     const maps = trees.map(createMapsFromTree);
 
     // estimate buffer size
-    const samplesMapSize = trees[0].sampleToNode.length;
     let bufferSize =
-        // values
-        // cumulative
-        2 * values.length +
-        // samples
-        samples.length +
-        // samplesMask
         // samplesCount
         // samplesTotal
-        3 * samplesMapSize;
+        2 * samplesMapSize;
 
     for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         // tree metrics
@@ -708,27 +501,18 @@ function createTreeComputeBuffer<T>(
         : new Uint8Array(4 * bufferSize);
     const buffer = memory ? new Uint32Array(memory.buffer) : null;
     let bufferOffset = 0;
-    const samplesMap: BufferSamplesMetricsMap = {
-        values: adopt(values),
-        cumulative: alloc(values.length),
-        samples: adopt(samples),
-        samplesMask: alloc(samplesMapSize),
-        samplesCount: alloc(samplesMapSize),
-        samplesTotal: alloc(samplesMapSize)
-    };
-    const bufferMap: BufferMap<T> = {
+    const bufferMap: MetricsBufferMap<T> = {
         memory,
-        samples: samplesMap,
+        samplesCount: alloc(samplesMapSize),
+        samplesTotal: alloc(samplesMapSize),
         dimensions: []
     };
-
-    computeCumulative(samplesMap.cumulative, samplesMap.values);
 
     for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         const treeMap: BufferTreeMetricsMap<T> = {
             tree,
-            sourceSamplesCount: samplesMap.samplesCount,
-            sourceSamplesTotal: samplesMap.samplesTotal,
+            sourceSamplesCount: bufferMap.samplesCount,
+            sourceSamplesTotal: bufferMap.samplesTotal,
             sampleToNode: adopt(sampleToNode),
             parent: adopt(tree.parent),
             samplesCount: alloc(tree.nodes.length),
@@ -737,8 +521,8 @@ function createTreeComputeBuffer<T>(
         };
         const dictMap: BufferDictionaryMetricsMap<T> = {
             dictionary: tree.dictionary,
-            sourceSamplesCount: samplesMap.samplesCount,
-            sourceSamplesTotal: samplesMap.samplesTotal,
+            sourceSamplesCount: bufferMap.samplesCount,
+            sourceSamplesTotal: bufferMap.samplesTotal,
             nodeSelfValues: treeMap.selfValues,
             nodeNestedValues: treeMap.nestedValues,
             sampleIdToDict: adopt(sampleIdToDict),
@@ -775,7 +559,7 @@ function createTreeComputeBuffer<T>(
 
 function createDimension<T extends CpuProNode>(
     dimensionMaps: BufferDimensionMap<T>,
-    samplesMap: BufferSamplesMetricsMap
+    population: PopulationFiltered
 ): { dict: DictDimension<T>; tree: TreeDimension<T> } {
     const { treeMap, dictMap } = dimensionMaps;
     const dictAll = new DictionaryMetrics<T>(
@@ -807,8 +591,8 @@ function createDimension<T extends CpuProNode>(
     const treeBounds = new TreeValueBounds(
         treeMap.tree,
         treeMap.sampleToNode,
-        samplesMap.cumulative,
-        samplesMap.samples
+        population.cumulative,
+        population.population.samples
     );
 
     return {
@@ -825,46 +609,25 @@ function createDimension<T extends CpuProNode>(
 }
 
 export function computeMetrics<T extends readonly SampledTree<CpuProNode>[]>(
-    samples: Uint32Array,
-    values: Uint32Array,
+    population: PopulationFiltered,
     trees: [...T]
 ) {
     const useWasm = USE_WASM;
-    const bufferMap = createTreeComputeBuffer(samples, values, trees, useWasm);
-    const {
-        memory,
-        samples: samplesMap,
-        dimensions: dimensionMaps
-    } = bufferMap;
-    const computeMetricsApi = useWasm && memory
+    const bufferMap = createComputeBuffer(trees, population.samplesTotal.length, useWasm);
+    const { memory, dimensions } = bufferMap;
+    const computeApi = useWasm && memory
         ? createWasmApi(memory)
-        : computeMetricsJavaScriptApi;
+        : computeJavaScriptApi;
 
-    computeAll(computeMetricsApi, bufferMap, false);
-
-    const samplesMetrics = new SamplesMetrics(
-        samples,
-        values,
-        samplesMap.cumulative,
-        samplesMap.samplesCount.slice(),
-        samplesMap.samplesTotal.slice()
-    );
-    const samplesMetricsFiltered = new SamplesMetricsFiltered(
-        samplesMap.samples,
-        samplesMap.samplesMask,
-        samplesMap.values,
-        samplesMap.cumulative,
-        samplesMap.samplesCount,
-        samplesMap.samplesTotal
-    );
+    computeAll(computeApi, bufferMap, population, false);
 
     // Build dimensions with dict/tree separation
-    const dimensionsWithStructure = dimensionMaps.map(maps =>
-        createDimension(maps, samplesMap)
+    const dimensionsWithStructure = dimensions.map(maps =>
+        createDimension(maps, population)
     );
 
     const recomputeMetrics = () => {
-        computeAll(computeMetricsApi, bufferMap);
+        computeAll(computeApi, bufferMap, population, true);
 
         for (const dimension of dimensionsWithStructure) {
             dimension.tree.filtered.notify();
@@ -874,12 +637,10 @@ export function computeMetrics<T extends readonly SampledTree<CpuProNode>[]>(
     };
 
     // Recompute metrics on samples filter change
-    samplesMetricsFiltered.subscribe(recomputeMetrics);
+    population.subscribe(recomputeMetrics);
 
     return {
         recomputeMetrics,
-        samplesMetrics,
-        samplesMetricsFiltered,
         dimensions: dimensionsWithStructure
     };
 }

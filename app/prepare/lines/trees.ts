@@ -1,8 +1,9 @@
-import type { DictDimension, SampledTree, SamplesMetrics, SamplesMetricsFiltered, TreeDimension } from '../computations/metrics.js';
+import type { DictDimension, SampledTree, TreeDimension } from '../computations/metrics.js';
 import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
 import { computeTreeMetrics, SampledCpuProCallTree } from '../preprocessing/samples.js';
+import { PopulationFiltered, Population } from '../computations/population.js';
 
 export async function createLineBreakdown(
     kind: string,
@@ -97,8 +98,8 @@ function createLineTree(
         };
     },
     metrics: {
-        samplesMetrics: SamplesMetrics;
-        samplesMetricsFiltered: SamplesMetricsFiltered;
+        samplesMetrics: Population;
+        samplesMetricsFiltered: PopulationFiltered;
         recomputeMetrics: () => void;
     }
 ): ProfileLineBreakdown {
