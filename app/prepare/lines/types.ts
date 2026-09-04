@@ -1,5 +1,6 @@
 import { CallTree } from '../computations/call-tree';
-import { DictionaryMetrics, TreeMetrics, TreeValueBounds } from '../computations/metrics';
+import { DictionaryMetrics, TreeMetrics } from '../computations/metrics';
+import { TreeValueBounds } from '../computations/tree-node-bounds';
 import { Population, PopulationFiltered } from '../computations/population';
 import { Profile } from '../profile.mjs';
 import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types';

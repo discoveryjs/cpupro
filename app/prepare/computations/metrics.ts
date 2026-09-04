@@ -31,14 +31,6 @@ function computeAll<T extends CpuProNode>(
     }
 }
 
-export type LineDimension<T extends CpuProNode> = {
-    values: DictionaryMetrics<T>;
-    valuesFiltered: DictionaryMetrics<T>;
-    treeValues: TreeMetrics<T>;
-    treeValuesFiltered: TreeMetrics<T>;
-    treeValueBounds: TreeValueBounds<T>;
-}
-
 export type DictDimension<T extends CpuProNode> = {
     all: DictionaryMetrics<T>;
     filtered: DictionaryMetrics<T>;
@@ -47,7 +39,6 @@ export type DictDimension<T extends CpuProNode> = {
 export type TreeDimension<T extends CpuProNode> = {
     all: TreeMetrics<T>;
     filtered: TreeMetrics<T>;
-    bounds: TreeValueBounds<T>;
 }
 
 export type SampledTree<T> = {
@@ -314,128 +305,6 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     }
 }
 
-export type DictionaryBounds<T> = {
-    entryIndex: number;
-    entry: T;
-    firstSeen: number;
-    lastSeen: number;
-};
-
-export class TreeValueBounds<T extends CpuProNode> {
-    #seenVectors: WeakRef<{ firstSeen: Uint32Array; lastSeen: Uint32Array }>;
-    #entries: WeakRef<DictionaryBounds<T>[]>;
-    #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
-    tree: CallTree<T>;
-    sampleToNode: Uint32Array;
-    cumulative: Uint32Array;
-    samples: Uint32Array;
-    firstSeen: Uint32Array;
-    lastSeen: Uint32Array;
-
-    constructor(tree: CallTree<T>, sampleToNode: Uint32Array, cumulative: Uint32Array, samples: Uint32Array) {
-        this.tree = tree;
-        this.sampleToNode = sampleToNode;
-        this.cumulative = cumulative;
-        this.samples = samples;
-
-        Object.defineProperties(this, {
-            firstSeen: {
-                enumerable: true,
-                get: () => this.#getOrComputeSeenVectors().firstSeen
-            },
-            lastSeen: {
-                enumerable: true,
-                get: () => this.#getOrComputeSeenVectors().lastSeen
-            }
-        });
-    }
-
-    #getOrComputeSeenVectors() {
-        let seenVectors = this.#seenVectors?.deref();
-
-        if (seenVectors !== undefined) {
-            return seenVectors;
-        }
-
-        const { tree, sampleToNode, cumulative, samples } = this;
-        const { /* dictionary,*/ nodes, parent } = tree;
-        const firstSeen = new Uint32Array(nodes.length).fill(0xffffffff);
-        const lastSeen = new Uint32Array(nodes.length);
-        // const firstSeenDict = new Uint32Array(dictionary.length).fill(0xffffffff);
-        // const lastSeenDict = new Uint32Array(dictionary.length);
-
-        for (let i = 0; i < samples.length; i++) {
-            const nodeId = sampleToNode[samples[i]];
-            const position = cumulative[i];
-
-            if (firstSeen[nodeId] > position) {
-                firstSeen[nodeId] = position;
-            }
-
-            if (lastSeen[nodeId] < position) {
-                lastSeen[nodeId] = position;
-            }
-        }
-
-        for (let i = nodes.length - 1; i > 0; i--) {
-            const parentId = parent[i];
-            // const dictId = nodes[i];
-            const fs = firstSeen[i];
-            const ls = lastSeen[i];
-
-            if (firstSeen[parentId] > fs) {
-                firstSeen[parentId] = fs;
-            }
-
-            // if (firstSeenDict[dictId] > fs) {
-            //     firstSeenDict[dictId] = fs;
-            // }
-
-            if (lastSeen[parentId] < ls) {
-                lastSeen[parentId] = ls;
-            }
-
-            // if (lastSeenDict[dictId] < ls) {
-            //     lastSeenDict[dictId] = ls;
-            // }
-        }
-
-        this.#seenVectors = new WeakRef(seenVectors = { firstSeen, lastSeen });
-        return seenVectors;
-    }
-
-    get entries() {
-        let entries = this.#entries?.deref();
-
-        if (entries === undefined) {
-            const { tree, firstSeen, lastSeen } = this;
-
-            this.#entries = new WeakRef(entries = tree.dictionary.map((entry, entryIndex) => ({
-                entryIndex,
-                entry,
-                firstSeen: firstSeen[entryIndex],
-                lastSeen: lastSeen[entryIndex]
-            })));
-        }
-
-        return entries;
-    }
-
-    get entriesMap() {
-        let map = this.#entriesMap?.deref();
-        debugger;
-
-        if (map === undefined) {
-            this.#entriesMap = new WeakRef(map = this.entries.reduce(
-                (map, element) => map.set(element.entry, element),
-                new Map()
-            ));
-        }
-
-        return map;
-    }
-}
-
 function createMapsFromTree<T>(sampledTree: SampledTree<T>) {
     const { tree, sampleToNode } = sampledTree;
     const { nodes, nested } = tree;
@@ -460,7 +329,7 @@ function createMapsFromTree<T>(sampledTree: SampledTree<T>) {
     };
 }
 
-function createComputeBuffer<T>(
+function createSampleBreakdownBuffer<T>(
     trees: SampledTree<T>[],
     samplesMapSize: number,
     useWasm = true
@@ -510,24 +379,30 @@ function createComputeBuffer<T>(
 
     for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
         const treeMap: BufferTreeMetricsMap<T> = {
-            tree,
+            // input
             sourceSamplesCount: bufferMap.samplesCount,
             sourceSamplesTotal: bufferMap.samplesTotal,
+            // compute support
+            tree,
             sampleToNode: adopt(sampleToNode),
             parent: adopt(tree.parent),
+            // output
             samplesCount: alloc(tree.nodes.length),
             selfValues: alloc(tree.nodes.length),
             nestedValues: alloc(tree.nodes.length)
         };
         const dictMap: BufferDictionaryMetricsMap<T> = {
-            dictionary: tree.dictionary,
+            // input
             sourceSamplesCount: bufferMap.samplesCount,
             sourceSamplesTotal: bufferMap.samplesTotal,
-            nodeSelfValues: treeMap.selfValues,
-            nodeNestedValues: treeMap.nestedValues,
+            // compute support
+            dictionary: tree.dictionary,
+            nodeSelfValues: treeMap.selfValues,     // input from treeMap layer
+            nodeNestedValues: treeMap.nestedValues, // input from treeMap layer
             sampleIdToDict: adopt(sampleIdToDict),
             totalNodes: adopt(totalNodes),
             totalNodeToDict: adopt(totalNodeToDict),
+            // output
             samplesCount: alloc(tree.dictionary.length),
             selfValues: alloc(tree.dictionary.length),
             totalValues: alloc(tree.dictionary.length)
@@ -558,8 +433,7 @@ function createComputeBuffer<T>(
 }
 
 function createDimension<T extends CpuProNode>(
-    dimensionMaps: BufferDimensionMap<T>,
-    population: PopulationFiltered
+    dimensionMaps: BufferDimensionMap<T>
 ): { dict: DictDimension<T>; tree: TreeDimension<T> } {
     const { treeMap, dictMap } = dimensionMaps;
     const dictAll = new DictionaryMetrics<T>(
@@ -588,12 +462,6 @@ function createDimension<T extends CpuProNode>(
         treeMap.selfValues,
         treeMap.nestedValues
     );
-    const treeBounds = new TreeValueBounds(
-        treeMap.tree,
-        treeMap.sampleToNode,
-        population.cumulative,
-        population.population.samples
-    );
 
     return {
         dict: {
@@ -602,18 +470,17 @@ function createDimension<T extends CpuProNode>(
         },
         tree: {
             all: treeAll,
-            filtered: treeFiltered,
-            bounds: treeBounds
+            filtered: treeFiltered
         }
     };
 }
 
-export function computeMetrics<T extends readonly SampledTree<CpuProNode>[]>(
+export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>[]>(
     population: PopulationFiltered,
     trees: [...T]
 ) {
     const useWasm = USE_WASM;
-    const bufferMap = createComputeBuffer(trees, population.samplesTotal.length, useWasm);
+    const bufferMap = createSampleBreakdownBuffer(trees, population.samplesTotal.length, useWasm);
     const { memory, dimensions } = bufferMap;
     const computeApi = useWasm && memory
         ? createWasmApi(memory)
@@ -623,7 +490,7 @@ export function computeMetrics<T extends readonly SampledTree<CpuProNode>[]>(
 
     // Build dimensions with dict/tree separation
     const dimensionsWithStructure = dimensions.map(maps =>
-        createDimension(maps, population)
+        createDimension(maps)
     );
 
     const recomputeMetrics = () => {

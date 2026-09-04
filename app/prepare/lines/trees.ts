@@ -1,9 +1,10 @@
 import type { DictDimension, SampledTree, TreeDimension } from '../computations/metrics.js';
 import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
-import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
+import type { LineTreeDimension, ProfileLine } from './types.js';
 import { computeTreeMetrics, SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { PopulationFiltered, Population } from '../computations/population.js';
+import { TreeValueBounds } from '../computations/tree-node-bounds.js';
 
 export async function createLineBreakdown(
     kind: string,
@@ -24,18 +25,18 @@ export async function createLineBreakdown(
     const sampledPackagesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProPackage>;
     const sampledCategoriesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProCategory>;
     const sampledOwnersTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProOwner>;
+    const population = new Population(samples, values);
+    const populationFiltered = new PopulationFiltered(population);
 
     // build samples lists & trees
     const {
         recomputeMetrics,
-        samplesMetrics,
-        samplesMetricsFiltered,
         dict,
-        tree
+        tree,
+        bounds
     } = await work('process samples', () =>
         computeTreeMetrics(
-            samples,
-            values,
+            populationFiltered,
             sampledCallFramesTree,
             sampledModulesTree,
             sampledPackagesTree,
@@ -45,19 +46,27 @@ export async function createLineBreakdown(
         )
     );
 
-    return createLineTree(
+    return {
         kind,
         line,
-        { dict, tree },
-        { samplesMetrics, samplesMetricsFiltered, recomputeMetrics }
-    );
+        samplesMetrics: population,
+        samplesMetricsFiltered: populationFiltered,
+        recomputeMetrics,
+        locations: createBreakdownDimension(dict.locations, tree.locations, bounds.locations),
+        callFrames: createBreakdownDimension(dict.callFrames, tree.callFrames, bounds.callFrames),
+        modules: createBreakdownDimension(dict.modules, tree.modules, bounds.modules),
+        packages: createBreakdownDimension(dict.packages, tree.packages, bounds.packages),
+        categories: createBreakdownDimension(dict.categories, tree.categories, bounds.categories),
+        owners: createBreakdownDimension(dict.owners, tree.owners, bounds.owners)
+    };
 }
 
 export function createBreakdownDimension<T extends CpuProNode>(
     dict: DictDimension<T> | null,
-    tree: TreeDimension<T> | null
+    tree: TreeDimension<T> | null,
+    bounds: TreeValueBounds<T> | null
 ): LineTreeDimension<T> | null {
-    if (dict === null || tree === null) {
+    if (dict === null || tree === null || bounds === null) {
         return null;
     }
 
@@ -72,48 +81,6 @@ export function createBreakdownDimension<T extends CpuProNode>(
             nodes: tree.filtered,
             dict: dict.filtered
         },
-        bounds: tree.bounds
-    };
-}
-
-function createLineTree(
-    kind: string,
-    line: ProfileLine,
-    dimensions: {
-        dict: {
-            locations: DictDimension<CpuProLocation> | null;
-            callFrames: DictDimension<CpuProCallFrame> | null;
-            modules: DictDimension<CpuProModule> | null;
-            packages: DictDimension<CpuProPackage> | null;
-            categories: DictDimension<CpuProCategory> | null;
-            owners: DictDimension<CpuProOwner> | null;
-        };
-        tree: {
-            locations: TreeDimension<CpuProLocation> | null;
-            callFrames: TreeDimension<CpuProCallFrame> | null;
-            modules: TreeDimension<CpuProModule> | null;
-            packages: TreeDimension<CpuProPackage> | null;
-            categories: TreeDimension<CpuProCategory> | null;
-            owners: TreeDimension<CpuProOwner> | null;
-        };
-    },
-    metrics: {
-        samplesMetrics: Population;
-        samplesMetricsFiltered: PopulationFiltered;
-        recomputeMetrics: () => void;
-    }
-): ProfileLineBreakdown {
-    return {
-        kind,
-        line,
-        samplesMetrics: metrics.samplesMetrics,
-        samplesMetricsFiltered: metrics.samplesMetricsFiltered,
-        recomputeMetrics: metrics.recomputeMetrics,
-        locations: createBreakdownDimension(dimensions.dict.locations, dimensions.tree.locations),
-        callFrames: createBreakdownDimension(dimensions.dict.callFrames, dimensions.tree.callFrames),
-        modules: createBreakdownDimension(dimensions.dict.modules, dimensions.tree.modules),
-        packages: createBreakdownDimension(dimensions.dict.packages, dimensions.tree.packages),
-        categories: createBreakdownDimension(dimensions.dict.categories, dimensions.tree.categories),
-        owners: createBreakdownDimension(dimensions.dict.owners, dimensions.tree.owners)
+        bounds
     };
 }
