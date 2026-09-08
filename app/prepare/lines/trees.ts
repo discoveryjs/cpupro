@@ -1,17 +1,17 @@
 import type { DictDimension, SampledTree, TreeDimension } from '../computations/metrics.js';
 import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
-import type { LineTreeDimension, ProfileLine } from './types.js';
+import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
 import { computeTreeMetrics, SampledCpuProCallTree } from '../preprocessing/samples.js';
-import { PopulationFiltered, Population } from '../computations/population.js';
+import type { PopulationFiltered } from '../computations/population.js';
 import { TreeValueBounds } from '../computations/tree-node-bounds.js';
 
 export async function createLineBreakdown(
     kind: string,
     line: ProfileLine,
-    values: Uint32Array,
-    { samples, sampledTrees }: {
-        samples: Uint32Array<ArrayBufferLike>;
+    populationFiltered: PopulationFiltered,
+    { source, sampledTrees }: {
+        source: ProfileLineBreakdown['source'];
         sampledTrees: SampledCpuProCallTree[];
     },
     work: WorkHandler
@@ -25,8 +25,6 @@ export async function createLineBreakdown(
     const sampledPackagesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProPackage>;
     const sampledCategoriesTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProCategory>;
     const sampledOwnersTree = sampledTrees[sampledTreeOffset++] as SampledTree<CpuProOwner>;
-    const population = new Population(samples, values);
-    const populationFiltered = new PopulationFiltered(population);
 
     // build samples lists & trees
     const {
@@ -49,7 +47,8 @@ export async function createLineBreakdown(
     return {
         kind,
         line,
-        samplesMetrics: population,
+        source,
+        samplesMetrics: populationFiltered.population,
         samplesMetricsFiltered: populationFiltered,
         recomputeMetrics,
         locations: createBreakdownDimension(dict.locations, tree.locations, bounds.locations),

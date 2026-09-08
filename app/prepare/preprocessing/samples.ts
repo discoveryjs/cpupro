@@ -70,7 +70,6 @@ export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
 }
 
 export function remapTreeSamples(
-    samples: Uint32Array,
     sampleIdToEntryTreeNode: Int32Array,
     trees: CpuProCallTree[]
 ) {
@@ -107,10 +106,7 @@ export function remapTreeSamples(
         }
     }
 
-    return {
-        samples,
-        sampledTrees
-    };
+    return sampledTrees;
 }
 
 function createTreeNodeBounds<T extends CpuProNode>(sampledTree: SampledTree<T>, population: PopulationFiltered) {

@@ -3,9 +3,11 @@ import type { WorkHandler } from '../misc/work.js';
 import type { GeneratedNodes } from '../preprocessing/nodes.js';
 import type { TreeSource } from '../computations/build-trees.js';
 import type { CpuProLocation } from '../types.js';
-import type { ProfileLine } from './types.js';
+import type { ProfileLine, ProfileLineBreakdown } from './types.js';
 import { createSampledTreeSet } from '../profile.mjs';
 import { createLineBreakdown } from './trees.js';
+import { Population, PopulationFiltered } from '../computations/population.js';
+import { remapSamples } from '../preprocessing/samples.js';
 import { convertToUint32Array, createInt32Progression } from '../misc/utils.js';
 
 export async function createMemlineLocationsBreakdown(
@@ -18,7 +20,7 @@ export async function createMemlineLocationsBreakdown(
         samples: Uint32Array;
     },
     work: WorkHandler
-) {
+): Promise<ProfileLineBreakdown> {
     const allocationLocationBreakdownBasis: TreeSource<CpuProLocation> =
         await work('compute location breakdown basis', () =>
             createAllocationLocationBreakdownBasis(
@@ -26,25 +28,30 @@ export async function createMemlineLocationsBreakdown(
                 vectorLocations.generatedNodes
             )
         );
+    const { samples, sampleToNode } = await work('normalize allocation locations', () =>
+        remapSamples(vectorLocations.samples, allocationLocationBreakdownBasis.sourceIdToNode)
+    );
+    const locationSource = {
+        ...allocationLocationBreakdownBasis,
+        sourceIdToNode: sampleToNode
+    };
+    const population = await work('create allocation location population', () =>
+        new PopulationFiltered(new Population(samples, allocationSizes))
+    );
     const locationTreeSamples = await createSampledTreeSet(
         dictionary,
-        allocationLocationBreakdownBasis,
-        vectorLocations.samples,
+        locationSource,
         work
     );
 
-    const breakdown = createLineBreakdown(
+    return createLineBreakdown(
         kind,
         line,
-        allocationSizes,
+        population,
         locationTreeSamples,
         work
     );
 
-    // FIXME: temporary for a source-maps breakdown
-    line.__allocationLocationBreakdownBasis = locationTreeSamples.source;
-
-    return breakdown;
 }
 
 function createAllocationLocationBreakdownBasis(

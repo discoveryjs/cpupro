@@ -19,6 +19,7 @@ import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { remapSamples, remapTreeSamples } from './preprocessing/samples.js';
+import { Population, PopulationFiltered } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
@@ -82,38 +83,29 @@ export function toggleProfile(model: Model, profile: Profile) {
 export async function createSampledTreeSet(
     dictionary: Dictionary,
     treeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
-    samples: Uint32Array,
     work: WorkHandler
 ) {
-    const { samples: normalizedSamples, sampleToNode } = await work('normalize samples', () =>
-        remapSamples(samples, treeSource.sourceIdToNode)
-    );
-    const sampledTreeSetSource = {
-        ...treeSource,
-        sourceIdToNode: sampleToNode
-    };
-
     //
     // Usage vectors
     //
 
     const useUsage = true;
     const usage = useUsage ? await work('usage', () =>
-        new Usage(dictionary, sampledTreeSetSource)
+        new Usage(dictionary, treeSource)
     ) : null;
     const treeSetDictionary = usage
-        ? sampledTreeSetSource.dictionary === dictionary.locations
+        ? treeSource.dictionary === dictionary.locations
             ? usage.locations!
             : usage.callFrames
-        : sampledTreeSetSource.dictionary;
+        : treeSource.dictionary;
     const treeSetNodes = usage
-        ? sampledTreeSetSource.nodes.map(dictIndex => usage.mapToUsage[dictIndex])
-        : sampledTreeSetSource.nodes;
+        ? treeSource.nodes.map(dictIndex => usage.mapToUsage[dictIndex])
+        : treeSource.nodes;
 
     // Create tree source for usage vectors
     const treeSetSource = createTreeSourceFromParent(
-        sampledTreeSetSource.parent,
-        sampledTreeSetSource.sourceIdToNode,
+        treeSource.parent,
+        treeSource.sourceIdToNode,
         treeSetNodes,
         treeSetDictionary
     );
@@ -129,9 +121,8 @@ export async function createSampledTreeSet(
         )
     );
 
-    const sampledTreeSet = await work('map samples to trees', () =>
+    const sampledTrees = await work('map samples to trees', () =>
         remapTreeSamples(
-            normalizedSamples,
             treeSet.sourceIdToNode,
             [
                 ...(treeSet.locations ? [treeSet.locations] : []),
@@ -145,8 +136,8 @@ export async function createSampledTreeSet(
     );
 
     return {
-        ...sampledTreeSet,
-        source: sampledTreeSetSource,
+        sampledTrees,
+        source: treeSource,
         treeSet,
         dictionary: usage || dictionary
     };
@@ -342,11 +333,24 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         }
     );
 
+    const { samples: callStackSamples, sampleToNode } = await work('normalize CPU samples', () =>
+        remapSamples(samples, callStackBreakdownBasis.sourceIdToNode)
+    );
+    const {
+        cpuSamplesPopulation,
+        cpuSamplesPopulationFiltered
+    } = await work('create CPU population', () => {
+        const cpuSamplesPopulation = new Population(callStackSamples, timeDeltas);
+        const cpuSamplesPopulationFiltered = new PopulationFiltered(cpuSamplesPopulation);
+        return { cpuSamplesPopulation, cpuSamplesPopulationFiltered };
+    });
     const callStackSampledTreeSet = await work('create tree breakdown', () =>
         createSampledTreeSet(
             dictionary,
-            callStackBreakdownBasis,
-            samples,
+            {
+                ...callStackBreakdownBasis,
+                sourceIdToNode: sampleToNode
+            },
             work
         )
     );
@@ -355,7 +359,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const timeline = await createTimeline(
         data,
         axis,
-        timeDeltas,
+        cpuSamplesPopulationFiltered,
         callStackSampledTreeSet,
         { work }
     );
@@ -369,6 +373,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         data,
         dictionary,
         profileScriptsMap,
+        cpuSamplesPopulation,
         callStackSampledTreeSet,
         preparseScriptSourcesResult,
         { work }
@@ -435,45 +440,18 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         line.profile = profile;
     }
 
-    if (timeline) {
-        await createSourceMappedBreakdown(
-            'call-stack-sm',
-            timeline,
-            dictionary,
-            profileScriptsMap,
-            callStackSampledTreeSet.source,
-            timeline.breakdowns[0].samplesMetrics,
-            ownership,
-            work
-        );
-    }
-
-    if (memline) {
-        await createSourceMappedBreakdown(
-            'call-stack-sm',
-            memline,
-            dictionary,
-            profileScriptsMap,
-            callStackSampledTreeSet.source,
-            memline.breakdowns[0].samplesMetrics,
-            ownership,
-            work
-        );
-
-        if (memline.__allocationLocationBreakdownBasis) {
+    for (const line of lines) {
+        for (const breakdown of line.breakdowns.slice()) {
             await createSourceMappedBreakdown(
-                'locations-sm',
-                memline,
+                `${breakdown.kind}-sm`,
+                line,
                 dictionary,
                 profileScriptsMap,
-                memline.__allocationLocationBreakdownBasis,
-                memline.breakdowns[1].samplesMetrics,
+                breakdown,
                 ownership,
                 work
             );
         }
-
-        delete memline.__allocationLocationBreakdownBasis;
     }
 
     return profile;

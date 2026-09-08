@@ -1,7 +1,8 @@
 import type { Profile } from '../profile.mjs';
 import type { V8CpuProfile } from '../types.js';
-import type { Metric, ProfileLineMethods, ProfileMemline } from './types.js';
+import type { Metric, ProfileLineBreakdown, ProfileLineMethods, ProfileMemline } from './types.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
+import type { Population } from '../computations/population.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { Dictionary } from '../dictionary.js';
@@ -71,8 +72,9 @@ export async function createMemline(
     data: V8CpuProfile,
     dictionary: Dictionary,
     profileScriptsMap: ProfileScriptsMap,
+    cpuPopulation: Population,
     callStackTreeSet: {
-        samples: Uint32Array<ArrayBufferLike>;
+        source: ProfileLineBreakdown['source'];
         sampledTrees: SampledCpuProCallTree[];
     },
     preparseScriptSourcesResult: Promise<void>,
@@ -199,6 +201,7 @@ export async function createMemline(
                 _cpuproAllocationMapping,
                 _cpuproAllocationIds,
                 allocationSizes,
+                cpuPopulation,
                 callStackTreeSet,
                 work
             );
@@ -224,8 +227,8 @@ export async function createMemline(
         )
     );
 
-    if (vectorLocations !== null) {
-        const locationBreakdown = await work('create location breakdown', () =>
+    const locationBreakdown = vectorLocations !== null
+        ? await work('create location breakdown', () =>
             createMemlineLocationsBreakdown(
                 'location',
                 line,
@@ -234,8 +237,10 @@ export async function createMemline(
                 vectorLocations,
                 work
             )
-        );
+        )
+        : null;
 
+    if (locationBreakdown !== null) {
         line.breakdowns.push(locationBreakdown);
     }
 

@@ -1,7 +1,8 @@
 import type { WorkHandler } from '../misc/work.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createLineBreakdown } from './trees.js';
-import { ProfileLine } from './types.js';
+import { Population, PopulationFiltered } from '../computations/population.js';
+import { ProfileLine, ProfileLineBreakdown } from './types.js';
 
 export async function createMemlineCpuSamplesBreakdown(
     kind: string,
@@ -9,8 +10,9 @@ export async function createMemlineCpuSamplesBreakdown(
     _cpuproAllocationMapping: Uint32Array | number[],
     _cpuproAllocationIds: Uint32Array | number[],
     _cpuproAllocationSizes: Uint32Array | number[],
+    cpuPopulation: Population,
     cpuSampledTreeSet: {
-        samples: Uint32Array<ArrayBufferLike>;
+        source: ProfileLineBreakdown['source'];
         sampledTrees: SampledCpuProCallTree[];
     },
     work: WorkHandler
@@ -21,10 +23,7 @@ export async function createMemlineCpuSamplesBreakdown(
     const allocationCount = _cpuproAllocationIds.length;
     const allocationCpuSamples = new Uint32Array(allocationCount);
     const allocationSizes = new Uint32Array(allocationCount);
-    const {
-        samples: cpuSamples,
-        sampledTrees: cpuSampledTrees
-    } = cpuSampledTreeSet;
+    const cpuSamples = cpuPopulation.samples;
 
     await work('map allocations to CPU samples', () => {
         let allocIdx = 0;
@@ -50,8 +49,8 @@ export async function createMemlineCpuSamplesBreakdown(
     return createLineBreakdown(
         kind,
         line,
-        allocationSizes,
-        { samples: allocationCpuSamples, sampledTrees: cpuSampledTrees },
+        new PopulationFiltered(new Population(allocationCpuSamples, allocationSizes)),
+        cpuSampledTreeSet,
         work
     );
 }

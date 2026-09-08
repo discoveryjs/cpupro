@@ -1,8 +1,9 @@
 import type { Profile } from '../profile.mjs';
-import type { Axis, Metric, ProfileLineMethods, TimelineLine } from './types.js';
+import type { Axis, Metric, ProfileLineBreakdown, ProfileLineMethods, TimelineLine } from './types.js';
 import type { V8CpuProfile } from '../types.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
 import { createLineBreakdown } from './trees.js';
+import type { PopulationFiltered } from '../computations/population.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 
 export type CreateTimelineOptions = {
@@ -58,9 +59,9 @@ const timelineMethods: ProfileLineMethods = {
 export async function createTimeline(
     data: V8CpuProfile,
     axis: Axis,
-    timeDeltas: Uint32Array,
+    population: PopulationFiltered,
     sampledTreeSet: {
-        samples: Uint32Array<ArrayBufferLike>;
+        source: ProfileLineBreakdown['source'];
         sampledTrees: SampledCpuProCallTree[];
     },
     options: CreateTimelineOptions
@@ -86,7 +87,7 @@ export async function createTimeline(
         axisEndNoSamples: axis.endNoSamples,
         axisTotal: axis.total,
 
-        values: timeDeltas,
+        values: population.population.values,
         attributes: [],
         breakdowns: [],
         mappings: Object.create(null),
@@ -100,7 +101,7 @@ export async function createTimeline(
     const callStackBreakdown = await createLineBreakdown(
         'call-stack',
         line,
-        timeDeltas,
+        population,
         sampledTreeSet,
         work
     );

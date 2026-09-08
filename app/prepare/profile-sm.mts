@@ -5,9 +5,9 @@ import { createSampledTreeSet } from './profile.mjs';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { CpuProCallFrame, CpuProLocation, CpuProScript } from './types.js';
 import { TreeSource } from './computations/build-trees.js';
-import type { Population } from './computations/population.js';
+import type { PopulationFiltered } from './computations/population.js';
 import { createLineBreakdown } from './lines/trees.js';
-import { ProfileLine } from './lines/types.js';
+import { ProfileLine, ProfileLineBreakdown } from './lines/types.js';
 import { WorkHandler } from './misc/work.js';
 import { createInt32Progression } from './misc/utils.js';
 import { Ownership } from './formats/types.js';
@@ -49,12 +49,11 @@ export async function createSourceMappedBreakdown(
     line: ProfileLine,
     dictionary: Dictionary,
     scriptsMap: ProfileScriptsMap,
-    treeBreakdownBasis: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
-    population: Population,
+    breakdown: ProfileLineBreakdown,
     ownership: Ownership | null,
     work: WorkHandler
 ) {
-    if (treeBreakdownBasis.dictionary !== dictionary.locations) {
+    if (breakdown.source.dictionary !== dictionary.locations) {
         return;
     }
 
@@ -259,20 +258,19 @@ export async function createSourceMappedBreakdown(
     const sampledTreeSet = await createSampledTreeSet(
         dictionary,
         {
-            ...treeBreakdownBasis,
-            nodes: treeBreakdownBasis.nodes.map(x => execToOriginalMap[x])
+            ...breakdown.source,
+            nodes: breakdown.source.nodes.map(x => execToOriginalMap[x])
         },
-        population.samples,
         work
     );
 
-    const breakdown = await createLineBreakdown(
+    const sourceMappedBreakdown = await createLineBreakdown(
         breakdownName,
         line,
-        population.values,
+        breakdown.samplesMetricsFiltered,
         sampledTreeSet,
         work
     );
 
-    line.breakdowns.push(breakdown);
+    line.breakdowns.push(sourceMappedBreakdown);
 }
