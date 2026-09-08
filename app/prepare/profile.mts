@@ -18,7 +18,7 @@ import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { Usage } from './usage.js';
 import { createLineMapping } from './computations/line-mapping.js';
-import { remapTreeSamples } from './preprocessing/samples.js';
+import { remapSamples, remapTreeSamples } from './preprocessing/samples.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
@@ -85,27 +85,35 @@ export async function createSampledTreeSet(
     samples: Uint32Array,
     work: WorkHandler
 ) {
+    const { samples: normalizedSamples, sampleToNode } = await work('normalize samples', () =>
+        remapSamples(samples, treeSource.sourceIdToNode)
+    );
+    const sampledTreeSetSource = {
+        ...treeSource,
+        sourceIdToNode: sampleToNode
+    };
+
     //
     // Usage vectors
     //
 
     const useUsage = true;
     const usage = useUsage ? await work('usage', () =>
-        new Usage(dictionary, treeSource)
+        new Usage(dictionary, sampledTreeSetSource)
     ) : null;
     const treeSetDictionary = usage
-        ? treeSource.dictionary === dictionary.locations
+        ? sampledTreeSetSource.dictionary === dictionary.locations
             ? usage.locations!
             : usage.callFrames
-        : treeSource.dictionary;
+        : sampledTreeSetSource.dictionary;
     const treeSetNodes = usage
-        ? treeSource.nodes.map(dictIndex => usage.mapToUsage[dictIndex])
-        : treeSource.nodes;
+        ? sampledTreeSetSource.nodes.map(dictIndex => usage.mapToUsage[dictIndex])
+        : sampledTreeSetSource.nodes;
 
     // Create tree source for usage vectors
     const treeSetSource = createTreeSourceFromParent(
-        treeSource.parent,
-        treeSource.sourceIdToNode,
+        sampledTreeSetSource.parent,
+        sampledTreeSetSource.sourceIdToNode,
         treeSetNodes,
         treeSetDictionary
     );
@@ -121,10 +129,9 @@ export async function createSampledTreeSet(
         )
     );
 
-    // re-map samples
-    const sampledTreeSet = await work('remap samples', () =>
+    const sampledTreeSet = await work('map samples to trees', () =>
         remapTreeSamples(
-            samples,
+            normalizedSamples,
             treeSet.sourceIdToNode,
             [
                 ...(treeSet.locations ? [treeSet.locations] : []),
@@ -139,13 +146,7 @@ export async function createSampledTreeSet(
 
     return {
         ...sampledTreeSet,
-        basis: {
-            ...treeSource,
-            sourceIdToNode: Int32Array.from(
-                sampledTreeSet.sampleToSourceId,
-                sourceId => treeSource.sourceIdToNode[sourceId]
-            )
-        },
+        source: sampledTreeSetSource,
         treeSet,
         dictionary: usage || dictionary
     };
@@ -440,7 +441,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             timeline,
             dictionary,
             profileScriptsMap,
-            callStackSampledTreeSet.basis,
+            callStackSampledTreeSet.source,
             timeline.breakdowns[0].samplesMetrics.samples,
             timeline.breakdowns[0].samplesMetrics.values,
             ownership,
@@ -454,7 +455,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             memline,
             dictionary,
             profileScriptsMap,
-            callStackSampledTreeSet.basis,
+            callStackSampledTreeSet.source,
             memline.breakdowns[0].samplesMetrics.samples,
             memline.breakdowns[0].samplesMetrics.values,
             ownership,

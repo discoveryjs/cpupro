@@ -1,7 +1,7 @@
 import { TIMINGS } from '../const.js';
 import { CallTree } from '../computations/call-tree.js';
 import { createSampleBreakdown, DictDimension, SampledTree, TreeDimension } from '../computations/metrics.js';
-import { convertToUint32Array } from '../misc/utils.js';
+import { convertToInt32Array } from '../misc/utils.js';
 import {
     CpuProModule,
     CpuProCategory,
@@ -46,7 +46,6 @@ export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
     const tmpMap = new Uint32Array(sampleIdMap.length);
     const remappedSamples: Uint32Array = new Uint32Array(samples.length);
     const samplesMap: number[] = []; // -> callFramesTree.nodes
-    const sourceIds: number[] = [];
     let sampledNodesCount = 0;
 
     // remap samples -> samplesMap, populate samplesMap
@@ -56,7 +55,6 @@ export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
 
         if (newSample === 0) {
             samplesMap.push(sampleIdMap[id]);
-            sourceIds.push(id);
             tmpMap[id] = ++sampledNodesCount;
             remappedSamples[i] = sampledNodesCount - 1;
         } else {
@@ -67,8 +65,7 @@ export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
     // convert to typed array for faster processing
     return {
         samples: remappedSamples,
-        sampleToSourceId: convertToUint32Array(sourceIds),
-        sampleToNode: convertToUint32Array(samplesMap)
+        sampleToNode: convertToInt32Array(samplesMap)
     };
 }
 
@@ -78,9 +75,8 @@ export function remapTreeSamples(
     trees: CpuProCallTree[]
 ) {
     const sampledTrees: SampledCpuProCallTree[] = [];
-    const { samples: newSamples, sampleToNode, sampleToSourceId } = remapSamples(samples, sampleIdToEntryTreeNode);
     const sampleToNodeBySourceTree = new Map<CpuProCallTree | null, Uint32Array>(
-        [[null, sampleToNode]]
+        [[null, new Uint32Array(sampleIdToEntryTreeNode)]]
     );
 
     while (sampledTrees.length < trees.length) {
@@ -112,8 +108,7 @@ export function remapTreeSamples(
     }
 
     return {
-        samples: newSamples,
-        sampleToSourceId,
+        samples,
         sampledTrees
     };
 }
