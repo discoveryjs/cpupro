@@ -139,6 +139,13 @@ export async function createSampledTreeSet(
 
     return {
         ...sampledTreeSet,
+        basis: {
+            ...treeSource,
+            sourceIdToNode: Int32Array.from(
+                sampledTreeSet.sampleToSourceId,
+                sourceId => treeSource.sourceIdToNode[sourceId]
+            )
+        },
         treeSet,
         dictionary: usage || dictionary
     };
@@ -334,7 +341,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         }
     );
 
-    const sampledTreeSet = await work('create tree breakdown', () =>
+    const callStackSampledTreeSet = await work('create tree breakdown', () =>
         createSampledTreeSet(
             dictionary,
             callStackBreakdownBasis,
@@ -348,7 +355,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         data,
         axis,
         timeDeltas,
-        sampledTreeSet,
+        callStackSampledTreeSet,
         { work }
     );
 
@@ -361,7 +368,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         data,
         dictionary,
         profileScriptsMap,
-        sampledTreeSet,
+        callStackSampledTreeSet,
         preparseScriptSourcesResult,
         { work }
     );
@@ -401,7 +408,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     );
 
     // create profile
-    const usage = sampledTreeSet.dictionary;
+    const usage = callStackSampledTreeSet.dictionary;
     const profile = {
         name: data._name ?? null,
         runtime: detectRuntime(usage.categories, usage.packages, runtime || data._runtime), // FIXME: categories/packages must be related to profile
@@ -433,7 +440,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             timeline,
             dictionary,
             profileScriptsMap,
-            callStackBreakdownBasis,
+            callStackSampledTreeSet.basis,
             timeline.breakdowns[0].samplesMetrics.samples,
             timeline.breakdowns[0].samplesMetrics.values,
             ownership,
@@ -447,9 +454,9 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             memline,
             dictionary,
             profileScriptsMap,
-            callStackBreakdownBasis,
-            memline.breakdowns[0].samplesMetrics.samples, // memline.__allocationCpuSamples,
-            memline.breakdowns[0].samplesMetrics.values, // memline.values,
+            callStackSampledTreeSet.basis,
+            memline.breakdowns[0].samplesMetrics.samples,
+            memline.breakdowns[0].samplesMetrics.values,
             ownership,
             work
         );
@@ -461,7 +468,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
                 dictionary,
                 profileScriptsMap,
                 memline.__allocationLocationBreakdownBasis,
-                memline.__vectorLocations.samples, // memline.breakdowns[1].samplesMetrics.samples,
+                memline.breakdowns[1].samplesMetrics.samples,
                 memline.breakdowns[1].samplesMetrics.values,
                 ownership,
                 work
@@ -469,7 +476,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         }
 
         delete memline.__allocationLocationBreakdownBasis;
-        delete memline.__vectorLocations;
     }
 
     return profile;

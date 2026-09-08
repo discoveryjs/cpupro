@@ -42,8 +42,7 @@ export async function createMemlineLocationsBreakdown(
     );
 
     // FIXME: temporary for a source-maps breakdown
-    line.__allocationLocationBreakdownBasis = allocationLocationBreakdownBasis;
-    line.__vectorLocations = vectorLocations;
+    line.__allocationLocationBreakdownBasis = locationTreeSamples.basis;
 
     return breakdown;
 }
