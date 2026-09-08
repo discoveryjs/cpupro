@@ -5,6 +5,7 @@ import { createSampledTreeSet } from './profile.mjs';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { CpuProCallFrame, CpuProLocation, CpuProScript } from './types.js';
 import { TreeSource } from './computations/build-trees.js';
+import type { Population } from './computations/population.js';
 import { createLineBreakdown } from './lines/trees.js';
 import { ProfileLine } from './lines/types.js';
 import { WorkHandler } from './misc/work.js';
@@ -49,8 +50,7 @@ export async function createSourceMappedBreakdown(
     dictionary: Dictionary,
     scriptsMap: ProfileScriptsMap,
     treeBreakdownBasis: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
-    samples: Uint32Array,
-    values: Uint32Array,
+    population: Population,
     ownership: Ownership | null,
     work: WorkHandler
 ) {
@@ -262,14 +262,14 @@ export async function createSourceMappedBreakdown(
             ...treeBreakdownBasis,
             nodes: treeBreakdownBasis.nodes.map(x => execToOriginalMap[x])
         },
-        samples,
+        population.samples,
         work
     );
 
     const breakdown = await createLineBreakdown(
         breakdownName,
         line,
-        values,
+        population.values,
         sampledTreeSet,
         work
     );
