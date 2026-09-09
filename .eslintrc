@@ -21,6 +21,30 @@
         "app/views/misc/mode-regexp.js",
         "lib/tmp/jsonxl-snapshot9.js"
     ],
+    "overrides": [
+        {
+            "files": ["**/*.test.{js,ts,mts}", "test/**/*.{js,ts,mts}", "vitest.config.mts"],
+            "env": {
+                "browser": false,
+                "node": true,
+                "es2021": true
+            },
+            "rules": {
+                "no-restricted-imports": [
+                    "error",
+                    {
+                        "paths": [
+                            {
+                                "name": "vitest",
+                                "importNames": ["expect", "assert"],
+                                "message": "Use node:assert/strict for assertions."
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ],
     "rules": {
         "@typescript-eslint/no-var-requires": 0,
         "no-duplicate-case": 2,

@@ -32,6 +32,9 @@
     },
     "scripts": {
         "start": "discovery",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:lint": "eslint --ext .js,.ts,.mts test vitest.config.mts \"app/**/*.test.{js,ts,mts}\"",
         "lint": "eslint lib app",
         "typecheck": "tsc --noEmit",
         "build": "npm run build-wasm && npm run build-app && npm run build-report-template",
@@ -58,6 +61,7 @@
         "js-beautify": "^1.15.4",
         "source-map-js": "^1.2.1",
         "typescript": "^5.8.3",
+        "vitest": "^4.1.11",
         "wabt": "^1.0.32"
     },
     "allowScripts": {

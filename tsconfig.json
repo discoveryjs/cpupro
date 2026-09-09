@@ -3,6 +3,10 @@
         "app/**/*.ts",
         "app/**/*.mts"
     ],
+    "exclude": [
+        "app/**/*.test.ts",
+        "app/**/*.test.mts"
+    ],
     "compilerOptions": {
         "module": "NodeNext",
         "moduleResolution": "NodeNext",

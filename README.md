@@ -130,6 +130,12 @@ Record profile and write it into `.cpuprofile` file:
 node --require cpupro/file/data path/to/script.js
 ```
 
+## Development
+
+Use Node.js 24 LTS or a newer supported version. Run `npm ci`, then `npm test` for unit and integration tests or `npm run test:watch` while developing. Tests live next to the modules they cover and use `node:assert/strict`.
+
+See [Testing](test/README.md) for focused runs, JS/WASM modes, fixtures and environment boundaries.
+
 ## License
 
 MIT
