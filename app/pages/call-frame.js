@@ -228,7 +228,7 @@ const pageContent = [
         view: 'expand',
         when: 'scopeLine("memline") | lineAttribute("allocationType") and lineAttribute("allocationLifespan")',
         className: 'trigger-outside',
-        data: '{ callFrame: @, matrix: scopeBreakdown() | callFrames.all.nodes.allocationsMatrix(samplesMetrics, @) }',
+        data: '{ callFrame: @, matrix: scopeBreakdown() | callFrames.all.nodes.allocationsMatrix(population, @) }',
         ...sessionExpandState('callframe-allocations-matrix', false, '$'),
         header: 'text:"Allocation types"',
         content: {
@@ -238,7 +238,7 @@ const pageContent = [
                 view: 'allocation-samples-matrix',
                 data: `
                     $filtered: scopeBreakdown() | callFrames.filtered.nodes.allocationsMatrix(
-                        samplesMetricsFiltered,
+                        populationFiltered,
                         @.callFrame
                     );
 
@@ -358,7 +358,7 @@ discovery.page.define('call-frame', {
                 const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, context);
                 const scopeLine = resolveScopeProfileLine(null, context);
                 const scopeProfile = scopeLine.profile;
-                const samplesMetrics = scopeBreakdown.samplesMetricsFiltered;
+                const populationFiltered = scopeBreakdown.populationFiltered;
                 const scopeTreeMetrics = scopeBreakdown.callFrames.filtered.nodes;
                 const findRelatedTree = line => line.breakdowns.find(tree =>
                     tree.callFrames.tree === scopeTreeMetrics.tree
@@ -381,7 +381,7 @@ discovery.page.define('call-frame', {
                     secondaryTreeMetrics,
                     subsetTreeValues: new SubsetTreeMetrics(
                         new SubsetCallTree(scopeTreeMetrics.tree, data),
-                        samplesMetrics,
+                        populationFiltered,
                         scopeTreeMetrics
                     ),
                     ancestorSubsetTreeValues: new AncestorSubsetTreeMetrics(

@@ -12,7 +12,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     const scopeLine = resolveScopeProfileLine(config.line, context);
     const scopeBreakdown = resolveScopeProfileLineBreakdown(null, scopeLine, context);
     const scopeLineStart = scopeLine.axisStart + scopeLine.axisStartNoSamples;
-    const samplesMetrics = scopeBreakdown.samplesMetricsFiltered;
+    const populationFiltered = scopeBreakdown.populationFiltered;
     const {
         tooltipContent = defaultTooltipContent,
         tooltipClassName,
@@ -63,29 +63,29 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
         onClick(span) {
             // console.log('Click:', span?.text, span);
             if (span !== null) {
-                samplesMetrics.setRange(span.start - scopeLineStart, span.end - scopeLineStart);
+                populationFiltered.setRange(span.start - scopeLineStart, span.end - scopeLineStart);
             } else {
-                samplesMetrics.resetRange();
+                populationFiltered.resetRange();
             }
         }
     });
 
-    let samplesMetricsSubscription = null;
+    let populationSubscription = null;
     destroyEl.onConnect = () => {
-        samplesMetricsSubscription = samplesMetrics.subscribe(syncSelection);
+        populationSubscription = populationFiltered.subscribe(syncSelection);
         syncSelection();
     };
     destroyEl.onDestroy = () => {
-        samplesMetricsSubscription?.();
+        populationSubscription?.();
         trackTimeline.destroy();
         tooltip.destroy();
     };
 
     function syncSelection() {
-        if (samplesMetrics.rangeStart) {
+        if (populationFiltered.rangeStart) {
             trackTimeline.setIntervals([...intervals, {
-                start: samplesMetrics.rangeStart + scopeLineStart,
-                end: samplesMetrics.rangeEnd + scopeLineStart,
+                start: populationFiltered.rangeStart + scopeLineStart,
+                end: populationFiltered.rangeEnd + scopeLineStart,
                 color: 'rgba(0, 152, 251, .1)',
                 border: '#268fea66',
                 text: 'selection'

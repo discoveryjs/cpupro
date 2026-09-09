@@ -49,18 +49,18 @@ discovery.view.define('subject-with-nested-timeline', {
             labels: 'top',
             duration: '=totalValue',
             segments: '=binCount',
-            selectionStart: '=scopeBreakdown.samplesMetricsFiltered.rangeStart',
-            selectionEnd: '=scopeBreakdown.samplesMetricsFiltered.rangeEnd',
-            rangeManager: '=scopeBreakdown.samplesMetricsFiltered',
+            selectionStart: '=scopeBreakdown.populationFiltered.rangeStart',
+            selectionEnd: '=scopeBreakdown.populationFiltered.rangeEnd',
+            rangeManager: '=scopeBreakdown.populationFiltered',
             onChange: (state, name, el, { scopeBreakdown }) => {
                 // console.log('change', state);
                 // const t = Date.now();
-                const samplesMetrics = scopeBreakdown.samplesMetricsFiltered;
+                const populationFiltered = scopeBreakdown.populationFiltered;
 
                 if (state.timeStart !== null) {
-                    samplesMetrics.setRange(state.timeStart, state.timeEnd);
+                    populationFiltered.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    samplesMetrics.resetRange();
+                    populationFiltered.resetRange();
                 }
 
                 // console.log('compute timings', Date.now() - t);
@@ -144,13 +144,13 @@ discovery.view.define('subject-with-nested-timeline', {
                 postRender(el, _, data, context) {
                     const { tm, duration, color } = data;
                     const { axisTotal } = resolveScopeProfileLine(null, context);
-                    const { samplesMetricsFiltered } = resolveScopeProfileLineBreakdown(null, null, context);
+                    const { populationFiltered } = resolveScopeProfileLineBreakdown(null, null, context);
 
                     el.style.setProperty('--pos', tm / axisTotal);
                     el.style.setProperty('--duration', duration / axisTotal);
                     el.style.setProperty('--tier-color', 'rgb(' + color + ', .68)');
                     el.addEventListener('click', () => {
-                        samplesMetricsFiltered.setRange(tm, tm + duration);
+                        populationFiltered.setRange(tm, tm + duration);
                     });
                 }
             }

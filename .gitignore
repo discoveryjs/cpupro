@@ -9,3 +9,4 @@
 .DS_Store
 /specs/
 /a_b_c/
+/.playwright-mcp/

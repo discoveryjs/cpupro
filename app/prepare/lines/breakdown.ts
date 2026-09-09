@@ -1,5 +1,5 @@
 import { TIMINGS } from '../const.js';
-import { createSampleBreakdown, type DictDimension, type SampledTree, type TreeDimension } from '../computations/metrics.js';
+import { createSampleBreakdown, type DictDimension, type TreeDimension } from '../computations/metrics.js';
 import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
@@ -17,8 +17,8 @@ export async function createLineBreakdown(
     const { recomputeMetrics, dimensions } = await work('compute breakdown metrics', () => {
         const computeStart = Date.now();
         const { recomputeMetrics, dimensions } = createSampleBreakdown(populationFiltered, sampledTrees);
-        const lineDimensions = dimensions.map((dimension, index) =>
-            createBreakdownDimension(dimension, sampledTrees[index], populationFiltered)
+        const lineDimensions = dimensions.map(dimension =>
+            createBreakdownDimension(dimension, populationFiltered)
         );
 
         TIMINGS && console.log('Compute timings:', Date.now() - computeStart);
@@ -31,8 +31,8 @@ export async function createLineBreakdown(
         kind,
         line,
         source,
-        samplesMetrics: populationFiltered.population,
-        samplesMetricsFiltered: populationFiltered,
+        population: populationFiltered.population,
+        populationFiltered,
         recomputeMetrics,
         locations: offset ? dimensions[0] as LineTreeDimension<CpuProLocation> : null,
         callFrames: dimensions[offset] as LineTreeDimension<CpuProCallFrame>,
@@ -45,7 +45,6 @@ export async function createLineBreakdown(
 
 function createBreakdownDimension<T extends CpuProNode>(
     { dict, tree }: { dict: DictDimension<T>; tree: TreeDimension<T> },
-    sampledTree: SampledTree<T>,
     population: PopulationFiltered
 ): LineTreeDimension<T> {
     return {
@@ -60,8 +59,8 @@ function createBreakdownDimension<T extends CpuProNode>(
             dict: dict.filtered
         },
         bounds: new TreeValueBounds(
-            sampledTree.tree,
-            sampledTree.sampleToNode,
+            tree.all.tree,
+            tree.all.sampleToNode,
             population.cumulative,
             population.samples
         )

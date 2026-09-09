@@ -1,17 +1,4 @@
-import type { CallTree } from '../computations/call-tree.js';
-import type { SampledTree } from '../computations/metrics.js';
 import { convertToInt32Array } from '../misc/utils.js';
-import type { CpuProNode } from '../types.js';
-
-export function createSampledCallTree<T extends CpuProNode>(
-    tree: CallTree<T>,
-    sampleToNode: Uint32Array
-): SampledTree<T> {
-    return {
-        tree,
-        sampleToNode
-    };
-}
 
 // FIXME: sampleIdMap can contain -1 for missed IDs; normally, this shouldn't happen,
 // but it is possible with corrupted or incomplete input data, so it probably makes sense to handle such cases

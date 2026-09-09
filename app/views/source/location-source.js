@@ -80,7 +80,7 @@ discovery.view.define('location-source', {
                     content: $sampleMarkContent,
                     value: $,
                     values: $values.nodes,
-                    metrics: $scopeBreakdown.samplesMetricsFiltered,
+                    metrics: $scopeBreakdown.populationFiltered,
                     prop: 'selfValue',
                     postfix: $unit,
                     tooltip: $selfValueTooltipView or ($noloc ? $selfValueMisattributedTooltipView)

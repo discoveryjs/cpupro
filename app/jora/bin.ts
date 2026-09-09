@@ -6,8 +6,8 @@ import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepar
 import { makeSamplesMask } from './call-tree.js';
 import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown } from './profile.js';
 
-function getCallStackSamplesMetrics(line: ProfileLine) {
-    return line.breakdowns.find(tree => tree.kind === 'call-stack')!.samplesMetrics;
+function getCallStackPopulation(line: ProfileLine) {
+    return line.breakdowns.find(tree => tree.kind === 'call-stack')!.population;
 }
 
 function makeSampleBins(
@@ -88,7 +88,7 @@ export const methods = {
     binCallsFromMask(mask: Uint8Array, n = 500, lineTree?: ProfileLineBreakdown | string) {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, null, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
-        const { samples, values } = resolvedLineTree.samplesMetrics;
+        const { samples, values } = resolvedLineTree.population;
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
         return Array.from(bins);
@@ -105,7 +105,7 @@ export const methods = {
         } = options || {};
         const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, line, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
-        const { samples, values } = resolvedLineTree.samplesMetrics;
+        const { samples, values } = resolvedLineTree.population;
         const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, total ?? axisTotal, skip);
 
@@ -115,7 +115,7 @@ export const methods = {
     binCalls(treeMetrics, test, n = 500, breakdown?: ProfileLineBreakdown | string) {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
-        const { samples, values } = resolvedLineTree.samplesMetrics;
+        const { samples, values } = resolvedLineTree.population;
         const mask = makeSamplesMask(treeMetrics, test);
         const bins = makeSampleBins(n, mask, samples, values, axisTotal);
 
@@ -244,7 +244,6 @@ export const methods = {
         const mappingToLine = valuesLine !== axisLine
             ? mappings[axisLine.type]._mapping
             : null;
-        const axisMetrics = getCallStackSamplesMetrics(axisLine);
         const { axisTotal } = axisLine;
         const binSumVector = new Uint32Array(n);
         const attributeValues = attribute?.values || null;
@@ -255,9 +254,11 @@ export const methods = {
         const step = axisTotal / n;
 
         if (mappingToLine !== null) {
+            const { cumulative } = getCallStackPopulation(axisLine);
+
             for (let i = 0; i < mappingToLine.length; i++) {
                 const value = values[i];
-                const absValue = axisMetrics.cumulative[mappingToLine[i]];
+                const absValue = cumulative[mappingToLine[i]];
                 const binIndex = Math.min(n - 1, Math.floor(absValue / step)) | 0;
                 const vector = vectors[attributeValues?.[i] ?? 0];
 

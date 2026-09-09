@@ -265,7 +265,7 @@ export async function createSourceMappedBreakdown(
     const sourceMappedBreakdown = await createLineBreakdown(
         breakdownName,
         line,
-        breakdown.samplesMetricsFiltered,
+        breakdown.populationFiltered,
         sampledTreeSet,
         work
     );

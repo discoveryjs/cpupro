@@ -141,18 +141,18 @@ const categoriesTimeline = {
             view: 'time-ruler',
             duration: '=samples[].totalValue',
             segments: '=samples[].binCount',
-            selectionStart: '=tree.samplesMetricsFiltered.rangeStart',
-            selectionEnd: '=tree.samplesMetricsFiltered.rangeEnd',
-            rangeManager: '=tree.samplesMetricsFiltered',
+            selectionStart: '=tree.populationFiltered.rangeStart',
+            selectionEnd: '=tree.populationFiltered.rangeEnd',
+            rangeManager: '=tree.populationFiltered',
             onChange(state, name, el, { tree }) {
                 // console.log('change', state);
                 // const t = Date.now();
-                const samplesMetrics = tree.samplesMetricsFiltered;
+                const populationFiltered = tree.populationFiltered;
 
                 if (state.timeStart !== null) {
-                    samplesMetrics.setRange(state.timeStart, state.timeEnd);
+                    populationFiltered.setRange(state.timeStart, state.timeEnd);
                 } else {
-                    samplesMetrics.resetRange();
+                    populationFiltered.resetRange();
                 }
 
                 // console.log('compute timings', Date.now() - t);
@@ -607,10 +607,10 @@ const pageContent = [
         data: 'scopeBreakdown()',
         text: 'test mask',
         onClick(_, breakdown) {
-            if (breakdown.samplesMetricsFiltered.hasMask()) {
-                breakdown.samplesMetricsFiltered.resetMask();
+            if (breakdown.populationFiltered.hasMask()) {
+                breakdown.populationFiltered.resetMask();
             } else {
-                breakdown.samplesMetricsFiltered.updateMask(mask => {
+                breakdown.populationFiltered.updateMask(mask => {
                     for (let i = 0; i < mask.length; i++) {
                         mask[i] = 1;
                     }

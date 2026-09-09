@@ -9,6 +9,7 @@ discovery.page.define('samples', {
         $xbins: $binCount.sampleXBins();
 
         $line,
+        populationFiltered: scopeBreakdown().populationFiltered,
         $totalValue,
         $binCount,
         $sampleBins,
@@ -23,12 +24,12 @@ discovery.page.define('samples', {
         {
             view: 'block',
             content: [
-                'text:"Samples: " + scopeBreakdown().samplesMetrics.samples.size()',
+                'text:"Samples: " + scopeBreakdown().population.samples.size()',
                 'text:" / Bins: " + binCount',
                 'text:" / Bin size: " + (totalValue / binCount).toFixed(1)',
-                'text:" / Expected samples per bin: " + (scopeBreakdown().samplesMetrics.samples.size() / binCount).toFixed(1)',
+                'text:" / Expected samples per bin: " + (scopeBreakdown().population.samples.size() / binCount).toFixed(1)',
                 'text:" / Actual samples per bin: " + (sampleDiscreteBins | { min(), max() } | `${min} ... ${max}`)',
-                'struct:scopeBreakdown().samplesMetrics.values'
+                'struct:scopeBreakdown().population.values'
             ]
         },
         {
@@ -48,13 +49,14 @@ discovery.page.define('samples', {
                     labels: 'top',
                     duration: '=totalValue',
                     segments: '=binCount',
-                    selectionStart: '=line.samplesTimingsFiltered.rangeStart',
-                    selectionEnd: '=line.samplesTimingsFiltered.rangeEnd',
-                    onChange: (state, name, el, data) => {
+                    selectionStart: '=populationFiltered.rangeStart',
+                    selectionEnd: '=populationFiltered.rangeEnd',
+                    rangeManager: '=populationFiltered',
+                    onChange: (state, name, el, { populationFiltered }) => {
                         if (state.timeStart !== null) {
-                            data.line.samplesTimingsFiltered.setRange(state.timeStart, state.timeEnd);
+                            populationFiltered.setRange(state.timeStart, state.timeEnd);
                         } else {
-                            data.line.samplesTimingsFiltered.resetRange();
+                            populationFiltered.resetRange();
                         }
                     },
                     details: [

@@ -33,8 +33,8 @@ export type ProfileLineBreakdown = {
     kind: string;
     line: ProfileLine;
     source: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>;
-    samplesMetrics: Population;
-    samplesMetricsFiltered: PopulationFiltered;
+    population: Population;
+    populationFiltered: PopulationFiltered;
     recomputeMetrics: () => void;
     locations: LineTreeDimension<CpuProLocation> | null;
     callFrames: LineTreeDimension<CpuProCallFrame> | null;

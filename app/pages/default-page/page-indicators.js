@@ -28,7 +28,7 @@ export const pageIndicators = {
                         'Each sample represents the CPU\'s state, including the call stack, at a specific time interval, revealing which functions are executing at each point.',
                         'For efficiency, CPUpro merges sequentially identical samples, reducing the workload of processing samples.',
                         '- Captured samples: `{{scopeLine().sourceInfo.samples}}`',
-                        '- Deduplicated samples: `{{scopeBreakdown().samplesMetrics.samples.size()}}`'
+                        '- Deduplicated samples: `{{scopeBreakdown().population.samples.size()}}`'
                     ),
                     value: '=scopeLine().sourceInfo.samples'
                 },
@@ -60,10 +60,10 @@ export const pageIndicators = {
             className: 'filters',
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeBreakdown().samplesMetricsFiltered',
+                metrics: '=scopeBreakdown().populationFiltered',
                 content: {
                     view: 'context',
-                    when: 'scopeBreakdown().samplesMetricsFiltered.rangeStart != null',
+                    when: 'scopeBreakdown().populationFiltered.rangeStart != null',
                     content: [
                         {
                             view: 'block',
@@ -72,12 +72,12 @@ export const pageIndicators = {
                         {
                             view: 'page-indicator',
                             title: 'Samples',
-                            value: '=scopeBreakdown().samplesMetricsFiltered.rangeSamples'
+                            value: '=scopeBreakdown().populationFiltered.rangeSamples'
                         },
                         {
                             view: 'page-indicator',
                             title: 'Range',
-                            value: '=`${scopeBreakdown().samplesMetricsFiltered.rangeStart.formatMicrosecondsTime()} – ${scopeBreakdown().samplesMetricsFiltered.rangeEnd.formatMicrosecondsTime()}`'
+                            value: '=`${scopeBreakdown().populationFiltered.rangeStart.formatMicrosecondsTime()} – ${scopeBreakdown().populationFiltered.rangeEnd.formatMicrosecondsTime()}`'
                         }
                     ]
                 }

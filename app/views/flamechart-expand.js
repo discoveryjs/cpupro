@@ -34,7 +34,7 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
         dimensions,
         dimension
     } = getTreeDimension(line, tree);
-    const samplesMetrics = dimensions.samplesMetricsFiltered;
+    const populationFiltered = dimensions.populationFiltered;
     const sourceTreeMetrics = dimension.filtered.nodes;
 
     if (!computedValues && sourceTreeMetrics === null) {
@@ -43,7 +43,7 @@ discovery.view.define('flamechart-expand', function(el, config, data, context) {
 
     const subsetTreeValues = computedValues || new SubsetTreeMetrics(
         value ? new SubsetCallTree(tree, value) : tree,
-        samplesMetrics,
+        populationFiltered,
         sourceTreeMetrics
     );
 
