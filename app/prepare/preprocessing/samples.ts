@@ -1,6 +1,5 @@
-import { TIMINGS } from '../const.js';
-import { CallTree } from '../computations/call-tree.js';
-import { createSampleBreakdown, DictDimension, SampledTree, TreeDimension } from '../computations/metrics.js';
+import type { CallTree } from '../computations/call-tree.js';
+import type { SampledTree } from '../computations/metrics.js';
 import { convertToInt32Array } from '../misc/utils.js';
 import {
     CpuProModule,
@@ -11,8 +10,6 @@ import {
     CpuProOwner,
     CpuProLocation
 } from '../types.js';
-import { PopulationFiltered } from '../computations/population.js';
-import { TreeValueBounds } from '../computations/tree-node-bounds.js';
 
 export type CpuProCallTree =
     | CallTree<CpuProLocation>
@@ -107,84 +104,4 @@ export function remapTreeSamples(
     }
 
     return sampledTrees;
-}
-
-function createTreeNodeBounds<T extends CpuProNode>(sampledTree: SampledTree<T>, population: PopulationFiltered) {
-    const treeBounds = new TreeValueBounds<T>(
-        sampledTree.tree,
-        sampledTree.sampleToNode,
-        population.cumulative,
-        population.samples
-    );
-
-    return treeBounds;
-}
-
-export function computeTreeMetrics(
-    population: PopulationFiltered,
-    callFramesTree: SampledTree<CpuProCallFrame>,
-    modulesTree: SampledTree<CpuProModule>,
-    packagesTree: SampledTree<CpuProPackage>,
-    categoriesTree: SampledTree<CpuProCategory>,
-    ownersTree: SampledTree<CpuProOwner>,
-    locationsTree: SampledTree<CpuProLocation> | null
-) {
-    // create metrics
-    const computeStart = Date.now();
-    const sampledTrees = [
-        callFramesTree,
-        modulesTree,
-        packagesTree,
-        categoriesTree,
-        ownersTree,
-        ...locationsTree ? [locationsTree] : []
-    ] as unknown as SampledTree<CpuProNode>[];
-    const {
-        recomputeMetrics,
-        dimensions: [
-            callFrameDimension,
-            moduleDimension,
-            packageDimension,
-            categoryDimension,
-            ownerDimension,
-            locationDimension = null
-        ]
-    } = createSampleBreakdown(population, sampledTrees);
-
-    // Reorganize dimensions into dict/tree structure
-    const dict = {
-        callFrames: callFrameDimension.dict as DictDimension<CpuProCallFrame>,
-        modules: moduleDimension.dict as DictDimension<CpuProModule>,
-        packages: packageDimension.dict as DictDimension<CpuProPackage>,
-        categories: categoryDimension.dict as DictDimension<CpuProCategory>,
-        owners: ownerDimension.dict as DictDimension<CpuProOwner>,
-        locations: locationDimension?.dict as DictDimension<CpuProLocation> || null
-    };
-
-    const tree = {
-        callFrames: callFrameDimension.tree as TreeDimension<CpuProCallFrame>,
-        modules: moduleDimension.tree as TreeDimension<CpuProModule>,
-        packages: packageDimension.tree as TreeDimension<CpuProPackage>,
-        categories: categoryDimension.tree as TreeDimension<CpuProCategory>,
-        owners: ownerDimension.tree as TreeDimension<CpuProOwner>,
-        locations: locationDimension?.tree as TreeDimension<CpuProLocation> || null
-    };
-
-    const bounds = {
-        callFrames: createTreeNodeBounds(callFramesTree, population),
-        modules: createTreeNodeBounds(modulesTree, population),
-        packages: createTreeNodeBounds(packagesTree, population),
-        categories: createTreeNodeBounds(categoriesTree, population),
-        owners: createTreeNodeBounds(ownersTree, population),
-        locations: locationsTree ? createTreeNodeBounds(locationsTree, population) : null
-    };
-
-    TIMINGS && console.log('Compute timings:', Date.now() - computeStart);
-
-    return {
-        recomputeMetrics,
-        dict,
-        tree,
-        bounds
-    };
 }

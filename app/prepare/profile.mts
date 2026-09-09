@@ -89,6 +89,7 @@ export async function createSampledTreeSet(
     // Usage vectors
     //
 
+    // Keep this switch to compare usage-local dictionaries with the full dictionary during testing.
     const useUsage = true;
     const usage = useUsage ? await work('usage', () =>
         new Usage(dictionary, treeSource)

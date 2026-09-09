@@ -2,7 +2,7 @@ import type { Profile } from '../profile.mjs';
 import type { Axis, Metric, ProfileLineBreakdown, ProfileLineMethods, TimelineLine } from './types.js';
 import type { V8CpuProfile } from '../types.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
-import { createLineBreakdown } from './trees.js';
+import { createLineBreakdown } from './breakdown.js';
 import type { PopulationFiltered } from '../computations/population.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 

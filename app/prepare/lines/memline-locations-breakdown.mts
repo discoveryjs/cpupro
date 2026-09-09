@@ -5,7 +5,7 @@ import type { TreeSource } from '../computations/build-trees.js';
 import type { CpuProLocation } from '../types.js';
 import type { ProfileLine, ProfileLineBreakdown } from './types.js';
 import { createSampledTreeSet } from '../profile.mjs';
-import { createLineBreakdown } from './trees.js';
+import { createLineBreakdown } from './breakdown.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
 import { remapSamples } from '../preprocessing/samples.js';
 import { convertToUint32Array, createInt32Progression } from '../misc/utils.js';

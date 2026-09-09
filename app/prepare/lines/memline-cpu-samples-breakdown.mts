@@ -1,6 +1,6 @@
 import type { WorkHandler } from '../misc/work.js';
 import { SampledCpuProCallTree } from '../preprocessing/samples.js';
-import { createLineBreakdown } from './trees.js';
+import { createLineBreakdown } from './breakdown.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
 import { ProfileLine, ProfileLineBreakdown } from './types.js';
 

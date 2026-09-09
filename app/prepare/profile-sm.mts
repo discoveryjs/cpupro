@@ -3,10 +3,8 @@ import { SourceMapConsumer as OwnSourceMapConsumer } from './misc/tmp/source-map
 import { Dictionary } from './dictionary.js';
 import { createSampledTreeSet } from './profile.mjs';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
-import { CpuProCallFrame, CpuProLocation, CpuProScript } from './types.js';
-import { TreeSource } from './computations/build-trees.js';
-import type { PopulationFiltered } from './computations/population.js';
-import { createLineBreakdown } from './lines/trees.js';
+import { CpuProCallFrame, CpuProScript } from './types.js';
+import { createLineBreakdown } from './lines/breakdown.js';
 import { ProfileLine, ProfileLineBreakdown } from './lines/types.js';
 import { WorkHandler } from './misc/work.js';
 import { createInt32Progression } from './misc/utils.js';

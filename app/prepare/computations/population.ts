@@ -54,7 +54,7 @@ export class PopulationFiltered extends Observer {
         super();
 
         this.population = population;
-        this.buffer = createComputeBuffer(population.samples, population.values, USE_WASM);
+        this.buffer = createComputeBuffer(population, USE_WASM);
         this.samples = this.buffer.samples;
         this.values = this.buffer.values;
         this.cumulative = population.cumulative;
@@ -66,7 +66,6 @@ export class PopulationFiltered extends Observer {
             ? createWasmApi(this.buffer.memory)
             : computeMetricsJavaScriptApi;
         this.#recompute = api.computeMetrics.bind(null, this.buffer);
-        this.#recompute(false);
     }
 
     resetMask() {
@@ -153,18 +152,16 @@ export class PopulationFiltered extends Observer {
 }
 
 function createComputeBuffer(
-    samples: Uint32Array,
-    values: Uint32Array,
+    population: Population,
     useWasm = true
 ) {
+    const { samples, values, samplesCount, samplesTotal } = population;
     // estimate buffer size
-    const samplesMaxId = findMaxId(samples) + 1;
     const bufferSize =
         values.length + // values
         samples.length + // samples
-        // samplesCount
-        // samplesTotal
-        2 * samplesMaxId;
+        samplesCount.length +
+        samplesTotal.length;
 
     const memory = useWasm
         ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
@@ -175,8 +172,8 @@ function createComputeBuffer(
         memory,
         values: adopt(values),
         samples: adopt(samples),
-        samplesCount: alloc(samplesMaxId),
-        samplesTotal: alloc(samplesMaxId)
+        samplesCount: adopt(samplesCount),
+        samplesTotal: adopt(samplesTotal)
     };
 
     return bufferMap;
@@ -187,9 +184,6 @@ function createComputeBuffer(
         return buffer.subarray(bufferOffset, bufferOffset += array.length);
     }
 
-    function alloc(size: number) {
-        return buffer.subarray(bufferOffset, bufferOffset += size);
-    }
 }
 
 function computeCumulative(values: Uint32Array) {
