@@ -1,7 +1,7 @@
 import { SourceMapConsumer } from 'source-map-js';
 import { SourceMapConsumer as OwnSourceMapConsumer } from './misc/tmp/source-maps/source-map-consumer.js';
 import { Dictionary } from './dictionary.js';
-import { createSampledTreeSet } from './profile.mjs';
+import { createSampledTreeSet } from './computations/sampled-tree-set.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { CpuProCallFrame, CpuProScript } from './types.js';
 import { createLineBreakdown } from './lines/breakdown.js';

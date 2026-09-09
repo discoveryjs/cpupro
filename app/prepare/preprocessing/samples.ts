@@ -1,31 +1,7 @@
 import type { CallTree } from '../computations/call-tree.js';
 import type { SampledTree } from '../computations/metrics.js';
 import { convertToInt32Array } from '../misc/utils.js';
-import {
-    CpuProModule,
-    CpuProCategory,
-    CpuProPackage,
-    CpuProNode,
-    CpuProCallFrame,
-    CpuProOwner,
-    CpuProLocation
-} from '../types.js';
-
-export type CpuProCallTree =
-    | CallTree<CpuProLocation>
-    | CallTree<CpuProCallFrame>
-    | CallTree<CpuProModule>
-    | CallTree<CpuProPackage>
-    | CallTree<CpuProCategory>
-    | CallTree<CpuProOwner>;
-
-export type SampledCpuProCallTree =
-    | SampledTree<CpuProLocation>
-    | SampledTree<CpuProCallFrame>
-    | SampledTree<CpuProModule>
-    | SampledTree<CpuProPackage>
-    | SampledTree<CpuProCategory>
-    | SampledTree<CpuProOwner>;
+import type { CpuProNode } from '../types.js';
 
 export function createSampledCallTree<T extends CpuProNode>(
     tree: CallTree<T>,
@@ -64,44 +40,4 @@ export function remapSamples(samples: Uint32Array, sampleIdMap: Int32Array) {
         samples: remappedSamples,
         sampleToNode: convertToInt32Array(samplesMap)
     };
-}
-
-export function remapTreeSamples(
-    sampleIdToEntryTreeNode: Int32Array,
-    trees: CpuProCallTree[]
-) {
-    const sampledTrees: SampledCpuProCallTree[] = [];
-    const sampleToNodeBySourceTree = new Map<CpuProCallTree | null, Uint32Array>(
-        [[null, new Uint32Array(sampleIdToEntryTreeNode)]]
-    );
-
-    while (sampledTrees.length < trees.length) {
-        let foundNewTree = false;
-
-        for (const tree of trees) {
-            if (sampleToNodeBySourceTree.has(tree)) {
-                continue;
-            }
-
-            const sourceTreeSampleToNode = sampleToNodeBySourceTree.get(tree.sourceTree as CpuProCallTree | null);
-
-            if (sourceTreeSampleToNode !== undefined) {
-                const treeSampleToNode = tree.sourceIdToNode;
-                const sampleToNode = sourceTreeSampleToNode.map(id => treeSampleToNode[id]);
-
-                foundNewTree = true;
-                sampleToNodeBySourceTree.set(tree, sampleToNode);
-                sampledTrees.push({
-                    tree,
-                    sampleToNode
-                } as SampledCpuProCallTree);
-            }
-        }
-
-        if (!foundNewTree) {
-            throw new Error('Failed to remap samples for all trees');
-        }
-    }
-
-    return sampledTrees;
 }

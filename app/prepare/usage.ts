@@ -3,6 +3,7 @@ import type { Dictionary } from './dictionary.js';
 import { TreeSource } from './computations/build-trees.js';
 
 export class Usage {
+    mapToUsage: Int32Array;
     locations: CpuProLocation[] | null;
     callFrames: CpuProCallFrame[];
     scripts: CpuProScript[];

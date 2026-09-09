@@ -1,7 +1,7 @@
 import type { Profile } from '../profile.mjs';
 import type { V8CpuProfile } from '../types.js';
-import type { Metric, ProfileLineBreakdown, ProfileLineMethods, ProfileMemline } from './types.js';
-import { SampledCpuProCallTree } from '../preprocessing/samples.js';
+import type { Metric, ProfileLineMethods, ProfileMemline } from './types.js';
+import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import type { Population } from '../computations/population.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
@@ -73,10 +73,7 @@ export async function createMemline(
     dictionary: Dictionary,
     profileScriptsMap: ProfileScriptsMap,
     cpuPopulation: Population,
-    callStackTreeSet: {
-        source: ProfileLineBreakdown['source'];
-        sampledTrees: SampledCpuProCallTree[];
-    },
+    callStackTreeSet: SampledTreeSet,
     preparseScriptSourcesResult: Promise<void>,
     options?: Partial<CreateMemlineOptions>
 ): Promise<ProfileMemline | null> {

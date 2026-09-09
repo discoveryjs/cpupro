@@ -3,7 +3,7 @@ import { createSampleBreakdown, type DictDimension, type SampledTree, type TreeD
 import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
-import type { SampledCpuProCallTree } from '../preprocessing/samples.js';
+import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import type { PopulationFiltered } from '../computations/population.js';
 import { TreeValueBounds } from '../computations/tree-node-bounds.js';
 
@@ -11,10 +11,7 @@ export async function createLineBreakdown(
     kind: string,
     line: ProfileLine,
     populationFiltered: PopulationFiltered,
-    { source, sampledTrees }: {
-        source: ProfileLineBreakdown['source'];
-        sampledTrees: SampledCpuProCallTree[];
-    },
+    { source, sampledTrees }: SampledTreeSet,
     work: WorkHandler
 ): Promise<ProfileLineBreakdown> {
     const { recomputeMetrics, dimensions } = await work('compute breakdown metrics', () => {

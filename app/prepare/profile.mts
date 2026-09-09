@@ -1,5 +1,5 @@
 import type { Model } from '@discoveryjs/discovery';
-import type { CpuProCallFrame, CpuProLocation, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
+import type { CpuProCallFrame, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
 import type { ProfileLine } from './lines/types.js';
 import type { Ownership } from './formats/types.js';
 import { convertToInt32Array, convertToUint32Array, createInt32Progression } from './misc/utils.js';
@@ -12,13 +12,12 @@ import { createNodeIndexById, createNodeScriptOffsets, createNodeParent, Generat
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
-import { createTreeSet, createTreeSourceFromParent, TreeSource } from './computations/build-trees.js';
+import { createSampledTreeSet } from './computations/sampled-tree-set.js';
 import { collectProfileUsedScriptIds, OriginalScriptsMap, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
-import { Usage } from './usage.js';
 import { createLineMapping } from './computations/line-mapping.js';
-import { remapSamples, remapTreeSamples } from './preprocessing/samples.js';
+import { remapSamples } from './preprocessing/samples.js';
 import { Population, PopulationFiltered } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
@@ -78,70 +77,6 @@ export function toggleProfile(model: Model, profile: Profile) {
     });
 
     return true;
-}
-
-export async function createSampledTreeSet(
-    dictionary: Dictionary,
-    treeSource: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>,
-    work: WorkHandler
-) {
-    //
-    // Usage vectors
-    //
-
-    // Keep this switch to compare usage-local dictionaries with the full dictionary during testing.
-    const useUsage = true;
-    const usage = useUsage ? await work('usage', () =>
-        new Usage(dictionary, treeSource)
-    ) : null;
-    const treeSetDictionary = usage
-        ? treeSource.dictionary === dictionary.locations
-            ? usage.locations!
-            : usage.callFrames
-        : treeSource.dictionary;
-    const treeSetNodes = usage
-        ? treeSource.nodes.map(dictIndex => usage.mapToUsage[dictIndex])
-        : treeSource.nodes;
-
-    // Create tree source for usage vectors
-    const treeSetSource = createTreeSourceFromParent(
-        treeSource.parent,
-        treeSource.sourceIdToNode,
-        treeSetNodes,
-        treeSetDictionary
-    );
-
-    //
-    // Create profile's data derivatives
-    //
-
-    const treeSet = await work('create tree set', () =>
-        createTreeSet(
-            usage || dictionary,
-            treeSetSource
-        )
-    );
-
-    const sampledTrees = await work('map samples to trees', () =>
-        remapTreeSamples(
-            treeSet.sourceIdToNode,
-            [
-                ...(treeSet.locations ? [treeSet.locations] : []),
-                treeSet.callFrames,
-                treeSet.modules,
-                treeSet.packages,
-                treeSet.categories,
-                treeSet.owners
-            ]
-        )
-    );
-
-    return {
-        sampledTrees,
-        source: treeSource,
-        treeSet,
-        dictionary: usage || dictionary
-    };
 }
 
 export async function createProfile(data: V8CpuProfile, options?: Partial<CreateProfileOptions>) {
