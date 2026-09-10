@@ -276,29 +276,37 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         cpuSamplesPopulation,
         cpuSamplesPopulationFiltered
     } = await work('create CPU population', () => {
-        const cpuSamplesPopulation = new Population(callStackSamples, timeDeltas);
-        const cpuSamplesPopulationFiltered = new PopulationFiltered(cpuSamplesPopulation);
+        const cpuSamplesPopulation = callStackSamples.length > 0
+            ? new Population(callStackSamples, timeDeltas)
+            : null;
+        const cpuSamplesPopulationFiltered = cpuSamplesPopulation
+            ? new PopulationFiltered(cpuSamplesPopulation)
+            : null;
         return { cpuSamplesPopulation, cpuSamplesPopulationFiltered };
     });
-    const callStackSampledTreeSet = await work('create tree breakdown', () =>
-        createSampledTreeSet(
-            dictionary,
-            {
-                ...callStackBreakdownBasis,
-                sourceIdToNode: sampleToNode
-            },
-            work
+    const callStackSampledTreeSet = cpuSamplesPopulation
+        ? await work('create tree breakdown', () =>
+            createSampledTreeSet(
+                dictionary,
+                {
+                    ...callStackBreakdownBasis,
+                    sourceIdToNode: sampleToNode
+                },
+                work
+            )
         )
-    );
+        : null;
 
     // Create timeline (CPU time profiling line)
-    const timeline = await createTimeline(
-        data,
-        axis,
-        cpuSamplesPopulationFiltered,
-        callStackSampledTreeSet,
-        { work }
-    );
+    const timeline = cpuSamplesPopulationFiltered && callStackSampledTreeSet
+        ? await createTimeline(
+            data,
+            axis,
+            cpuSamplesPopulationFiltered,
+            callStackSampledTreeSet,
+            { work }
+        )
+        : null;
 
     if (timeline) {
         lines.push(timeline);
@@ -350,7 +358,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     );
 
     // create profile
-    const usage = callStackSampledTreeSet.dictionary;
+    const usage = callStackSampledTreeSet?.dictionary || dictionary;
     const profile = {
         name: data._name ?? null,
         runtime: detectRuntime(usage.categories, usage.packages, runtime || data._runtime), // FIXME: categories/packages must be related to profile

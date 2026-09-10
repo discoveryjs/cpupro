@@ -4,7 +4,7 @@ import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
-import type { PopulationFiltered } from '../computations/population.js';
+import type { Population, PopulationFiltered } from '../computations/population.js';
 import { TreeValueBounds } from '../computations/tree-node-bounds.js';
 
 export async function createLineBreakdown(
@@ -14,11 +14,12 @@ export async function createLineBreakdown(
     { source, sampledTrees }: SampledTreeSet,
     work: WorkHandler
 ): Promise<ProfileLineBreakdown> {
+    const population = populationFiltered.population;
     const { recomputeMetrics, dimensions } = await work('compute breakdown metrics', () => {
         const computeStart = Date.now();
         const { recomputeMetrics, dimensions } = createSampleBreakdown(populationFiltered, sampledTrees);
         const lineDimensions = dimensions.map(dimension =>
-            createBreakdownDimension(dimension, populationFiltered)
+            createBreakdownDimension(dimension, population)
         );
 
         TIMINGS && console.log('Compute timings:', Date.now() - computeStart);
@@ -31,7 +32,7 @@ export async function createLineBreakdown(
         kind,
         line,
         source,
-        population: populationFiltered.population,
+        population,
         populationFiltered,
         recomputeMetrics,
         locations: offset ? dimensions[0] as LineTreeDimension<CpuProLocation> : null,
@@ -45,7 +46,7 @@ export async function createLineBreakdown(
 
 function createBreakdownDimension<T extends CpuProNode>(
     { dict, tree }: { dict: DictDimension<T>; tree: TreeDimension<T> },
-    population: PopulationFiltered
+    population: Population
 ): LineTreeDimension<T> {
     return {
         tree: tree.all.tree,

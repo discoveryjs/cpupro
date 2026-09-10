@@ -1,5 +1,5 @@
 import { USE_WASM } from '../const.js';
-import { Observer, binarySearch } from './misc.js';
+import { Observer } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi } from './compute-wasm-wrapper.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
@@ -40,6 +40,7 @@ export class PopulationFiltered extends Observer {
     population: Population;
     buffer: PopulationBufferMap;
     #recompute: (clear?: boolean) => void;
+    #hasMask = false;
     samples: Uint32Array;
     values: Uint32Array;
     cumulative: Uint32Array;   // size of values
@@ -49,6 +50,10 @@ export class PopulationFiltered extends Observer {
     rangeStart: number | null = null;
     rangeEnd: number | null = null;
     rangeSamples: number | null = null;
+    indexStart: number | null = null;
+    indexEnd: number | null = null;
+    valueMin: number | null = null;
+    valueMax: number | null = null;
 
     constructor(population: Population) {
         super();
@@ -58,9 +63,9 @@ export class PopulationFiltered extends Observer {
         this.samples = this.buffer.samples;
         this.values = this.buffer.values;
         this.cumulative = population.cumulative;
-        this.samplesCount = this.buffer.samplesCount;
-        this.samplesTotal = this.buffer.samplesTotal;
-        this.samplesMask = new Uint32Array(this.samples.length);
+        this.samplesCount = this.buffer.samplesCount.subarray(0, population.samplesCount.length);
+        this.samplesTotal = this.buffer.samplesTotal.subarray(0, population.samplesTotal.length);
+        this.samplesMask = new Uint32Array(population.samplesCount.length);
 
         const api = USE_WASM && this.buffer.memory
             ? createWasmApi(this.buffer.memory)
@@ -68,36 +73,56 @@ export class PopulationFiltered extends Observer {
         this.#recompute = api.computeMetrics.bind(null, this.buffer);
     }
 
-    resetMask() {
-        this.samplesMask.fill(0);
+    get sinkId() {
+        return this.samplesCount.length;
+    }
 
-        if (this.samples !== this.population.samples) {
-            this.samples = this.population.samples;
-            this.notify();
+    get sink() {
+        return {
+            count: this.buffer.samplesCount[this.sinkId],
+            total: this.buffer.samplesTotal[this.sinkId]
+        };
+    }
+
+    resetMask() {
+        if (!this.#hasMask) {
+            return;
         }
+
+        this.samplesMask.fill(0);
+        this.#hasMask = false;
+        this.samples.set(this.population.samples);
+        this.#recompute();
+        this.notify();
     }
 
     hasMask() {
-        return this.samples !== this.population.samples;
+        return this.#hasMask;
     }
 
-    // FIXME: the logic is incomplete and incorrect
     updateMask(maskFn: MaskFunction) {
         const originalSamples = this.population.samples;
-        const hasMaskedSamples = this.samples !== originalSamples;
+        const hadMask = this.#hasMask;
 
         maskFn(this.samplesMask);
+        this.#hasMask = !isMaskEmpty(this.samplesMask);
 
-        // mask is empty and no samples are masked, no need to update
-        if (isMaskEmpty(this.samplesMask) && !hasMaskedSamples) {
+        if (!this.#hasMask && !hadMask) {
             return;
         }
 
         const samples = this.samples;
+        const sinkId = this.sinkId;
+        let changed = false;
         for (let i = 0; i < samples.length; i++) {
-            samples[i] = this.samplesMask[i] === 0
-                ? originalSamples[i]
-                : 0;
+            const sampleId = originalSamples[i];
+            const target = this.samplesMask[sampleId] === 0 ? sampleId : sinkId;
+            changed = changed || samples[i] !== target;
+            samples[i] = target;
+        }
+
+        if (!changed) {
+            return;
         }
 
         this.#recompute();
@@ -111,9 +136,7 @@ export class PopulationFiltered extends Observer {
 
         this.rangeStart = null;
         this.rangeEnd = null;
-        this.rangeSamples = null;
-        this.values.set(this.population.values);
-
+        this.#compileValues();
         this.#recompute();
         this.notify();
     }
@@ -124,30 +147,97 @@ export class PopulationFiltered extends Observer {
             return;
         }
 
-        const { values, cumulative } = this;
-        const originalValues = this.population.values;
-        const startIndex = binarySearch(cumulative, start);
-        const endIndex = binarySearch(cumulative, end);
+        validateRange(start, end);
+        const length = this.population.values.length;
+        const total = length === 0 ? 0 : this.cumulative[length - 1] + this.population.values[length - 1];
+        start = Math.max(0, Math.min(total, start));
+        end = Math.max(0, Math.min(total, end));
+
+        if (this.rangeStart === start && this.rangeEnd === end) {
+            return;
+        }
 
         this.rangeStart = start;
         this.rangeEnd = end;
-        this.rangeSamples = endIndex - startIndex + 1;
-
-        values.fill(0);
-
-        if (startIndex !== endIndex) {
-            values[startIndex] = originalValues[startIndex] - (start - cumulative[startIndex]);
-            values[endIndex] = end - cumulative[endIndex];
-
-            if (startIndex + 1 < endIndex) {
-                values.set(originalValues.subarray(startIndex + 1, endIndex), startIndex + 1);
-            }
-        } else {
-            values[startIndex] = end - start;
-        }
-
+        this.#compileValues();
         this.#recompute();
         this.notify();
+    }
+
+    setIndexRange(start: number | null, end: number | null) {
+        validateRange(start, end);
+        if ((start !== null && !Number.isInteger(start)) || (end !== null && !Number.isInteger(end))) {
+            throw new RangeError('Index range boundaries must be integers');
+        }
+        const length = this.population.values.length;
+        start = start === null ? null : Math.max(0, Math.min(length, start));
+        end = end === null ? null : Math.max(0, Math.min(length, end));
+
+        if (this.indexStart === start && this.indexEnd === end) {
+            return;
+        }
+
+        this.indexStart = start;
+        this.indexEnd = end;
+        this.#compileValues();
+        this.#recompute();
+        this.notify();
+    }
+
+    resetIndexRange() {
+        this.setIndexRange(null, null);
+    }
+
+    setValueRange(min: number | null, max: number | null) {
+        validateRange(min, max);
+        if (this.valueMin === min && this.valueMax === max) {
+            return;
+        }
+
+        this.valueMin = min;
+        this.valueMax = max;
+        this.#compileValues();
+        this.#recompute();
+        this.notify();
+    }
+
+    resetValueRange() {
+        this.setValueRange(null, null);
+    }
+
+    #compileValues() {
+        const originalValues = this.population.values;
+        const { values, cumulative, rangeStart, rangeEnd } = this;
+        const indexStart = this.indexStart ?? 0;
+        const indexEnd = this.indexEnd ?? values.length;
+        const min = this.valueMin ?? -Infinity;
+        const max = this.valueMax ?? Infinity;
+        const hasRange = rangeStart !== null && rangeEnd !== null;
+        let rangeSamples = 0;
+
+        for (let index = 0; index < values.length; index++) {
+            const originalValue = originalValues[index];
+            const contribution = hasRange
+                ? Math.max(0, Math.min(cumulative[index] + originalValue, rangeEnd) - Math.max(cumulative[index], rangeStart))
+                : originalValue;
+
+            if (contribution > 0) {
+                rangeSamples++;
+            }
+            values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
+                ? contribution
+                : 0;
+        }
+
+        this.rangeSamples = hasRange ? rangeSamples : null;
+    }
+}
+
+function validateRange(start: number | null, end: number | null) {
+    if ((start !== null && !Number.isFinite(start)) ||
+        (end !== null && !Number.isFinite(end)) ||
+        (start !== null && end !== null && start > end)) {
+        throw new RangeError('Range boundaries must be finite and ordered');
     }
 }
 
@@ -160,8 +250,8 @@ function createComputeBuffer(
     const bufferSize =
         values.length + // values
         samples.length + // samples
-        samplesCount.length +
-        samplesTotal.length;
+        samplesCount.length + 1 +
+        samplesTotal.length + 1;
 
     const memory = useWasm
         ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
@@ -172,16 +262,16 @@ function createComputeBuffer(
         memory,
         values: adopt(values),
         samples: adopt(samples),
-        samplesCount: adopt(samplesCount),
-        samplesTotal: adopt(samplesTotal)
+        samplesCount: adopt(samplesCount, 1),
+        samplesTotal: adopt(samplesTotal, 1)
     };
 
     return bufferMap;
 
-    function adopt(array: Uint32Array) {
+    function adopt(array: Uint32Array, extraLength = 0) {
         buffer.set(array, bufferOffset);
 
-        return buffer.subarray(bufferOffset, bufferOffset += array.length);
+        return buffer.subarray(bufferOffset, bufferOffset += array.length + extraLength);
     }
 
 }

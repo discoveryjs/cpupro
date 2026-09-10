@@ -72,8 +72,8 @@ export async function createMemline(
     data: V8CpuProfile,
     dictionary: Dictionary,
     profileScriptsMap: ProfileScriptsMap,
-    cpuPopulation: Population,
-    callStackTreeSet: SampledTreeSet,
+    cpuPopulation: Population | null,
+    callStackTreeSet: SampledTreeSet | null,
     preparseScriptSourcesResult: Promise<void>,
     options?: Partial<CreateMemlineOptions>
 ): Promise<ProfileMemline | null> {
@@ -190,7 +190,7 @@ export async function createMemline(
         ...memlineMethods
     };
 
-    if (_cpuproAllocationMapping && _cpuproAllocationIds) {
+    if (cpuPopulation && callStackTreeSet && _cpuproAllocationMapping && _cpuproAllocationIds) {
         const cpuSamplesBreakdown = await work('map allocations to CPU samples', () => {
             return createMemlineCpuSamplesBreakdown(
                 'call-stack',

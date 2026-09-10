@@ -16,13 +16,13 @@ export function makeDictMask(tree, test) {
     return mask;
 }
 
-export function makeSamplesMask(treeMetrics, test) {
+export function makeSamplesMask(treeMetrics, test, extraSize = 0) {
     const { tree, sampleToNode } = treeMetrics;
     const { dictionary, nodes } = tree;
     const accept = typeof test === 'function' ? test : (entry) => entry === test;
-    const mask = new Uint8Array(sampleToNode.length);
+    const mask = new Uint8Array(sampleToNode.length + extraSize);
 
-    for (let i = 0; i < mask.length; i++) {
+    for (let i = 0; i < sampleToNode.length; i++) {
         const nodeIndex = sampleToNode[i];
 
         if (accept(dictionary[nodes[nodeIndex]], i)) {

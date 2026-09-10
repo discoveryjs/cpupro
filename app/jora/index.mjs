@@ -172,15 +172,18 @@ export const methods = {
             values: valueTypes,
             dict: valueTypesDict
         } = allocationTypeAttribute;
-        const { samples, values } = sampleTimings;
+        const { samples, values, samplesCount } = sampleTimings;
         const timespanCount = valueLifespansDict.length;
         const typeCount = valueTypesDict.length;
         const counts = new Uint32Array(timespanCount * typeCount);
         const sums = new Uint32Array(timespanCount * typeCount);
         const mins = new Uint32Array(timespanCount * typeCount);
         const maxs = new Uint32Array(timespanCount * typeCount);
-        const samplesMask = makeSamplesMask(treeMetrics, test);
+        const samplesMask = makeSamplesMask(treeMetrics, test, 1);
         const result = [];
+
+        // FIXME: Cardinality of samplesMask might not match samplesCount.length, review this logic
+        samplesMask.fill(0, samplesCount.length);
 
         for (let i = 0; i < samples.length; i++) {
             if (samplesMask[samples[i]] !== 0) {

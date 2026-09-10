@@ -19,13 +19,16 @@ export async function createMemlineCpuSamplesBreakdown(
     // We need reverse: for each allocation, which CPU sample was it captured in?
     const allocationCount = _cpuproAllocationIds.length;
     const allocationCpuSamples = new Uint32Array(allocationCount);
-    const allocationSizes = new Uint32Array(allocationCount);
+    const allocationSizes = _cpuproAllocationSizes instanceof Uint32Array
+        ? _cpuproAllocationSizes
+        : new Uint32Array(_cpuproAllocationSizes);
     const cpuSamples = cpuPopulation.samples;
 
     await work('map allocations to CPU samples', () => {
+        const cpuSampleCount = Math.min(_cpuproAllocationMapping.length, cpuSamples.length);
         let allocIdx = 0;
 
-        for (let cpuIdx = 0; cpuIdx < _cpuproAllocationMapping.length; cpuIdx++) {
+        for (let cpuIdx = 0; cpuIdx < cpuSampleCount; cpuIdx++) {
             const targetAllocId = _cpuproAllocationMapping[cpuIdx];
 
             if (targetAllocId === undefined) {
@@ -37,10 +40,11 @@ export async function createMemlineCpuSamplesBreakdown(
             // All allocations up to targetAllocId belong to this CPU sample
             while (allocIdx < allocationCount && _cpuproAllocationIds[allocIdx] <= targetAllocId) {
                 allocationCpuSamples[allocIdx] = cpuSample;
-                allocationSizes[allocIdx] = _cpuproAllocationSizes[allocIdx] || 0;
                 allocIdx++;
             }
         }
+
+        allocationCpuSamples.fill(cpuSamples[cpuSamples.length - 1], allocIdx);
     });
 
     return createLineBreakdown(
