@@ -71,13 +71,17 @@ export class PopulationFiltered extends Observer {
             ? createWasmApi(this.buffer.memory)
             : computeMetricsJavaScriptApi;
         this.#recompute = api.computeMetrics.bind(null, this.buffer);
+
+        Object.defineProperty(this, 'sink', {
+            get: () => this.#sink
+        });
     }
 
     get sinkId() {
         return this.samplesCount.length;
     }
 
-    get sink() {
+    get #sink() {
         return {
             count: this.buffer.samplesCount[this.sinkId],
             total: this.buffer.samplesTotal[this.sinkId]

@@ -11,6 +11,7 @@ const { histAllocationTypes } = require('./default-page/hist-allocation-types.js
 const { histCodes } = require('./default-page/hist-codes.js');
 const { histHeapTotal } = require('./default-page/hist-heap-total.js');
 const { pageIndicators } = require('./default-page/page-indicators.js');
+const { populationFilter } = require('./default-page/population-filter.js');
 const { hierarchicalComponentsTables } = require('./default-page/tables.js');
 const { userTimingsTimeline } = require('./default-page/user-timings-timeline.js');
 
@@ -602,24 +603,6 @@ const noDataPageContent = {
 
 const pageContent = [
     {
-        view: 'button',
-        when: false,
-        data: 'scopeBreakdown()',
-        text: 'test mask',
-        onClick(_, breakdown) {
-            if (breakdown.populationFiltered.hasMask()) {
-                breakdown.populationFiltered.resetMask();
-            } else {
-                breakdown.populationFiltered.updateMask(mask => {
-                    for (let i = 0; i < mask.length; i++) {
-                        mask[i] = 1;
-                    }
-                });
-            }
-        }
-    },
-
-    {
         view: 'timeline-profiles',
         when: experimentalFeatures,
         data: '#.profiles',
@@ -627,6 +610,7 @@ const pageContent = [
     },
 
     pageIndicators,
+    populationFilter,
 
     {
         view: 'expand',

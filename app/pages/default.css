@@ -3,6 +3,29 @@
     top: 0;
 }
 
+.page-default .population-filter {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 8px 0;
+    font-size: 12px;
+}
+.page-default .population-filter__categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+.page-default .population-filter__summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
 .page-default .flamecharts > .content {
     margin-bottom: calc(-1 * var(--discovery-page-padding-bottom));
     margin-right: calc(1px - var(--discovery-page-padding-right));

@@ -3,8 +3,9 @@ const { utils } = require('@discoveryjs/discovery');
 discovery.view.define('update-on-line-metrics-changes', function(el, config, data, context) {
     const { metrics = data, debounce, beforeContent, content } = config;
     let scheduledRender = null;
+    let destroyed = false;
     const updateRender = () => {
-        if (scheduledRender !== null) {
+        if (destroyed || scheduledRender !== null) {
             return;
         }
 
@@ -24,7 +25,12 @@ discovery.view.define('update-on-line-metrics-changes', function(el, config, dat
     );
 
     el.onDestroy = () => {
+        destroyed = true;
         unsubscribeSource();
+        if (scheduledRender !== null) {
+            cancelAnimationFrame(scheduledRender);
+            scheduledRender = null;
+        }
     };
 
     beforeContent?.(data, context);
