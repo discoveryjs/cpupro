@@ -1,7 +1,8 @@
 import { USE_WASM } from '../const.js';
 import { Observer } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi } from './compute-wasm-wrapper.js';
-import { PopulationFilter, type Acceptance } from './population-filter.js';
+import { PopulationFilter } from './population-filter.js';
+import type { Acceptance } from './attribute-filter.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
 
@@ -101,17 +102,13 @@ export class PopulationFiltered extends Observer {
     }
 
     resetMask() {
-        this.filter.reset();
+        const { sampleBits } = this.filter;
 
-        if (!this.#hasMask) {
-            return;
-        }
-
-        this.samplesMask.fill(0);
-        this.#hasMask = false;
-        this.samples.set(this.population.samples);
-        this.#recompute();
-        this.notify();
+        this.updateMask(mask => {
+            for (let sampleId = 0; sampleId < mask.length; sampleId++) {
+                mask[sampleId] &= sampleBits;
+            }
+        });
     }
 
     hasMask() {

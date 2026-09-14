@@ -36,7 +36,7 @@ describe('profile breakdowns', () => {
             async work(name, callback) {
                 const result = await callback();
                 if (name === 'create CPU population') {
-                    assert.deepEqual(result, { cpuSamplesPopulation: null, cpuSamplesPopulationFiltered: null });
+                    assert.equal(result, null);
                     checkedCpuPopulation = true;
                 }
                 return result;
@@ -56,7 +56,7 @@ describe('profile breakdowns', () => {
             for (const population of populations) {
                 population.setRange(5, 20);
                 population.updateMask(mask => {
-                    mask[0] = 1;
+                    mask[0] |= 0x80000000;
                 });
                 const accepted = population.samplesTotal.reduce((sum, value) => sum + value, 0);
                 assert.equal(accepted + population.sink.total, 15);

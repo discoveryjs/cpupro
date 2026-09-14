@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { populationFilter } from './population-filter.js';
-import { SetAttributeFilter, type FilterOption } from '../../prepare/computations/population-filter.js';
+import { SetAttributeFilter, type FilterOption } from '../../prepare/computations/attribute-filter.js';
 import type { ProfileLineBreakdown } from '../../prepare/lines/types.js';
 import jora from 'jora';
 import { methods, assertions } from '../../jora/index.mjs';
@@ -41,16 +41,16 @@ function getOptions(breakdown: ProfileLineBreakdown) {
 }
 
 test('renders settings from registered filters and preserves other filters and range', async () => {
-    const { profile } = await createProfileFixture({ contexts: [1, 2, 1, 0] });
+    const { profile } = await createProfileFixture({ contexts: [1, 2, 1, 0], allocationGc: [0, 1, 0, 2] });
     const original = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'location')!;
     const mapped = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'location-sm')!;
     const population = original.populationFiltered;
-    const category = population.filter.get('category') as SetAttributeFilter;
+    const category = original.line.filters.get('category') as SetAttributeFilter;
     const options = getOptions(original);
     assert.ok(options.length > 1);
     assert.ok(options.every(option => option.checked));
     population.setRange(5, 100);
-    population.filter.batch(() => options.forEach(option => option.change(false)));
+    original.line.filters.batch(() => options.forEach(option => option.change(false)));
     assert.equal(population.samplesTotal.reduce((sum, value) => sum + value, 0), 0);
     assert.equal(population.sink.total, 95);
     assert.ok(getOptions(mapped).every(option => !option.checked));
@@ -59,13 +59,12 @@ test('renders settings from registered filters and preserves other filters and r
         assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], 0);
     }
 
-    const custom = new SetAttributeFilter('custom', 'Custom', 'sample', population.samplesMask.length, [{ key: 'all', label: 'All' }], () => 0);
-    population.filter.add(custom);
-    custom.setEnabled('all', false);
+    const liveness = original.line.filters.get('allocationLiveness') as SetAttributeFilter;
     resetAttributeQuery(category, { attributeFilter: category })();
-    assert.equal(custom.active, true);
+    assert.equal(liveness.active, true);
     assert.equal(population.samplesTotal.reduce((sum, value) => sum + value, 0), 0);
-    assert.ok(getOptions(original).filter(option => option.key !== 'all').every(option => option.checked));
+    assert.ok(getOptions(original).filter(option => option.filterKey === 'category').every(option => option.checked));
+    assert.ok(getOptions(original).filter(option => option.filterKey === 'allocationLiveness').every(option => !option.checked));
     assert.equal(population.rangeStart, 5);
     assert.equal(population.rangeEnd, 100);
     resetAllQuery(original)();
@@ -75,7 +74,7 @@ test('renders settings from registered filters and preserves other filters and r
     assert.deepEqual(population.samplesTotal, population.population.samplesTotal);
 });
 
-test('keeps category and event-filter data/context chains and derives summary in Jora', async () => {
+test.each(['exclude', 'include'] as const)('keeps data/context chains and derives summary in Jora in %s mode', async mode => {
     const { profile } = await createProfileFixture({
         mapping: [0, 4, 4],
         allocationGc: [0, 1, 0, 2],
@@ -84,9 +83,17 @@ test('keeps category and event-filter data/context chains and derives summary in
     });
     const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === 'call-stack')!;
     const filters = query(list.data)(breakdown) as SetAttributeFilter[];
-    assert.deepEqual(filters.map(filter => filter.key), ['category', 'allocationLiveness', 'allocationSpace']);
+    assert.deepEqual(filters.map(filter => filter.key), ['category', 'allocationSpace', 'allocationLiveness']);
+    if (mode === 'include') {
+        breakdown.line.filters.batch(() => {
+            for (const filter of filters) {
+                filter.setSelection('include', filter.options.map(option => option.key));
+            }
+        });
+    }
     for (const filter of filters) {
-        assert.equal(filter, breakdown.populationFiltered.filter.get(filter.key));
+        assert.equal(filter, breakdown.line.filters.get(filter.key));
+        assert.equal(filter.key, breakdown.populationFiltered.filter.get(filter.key)!.key);
         const context = query(filterContext)(filter, { kept: 'context' });
         assert.equal(context.kept, 'context');
         assert.equal(context.attributeFilter, filter);
@@ -94,7 +101,7 @@ test('keeps category and event-filter data/context chains and derives summary in
     const options = getOptions(breakdown);
     const liveness = options.find(option => option.filterKey === 'allocationLiveness' && option.key === 'gced')!;
     const space = options.find(option => option.filterKey === 'allocationSpace' && option.key === 'old_space')!;
-    breakdown.populationFiltered.filter.batch(() => {
+    breakdown.line.filters.batch(() => {
         liveness.change(false); space.change(false);
     });
     assert.deepEqual(summaryQuery(breakdown), { included: 16, excluded: 144 });
@@ -103,6 +110,12 @@ test('keeps category and event-filter data/context chains and derives summary in
     assert.equal(updated.find(option => option.filterKey === 'allocationSpace' && option.key === 'old_space')!.checked, false);
     assert.ok(updated.filter(option => option.filterKey === 'category').every(option => option.checked));
     const livenessFilter = filters.find(filter => filter.key === 'allocationLiveness')!;
+    assert.equal(livenessFilter.mode, mode);
+    assert.deepEqual(livenessFilter.selectedKeys, mode === 'include' ? ['alive'] : ['gced']);
+    query('resetFilter()')(livenessFilter);
+    assert.equal(livenessFilter.mode, mode);
+    assert.deepEqual(livenessFilter.selectedKeys, []);
+    assert.deepEqual(summaryQuery(breakdown), { included: mode === 'include' ? 0 : 48, excluded: mode === 'include' ? 160 : 112 });
     resetAttributeQuery(livenessFilter, { attributeFilter: livenessFilter })();
     assert.deepEqual(summaryQuery(breakdown), { included: 48, excluded: 112 });
     resetAllQuery(breakdown)();

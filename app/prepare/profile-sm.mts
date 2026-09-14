@@ -262,13 +262,11 @@ export async function createSourceMappedBreakdown(
         work
     );
 
-    const sourceMappedBreakdown = await createLineBreakdown(
+    return createLineBreakdown(
         breakdownName,
         line,
         breakdown.populationFiltered,
         sampledTreeSet,
         work
     );
-
-    line.breakdowns.push(sourceMappedBreakdown);
 }

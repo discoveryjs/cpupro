@@ -24,8 +24,10 @@ test('preserves source identity and sparse sample IDs through source mapping', a
         assert.equal(trees.dictionary, dictionary);
     }
     const original = await createLineBreakdown('extra', profile.memline!, population, trees, noopWorkHandler);
-    await createSourceMappedBreakdown('extra-sm', profile.memline!, dictionary, scriptsMap, original, null, noopWorkHandler);
-    const mapped = profile.memline!.breakdowns.at(-1)!;
+    const previousBreakdowns = profile.memline!.breakdowns.slice();
+    const mapped = await createSourceMappedBreakdown('extra-sm', profile.memline!, dictionary, scriptsMap, original, null, noopWorkHandler);
+    assert.ok(mapped);
+    assert.deepEqual(profile.memline!.breakdowns, previousBreakdowns);
     assert.equal(mapped.population, population.population);
     assert.equal(mapped.populationFiltered, population);
     assert.equal(mapped.population.samples, originalSamples);

@@ -18,8 +18,9 @@ import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { remapSamples } from './preprocessing/samples.js';
-import { Population, PopulationFiltered } from './computations/population.js';
+import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
+import { prepareLineFilters } from './lines/filters.js';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
 const experimentalFeatures = false;
@@ -272,37 +273,31 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const { samples: callStackSamples, sampleToNode } = await work('normalize CPU samples', () =>
         remapSamples(samples, callStackBreakdownBasis.sourceIdToNode)
     );
-    const {
-        cpuSamplesPopulation,
-        cpuSamplesPopulationFiltered
-    } = await work('create CPU population', () => {
-        const cpuSamplesPopulation = callStackSamples.length > 0
+    const callStackSource = {
+        ...callStackBreakdownBasis,
+        sourceIdToNode: sampleToNode
+    };
+    const cpuSamplesPopulation = await work('create CPU population', () =>
+        callStackSamples.length > 0
             ? new Population(callStackSamples, timeDeltas)
-            : null;
-        const cpuSamplesPopulationFiltered = cpuSamplesPopulation
-            ? new PopulationFiltered(cpuSamplesPopulation)
-            : null;
-        return { cpuSamplesPopulation, cpuSamplesPopulationFiltered };
-    });
+            : null
+    );
     const callStackSampledTreeSet = cpuSamplesPopulation
         ? await work('create tree breakdown', () =>
             createSampledTreeSet(
                 dictionary,
-                {
-                    ...callStackBreakdownBasis,
-                    sourceIdToNode: sampleToNode
-                },
+                callStackSource,
                 work
             )
         )
         : null;
 
     // Create timeline (CPU time profiling line)
-    const timeline = cpuSamplesPopulationFiltered && callStackSampledTreeSet
+    const timeline = cpuSamplesPopulation && callStackSampledTreeSet
         ? await createTimeline(
             data,
             axis,
-            cpuSamplesPopulationFiltered,
+            cpuSamplesPopulation,
             callStackSampledTreeSet,
             { work }
         )
@@ -386,7 +381,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     for (const line of lines) {
         for (const breakdown of line.breakdowns.slice()) {
-            await createSourceMappedBreakdown(
+            const sourceMappedBreakdown = await createSourceMappedBreakdown(
                 `${breakdown.kind}-sm`,
                 line,
                 dictionary,
@@ -395,7 +390,15 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
                 ownership,
                 work
             );
+
+            if (sourceMappedBreakdown) {
+                line.breakdowns.push(sourceMappedBreakdown);
+            }
         }
+    }
+
+    for (const line of lines) {
+        await work('prepare line filters', () => prepareLineFilters(line));
     }
 
     return profile;

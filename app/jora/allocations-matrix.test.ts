@@ -17,13 +17,13 @@ test.each([{ mapping: [1, 3, 4] }, { mapping: [0, 4, 4] }, { mapping: [4, 4, 4] 
     );
     assert.equal(matrix()[0].total.sum, 160);
     population.updateMask(mask => {
-        mask[0] = 1;
+        mask[0] = 0x80000000;
     });
     const accepted = population.population.values.reduce((sum, value, index) =>
         sum + (population.population.samples[index] === 0 ? 0 : value), 0
     );
     assert.equal(matrix()[0]?.total.sum ?? 0, accepted);
-    population.updateMask(mask => mask.fill(1));
+    population.updateMask(mask => mask.fill(0x80000000));
     assert.deepEqual(matrix(), []);
     assert.equal(population.sink.total, 160);
     population.resetMask();

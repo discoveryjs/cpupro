@@ -1,4 +1,4 @@
-import { PopulationFilter, SetAttributeFilter, type AttributeFilter } from '../prepare/computations/population-filter.js';
+import { SetAttributeFilter, type AttributeFilterSettings } from '../prepare/computations/attribute-filter.js';
 
 export const assertions = {
     setAttributeFilter(value: unknown) {
@@ -7,7 +7,7 @@ export const assertions = {
 };
 
 export const methods = {
-    attributeFilters(filter: PopulationFilter) {
+    attributeFilters(filter: { filters: AttributeFilterSettings[] }) {
         return filter.filters;
     },
     filterOptionEnabled(filter: SetAttributeFilter, key: string) {
@@ -17,8 +17,12 @@ export const methods = {
         filter.setEnabled(key, enabled);
         return filter;
     },
-    resetFilter(filter: AttributeFilter | PopulationFilter) {
+    resetFilter(filter: { reset(): void }) {
         filter.reset();
+        return filter;
+    },
+    allowAllFilter(filter: { allowAll(): void }) {
+        filter.allowAll();
         return filter;
     }
 };

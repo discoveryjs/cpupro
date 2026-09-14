@@ -1,98 +1,12 @@
 import { Observer } from './misc.js';
-
-export type FilterDomain = 'sample' | 'event';
-export type Acceptance = (index: number) => boolean;
-export type FilterOption = { key: string; label: string; color?: string };
-export interface AttributeFilter {
-    readonly key: string;
-    readonly label: string;
-    readonly domain: FilterDomain;
-    readonly size: number;
-    readonly active: boolean;
-    compile(): Acceptance;
-    reset(): void;
-    subscribe(callback: () => void): () => void;
-}
+import type { Acceptance, PreparedAttributeFilter } from './attribute-filter.js';
 type FilterEntry = {
-    filter: AttributeFilter;
+    filter: PreparedAttributeFilter;
     bit: number;
     dirty: boolean;
     accepts: Acceptance | null;
-    unsubscribe: () => void;
 };
 type ApplyFilters = (updateMask: (mask: Uint32Array) => void, acceptsEvent: Acceptance | null) => void;
-
-export class SetAttributeFilter extends Observer implements AttributeFilter {
-    #excluded = new Set<string>();
-
-    constructor(
-        readonly key: string,
-        readonly label: string,
-        readonly domain: FilterDomain,
-        readonly size: number,
-        readonly options: readonly FilterOption[],
-        private readonly valueIndex: (index: number) => number
-    ) {
-        super();
-    }
-
-    get active() {
-        return this.#excluded.size > 0;
-    }
-
-    get excludedKeys(): string[] {
-        return [...this.#excluded];
-    }
-
-    setExcludedKeys(keys: Iterable<string>) {
-        const excluded = new Set(keys);
-
-        if (excluded.size === this.#excluded.size && [...excluded].every(key => this.#excluded.has(key))) {
-            return;
-        }
-
-        this.#excluded = excluded;
-        this.notify();
-    }
-
-    isEnabled(key: string) {
-        return !this.#excluded.has(key);
-    }
-
-    setEnabled(key: string, enabled: boolean) {
-        if (!this.options.some(option => option.key === key)) {
-            throw new Error(`Unknown option ${key} for filter ${this.key}`);
-        }
-
-        if (this.isEnabled(key) === enabled) {
-            return;
-        }
-
-        if (enabled) {
-            this.#excluded.delete(key);
-        } else {
-            this.#excluded.add(key);
-        }
-
-        this.notify();
-    }
-
-    reset() {
-        if (this.#excluded.size) {
-            this.#excluded.clear();
-            this.notify();
-        }
-    }
-
-    compile(): Acceptance {
-        const allowed = Uint8Array.from(
-            this.options,
-            option => this.isEnabled(option.key) ? 1 : 0
-        );
-
-        return index => allowed[this.valueIndex(index)] === 1;
-    }
-}
 
 export class PopulationFilter extends Observer {
     #entries = new Map<string, FilterEntry>();
@@ -109,22 +23,50 @@ export class PopulationFilter extends Observer {
         super();
     }
 
-    get filters(): AttributeFilter[] {
+    get filters(): PreparedAttributeFilter[] {
         return [...this.#entries.values()]
             .map(entry => entry.filter);
+    }
+
+    get sampleBits() {
+        let bits = 0;
+
+        for (const entry of this.#entries.values()) {
+            if (entry.filter.domain === 'sample') {
+                bits |= entry.bit;
+            }
+        }
+
+        return bits;
     }
 
     get(key: string) {
         return this.#entries.get(key)?.filter;
     }
 
-    add(filter: AttributeFilter) {
-        if (this.#entries.has(filter.key)) {
-            throw new Error(`Filter ${filter.key} is already registered`);
-        }
+    set(filter: PreparedAttributeFilter) {
+        const { key } = filter;
 
         if (filter.size !== (filter.domain === 'sample' ? this.sampleCount : this.eventCount)) {
-            throw new Error(`Filter ${filter.key} has an incompatible ${filter.domain} domain`);
+            throw new Error(`Filter ${key} has an incompatible ${filter.domain} domain`);
+        }
+
+        const existing = this.#entries.get(key);
+
+        if (existing) {
+            if (existing.filter.domain !== filter.domain) {
+                throw new Error(`Filter ${key} cannot change its domain while registered`);
+            }
+
+            if (existing.filter === filter) {
+                return filter;
+            }
+
+            existing.filter = filter;
+            existing.dirty = true;
+            this.#schedule();
+
+            return filter;
         }
 
         const occupied = new Set([...this.#entries.values()].map(entry => entry.bit));
@@ -147,15 +89,10 @@ export class PopulationFilter extends Observer {
             filter,
             bit,
             dirty: true,
-            accepts: null,
-            unsubscribe: () => {}
+            accepts: null
         };
 
-        this.#entries.set(filter.key, entry);
-        entry.unsubscribe = filter.subscribe(() => {
-            entry.dirty = true;
-            this.#schedule();
-        });
+        this.#entries.set(key, entry);
         this.#schedule();
 
         return filter;
@@ -168,7 +105,6 @@ export class PopulationFilter extends Observer {
             return;
         }
 
-        entry.unsubscribe();
         this.#entries.delete(key);
 
         if (entry.filter.domain === 'sample') {
@@ -194,14 +130,6 @@ export class PopulationFilter extends Observer {
         }
     }
 
-    reset() {
-        this.batch(() => {
-            for (const { filter } of this.#entries.values()) {
-                filter.reset();
-            }
-        });
-    }
-
     #schedule() {
         this.#pending = true;
 
@@ -221,7 +149,7 @@ export class PopulationFilter extends Observer {
             if (entry.dirty) {
                 const wasActive = entry.accepts !== null;
 
-                entry.accepts = entry.filter.active ? entry.filter.compile() : null;
+                entry.accepts = entry.filter.accepts;
                 entry.dirty = false;
 
                 if (entry.filter.domain === 'sample' && (wasActive || entry.accepts)) {

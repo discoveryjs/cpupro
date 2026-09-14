@@ -1,7 +1,7 @@
 export const populationFilter = {
     view: 'update-on-line-metrics-changes',
     data: 'scopeBreakdown()',
-    metrics: '=populationFiltered.filter',
+    metrics: '=line.filters',
     content: {
         view: 'block',
         className: 'population-filter',
@@ -9,7 +9,7 @@ export const populationFilter = {
             {
                 view: 'list',
                 className: 'population-filter__attributes',
-                data: 'populationFiltered.filter.attributeFilters().[is setAttributeFilter]',
+                data: 'line.filters.attributeFilters().[is setAttributeFilter]',
                 item: {
                     view: 'context',
                     context: '{ ...#, attributeFilter: $ }',
@@ -32,7 +32,7 @@ export const populationFilter = {
                             {
                                 view: 'button',
                                 text: 'All',
-                                onClick: '=$filter: #.attributeFilter; => $filter.resetFilter()'
+                                onClick: '=$filter: #.attributeFilter; => $filter.allowAllFilter()'
                             }
                         ]
                     }
@@ -41,7 +41,7 @@ export const populationFilter = {
             {
                 view: 'button',
                 text: 'Reset filters',
-                onClick: '=$filter: populationFiltered.filter; => $filter.resetFilter()'
+                onClick: '=$filter: line.filters; => $filter.allowAllFilter()'
             },
             {
                 view: 'update-on-line-metrics-changes',

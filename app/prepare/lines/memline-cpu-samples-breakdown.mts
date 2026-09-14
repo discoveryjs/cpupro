@@ -1,7 +1,6 @@
 import type { WorkHandler } from '../misc/work.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
-import { registerPopulationFilters } from './population-filters.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
 import { ProfileLine } from './types.js';
 
@@ -48,15 +47,14 @@ export async function createMemlineCpuSamplesBreakdown(
         allocationCpuSamples.fill(cpuSamples[cpuSamples.length - 1], allocIdx);
     });
 
-    const breakdown = await createLineBreakdown(
+    const population = new Population(allocationCpuSamples, allocationSizes);
+    const populationFiltered = new PopulationFiltered(population);
+
+    return createLineBreakdown(
         kind,
         line,
-        new PopulationFiltered(new Population(allocationCpuSamples, allocationSizes)),
+        populationFiltered,
         cpuSampledTreeSet,
         work
     );
-
-    registerPopulationFilters(breakdown);
-
-    return breakdown;
 }

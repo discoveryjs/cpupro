@@ -3,8 +3,8 @@ import type { Axis, Metric, ProfileLineMethods, TimelineLine } from './types.js'
 import type { V8CpuProfile } from '../types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
-import { registerPopulationFilters } from './population-filters.js';
-import type { PopulationFiltered } from '../computations/population.js';
+import { PopulationFiltered, type Population } from '../computations/population.js';
+import { FilterSet } from '../computations/filter-set.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 
 export type CreateTimelineOptions = {
@@ -60,7 +60,7 @@ const timelineMethods: ProfileLineMethods = {
 export async function createTimeline(
     data: V8CpuProfile,
     axis: Axis,
-    population: PopulationFiltered,
+    population: Population,
     sampledTreeSet: SampledTreeSet,
     options: CreateTimelineOptions
 ): Promise<TimelineLine | null> {
@@ -85,8 +85,9 @@ export async function createTimeline(
         axisEndNoSamples: axis.endNoSamples,
         axisTotal: axis.total,
 
-        values: population.population.values,
+        values: population.values,
         attributes: [],
+        filters: new FilterSet(),
         breakdowns: [],
         mappings: Object.create(null),
 
@@ -96,15 +97,15 @@ export async function createTimeline(
         ...timelineMethods
     };
 
+    const populationFiltered = new PopulationFiltered(population);
     const callStackBreakdown = await createLineBreakdown(
         'call-stack',
         line,
-        population,
+        populationFiltered,
         sampledTreeSet,
         work
     );
     line.breakdowns.push(callStackBreakdown);
-    registerPopulationFilters(callStackBreakdown);
 
     return line;
 }

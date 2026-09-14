@@ -1,7 +1,38 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { SetAttributeFilter } from '../computations/population-filter.js';
+import { SetAttributeFilter } from '../computations/attribute-filter.js';
+import { PopulationFiltered } from '../computations/population.js';
+import { prepareLineFilters } from './filters.js';
+import { FilterSet } from '../computations/filter-set.js';
+
+test('binds filters without a breakdown and preserves source category attribution for every bucket', async () => {
+    const { profile } = await createProfileFixture();
+
+    for (const line of profile.lines) {
+        for (const breakdown of line.breakdowns.filter(entry => !entry.kind.endsWith('-sm'))) {
+            const { population, source, categories } = breakdown;
+            assert.ok(categories);
+            const filtered = new PopulationFiltered(population);
+            const preparedLine = { ...line, filters: new FilterSet(), breakdowns: [{ ...breakdown, source, populationFiltered: filtered }] };
+            prepareLineFilters(preparedLine);
+            const category = preparedLine.filters.get('category') as SetAttributeFilter;
+
+            assert.equal(filtered.filter.get('category')!.key, category.key);
+            assert.deepEqual(filtered.samplesTotal, population.samplesTotal);
+            assert.deepEqual(filtered.samples, population.samples);
+            for (const option of category.options) {
+                category.setSelection('include', [option.key]);
+                const accepts = filtered.filter.get('category')!.accepts!;
+
+                for (let sampleId = 0; sampleId < population.samplesCount.length; sampleId++) {
+                    const categoryNode = categories.tree.nodes[categories.sampleToNode[sampleId]];
+                    assert.equal(accepts(sampleId), categories.tree.dictionary[categoryNode].name === option.key);
+                }
+            }
+        }
+    }
+});
 
 test('registers only available filters and shares their state across source-mapped breakdowns', async () => {
     const { profile } = await createProfileFixture();
@@ -37,8 +68,9 @@ test('filters liveness and space precisely within the same sample ID and compose
         const breakdown = line.breakdowns.find(entry => entry.kind === kind)!;
         const mapped = line.breakdowns.find(entry => entry.kind === `${kind}-sm`)!;
         const population = breakdown.populationFiltered;
-        const manager = population.filter;
-        assert.deepEqual(manager.filters.map(filter => filter.key), ['category', 'allocationLiveness', 'allocationSpace']);
+        const manager = line.filters;
+        manager.allowAll();
+        assert.deepEqual(manager.filters.map(filter => filter.key), ['category', 'allocationSpace', 'allocationLiveness']);
         const liveness = manager.get('allocationLiveness') as SetAttributeFilter;
         const space = manager.get('allocationSpace') as SetAttributeFilter;
         const category = manager.get('category') as SetAttributeFilter;
@@ -63,17 +95,17 @@ test('filters liveness and space precisely within the same sample ID and compose
         assert.equal(population.samplesTotal.reduce((sum, value) => sum + value, 0), 40);
         manager.batch(() => category.options.forEach(option => category.setEnabled(option.key, false)));
         assert.equal(population.samplesTotal.reduce((sum, value) => sum + value, 0), 0);
-        manager.reset();
+        manager.allowAll();
         assert.equal(population.samplesTotal.reduce((sum, value) => sum + value, 0), 72);
         assert.equal(population.sink.total, 0);
         assert.equal(population.rangeStart, 8);
         assert.ok(manager.filters.every(filter => !filter.active));
         liveness.setEnabled('alive', false);
-        manager.remove('allocationLiveness');
+        liveness.allowAll();
         assert.equal(population.sink.total, 0);
         population.resetRange();
         assert.deepEqual(population.samplesTotal, population.population.samplesTotal);
         unsubscribe();
     }
-    assert.deepEqual(profile.timeline!.breakdowns[0].populationFiltered.filter.filters.map(filter => filter.key), ['category']);
+    assert.deepEqual(profile.timeline!.filters.filters.map(filter => filter.key), ['category']);
 });

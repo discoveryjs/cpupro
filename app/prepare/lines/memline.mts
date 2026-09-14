@@ -10,6 +10,7 @@ import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { sum } from '../misc/utils.js';
+import { FilterSet } from '../computations/filter-set.js';
 import {
     createMemlineAllocationCodeTypeAttribute,
     createMemlineAllocationLifespanAttribute,
@@ -181,6 +182,7 @@ export async function createMemline(
 
         values: allocationSizes,
         attributes,
+        filters: new FilterSet(),
         breakdowns: [],
         mappings: Object.create(null),
 
