@@ -49,7 +49,7 @@ test('renders settings from registered filters and preserves other filters and r
     const options = getOptions(original);
     assert.ok(options.length > 1);
     assert.ok(options.every(option => option.checked));
-    population.setRange(5, 100);
+    original.line.range.setRange(5, 100);
     original.line.filters.batch(() => options.forEach(option => option.change(false)));
     assert.equal(population.samplesTotal.reduce((sum, value) => sum + value, 0), 0);
     assert.equal(population.sink.total, 95);
@@ -70,7 +70,7 @@ test('renders settings from registered filters and preserves other filters and r
     resetAllQuery(original)();
     assert.equal(population.samplesTotal.reduce((sum, value) => sum + value, 0), 95);
     assert.equal(population.sink.total, 0);
-    population.resetRange();
+    original.line.range.resetRange();
     assert.deepEqual(population.samplesTotal, population.population.samplesTotal);
 });
 

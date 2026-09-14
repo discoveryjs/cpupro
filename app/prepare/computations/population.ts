@@ -3,6 +3,7 @@ import { Observer } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi } from './compute-wasm-wrapper.js';
 import { PopulationFilter } from './population-filter.js';
 import type { Acceptance } from './attribute-filter.js';
+import { normalizeRanges, intersectRanges, equalRanges, type RangeSet } from './coordinates.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
 
@@ -11,6 +12,8 @@ export class Population extends Observer {
     values: Uint32Array;
     // FIXME: Prefix sums wrap at 2^32, breaking coordinate order and binary range search.
     cumulative: Uint32Array;   // size of values
+    // End of the base cumulative axis, not the sum of filtered contributions. Shares the overflow limitation above.
+    readonly cumulativeEnd: number;
     samplesCount: Uint32Array; // size of samples
     // FIXME: Per-sample totals also wrap at 2^32. Widen storage and JS/WASM accumulation together;
     // changing cumulative alone does not resolve overflow. This is deferred beyond the range optimization.
@@ -25,6 +28,7 @@ export class Population extends Observer {
         this.samples = samples;
         this.values = values;
         this.cumulative = computeCumulative(values);
+        this.cumulativeEnd = values.length ? this.cumulative[values.length - 1] + values[values.length - 1] : 0;
 
         const maxSampleId = findMaxId(samples) + 1;
         this.samplesCount = new Uint32Array(maxSampleId);
@@ -56,8 +60,7 @@ export class PopulationFiltered extends Observer {
     // FIXME: Filtered totals share the same Uint32 overflow limit, including the buffer's sink cell.
     samplesTotal: Uint32Array; // size of samples
     samplesMask: Uint32Array;
-    rangeStart: number | null = null;
-    rangeEnd: number | null = null;
+    #ranges: RangeSet | null = null;
     rangeSamples: number | null = null;
     indexStart: number | null = null;
     indexEnd: number | null = null;
@@ -150,38 +153,36 @@ export class PopulationFiltered extends Observer {
         this.notify();
     }
 
-    resetRange() {
-        if (this.rangeStart === null && this.rangeEnd === null) {
-            return;
-        }
+    get ranges() {
+        return this.#ranges;
+    }
 
-        this.rangeStart = null;
-        this.rangeEnd = null;
-        this.#compileValues();
-        this.#recompute();
-        this.notify();
+    // Legacy bounds describe the envelope only. Computation always uses the complete interval set.
+    get rangeStart() {
+        return this.#ranges === null ? null : this.#ranges[0]?.start ?? 0;
+    }
+
+    get rangeEnd() {
+        return this.#ranges === null ? null : this.#ranges[this.#ranges.length - 1]?.end ?? 0;
+    }
+
+    resetRange() {
+        this.setRanges(null);
     }
 
     setRange(start: number | null, end: number | null) {
-        if (start === null || end === null) {
-            this.resetRange();
+        this.setRanges(start === null || end === null ? null : [{ start, end }]);
+    }
+
+    setRanges(ranges: RangeSet | null) {
+        // One-way compatibility input: coordinate views own requests/frames; this workspace keeps local coverage.
+        const next = ranges === null ? null : intersectRanges(normalizeRanges(ranges), { start: 0, end: this.population.cumulativeEnd });
+
+        if (equalRanges(next, this.#ranges)) {
             return;
         }
 
-        validateRange(start, end);
-
-        const length = this.population.values.length;
-        const total = length === 0 ? 0 : this.cumulative[length - 1] + this.population.values[length - 1];
-
-        start = Math.max(0, Math.min(total, start));
-        end = Math.max(0, Math.min(total, end));
-
-        if (this.rangeStart === start && this.rangeEnd === end) {
-            return;
-        }
-
-        this.rangeStart = start;
-        this.rangeEnd = end;
+        this.#ranges = next;
         this.#compileValues();
         this.#recompute();
         this.notify();
@@ -233,6 +234,11 @@ export class PopulationFiltered extends Observer {
     }
 
     #compileValues() {
+        if (this.#ranges && this.#ranges.length > 1) {
+            this.#compileMultipleRanges(this.#ranges);
+            return;
+        }
+
         // Range changes affect weights only; compiled sample destinations and attribute acceptance are reused.
         const originalValues = this.population.values;
         const { values, cumulative, rangeStart, rangeEnd } = this;
@@ -290,12 +296,71 @@ export class PopulationFiltered extends Observer {
             if (values[first] !== 0) {
                 values[first] = Math.min(cumulative[first] + originalValues[first], rangeEnd) - Math.max(cumulative[first], rangeStart);
             }
+
             if (last - 1 !== first && values[last - 1] !== 0) {
                 values[last - 1] = rangeEnd - cumulative[last - 1];
             }
         }
 
         this.rangeSamples = hasRange ? rangeSamples : null;
+    }
+
+    #compileMultipleRanges(ranges: RangeSet) {
+        const { values, cumulative } = this;
+        const originalValues = this.population.values;
+        const indexStart = this.indexStart ?? 0;
+        const indexEnd = this.indexEnd ?? values.length;
+        const min = this.valueMin ?? -Infinity;
+        const max = this.valueMax ?? Infinity;
+        let clearedEnd = 0;
+        let boundaryIndex = -1;
+        let boundaryValue = 0;
+        let rangeSamples = 0;
+
+        // Called only at interval edges, never from the event loop. Successive intervals can touch the same event;
+        // keep its sum in Number across writes so fractional contributions survive Uint32 truncation.
+        const addBoundary = (index: number, contribution: number) => {
+            const originalValue = originalValues[index];
+
+            if (index !== boundaryIndex) {
+                boundaryIndex = index;
+                boundaryValue = 0;
+                rangeSamples++;
+            }
+
+            boundaryValue += contribution;
+            values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
+                ? boundaryValue : 0;
+        };
+
+        // Normalized ranges are ordered and disjoint. Seek each interval; do not scan events in the gaps.
+        // Upper/lower bounds skip zero-sized edge events while preserving zeros inside the interval.
+        for (const { start, end } of ranges) {
+            const first = Math.max(0, findCumulativeBoundary(cumulative, start, true) - 1);
+            const last = findCumulativeBoundary(cumulative, end, false) - 1;
+
+            // When this interval shares the previous edge event, first < clearedEnd and fill is a no-op.
+            values.fill(0, clearedEnd, first);
+            clearedEnd = last + 1;
+
+            addBoundary(first, Math.min(cumulative[first] + originalValues[first], end) - start);
+
+            for (let index = first + 1; index < last; index++) {
+                const originalValue = originalValues[index];
+
+                // Count participation before other constraints; all nonzero interior events are wholly covered.
+                rangeSamples += originalValue > 0 ? 1 : 0;
+                values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
+                    ? originalValue : 0;
+            }
+
+            if (last !== first) {
+                addBoundary(last, end - cumulative[last]);
+            }
+        }
+
+        values.fill(0, clearedEnd);
+        this.rangeSamples = rangeSamples;
     }
 }
 

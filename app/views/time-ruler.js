@@ -349,13 +349,17 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         ? Math.max(1, Math.min(Math.floor(segmentsRaw), Math.floor(duration)))
         : null;
 
-    // create state
-    const state = createState(
-        duration,
-        segments,
-        selectionStart,
-        selectionEnd
-    );
+    const readRanges = rangeManager && 'ranges' in rangeManager
+        ? () => rangeManager.ranges
+        : () => (rangeManager?.rangeStart ?? selectionStart) === null ? null : [{
+            start: rangeManager?.rangeStart ?? selectionStart,
+            end: rangeManager?.rangeEnd ?? selectionEnd
+        }];
+    // Multiple intervals have no single draggable envelope. A new drag replaces them with one interval.
+    const rangeState = ranges => ranges === null ? createState(duration, segments) : ranges.length === 1
+        ? createState(duration, segments, ranges[0].start, ranges[0].end)
+        : createState(duration, segments, 0, 0);
+    const state = rangeState(readRanges());
 
     syncStateToDom(el, state);
 
@@ -369,7 +373,8 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         segments,
         name,
         details,
-        onChange
+        // The coordinate view owns resolve/rebase. Rendering must never write clipped bounds back to the request.
+        onChange: onChange || (rangeManager ? state => rangeManager.setRange(state.timeStart, state.timeEnd) : null)
     });
 
     // apply interval marker labels position if any
@@ -384,7 +389,7 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         time < duration - timeRulerStep / 10;
         time += timeRulerStep
     ) {
-        const intervalMarkerEl = el.appendChild(document.createElement('div'));
+        const intervalMarkerEl = el.appendChild(utils.createElement('div'));
 
         intervalMarkerEl.className = 'interval-marker';
         intervalMarkerEl.style.setProperty('--offset', time / duration);
@@ -411,6 +416,28 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         ])
     );
 
+    const rangesEl = el.appendChild(utils.createElement('div', 'view-time-ruler__ranges'));
+    const renderRanges = ranges => {
+        el.dataset.multipleRanges = String(ranges !== null && ranges.length > 1);
+        rangesEl.replaceChildren();
+
+        if (ranges && ranges.length > 1 && duration > 0) {
+            for (const range of ranges) {
+                const start = Math.max(0, Math.min(duration, range.start));
+                const end = Math.max(0, Math.min(duration, range.end));
+
+                if (start < end) {
+                    const interval = rangesEl.appendChild(utils.createElement('div'));
+
+                    interval.style.setProperty('left', `${start / duration * 100}%`);
+                    interval.style.setProperty('width', `${(end - start) / duration * 100}%`);
+                }
+            }
+        }
+    };
+
+    renderRanges(readRanges());
+
     // call init state callback if any
     if (typeof onInit === 'function') {
         onInit(state, name, el, data, context);
@@ -418,15 +445,9 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
 
     // subscribe on range changes when range manager is provided
     const subscription = rangeManager?.subscribe(() => {
-        const selectionStart = rangeManager.rangeStart;
-        const selectionEnd = rangeManager.rangeEnd;
-
-        setStateIfNeeded(el, createState(
-            duration,
-            segments,
-            selectionStart,
-            selectionEnd
-        ), true, false);
+        const ranges = readRanges();
+        setStateIfNeeded(el, rangeState(ranges), true, false);
+        renderRanges(ranges);
     });
 
     // add element for cleanup on destroy

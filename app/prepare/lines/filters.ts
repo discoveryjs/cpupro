@@ -31,6 +31,7 @@ export function prepareLineFilters(line: ProfileLine) {
 
         const candidate = computation.settings;
         const settings = filters.get(candidate.key);
+
         if (settings instanceof SetAttributeFilter) {
             settings.addOptions(candidate.options);
             computation.settings = settings;
@@ -63,6 +64,7 @@ export function prepareLineFilters(line: ProfileLine) {
 
         for (const attribute of attributes) {
             const createFilter = attributeFilterFactories[attribute.name];
+
             if (createFilter) {
                 include(createFilter(attribute, line.values.length), targets);
             }

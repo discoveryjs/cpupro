@@ -5,6 +5,7 @@ import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
 import { PopulationFiltered, type Population } from '../computations/population.js';
 import { FilterSet } from '../computations/filter-set.js';
+import { RangeSelection } from '../computations/range.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 
 export type CreateTimelineOptions = {
@@ -88,6 +89,8 @@ export async function createTimeline(
         values: population.values,
         attributes: [],
         filters: new FilterSet(),
+        range: new RangeSelection({ name: 'profile-time', unit: 'us' })
+            .view({ start: 0, end: axis.total }, axis.start + axis.startNoSamples),
         breakdowns: [],
         mappings: Object.create(null),
 

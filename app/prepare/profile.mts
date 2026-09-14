@@ -21,6 +21,7 @@ import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { prepareLineFilters } from './lines/filters.js';
+import { prepareLineRange } from './lines/range.js';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
 const experimentalFeatures = false;
@@ -395,10 +396,9 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
                 line.breakdowns.push(sourceMappedBreakdown);
             }
         }
-    }
 
-    for (const line of lines) {
-        await work('prepare line filters', () => prepareLineFilters(line));
+        prepareLineFilters(line);
+        prepareLineRange(line);
     }
 
     return profile;

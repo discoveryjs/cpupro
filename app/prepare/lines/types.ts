@@ -1,5 +1,6 @@
 import { CallTree } from '../computations/call-tree';
 import type { FilterSet } from '../computations/filter-set.js';
+import type { RangeView } from '../computations/range.js';
 import type { TreeSource } from '../computations/build-trees';
 import { DictionaryMetrics, TreeMetrics } from '../computations/metrics';
 import { TreeValueBounds } from '../computations/tree-node-bounds';
@@ -121,6 +122,7 @@ export type ProfileLine = {
     values: Uint32Array;
     attributes: ProfileLineAttribute[];
     filters: FilterSet;
+    range: RangeView;
 
     // Line-owned tree breakdowns. Several lines may reuse the same tree structure,
     // while keeping independent sample-to-node mappings and metrics.

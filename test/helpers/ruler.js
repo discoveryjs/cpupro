@@ -17,6 +17,12 @@ class Element {
         this.children.push(child);
         return child;
     }
+    replaceChildren(...children) {
+        this.children = [];
+        for (const child of children) {
+            this.appendChild(child);
+        }
+    }
     getBoundingClientRect() {
         return { left: 0, width: this.width };
     }

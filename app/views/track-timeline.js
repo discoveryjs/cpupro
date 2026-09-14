@@ -1,4 +1,4 @@
-import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown } from '../jora/profile.js';
+import { resolveScopeProfileLine } from '../jora/profile.js';
 import { TrackTimeline } from './track-timeline/index.js';
 import Tooltip from './track-timeline/tooltip.js';
 import { utils } from '@discoveryjs/discovery';
@@ -10,9 +10,8 @@ const defaultTooltipContent = [
 
 discovery.view.define('track-timeline', function(el, config, data, context) {
     const scopeLine = resolveScopeProfileLine(config.line, context);
-    const scopeBreakdown = resolveScopeProfileLineBreakdown(null, scopeLine, context);
-    const scopeLineStart = scopeLine.axisStart + scopeLine.axisStartNoSamples;
-    const populationFiltered = scopeBreakdown.populationFiltered;
+    const { range } = scopeLine;
+    const { selection } = range;
     const {
         tooltipContent = defaultTooltipContent,
         tooltipClassName,
@@ -28,8 +27,8 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     const tooltip = new Tooltip(discovery, (el, span) =>
         this.render(el, tooltipContent, span, {
             ...context,
-            spanStart: span.start - scopeLineStart,
-            spanEnd: span.end - scopeLineStart
+            spanStart: range.frame.rebaseValue(span.start),
+            spanEnd: range.frame.rebaseValue(span.end)
         })
     );
 
@@ -63,36 +62,32 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
         onClick(span) {
             // console.log('Click:', span?.text, span);
             if (span !== null) {
-                populationFiltered.setRange(span.start - scopeLineStart, span.end - scopeLineStart);
+                selection.setRange(span.start, span.end);
             } else {
-                populationFiltered.resetRange();
+                range.resetRange();
             }
         }
     });
 
-    let populationSubscription = null;
+    let rangeSubscription = null;
     destroyEl.onConnect = () => {
-        populationSubscription = populationFiltered.subscribe(syncSelection);
+        rangeSubscription = range.subscribe(syncSelection);
         syncSelection();
     };
     destroyEl.onDestroy = () => {
-        populationSubscription?.();
+        rangeSubscription?.();
         trackTimeline.destroy();
         tooltip.destroy();
     };
 
     function syncSelection() {
-        if (populationFiltered.rangeStart) {
-            trackTimeline.setIntervals([...intervals, {
-                start: populationFiltered.rangeStart + scopeLineStart,
-                end: populationFiltered.rangeEnd + scopeLineStart,
-                color: 'rgba(0, 152, 251, .1)',
-                border: '#268fea66',
-                text: 'selection'
-            }]);
-        } else {
-            trackTimeline.setIntervals(intervals);
-        }
+        trackTimeline.setIntervals([...intervals, ...(selection.ranges || []).map(({ start, end }) => ({
+            start,
+            end,
+            color: 'rgba(0, 152, 251, .1)',
+            border: '#268fea66',
+            text: 'selection'
+        }))]);
     }
 });
 

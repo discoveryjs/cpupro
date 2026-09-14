@@ -10,8 +10,29 @@ describe('Population', () => {
         assert.equal(population.samples, samples);
         assert.equal(population.values, values);
         assert.deepEqual([...population.cumulative], [0, 16, 16, 48]);
+        assert.equal(population.cumulativeEnd, 56);
         assert.deepEqual([...population.samplesCount], [0, 0, 1, 0, 0, 0, 0, 2]);
         assert.deepEqual([...population.samplesTotal], [0, 0, 8, 0, 0, 0, 0, 48]);
+    });
+
+    test.each([
+        { values: [], end: 0 },
+        { values: [0, 0], end: 0 },
+        { values: [10, 20, 0], end: 30 },
+        { values: [10, 20, 30], end: 60 }
+    ])('keeps the base cumulative endpoint under filtered constraints: $values', ({ values, end }) => {
+        const population = new Population(new Uint32Array(values.length), Uint32Array.from(values));
+        const filtered = new PopulationFiltered(population);
+        assert.equal(population.cumulativeEnd, end);
+        filtered.setRange(5, end + 10);
+        filtered.setValueRange(20, null);
+        filtered.updateMask(mask => mask.fill(1));
+        assert.equal(population.cumulativeEnd, end);
+        assert.deepEqual([...population.values], values);
+        filtered.resetRange();
+        filtered.resetValueRange();
+        filtered.resetMask();
+        assert.equal(population.cumulativeEnd, end);
     });
 });
 

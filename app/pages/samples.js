@@ -9,7 +9,6 @@ discovery.page.define('samples', {
         $xbins: $binCount.sampleXBins();
 
         $line,
-        populationFiltered: scopeBreakdown().populationFiltered,
         $totalValue,
         $binCount,
         $sampleBins,
@@ -49,16 +48,7 @@ discovery.page.define('samples', {
                     labels: 'top',
                     duration: '=totalValue',
                     segments: '=binCount',
-                    selectionStart: '=populationFiltered.rangeStart',
-                    selectionEnd: '=populationFiltered.rangeEnd',
-                    rangeManager: '=populationFiltered',
-                    onChange: (state, name, el, { populationFiltered }) => {
-                        if (state.timeStart !== null) {
-                            populationFiltered.setRange(state.timeStart, state.timeEnd);
-                        } else {
-                            populationFiltered.resetRange();
-                        }
-                    },
+                    rangeManager: '=line.range',
                     details: [
                         // 'text:"Continues: " + sampleBins[#.segmentStart:#.segmentEnd + 1].sum()',
                         // 'html:"<br>"',

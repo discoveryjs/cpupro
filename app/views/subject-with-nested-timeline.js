@@ -1,4 +1,4 @@
-const { resolveScopeProfileLine, resolveScopeProfileLineBreakdown } = require('../jora/profile.ts');
+const { resolveScopeProfileLine } = require('../jora/profile.ts');
 
 discovery.view.define('subject-with-nested-timeline', {
     view: 'context',
@@ -49,22 +49,7 @@ discovery.view.define('subject-with-nested-timeline', {
             labels: 'top',
             duration: '=totalValue',
             segments: '=binCount',
-            selectionStart: '=scopeBreakdown.populationFiltered.rangeStart',
-            selectionEnd: '=scopeBreakdown.populationFiltered.rangeEnd',
-            rangeManager: '=scopeBreakdown.populationFiltered',
-            onChange: (state, name, el, { scopeBreakdown }) => {
-                // console.log('change', state);
-                // const t = Date.now();
-                const populationFiltered = scopeBreakdown.populationFiltered;
-
-                if (state.timeStart !== null) {
-                    populationFiltered.setRange(state.timeStart, state.timeEnd);
-                } else {
-                    populationFiltered.resetRange();
-                }
-
-                // console.log('compute timings', Date.now() - t);
-            },
+            rangeManager: '=scopeLine.range',
             details: [
                 {
                     view: 'block',
@@ -143,14 +128,13 @@ discovery.view.define('subject-with-nested-timeline', {
                 },
                 postRender(el, _, data, context) {
                     const { tm, duration, color } = data;
-                    const { axisTotal } = resolveScopeProfileLine(null, context);
-                    const { populationFiltered } = resolveScopeProfileLineBreakdown(null, null, context);
+                    const { axisTotal, range } = resolveScopeProfileLine(null, context);
 
                     el.style.setProperty('--pos', tm / axisTotal);
                     el.style.setProperty('--duration', duration / axisTotal);
                     el.style.setProperty('--tier-color', 'rgb(' + color + ', .68)');
                     el.addEventListener('click', () => {
-                        populationFiltered.setRange(tm, tm + duration);
+                        range.setRange(tm, tm + duration);
                     });
                 }
             }

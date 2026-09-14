@@ -60,24 +60,28 @@ export const pageIndicators = {
             className: 'filters',
             content: {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=scopeBreakdown().populationFiltered',
+                metrics: '=scopeLine().range',
                 content: {
                     view: 'context',
-                    when: 'scopeBreakdown().populationFiltered.rangeStart != null',
+                    when: 'scopeLine().range.ranges != null',
                     content: [
                         {
                             view: 'block',
                             className: 'page-indicator-group-tag'
                         },
                         {
-                            view: 'page-indicator',
-                            title: 'Samples',
-                            value: '=scopeBreakdown().populationFiltered.rangeSamples'
+                            view: 'update-on-line-metrics-changes',
+                            metrics: '=scopeBreakdown().populationFiltered',
+                            content: {
+                                view: 'page-indicator',
+                                title: 'Samples',
+                                value: '=scopeBreakdown().populationFiltered.rangeSamples'
+                            }
                         },
                         {
                             view: 'page-indicator',
                             title: 'Range',
-                            value: '=`${scopeBreakdown().populationFiltered.rangeStart.formatMicrosecondsTime()} – ${scopeBreakdown().populationFiltered.rangeEnd.formatMicrosecondsTime()}`'
+                            value: '=scopeLine().range.ranges.(`${start.formatValue()} – ${end.formatValue()}`).join(", ")'
                         }
                     ]
                 }

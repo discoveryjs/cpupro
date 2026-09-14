@@ -142,22 +142,7 @@ const categoriesTimeline = {
             view: 'time-ruler',
             duration: '=samples[].totalValue',
             segments: '=samples[].binCount',
-            selectionStart: '=tree.populationFiltered.rangeStart',
-            selectionEnd: '=tree.populationFiltered.rangeEnd',
-            rangeManager: '=tree.populationFiltered',
-            onChange(state, name, el, { tree }) {
-                // console.log('change', state);
-                // const t = Date.now();
-                const populationFiltered = tree.populationFiltered;
-
-                if (state.timeStart !== null) {
-                    populationFiltered.setRange(state.timeStart, state.timeEnd);
-                } else {
-                    populationFiltered.resetRange();
-                }
-
-                // console.log('compute timings', Date.now() - t);
-            },
+            rangeManager: '=line.range',
             details: [
                 {
                     view: 'block',

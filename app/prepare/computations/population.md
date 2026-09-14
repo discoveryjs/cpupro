@@ -65,19 +65,40 @@ For a public sample domain of size `U`, `sinkId` is `U`. Internal `buffer.sample
 
 ## Value Constraints
 
-All ranges are half-open. They are applied to original data, not to the result of an earlier constraint:
+The coordinate model consists of interval values (`Range`), normalized immutable `RangeSet` values, and `CoordinateFrame` transforms within an explicitly identified space. Equal units alone do not establish a shared space. Frames currently support translation to a common parent space, not arbitrary cross-space mappings or a nested frame hierarchy. Base Population has no placement offset.
+
+`RangeSelection` owns the requested interval set directly in its coordinate space. It has no source frame or movable origin. `null` means unrestricted; `[]` means explicitly empty. `RangeView` joins that request with a local frame and extent. Its `ranges` are the rebased, unclipped request, while `coverage` is their intersection with the extent. Neither is an independently mutable copy. Moving the local frame invalidates this resolution without changing the requested interval set.
+
+The usual construction is `new RangeSelection(space).view(extent, origin)`, with origin defaulting to zero. This creates one request, one local frame and one view; there is no materialized zero frame for the space. A view subscribes only to the request and its local frame. Explicit `new RangeView(selection, frame, extent)` is still available when multiple views must share an existing movable frame. `frame.resolve()` translates local ranges into space coordinates, and `frame.rebase()` translates space coordinates into local ones. RangeView checks space identity before joining them; equal units alone do not permit cross-space composition.
+
+For example, requested `[1,3) U [5,8) U [12,15)` against extent `[2,13)` has effective coverage `[2,3) U [5,8) U [12,13)`. The missing `[1,2)` and `[13,15)` remain recoverable from request/extent; they are not the same as the unselected `[3,5)` gap. Coordinate resolution also works for timestamped points without sample IDs or structural projections.
+
+`line.range` is a compatibility access to a `RangeView`, not population identity or scope ownership. Current assembly creates a time space with the local frame at `axis.start + axis.startNoSamples`, or a cumulative-bytes space with origin zero. Other presentations can reference the same `RangeSelection` through a different frame; independent analytical scopes over one Base use separate derived workspaces. No API infers this relation from line kind.
+
+After collecting breakdowns, `prepareLineRange()` connects distinct existing workspaces through `applyRangeToPopulation()`. This one-way migration adapter sends resolved local coverage to `PopulationFiltered.setRanges()`; it never propagates a local clamp back to the request. It subscribes through the coordinate view, not through Base Population. Its returned function stops updates without resetting results. The adapter is retired when explicit derived populations consume scopes and coverage directly, independently of breakdown discovery.
+
+UI gestures call `RangeView.setRange()` in local display coordinates; the view resolves them into the request's coordinate space. Rulers have no separate origin parameter. They render multiple intervals without filling internal gaps; the current drag operation replaces the request with one interval. Runtime tracks consume the request directly in space coordinates. Full absent-coverage shading and multi-interval editing controls remain representation work.
+
+Coordinate descriptors and their transient transformations cost O(number of intervals). There are no additional occurrence-sized arrays, projection mappings, WASM memories or topology copies. Multi-range values use the existing workspace; the optimized single-range path and JS/WASM aggregation kernels are retained.
+
+All local constraints are half-open. They are applied to original data, not to the result of an earlier constraint:
 
 | Method | Meaning |
 | --- | --- |
+| `setRanges(ranges)` | Local interval-set compatibility input; overlapping intervals are normalized, then clipped to the local extent. |
 | `setRange(start, end)` | Coordinate range on the original cumulative axis; boundary events contribute only their overlap. |
 | `setIndexRange(start, end)` | Original event-index interval; events outside it get zero effective value. |
 | `setValueRange(min, max)` | Accept original values in `[min, max)`; this is a predicate, not value clamping. |
 
 Index boundaries must be integers. Coordinate/index endpoints are clamped to the input domain; reversed or non-finite endpoints are rejected. For index/value ranges, `null` is an open bound and two nulls clear the constraint. For the existing coordinate API, either null endpoint resets the range. `resetRange()`, `resetIndexRange()` and `resetValueRange()` reset only their respective constraint, leaving the mask and other constraints in place.
 
+`PopulationFiltered.rangeStart/rangeEnd` are legacy envelope getters, not a multi-interval request. Computation uses `ranges`, including gaps. When several ranges overlap one duration-bearing event, contributions are summed before typed-array truncation and the event is counted once. The existing cumulative-bytes allocation clipping policy is preserved in this compatibility path; native allocation-timestamp participation is not implemented by treating byte weights as durations.
+
 `rangeSamples` counts events with positive coordinate overlap before bucket masking and index/value acceptance; it is null when no coordinate range is active. It is not the filtered count. Effective values and counts still use the existing integer typed-array representation. Fractional storage and cumulative-axis overflow are not redesigned here.
 
 Range preparation assumes a non-overflowed cumulative axis: it finds the event interval by binary search, clears the prefix/suffix with typed-array fills and processes only the interval. Interior events retain their original weights; only the first and last events need clipping. Repeated coordinates from zero-sized events are handled by distinct lower/upper boundaries. `computeCumulative()` builds the coordinate vector using local arrays. This does not allocate an additional event vector or change the aggregation kernel's full scan.
+
+Multi-range preparation iterates normalized intervals, seeking each interval's event boundaries separately. Gaps are zeroed with typed-array fills; their events are not visited by the JavaScript event loop. That loop copies whole interior weights and applies index/value constraints without inspecting ranges or computing overlaps. Only interval edges use overlap arithmetic. A scalar accumulator retains contributions when successive intervals share an edge event, preserving fractional sums and counting that event once. No event-sized scratch vector is needed. The aggregation kernel still scans the resulting full vector.
 
 Overflow handling is deferred for both `cumulative` and aggregate vectors such as `samplesTotal`. They remain `Uint32Array`; there is no separate fallback for wrapped coordinates or claim of correct range results after overflow. Widening only the coordinate vector would not solve aggregate overflow.
 
@@ -85,7 +106,9 @@ Set/reset order must not affect compiled inputs or aggregates. Base vectors, sou
 
 ## Current Boundaries
 
-This is a separation of attribute-predicate preparation from workspace encoding, not the complete M1 `PreparedPopulation` boundary. `Population.samples` still contains attribution-specific bucket IDs, category acceptance still uses that basis, and effective values/ranges remain in `PopulationFiltered`. Shared attribute predicates are not sufficient to merge the two memline populations. The remaining M1 work must separate participation/effective contribution from attribution without silently choosing one category basis for both paths.
+This is not the complete target derived-population pipeline. Base values remain stable; a separate Viewport Population is still missing. `PopulationFiltered` remains the existing selection-like workspace for detailed projections, not both Viewport and Selection states. Navigation histograms still use Base, and range counters still read that selection-like workspace. Those consumer assignments need explicit revision when Viewport is introduced.
+
+`Population.samples` still contains attribution-specific bucket IDs, category acceptance still uses that basis, and effective contribution/local coverage materialization remain fused in `PopulationFiltered`. Frame placement does not merge attribution domains. The coordinate module itself has no dependency on population, line or projection types. Higher-level scope ownership, classifier capabilities upstream of breakdowns, and source-map readiness remain open construction work.
 
 Population updates still propagate eagerly to their subscribed breakdowns. Shared settings currently stop at the line boundary. Higher-level line/profile coordination, cross-line range translation, lazy metrics, result lifetime and viewport/selection separation remain separate steps.
 

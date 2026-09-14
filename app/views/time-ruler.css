@@ -144,6 +144,25 @@
     background-color: rgba(0, 152, 251, .1);
 }
 
+.view-time-ruler__ranges {
+    position: absolute;
+    inset: var(--overlay-offset-top, 0) 0 var(--overlay-offset-bottom, 0);
+    pointer-events: none;
+}
+.view-time-ruler__ranges > div {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(0, 152, 251, .1);
+    border-inline: 1px solid #268fea66;
+    box-sizing: border-box;
+}
+.view-time-ruler[data-state="selecting"] .view-time-ruler__ranges,
+.view-time-ruler[data-multiple-ranges="true"]:not([data-state="selecting"]) .view-time-ruler__selection-overlay,
+.view-time-ruler[data-multiple-ranges="true"]:not([data-state="selecting"])::before {
+    display: none;
+}
+
 .view-time-ruler-tooltip {
     padding: 5px 10px;
     min-width: 200px;
