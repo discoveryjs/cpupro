@@ -412,7 +412,6 @@ export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
         let totalAncestorNodes = 0;
 
         for (const nodeIndex of tree.selectNodes(value, true)) {
-            occurrences.push(nodeIndex);
             const chain: number[] = [];
             let current = nodeIndex;
             let parentIdx = treeParent[current];
@@ -427,6 +426,7 @@ export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
                 parentIdx = treeParent[current];
             }
 
+            occurrences.push(nodeIndex);
             ancestorChains.push(chain);
             totalAncestorNodes += chain.length;
         }
@@ -442,8 +442,8 @@ export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
         invertedNodes[0] = value; // root = the focused call frame
 
         let offset = 1;
-        for (let occ = 0; occ < ancestorChains.length; occ++) {
-            const chain = ancestorChains[occ];
+        for (let i = 0; i < ancestorChains.length; i++) {
+            const chain = ancestorChains[i];
             let parentInInverted = 0; // start from root
 
             for (let i = 0; i < chain.length; i++) {
@@ -503,6 +503,7 @@ export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
         for (const occNodeIndex of occurrences) {
             nodeOriginals[nodeOriginalsOffset[rootIdx]++] = occNodeIndex;
         }
+
         for (let i = 1; i < preOriginals.length; i++) {
             if (preOriginals[i] >= 0) {
                 const consolidated = rollupNodeMap[i];
@@ -515,8 +516,8 @@ export class AncestorSubsetCallTree<T extends CpuProNode> extends CallTree<T> {
         }
 
         super(dictionary, nodes, parent, subtreeSize, nested);
-        this.setSourceTree(tree, sourceNodeMap);
 
+        this.setSourceTree(tree, sourceNodeMap);
         this.nodeOriginals = nodeOriginals;
         this.nodeOriginalsOffset = nodeOriginalsOffset;
         this.nodeOriginalsCount = nodeOriginalsCount;
