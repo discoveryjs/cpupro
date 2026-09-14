@@ -17,6 +17,105 @@ describe('Population', () => {
 
 describe('PopulationFiltered', () => {
     test.each([
+        { name: 'empty', weights: [] },
+        { name: 'zero weights', weights: [0, 0, 0] },
+        { name: 'repeated coordinates', weights: [0, 0, 10, 0, 0, 20, 0, 30, 0, 0] },
+        { name: 'single event', weights: [10] },
+        { name: 'uint32 boundary', weights: [0xfffffffe, 1, 0] }
+    ])('matches per-event clipping through range and constraint transitions: $name', ({ weights }) => {
+        const population = new Population(Uint32Array.from(weights, (_, index) => index % 3), Uint32Array.from(weights));
+        const filtered = new PopulationFiltered(population);
+        filtered.updateMask(mask => {
+            mask[0] = 1;
+        });
+        const values = filtered.values;
+        const samples = filtered.samples;
+        const total = weights.length ? population.cumulative[weights.length - 1] + weights[weights.length - 1] : 0;
+        const coordinates = [-1, 0, 0.25, 0.75, 5, 10, 10.25, 30, total, total + 1];
+        let seed = 12345;
+        const random = (size: number) => {
+            seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+            return seed % size;
+        };
+        const verify = () => {
+            let rangeSamples = 0;
+            const expectedValues = population.values.map((value, index) => {
+                const contribution = filtered.rangeStart === null || filtered.rangeEnd === null
+                    ? value
+                    : Math.max(0, Math.min(population.cumulative[index] + value, filtered.rangeEnd) - Math.max(population.cumulative[index], filtered.rangeStart));
+                rangeSamples += contribution > 0 ? 1 : 0;
+                return index >= (filtered.indexStart ?? 0) && index < (filtered.indexEnd ?? weights.length) &&
+                    value >= (filtered.valueMin ?? -Infinity) && value < (filtered.valueMax ?? Infinity)
+                    ? contribution : 0;
+            });
+            const totals = new Uint32Array(filtered.samplesTotal.length + 1);
+            const counts = new Uint32Array(totals.length);
+            expectedValues.forEach((value, index) => {
+                const sampleId = population.samples[index] === 0 ? filtered.sinkId : population.samples[index];
+                totals[sampleId] += value;
+                counts[sampleId] += value > 0 ? 1 : 0;
+            });
+            assert.equal(filtered.values, values);
+            assert.equal(filtered.samples, samples);
+            assert.deepEqual(filtered.values, expectedValues);
+            assert.equal(filtered.rangeSamples, filtered.rangeStart === null ? null : rangeSamples);
+            assert.deepEqual(filtered.samplesTotal, totals.subarray(0, filtered.sinkId));
+            assert.deepEqual(filtered.samplesCount, counts.subarray(0, filtered.sinkId));
+            assert.deepEqual(filtered.sink, { total: totals[filtered.sinkId], count: counts[filtered.sinkId] });
+        };
+
+        for (let pass = 0; pass < 120; pass++) {
+            const start = coordinates[random(coordinates.length)];
+            const end = coordinates[random(coordinates.length)];
+            filtered.setRange(Math.min(start, end), Math.max(start, end));
+            verify();
+            const first = random(weights.length + 1);
+            const last = random(weights.length + 1);
+            filtered.setIndexRange(Math.min(first, last), Math.max(first, last));
+            verify();
+            filtered.setValueRange(pass % 2 ? null : 10, pass % 3 ? null : 30);
+            verify();
+            filtered.resetIndexRange();
+            verify();
+            filtered.resetValueRange();
+            verify();
+            filtered.resetRange();
+            verify();
+        }
+    });
+
+    test('moves and resets ranges without evaluating event acceptance or rebuilding sample destinations', () => {
+        const population = new Population(new Uint32Array([0, 1, 0, 2, 1]), new Uint32Array([10, 0, 20, 30, 0]));
+        const filtered = new PopulationFiltered(population);
+        let evaluations = 0;
+        const predicate = { key: 'event', domain: 'event' as const, size: population.values.length, accepts: (index: number) => {
+            evaluations++;
+            return index % 2 === 0;
+        } };
+        filtered.filter.set(predicate);
+        const initialEvaluations = evaluations;
+        const destinations = filtered.samples.slice();
+        let filterUpdates = 0;
+        filtered.filter.subscribe(() => filterUpdates++);
+
+        for (const [start, end] of [[5, 35], [35, 55], [10, 10], [0, 60], [0.5, 30.5]]) {
+            filtered.setRange(start, end);
+            const expected = population.values.map((value, index) =>
+                Math.max(0, Math.min(population.cumulative[index] + value, end) - Math.max(population.cumulative[index], start))
+            );
+            assert.deepEqual(filtered.values, expected);
+            assert.deepEqual(filtered.samples, destinations);
+        }
+
+        filtered.resetRange();
+        assert.deepEqual(filtered.values, population.values);
+        assert.deepEqual(filtered.samples, destinations);
+        assert.equal(filtered.filter.get('event'), predicate);
+        assert.equal(evaluations, initialEvaluations);
+        assert.equal(filterUpdates, 0);
+    });
+
+    test.each([
         { start: 0, end: 10, values: [0, 10, 0, 0, 0, 0, 0], count: 1 },
         { start: 10, end: 30, values: [0, 0, 0, 20, 0, 0, 0], count: 1 },
         { start: 5, end: 35, values: [0, 5, 0, 20, 0, 5, 0], count: 3 },

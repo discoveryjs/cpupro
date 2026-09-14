@@ -77,6 +77,10 @@ Index boundaries must be integers. Coordinate/index endpoints are clamped to the
 
 `rangeSamples` counts events with positive coordinate overlap before bucket masking and index/value acceptance; it is null when no coordinate range is active. It is not the filtered count. Effective values and counts still use the existing integer typed-array representation. Fractional storage and cumulative-axis overflow are not redesigned here.
 
+Range preparation assumes a non-overflowed cumulative axis: it finds the event interval by binary search, clears the prefix/suffix with typed-array fills and processes only the interval. Interior events retain their original weights; only the first and last events need clipping. Repeated coordinates from zero-sized events are handled by distinct lower/upper boundaries. `computeCumulative()` builds the coordinate vector using local arrays. This does not allocate an additional event vector or change the aggregation kernel's full scan.
+
+Overflow handling is deferred for both `cumulative` and aggregate vectors such as `samplesTotal`. They remain `Uint32Array`; there is no separate fallback for wrapped coordinates or claim of correct range results after overflow. Widening only the coordinate vector would not solve aggregate overflow.
+
 Set/reset order must not affect compiled inputs or aggregates. Base vectors, source topology, and public filtered-vector identities remain unchanged. An effective mask change or changed range constraint recomputes aggregates and notifies subscribers; identical range updates are ignored.
 
 ## Current Boundaries

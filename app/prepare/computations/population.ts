@@ -9,8 +9,11 @@ const computeMetricsJavaScriptApi = createJavaScriptApi();
 export class Population extends Observer {
     samples: Uint32Array;
     values: Uint32Array;
+    // FIXME: Prefix sums wrap at 2^32, breaking coordinate order and binary range search.
     cumulative: Uint32Array;   // size of values
     samplesCount: Uint32Array; // size of samples
+    // FIXME: Per-sample totals also wrap at 2^32. Widen storage and JS/WASM accumulation together;
+    // changing cumulative alone does not resolve overflow. This is deferred beyond the range optimization.
     samplesTotal: Uint32Array; // size of samples
 
     constructor(
@@ -21,7 +24,7 @@ export class Population extends Observer {
 
         this.samples = samples;
         this.values = values;
-        this.cumulative = computeCumulative(this.values);
+        this.cumulative = computeCumulative(values);
 
         const maxSampleId = findMaxId(samples) + 1;
         this.samplesCount = new Uint32Array(maxSampleId);
@@ -50,6 +53,7 @@ export class PopulationFiltered extends Observer {
     values: Uint32Array;
     cumulative: Uint32Array;   // size of values
     samplesCount: Uint32Array; // size of samples
+    // FIXME: Filtered totals share the same Uint32 overflow limit, including the buffer's sink cell.
     samplesTotal: Uint32Array; // size of samples
     samplesMask: Uint32Array;
     rangeStart: number | null = null;
@@ -229,6 +233,7 @@ export class PopulationFiltered extends Observer {
     }
 
     #compileValues() {
+        // Range changes affect weights only; compiled sample destinations and attribute acceptance are reused.
         const originalValues = this.population.values;
         const { values, cumulative, rangeStart, rangeEnd } = this;
         const indexStart = this.indexStart ?? 0;
@@ -238,19 +243,56 @@ export class PopulationFiltered extends Observer {
         const hasRange = rangeStart !== null && rangeEnd !== null;
         let rangeSamples = 0;
 
-        for (let index = 0; index < values.length; index++) {
-            const originalValue = originalValues[index];
-            const contribution = hasRange
-                ? Math.max(0, Math.min(cumulative[index] + originalValue, rangeEnd) - Math.max(cumulative[index], rangeStart))
-                : originalValue;
+        if (!hasRange && this.indexStart === null && this.indexEnd === null && this.valueMin === null && this.valueMax === null) {
+            values.set(originalValues);
+            this.rangeSamples = null;
+            return;
+        }
 
-            if (contribution > 0) {
+        let first = 0;
+        let last = values.length;
+
+        if (hasRange) {
+            if (rangeStart === rangeEnd) {
+                values.fill(0);
+                this.rangeSamples = 0;
+                return;
+            }
+
+            // Zero-sized events repeat coordinates: start uses upper_bound - 1, end uses lower_bound for [start, end).
+            first = Math.max(0, findCumulativeBoundary(cumulative, rangeStart, true) - 1);
+            last = findCumulativeBoundary(cumulative, rangeEnd, false);
+        } else {
+            first = indexStart;
+            last = Math.max(first, indexEnd);
+        }
+
+        // Clear outside in bulk; interior events need no per-event overlap calculation.
+        values.fill(0, 0, first);
+        values.fill(0, last);
+
+        for (let index = first; index < last; index++) {
+            const originalValue = originalValues[index];
+
+            // Count coordinate participation before index/value/mask filtering and fractional-weight truncation.
+            if (originalValue > 0) {
                 rangeSamples++;
             }
 
             values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
-                ? contribution
+                ? originalValue
                 : 0;
+        }
+
+        // Test original weights first, then clip only admitted edges. A single-event range must be clipped once,
+        // from the original weight, not by sequential subtraction from an already truncated Uint32 value.
+        if (hasRange && first < last) {
+            if (values[first] !== 0) {
+                values[first] = Math.min(cumulative[first] + originalValues[first], rangeEnd) - Math.max(cumulative[first], rangeStart);
+            }
+            if (last - 1 !== first && values[last - 1] !== 0) {
+                values[last - 1] = rangeEnd - cumulative[last - 1];
+            }
         }
 
         this.rangeSamples = hasRange ? rangeSamples : null;
@@ -301,13 +343,32 @@ function createComputeBuffer(
 }
 
 function computeCumulative(values: Uint32Array) {
+    // Binary range search assumes no Uint32 overflow. Widening this vector alone would not fix samplesTotal overflow.
     const cumulative = new Uint32Array(values.length);
 
-    for (let i = 1; i < cumulative.length; i++) {
-        cumulative[i] = values[i - 1] + cumulative[i - 1];
+    for (let index = 1; index < values.length; index++) {
+        cumulative[index] = cumulative[index - 1] + values[index - 1];
     }
 
     return cumulative;
+}
+
+function findCumulativeBoundary(cumulative: Uint32Array, value: number, afterEqual: boolean) {
+    let left = 0;
+    let right = cumulative.length;
+
+    while (left < right) {
+        const middle = left + ((right - left) >>> 1);
+        const coordinate = cumulative[middle];
+
+        if (coordinate < value || (afterEqual && coordinate === value)) {
+            left = middle + 1;
+        } else {
+            right = middle;
+        }
+    }
+
+    return left;
 }
 
 function findMaxId(samples: Uint32Array) {
