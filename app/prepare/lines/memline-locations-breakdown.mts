@@ -6,6 +6,7 @@ import type { CpuProLocation } from '../types.js';
 import type { ProfileLine, ProfileLineBreakdown } from './types.js';
 import { createSampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
+import { registerPopulationFilters } from './population-filters.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
 import { remapSamples } from '../preprocessing/samples.js';
 import { convertToUint32Array, createInt32Progression } from '../misc/utils.js';
@@ -44,14 +45,15 @@ export async function createMemlineLocationsBreakdown(
         work
     );
 
-    return createLineBreakdown(
+    const breakdown = await createLineBreakdown(
         kind,
         line,
         population,
         locationTreeSamples,
         work
     );
-
+    registerPopulationFilters(breakdown);
+    return breakdown;
 }
 
 function createAllocationLocationBreakdownBasis(

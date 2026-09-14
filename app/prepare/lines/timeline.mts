@@ -3,6 +3,7 @@ import type { Axis, Metric, ProfileLineMethods, TimelineLine } from './types.js'
 import type { V8CpuProfile } from '../types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
+import { registerPopulationFilters } from './population-filters.js';
 import type { PopulationFiltered } from '../computations/population.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 
@@ -103,6 +104,7 @@ export async function createTimeline(
         work
     );
     line.breakdowns.push(callStackBreakdown);
+    registerPopulationFilters(callStackBreakdown);
 
     return line;
 }

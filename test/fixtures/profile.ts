@@ -13,6 +13,9 @@ export type ProfileFixtureOptions = {
     stackOnly?: boolean;
     mapping?: number[];
     contexts?: number[];
+    allocationGc?: number[];
+    allocationSpaces?: number[];
+    allocationSpaceNames?: Record<number, string>;
 };
 
 export async function createProfileFixture(options: ProfileFixtureOptions = {}) {
@@ -48,7 +51,10 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
         Object.assign(data, {
             _cpuproAllocationMapping: options.locationsOnly ? undefined : options.mapping || [1, 3, 4],
             _cpuproAllocationIds: [1, 2, 3, 4],
-            _cpuproAllocationSizes: [16, 32, 48, 64]
+            _cpuproAllocationSizes: [16, 32, 48, 64],
+            _cpuproAllocationGc: options.allocationGc,
+            _cpuproAllocationSpaces: options.allocationSpaces,
+            _cpuproAllocationSpaceNames: options.allocationSpaceNames
         });
         if (!options.stackOnly) {
             Object.assign(data, {

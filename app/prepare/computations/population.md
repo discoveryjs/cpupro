@@ -4,7 +4,7 @@
 
 ## Bucket Mask
 
-`samplesMask` has one `Uint32` entry per sample ID, not per event. Each bit represents an exclusion reason; zero means accepted. Change bits through `updateMask(callback)` and clear them through `resetMask()`. Direct array writes outside the callback do not trigger compilation or notifications.
+`samplesMask` has one `Uint32` entry per sample ID, not per event. Each bit represents a sample-domain exclusion reason; zero means accepted by the bucket filters. Event-domain acceptance is applied in addition. Change low-level bits through `updateMask(callback)` and clear them through `resetMask()`. Direct array writes outside the callback do not trigger compilation or notifications.
 
 ```ts
 filtered.updateMask(mask => {

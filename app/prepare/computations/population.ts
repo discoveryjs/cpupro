@@ -1,6 +1,7 @@
 import { USE_WASM } from '../const.js';
 import { Observer } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi } from './compute-wasm-wrapper.js';
+import { PopulationFilter, type Acceptance } from './population-filter.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
 
@@ -38,9 +39,12 @@ export class Population extends Observer {
 export type MaskFunction = (mask: Uint32Array) => void;
 export class PopulationFiltered extends Observer {
     population: Population;
+    filter: PopulationFilter;
+    declare readonly sink: { count: number; total: number };
     buffer: PopulationBufferMap;
     #recompute: (clear?: boolean) => void;
     #hasMask = false;
+    #acceptsEvent: Acceptance | null = null;
     samples: Uint32Array;
     values: Uint32Array;
     cumulative: Uint32Array;   // size of values
@@ -71,6 +75,14 @@ export class PopulationFiltered extends Observer {
             ? createWasmApi(this.buffer.memory)
             : computeMetricsJavaScriptApi;
         this.#recompute = api.computeMetrics.bind(null, this.buffer);
+        this.filter = new PopulationFilter(
+            population.samplesCount.length,
+            population.samples.length,
+            (updateMask, acceptsEvent) => {
+                this.#acceptsEvent = acceptsEvent;
+                this.updateMask(updateMask);
+            }
+        );
 
         Object.defineProperty(this, 'sink', {
             get: () => this.#sink
@@ -89,6 +101,8 @@ export class PopulationFiltered extends Observer {
     }
 
     resetMask() {
+        this.filter.reset();
+
         if (!this.#hasMask) {
             return;
         }
@@ -109,7 +123,7 @@ export class PopulationFiltered extends Observer {
         const hadMask = this.#hasMask;
 
         maskFn(this.samplesMask);
-        this.#hasMask = !isMaskEmpty(this.samplesMask);
+        this.#hasMask = this.#acceptsEvent !== null || !isMaskEmpty(this.samplesMask);
 
         if (!this.#hasMask && !hadMask) {
             return;
@@ -118,9 +132,11 @@ export class PopulationFiltered extends Observer {
         const samples = this.samples;
         const sinkId = this.sinkId;
         let changed = false;
+
         for (let i = 0; i < samples.length; i++) {
             const sampleId = originalSamples[i];
-            const target = this.samplesMask[sampleId] === 0 ? sampleId : sinkId;
+            const target = this.samplesMask[sampleId] === 0 && (!this.#acceptsEvent || this.#acceptsEvent(i)) ? sampleId : sinkId;
+
             changed = changed || samples[i] !== target;
             samples[i] = target;
         }
@@ -152,8 +168,10 @@ export class PopulationFiltered extends Observer {
         }
 
         validateRange(start, end);
+
         const length = this.population.values.length;
         const total = length === 0 ? 0 : this.cumulative[length - 1] + this.population.values[length - 1];
+
         start = Math.max(0, Math.min(total, start));
         end = Math.max(0, Math.min(total, end));
 
@@ -170,10 +188,13 @@ export class PopulationFiltered extends Observer {
 
     setIndexRange(start: number | null, end: number | null) {
         validateRange(start, end);
+
         if ((start !== null && !Number.isInteger(start)) || (end !== null && !Number.isInteger(end))) {
             throw new RangeError('Index range boundaries must be integers');
         }
+
         const length = this.population.values.length;
+
         start = start === null ? null : Math.max(0, Math.min(length, start));
         end = end === null ? null : Math.max(0, Math.min(length, end));
 
@@ -194,6 +215,7 @@ export class PopulationFiltered extends Observer {
 
     setValueRange(min: number | null, max: number | null) {
         validateRange(min, max);
+
         if (this.valueMin === min && this.valueMax === max) {
             return;
         }
@@ -228,6 +250,7 @@ export class PopulationFiltered extends Observer {
             if (contribution > 0) {
                 rangeSamples++;
             }
+
             values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
                 ? contribution
                 : 0;
@@ -251,6 +274,7 @@ function createComputeBuffer(
 ) {
     const { samples, values, samplesCount, samplesTotal } = population;
     // estimate buffer size
+    let bufferOffset = 0;
     const bufferSize =
         values.length + // values
         samples.length + // samples
@@ -261,7 +285,6 @@ function createComputeBuffer(
         ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
         : new Uint8Array(4 * bufferSize);
     const buffer = new Uint32Array(memory.buffer);
-    let bufferOffset = 0;
     const bufferMap: PopulationBufferMap = {
         memory,
         values: adopt(values),

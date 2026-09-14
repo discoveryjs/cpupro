@@ -7,6 +7,7 @@ import { methods as profileMethods, assertions as profileAssertions, getProfileO
 import { methods as samplesMethods } from './samples.js';
 import { methods as sourceMethods } from './source.js';
 import { methods as ownershipMethods } from './ownership.js';
+import { methods as filterMethods, assertions as filterAssertions } from './filters.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 
 const sessionColorComponents = new Map();
@@ -43,6 +44,7 @@ function shortNum(current, units, base = 1000) {
 
 export const assertions = {
     ...profileAssertions,
+    ...filterAssertions,
     original: 'script.originalFor'
 };
 export const methods = {
@@ -54,6 +56,7 @@ export const methods = {
     ...sourceMethods,
     ...profileMethods,
     ...ownershipMethods,
+    ...filterMethods,
 
     order(value) {
         return typeOrder[value] || 100;
