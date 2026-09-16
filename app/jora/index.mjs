@@ -8,6 +8,7 @@ import { methods as samplesMethods } from './samples.js';
 import { methods as sourceMethods } from './source.js';
 import { methods as ownershipMethods } from './ownership.js';
 import { methods as filterMethods, assertions as filterAssertions } from './filters.js';
+import { methods as viewportMethods } from './viewport.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 
 const sessionColorComponents = new Map();
@@ -57,6 +58,7 @@ export const methods = {
     ...profileMethods,
     ...ownershipMethods,
     ...filterMethods,
+    ...viewportMethods,
 
     order(value) {
         return typeOrder[value] || 100;

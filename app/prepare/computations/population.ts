@@ -3,7 +3,7 @@ import { Observer } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi } from './compute-wasm-wrapper.js';
 import { PopulationFilter } from './population-filter.js';
 import type { Acceptance } from './attribute-filter.js';
-import { normalizeRanges, intersectRanges, equalRanges, type RangeSet } from './coordinates.js';
+import { normalizeRanges, intersectRanges, equalRanges, validateRangeBounds, type RangeSet } from './coordinates.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
 
@@ -189,7 +189,7 @@ export class PopulationFiltered extends Observer {
     }
 
     setIndexRange(start: number | null, end: number | null) {
-        validateRange(start, end);
+        validateRangeBounds(start, end);
 
         if ((start !== null && !Number.isInteger(start)) || (end !== null && !Number.isInteger(end))) {
             throw new RangeError('Index range boundaries must be integers');
@@ -216,7 +216,7 @@ export class PopulationFiltered extends Observer {
     }
 
     setValueRange(min: number | null, max: number | null) {
-        validateRange(min, max);
+        validateRangeBounds(min, max);
 
         if (this.valueMin === min && this.valueMax === max) {
             return;
@@ -361,14 +361,6 @@ export class PopulationFiltered extends Observer {
 
         values.fill(0, clearedEnd);
         this.rangeSamples = rangeSamples;
-    }
-}
-
-function validateRange(start: number | null, end: number | null) {
-    if ((start !== null && !Number.isFinite(start)) ||
-        (end !== null && !Number.isFinite(end)) ||
-        (start !== null && end !== null && start > end)) {
-        throw new RangeError('Range boundaries must be finite and ordered');
     }
 }
 

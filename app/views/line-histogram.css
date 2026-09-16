@@ -1,0 +1,11 @@
+@import url('./misc/range-coverage.css');
+
+.view-line-histogram {
+    position: relative;
+    overflow: hidden;
+    margin: 1px 0;
+}
+
+.view-line-histogram > .view-bins-histogram {
+    margin: 0;
+}

@@ -273,7 +273,7 @@ h2 .logo {
     color: #888;
 }
 
-.view-table-cell > .view-sample-histogram {
+.view-table-cell > .view-bins-histogram {
     margin: -1px -6px -2px;
     width: 250px;
 }

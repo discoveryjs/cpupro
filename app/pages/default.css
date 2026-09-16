@@ -335,7 +335,8 @@
     color: inherit;
     display: contents;
 }
-.page-default .category-timelines-item .view-sample-histogram {
+.page-default .category-timelines > .user-timings-timeline .view-track-timeline,
+.page-default .category-timelines-item .view-line-histogram {
     margin: 0 1px;
 }
 .page-default .category-timelines-item:has(+ .category-timelines-list) > * {

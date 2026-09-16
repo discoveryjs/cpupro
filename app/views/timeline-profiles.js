@@ -89,7 +89,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         this.tooltip(barEl, profileTooltip, profile, context);
 
         this.render(barEl, {
-            view: 'sample-histogram',
+            view: 'bins-histogram',
             data: `
                 $tree: profile.timeline.breakdowns[];
                 $treeMetrics: $tree.categories.all.nodes;

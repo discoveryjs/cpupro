@@ -99,11 +99,11 @@ function histHeapTotalBody() {
                     ]
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'line-histogram',
                     className: 'mem-bins',
                     height: 36,
-                    data: 'totalHeapSize',
-                    bins: '=$',
+                    extent: '=extent',
+                    bins: '=totalHeapSize',
                     // max: '=max() | $ < 20_000_000 ?: 20_000_000',
                     binsMax: true,
                     color: '#5b88c6'
@@ -127,8 +127,9 @@ function histHeapTotalBody() {
                     content: 'text-with-unit{ value: newTotal.bytes(false), unit: true }'
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'line-histogram',
                     className: 'mem-bins',
+                    extent: '=extent',
                     bins: '=new',
                     max: '=maxNewDelete',
                     binsMax: true,
@@ -152,8 +153,9 @@ function histHeapTotalBody() {
                     content: 'text-with-unit{ value: deleteTotal.bytes(false), unit: true }'
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'line-histogram',
                     className: 'mem-bins heap-delete-chunks',
+                    extent: '=extent',
                     bins: '=delete',
                     max: '=maxNewDelete',
                     binsMax: true,

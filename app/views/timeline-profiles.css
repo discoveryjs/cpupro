@@ -50,7 +50,7 @@
     right: calc(100% * (1 - var(--x2)));
     background-color: #54a6ee57;
 }
-.view-timeline-profiles > .profile > .view-sample-histogram {
+.view-timeline-profiles > .profile > .view-bins-histogram {
     border: none;
     padding: 1px 0 0;
 }

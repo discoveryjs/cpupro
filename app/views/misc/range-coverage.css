@@ -1,0 +1,23 @@
+.range-coverage::before,
+.range-coverage::after {
+    content: '';
+    position: absolute;
+    box-sizing: border-box;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: repeating-linear-gradient(135deg, #cccc8818 0 2px, transparent 2px 5px);
+    background-clip: content-box;
+    clip-path: inset(0 max(0px, round(up, 1px - 100%, 1px)));
+}
+.range-coverage::before {
+    left: 0;
+    width: calc(var(--range-pad-start) * 100%);
+    box-shadow: inset -1px 0 #cccc8830;
+}
+.range-coverage::after {
+    right: 0;
+    width: calc(var(--range-pad-end) * 100%);
+    box-shadow: inset 1px 0 #cccc8830;
+}

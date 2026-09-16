@@ -1,5 +1,7 @@
 import { Metric, ProfileLine, ProfileLineBreakdown, ProfileLineType } from '../prepare/lines/types.js';
 import { Profile } from '../prepare/profile.mjs';
+import { isRange, type Range } from '../prepare/computations/coordinates.js';
+import { lineViewport } from './viewport.js';
 
 type Method = (this: { context: MethodContext }, ...args: unknown[]) => unknown;
 type MethodContext = {
@@ -9,6 +11,7 @@ type MethodContext = {
     scopeProfile: Profile | null;
     scopeLine: ProfileLine | null;
     scopeBreakdown: ProfileLineBreakdown | null;
+    scopeViewport?: Range | null;
     data: null | {
         profiles: Profile[];
     };
@@ -107,6 +110,23 @@ export function resolveScopeProfileLine(
     return resolvedLine;
 }
 
+export function resolveScopeViewport(viewport: unknown, context: MethodContext): Range | null {
+    let resolvedViewport: Range | null = null;
+
+    if (!viewport) {
+        if (isRange(context.scopeViewport)) {
+            resolvedViewport = context.scopeViewport;
+        } else {
+            const line = resolveScopeProfileLine(null, context);
+            resolvedViewport = line ? lineViewport(line, context.data?.profiles) : null;
+        }
+    } else if (isRange(viewport)) {
+        resolvedViewport = viewport;
+    }
+
+    return resolvedViewport;
+}
+
 export function resolveScopeProfileLineBreakdown(
     breakdown: unknown,
     line: unknown,
@@ -139,6 +159,9 @@ export const assertions: Record<string, Method> = {
 };
 
 export const methods: Record<string, Method> = {
+    scopeViewport() {
+        return resolveScopeViewport(null, this.context);
+    },
     scopeProfile() {
         return getScopeProfile(this.context);
     },

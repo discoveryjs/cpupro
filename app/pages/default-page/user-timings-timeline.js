@@ -4,10 +4,6 @@ export const userTimingsTimeline = {
     view: 'expand',
     ...sessionExpandState('default-user-timings-timeline', false, '$'),
     data: `scopeProfile() | {
-        $min: timeline.axisStart + timeline.axisStartNoSamples; // $timingEvents.start.min();
-
-        minX: $min,
-        maxX: timeline.axisEnd,
         spans: thread.userTimings
             .({ start: tm, end: tm + duration, text: name, event: $ })
             .[start is number and start >= 0],
@@ -48,8 +44,6 @@ function userTimingsTimelineBody() {
             view: 'track-timeline',
             spans: '=spans',
             intervals: '=intervals',
-            minX: '=minX',
-            maxX: '=maxX',
             tooltipClassName: 'events-track-timeline-tooltip',
             tooltipContent: [
                 'badge:"User Timing"',

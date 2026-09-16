@@ -1,22 +1,46 @@
 import { ProfileLine, ProfileLineType } from '../prepare/lines/types.js';
-import { resolveScopeProfileLine } from './profile.js';
+import { resolveScopeProfileLine, resolveScopeViewport } from './profile.js';
+import { binningRange } from './viewport.js';
 
-function countSamples(n: number, values: number[] | Uint32Array, total: number, continues = false) {
+export function sampleRange(values: number[] | Uint32Array, total: number, skip: number, sourceTotal: number) {
+    let first = 0;
+    let last = values.length - 1;
+    let start = skip;
+    let end = skip + sourceTotal;
+
+    // Trim whole occurrences first; only the two retained boundary values need clipping.
+    while (first <= last && start < 0 && start + values[first] <= 0) {
+        start += values[first++];
+    }
+
+    while (last >= first && end >= total && end - values[last] >= total) {
+        end -= values[last--];
+    }
+
+    return { first, last, offset: Math.max(0, start), startCut: Math.max(0, -start), endCut: Math.max(0, end - total) };
+}
+
+function countSamples(n: number, values: number[] | Uint32Array, total: number, continues: boolean, skip: number, sourceTotal: number) {
     const bins = new Uint32Array(n);
     const step = total / n;
-    let end = step;
-    let binIdx = 0;
+    const { first, last, offset: start, startCut, endCut } = sampleRange(values, total, skip, sourceTotal);
+    let binIdx = Math.floor(start / step);
+    let end = (binIdx + 1) * step;
 
-    for (let i = 0, offset = 0; i < values.length; i++) {
-        bins[binIdx]++;
-        offset += values[i];
+    for (let i = first, offset = start; i <= last; i++) {
+        const delta = values[i] - (i === first ? startCut : 0) - (i === last ? endCut : 0);
+
+        bins[binIdx] += continues || i !== first || startCut === 0 ? 1 : 0;
+        offset += delta;
 
         if (offset >= end) {
+            const nextBin = binIdx + 1;
+
             binIdx = Math.min(n, Math.floor(offset / step));
             end = (binIdx + 1) * step;
 
             if (continues) {
-                for (let j = Math.floor((offset - values[i]) / step); j < binIdx; j++) {
+                for (let j = nextBin; j < binIdx; j++) {
                     bins[j]++;
                 }
 
@@ -32,15 +56,17 @@ function countSamples(n: number, values: number[] | Uint32Array, total: number, 
 
 export const methods = {
     countSamples(n = 500, line?: ProfileLine | ProfileLineType) {
-        const { values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const { total, skip } = binningRange(resolvedLine, resolveScopeViewport(null, this.context), n);
 
-        return countSamples(n, values, axisTotal, true);
+        return countSamples(n, resolvedLine.values, total, true, skip, resolvedLine.axisTotal);
     },
 
     countSamplesDiscrete(n = 500, line: unknown) {
-        const { values, axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const { total, skip } = binningRange(resolvedLine, resolveScopeViewport(null, this.context), n);
 
-        return countSamples(n, values, axisTotal, false);
+        return countSamples(n, resolvedLine.values, total, false, skip, resolvedLine.axisTotal);
     },
 
     sampleXBins(n = 500, line?: ProfileLine | ProfileLineType) {

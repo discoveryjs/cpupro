@@ -1,16 +1,16 @@
-.view-sample-histogram {
+.view-bins-histogram {
     position: relative;
     border-bottom: 1px solid #0004;
     margin: 1px 0;
 }
 
-.view-sample-histogram svg {
+.view-bins-histogram svg {
     display: block;
 }
 
-.view-sample-histogram path {
+.view-bins-histogram path {
     fill: var(--color, #888);
 }
-.view-sample-histogram path.rel-path {
+.view-bins-histogram path.rel-path {
     opacity: .4;
 }

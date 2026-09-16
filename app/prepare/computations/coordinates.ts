@@ -4,6 +4,40 @@ export type CoordinateSpace = Readonly<{ name: string; unit: string }>;
 export type Range = Readonly<{ start: number; end: number }>;
 export type RangeSet = readonly Range[];
 
+function areRangeBoundsValid(start: number | null, end: number | null): boolean {
+    return (
+        (start === null || Number.isFinite(start)) &&
+        (end === null || Number.isFinite(end)) &&
+        (start === null || end === null || start <= end)
+    );
+}
+
+export function validateRangeBounds(start: number | null, end: number | null): void {
+    if (!areRangeBoundsValid(start, end)) {
+        throw new RangeError('Range boundaries must be finite and ordered');
+    }
+}
+
+export function isRange(value: unknown): value is Range {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+
+    const { start, end } = value as Range;
+
+    return (
+        Number.isFinite(start) &&
+        Number.isFinite(end) &&
+        start <= end
+    );
+}
+
+export function validateRange(range: Range): void {
+    if (!isRange(range)) {
+        throw new RangeError('Range boundaries must be finite and ordered');
+    }
+}
+
 export function equalRanges(left: RangeSet | null, right: RangeSet | null): boolean {
     if (left === right) {
         return true;
@@ -28,10 +62,10 @@ export function normalizeRanges(ranges: RangeSet): RangeSet {
     const sorted = ranges.slice().sort((left, right) => left.start - right.start);
     let previous: { start: number; end: number } | null = null;
 
-    for (const { start, end } of sorted) {
-        if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
-            throw new RangeError('Range boundaries must be finite and ordered');
-        }
+    for (const range of sorted) {
+        const { start, end } = range;
+
+        validateRange(range);
 
         if (start === end) {
             continue;

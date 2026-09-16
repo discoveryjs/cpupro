@@ -1,4 +1,5 @@
 import type { Span, SpanGroup, Track, TrackTimelineOptions, VisibleTrackRange, Interval } from './types.js';
+import type { RangeSet } from '../../prepare/computations/coordinates.js';
 
 // Conversion factors to convert FROM each unit TO milliseconds
 const UNIT_TO_MS = {
@@ -54,7 +55,7 @@ export class TrackTimeline {
 
     // Interaction state
     private hoveredSpan: Span | null = null;
-    private selectedSpan: Span | null = null;
+    private selection: RangeSet | null = null;
     private isDragging = false;
     private dragStartX = 0;
     private dragStartY = 0;
@@ -129,6 +130,11 @@ export class TrackTimeline {
 
     public setIntervals(intervals: Interval[]): void {
         this.intervals = this.sortIntervals(intervals || []);
+        this.#scheduleRender();
+    }
+
+    public setSelection(selection: RangeSet | null): void {
+        this.selection = selection;
         this.#scheduleRender();
     }
 
@@ -711,9 +717,9 @@ export class TrackTimeline {
         ctx.fillStyle = COLORS.VIEWPORT;
         ctx.fillRect(windowX1, minimapY, windowX2 - windowX1, minimapHeight);
 
-        if (this.selectedSpan) {
-            const x1 = msToMinimapX(this.selectedSpan.start);
-            const x2 = msToMinimapX(this.selectedSpan.end);
+        for (const { start, end } of this.selection || []) {
+            const x1 = msToMinimapX(start);
+            const x2 = msToMinimapX(end);
             const width = Math.max(2, x2 - x1);
 
             ctx.fillStyle = COLORS.SELECTED_FILL;
@@ -729,6 +735,22 @@ export class TrackTimeline {
         const ctx = this.overlayCtx;
         ctx.clearRect(0, 0, this.width, this.height);
 
+        for (const { start, end } of this.selection || []) {
+            const startX = this.msToX(start);
+            const endX = this.msToX(end);
+
+            ctx.fillStyle = COLORS.SELECTED_FILL;
+            ctx.fillRect(startX, 0, endX - startX, this.height - LAYOUT.MINIMAP_HEIGHT);
+            ctx.strokeStyle = COLORS.SELECTED_BORDER;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(startX, 0);
+            ctx.lineTo(startX, this.height - LAYOUT.MINIMAP_HEIGHT);
+            ctx.moveTo(endX, 0);
+            ctx.lineTo(endX, this.height - LAYOUT.MINIMAP_HEIGHT);
+            ctx.stroke();
+        }
+
         const contentY = LAYOUT.RULER_HEIGHT;
         const contentHeight = this.height - LAYOUT.RULER_HEIGHT - LAYOUT.MINIMAP_HEIGHT;
 
@@ -742,14 +764,6 @@ export class TrackTimeline {
             if (trackIdx !== -1) {
                 const trackY = this.getTrackY(trackIdx);
                 this.renderSpanHighlight(ctx, this.hoveredSpan, trackY, COLORS.HOVER_FILL, COLORS.HOVER_BORDER);
-            }
-        }
-
-        if (this.selectedSpan) {
-            const trackIdx = this.findTrackForSpan(this.selectedSpan);
-            if (trackIdx !== -1) {
-                const trackY = this.getTrackY(trackIdx);
-                this.renderSpanHighlight(ctx, this.selectedSpan, trackY, COLORS.SELECTED_FILL, COLORS.SELECTED_BORDER);
             }
         }
 
@@ -914,8 +928,6 @@ export class TrackTimeline {
                 }
 
                 const span = this.hitTest(x, y);
-                this.selectedSpan = span;
-                this.#scheduleRender();
 
                 if (this.options.onClick) {
                     this.options.onClick(span, e);

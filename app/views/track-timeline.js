@@ -1,4 +1,4 @@
-import { resolveScopeProfileLine } from '../jora/profile.js';
+import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { TrackTimeline } from './track-timeline/index.js';
 import Tooltip from './track-timeline/tooltip.js';
 import { utils } from '@discoveryjs/discovery';
@@ -10,6 +10,7 @@ const defaultTooltipContent = [
 
 discovery.view.define('track-timeline', function(el, config, data, context) {
     const scopeLine = resolveScopeProfileLine(config.line, context);
+    const viewport = resolveScopeViewport(config.viewport, context);
     const { range } = scopeLine;
     const { selection } = range;
     const {
@@ -20,15 +21,15 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
         intervals = [],
         groups = false,
         unit = 'us',
-        minX = null,
-        maxX = null
+        minX = viewport.start,
+        maxX = viewport.end
     } = config;
 
     const tooltip = new Tooltip(discovery, (el, span) =>
         this.render(el, tooltipContent, span, {
             ...context,
-            spanStart: range.frame.rebaseValue(span.start),
-            spanEnd: range.frame.rebaseValue(span.end)
+            spanStart: span.start - minX,
+            spanEnd: span.end - minX
         })
     );
 
@@ -71,7 +72,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
 
     let rangeSubscription = null;
     destroyEl.onConnect = () => {
-        rangeSubscription = range.subscribe(syncSelection);
+        rangeSubscription = selection.subscribe(syncSelection);
         syncSelection();
     };
     destroyEl.onDestroy = () => {
@@ -81,13 +82,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     };
 
     function syncSelection() {
-        trackTimeline.setIntervals([...intervals, ...(selection.ranges || []).map(({ start, end }) => ({
-            start,
-            end,
-            color: 'rgba(0, 152, 251, .1)',
-            border: '#268fea66',
-            text: 'selection'
-        }))]);
+        trackTimeline.setSelection(selection.ranges);
     }
 });
 

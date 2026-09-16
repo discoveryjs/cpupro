@@ -64,6 +64,7 @@ model.on('unloadData', () => {
         buckets: [],
         profiles: [],
         primaryProfile: null,
+        scopeViewport: null,
         // primaryLineType: null, // keep selected line type
         // primaryBreakdownKind: null, // keep selected tree kind
         scopeProfile: null, // always null by default, views can override it
@@ -120,6 +121,7 @@ model.on('data', () => {
         primaryProfile: defaultProfile,
         primaryLineType,
         primaryBreakdownKind,
+        scopeViewport: null,
         scopeProfile: null, // always null by default, views can override it
         scopeLine: null,    // always null by default, views can override it
         scopeBreakdown: null     // always null by default, views can override it

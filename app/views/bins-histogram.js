@@ -88,7 +88,7 @@ function generateSquarePath(points, height, maxValue, presence, scaleFn = scaleF
 discovery.view.define('timeline-segments', function(el, config, data, context) {
     data = ensureArray(data);
 
-    el.classList.add('view-sample-histogram');
+    el.classList.add('view-bins-histogram');
 
     const line = resolveScopeProfileLine(config.line, context);
     const totalValue = line.axisTotal || 1;
@@ -133,7 +133,7 @@ function ensureArray(value) {
     return utils.isArray(value) ? value : [];
 }
 
-discovery.view.define('sample-histogram', function(el, config, data) {
+discovery.view.define('bins-histogram', function(el, config, data) {
     const presence = config.presence;
     const bins = ensureArray(config.bins || data);
     const height = config.height || 20;

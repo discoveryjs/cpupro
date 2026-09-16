@@ -1,6 +1,11 @@
+import { setRangeCoverage } from './misc/range-coverage.js';
+import usage from './chart.usage.js';
+import { resolveScopeViewport } from '../jora/profile.js';
+
 const pad = 0.03;
 
-discovery.view.define('cpupro-chart', function(el, config, data) {
+discovery.view.define('cpupro-chart', function(el, config, data, context) {
+    const scopeViewport = resolveScopeViewport(config.viewport, context);
     const points = ensureArray(config.points || data);
     const x = points.map(p => p.x ?? p[0]);
     const y = points.map(p => p.y ?? p[1]);
@@ -9,9 +14,13 @@ discovery.view.define('cpupro-chart', function(el, config, data) {
     const totalY = totalPoints.map(p => p.y ?? p[1]);
     const minY = config.minY ?? Math.min(...y);
     const maxY = config.maxY ?? Math.max(...y, ...totalY);
-    const minX = config.minX ?? Math.min(...x);
-    const maxX = config.maxX ?? Math.max(...x);
+    const minX = config.minX ?? scopeViewport?.start ?? Math.min(...x);
+    const maxX = config.maxX ?? scopeViewport?.end ?? Math.max(...x);
     const height = config.height || 150;
+    const viewport = { start: minX, end: maxX };
+    const extent = config.extent || viewport;
+
+    setRangeCoverage(el, extent, viewport);
 
     if (config.color) {
         el.style.setProperty('--color', config.color);
@@ -22,7 +31,7 @@ discovery.view.define('cpupro-chart', function(el, config, data) {
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     const { ticks } = generateYTicks(minY, maxY, height);
 
-    pathEl.setAttribute('d', generateCurve(x, y, height, minX, maxX, minY, maxY));
+    pathEl.setAttribute('d', generateCurve(x, y, height, minX, maxX, minY, maxY, false, extent));
     svgEl.setAttribute('viewBox', `0 0 1000 ${height}`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('width', '100%');
@@ -33,7 +42,7 @@ discovery.view.define('cpupro-chart', function(el, config, data) {
     if (totalPoints.length > 0) {
         const pathTotalEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-        pathTotalEl.setAttribute('d', generateCurve(totalX, totalY, height, minX, maxX, minY, maxY, true));
+        pathTotalEl.setAttribute('d', generateCurve(totalX, totalY, height, minX, maxX, minY, maxY, true, extent));
         pathTotalEl.setAttribute('stroke-dasharray', '4 1');
         pathTotalEl.classList.add('line');
         svgEl.append(pathTotalEl);
@@ -41,7 +50,7 @@ discovery.view.define('cpupro-chart', function(el, config, data) {
 
     el.append(...generateYLabels(ticks, config.labelFormat));
     el.append(svgEl);
-});
+}, { usage });
 
 function ensureArray(value) {
     return Array.isArray(value) ? value : [];
@@ -106,7 +115,7 @@ function generateYLines(ticks) {
     return lines;
 }
 
-function generateCurve(x, y, height, minX, maxX, minY, maxY, line = false) {
+function generateCurve(x, y, height, minX, maxX, minY, maxY, line = false, extent = { start: minX, end: maxX }) {
     const scaleX = (val) => 1000 * (val - minX) / (maxX - minX);
     const scaleY = (val) => padTop + (height - padTop - padBottom) * (1 - (val - minY) / (maxY - minY));
     const chartMinY = Math.max(0, minY - (maxY - minY) * pad);
@@ -119,9 +128,9 @@ function generateCurve(x, y, height, minX, maxX, minY, maxY, line = false) {
     let d = '';
 
     if (line) {
-        d += `M ${scaleX(minX)} ${prevScaledY} `;
+        d += `M ${scaleX(extent.start)} ${prevScaledY} `;
     } else {
-        d += `M ${scaleX(minX)} ${scaleY(chartMinY)} `;
+        d += `M ${scaleX(extent.start)} ${scaleY(chartMinY)} `;
         d += `V ${prevScaledY} `;
     }
 
@@ -145,9 +154,9 @@ function generateCurve(x, y, height, minX, maxX, minY, maxY, line = false) {
     }
 
     if (line) {
-        d += `H ${scaleX(maxX)}`;
+        d += `H ${scaleX(extent.end)}`;
     } else {
-        d += `L ${scaleX(maxX)} ${scaleY(y[y.length - 1])} V ${scaleY(chartMinY)} Z`;
+        d += `L ${scaleX(extent.end)} ${scaleY(y[y.length - 1])} V ${scaleY(chartMinY)} Z`;
     }
 
     return d;

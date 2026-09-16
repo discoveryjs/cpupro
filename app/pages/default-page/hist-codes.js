@@ -83,7 +83,8 @@ function histFunctionCodesBody() {
                     content: 'text-numeric:compilations.size()'
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'line-histogram',
+                    extent: '=extent',
                     bins: '=compilationBins',
                     color: '="compilation".color()'
                 }
@@ -105,7 +106,8 @@ function histFunctionCodesBody() {
                     content: 'text-numeric:compilations.callFrame.size()'
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'line-histogram',
+                    extent: '=extent',
                     bins: '=totalBins',
                     color: '=totalColor'
                 }
@@ -114,7 +116,7 @@ function histFunctionCodesBody() {
         {
             view: 'list',
             className: 'category-timelines-list',
-            data: 'byTier',
+            data: 'byTier.({ ..., extent: @.extent })',
             item: {
                 view: 'link',
                 className: 'category-timelines-item',
@@ -131,7 +133,8 @@ function histFunctionCodesBody() {
                         content: 'text:100 * maxTier / maxTotal | toFixed(2)'
                     },
                     {
-                        view: 'sample-histogram',
+                        view: 'line-histogram',
+                        extent: '=extent',
                         bins: '=bins',
                         max: '=maxTotal',
                         binsMax: true,

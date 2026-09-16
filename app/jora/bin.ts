@@ -4,10 +4,37 @@ import { sum } from '../prepare/misc/utils.js';
 import { Profile } from '../prepare/profile.mjs';
 import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepare/types.js';
 import { makeSamplesMask } from './call-tree.js';
-import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown } from './profile.js';
+import { sampleRange } from './samples.js';
+import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
+import { binningRange, rangeBins, timestampExtent } from './viewport.js';
+import { isRange, type Range } from '../prepare/computations/coordinates.js';
 
 function getCallStackPopulation(line: ProfileLine) {
     return line.breakdowns.find(tree => tree.kind === 'call-stack')!.population;
+}
+
+function timestampBins(line: ProfileLine, viewport: Range | null, count: number, lastTime: number, origin = line.axisStart) {
+    // Codes are relative to axisStart; V8 heap events retain log timestamps (origin zero).
+    // Samples do not define either stream's end. Retain events beyond the sample recording.
+    const extent = timestampExtent(line, lastTime, origin);
+    const bounds = viewport || extent;
+
+    return {
+        ...rangeBins(extent, bounds, count),
+        skip: origin - bounds.start,
+        start: Math.max(extent.start, bounds.start) - origin,
+        end: Math.min(extent.end, bounds.end) - origin
+    };
+}
+
+function sampleBinStep(total: number, n: number) {
+    const realStep = total / n;
+    const roundStep = Math.ceil(realStep);
+    // If the rounded step leaves a remainder that is less than the step size,
+    // that means that the remainer will be located in the last bin,
+    // and allow to use the rounded step that moves computations into integer space,
+    // which is faster than using floating point numbers.
+    return roundStep * n - total < roundStep ? roundStep : realStep;
 }
 
 function makeSampleBins(
@@ -16,27 +43,23 @@ function makeSampleBins(
     samples: number[] | Uint32Array,
     values: number[] | Uint32Array,
     total: number,
-    skip = 0
+    skip = 0,
+    sourceTotal = total
 ) {
     const bins = new Float64Array(n);
     const rems = new Float64Array(n);
-    const realStep = total / n;
-    const roundStep = Math.ceil(realStep);
-    // If the rounded step leaves a remainder that is less than the step size,
-    // that means that the remainer will be located in the last bin,
-    // and allow to use the rounded step that moves computations into integer space,
-    // which is faster than using floating point numbers.
-    const step = roundStep * n - total < roundStep ? roundStep : realStep;
-    const len = samples.length;
-    let binIdx = Math.floor(skip / step) | 0;
+    const step = sampleBinStep(total, n);
+    const { first, last, offset: start, startCut, endCut } = sampleRange(values, total, skip, sourceTotal);
+    let binIdx = Math.floor(start / step) | 0;
     let end = (binIdx + 1) * step;
-    let offset = skip;
-    let acc = 0;
+    let offset = start - startCut;
+    // Subtract the invisible part of the first occurrence once, before adding its original weight.
+    let acc = mask[samples[first]] ? -startCut : 0;
 
     // Two pass implementation of binning samples into bins, with remainders applied to the next bin
     // allow to keep the main loop simpler (without inner loops) and faster,
     // while still keeping the same time complexity of O(n).
-    for (let i = 0; i < len; i++) {
+    for (let i = first; i <= last; i++) {
         const accept = mask[samples[i]];
         const delta = values[i];
 
@@ -65,11 +88,16 @@ function makeSampleBins(
 
     // apply remainders to bins
     for (let i = 0; i < n; i++) {
-        for (let rem = rems[i], j = i + 1; rem > 0; j++) {
+        for (let rem = rems[i], j = i + 1; rem > 0 && j < n; j++) {
             const delta = Math.min(rem, step);
             bins[j] += delta;
             rem -= delta;
         }
+    }
+
+    // Remainders stop at the output boundary; only the shortened final bin can still contain excess.
+    if (endCut > 0 && mask[samples[last]]) {
+        bins[n - 1] -= Math.min(endCut, Math.max(0, n * step - total));
     }
 
     return bins;
@@ -85,11 +113,18 @@ type BinOptions = {
 }
 
 export const methods = {
+    binCount(maxCount: number, rangeOrLength?: Range | number) {
+        const range = rangeOrLength ?? resolveScopeViewport(null, this.context);
+        const length = isRange(range) ? range.end - range.start : Number(range);
+
+        return Math.max(1, Math.min(maxCount, Math.floor(length)));
+    },
+
     binCallsFromMask(mask: Uint8Array, n = 500, lineTree?: ProfileLineBreakdown | string) {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, null, this.context) as ProfileLineBreakdown;
-        const { axisTotal } = resolvedLineTree.line;
+        const { total, skip } = binningRange(resolvedLineTree.line, resolveScopeViewport(null, this.context), n);
         const { samples, values } = resolvedLineTree.population;
-        const bins = makeSampleBins(n, mask, samples, values, axisTotal);
+        const bins = makeSampleBins(n, mask, samples, values, total, skip, resolvedLineTree.line.axisTotal);
 
         return Array.from(bins);
     },
@@ -107,17 +142,17 @@ export const methods = {
         const { axisTotal } = resolvedLineTree.line;
         const { samples, values } = resolvedLineTree.population;
         const mask = makeSamplesMask(treeMetrics, test);
-        const bins = makeSampleBins(n, mask, samples, values, total ?? axisTotal, skip);
+        const bins = makeSampleBins(n, mask, samples, values, total ?? axisTotal, skip, axisTotal);
 
         return bins;
     },
 
     binCalls(treeMetrics, test, n = 500, breakdown?: ProfileLineBreakdown | string) {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
-        const { axisTotal } = resolvedLineTree.line;
+        const { total, skip } = binningRange(resolvedLineTree.line, resolveScopeViewport(null, this.context), n);
         const { samples, values } = resolvedLineTree.population;
         const mask = makeSamplesMask(treeMetrics, test);
-        const bins = makeSampleBins(n, mask, samples, values, axisTotal);
+        const bins = makeSampleBins(n, mask, samples, values, total, skip, resolvedLineTree.line.axisTotal);
 
         // let sum = 0;
         // for (let i = 0; i < bins.length; i++) {
@@ -135,20 +170,22 @@ export const methods = {
         n = 500,
         line?: ProfileLine | ProfileLineType
     ) {
-        const { axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const { step, skip, binStart, binEnd, start, end: limit } = timestampBins(
+            resolvedLine, resolveScopeViewport(null, this.context), n, heapEvents.at(-1)?.tm || 0, 0
+        );
         const bins = new Float64Array(n);
-        const step = axisTotal / n;
-        let end = step;
-        let binIdx = 0;
+        let binIdx = binStart;
+        let end = (binIdx + 1) * step - skip;
 
-        for (let i = 0; i < heapEvents.length; i++) {
+        for (let i = 0; i < heapEvents.length && binIdx < binEnd && heapEvents[i].tm <= limit; i++) {
             const { tm, event, size } = heapEvents[i];
 
-            if (tm === 0 || event !== eventFilter) {
+            if (tm === 0 || tm < start || event !== eventFilter) {
                 continue;
             }
 
-            while (tm > end) {
+            while (tm > end && binIdx < binEnd - 1) {
                 binIdx++;
                 end += step;
             }
@@ -160,22 +197,24 @@ export const methods = {
     },
 
     binHeapTotal(heapEvents: V8HeapEvent[], n = 500, initial = 0, line?: ProfileLine | ProfileLineType) {
-        const { axisTotal } = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
+        const { step, skip, binStart, binEnd, start, end: limit } = timestampBins(
+            resolvedLine, resolveScopeViewport(null, this.context), n, heapEvents.at(-1)?.tm || 0, 0
+        );
         const bins = new Float64Array(n);
-        const step = axisTotal / n;
-        let end = step;
-        let binIdx = 0;
+        let binIdx = binStart;
+        let end = (binIdx + 1) * step - skip;
         let currentSize = initial || 0;
         let currentMax = currentSize;
 
-        for (let i = 0; i < heapEvents.length; i++) {
+        for (let i = 0; i < heapEvents.length && binIdx < binEnd && heapEvents[i].tm <= limit; i++) {
             const { tm, event, size } = heapEvents[i];
 
             if (tm === 0) {
                 continue;
             }
 
-            while (tm > end) {
+            while (tm > end && binIdx < binEnd - 1) {
                 bins[binIdx] = currentMax;
                 currentMax = currentSize;
                 binIdx++;
@@ -183,13 +222,12 @@ export const methods = {
             }
 
             currentSize += event === 'new' ? size : -size;
-            currentMax = Math.max(currentSize, currentMax);
+            currentMax = tm < start ? currentSize : Math.max(currentSize, currentMax);
         }
 
-        bins[binIdx] = currentMax;
-
-        if (binIdx < n - 1) {
-            bins.fill(currentSize, binIdx + 1);
+        if (binIdx < binEnd) {
+            bins[binIdx] = currentMax;
+            bins.fill(currentSize, binIdx + 1, binEnd);
         }
 
         return bins;
@@ -244,21 +282,23 @@ export const methods = {
         const mappingToLine = valuesLine !== axisLine
             ? mappings[axisLine.type]._mapping
             : null;
-        const { axisTotal } = axisLine;
+        const { total, step, skip } = binningRange(axisLine, resolveScopeViewport(null, this.context), n);
         const binSumVector = new Uint32Array(n);
         const attributeValues = attribute?.values || null;
         const attributeDict = attribute?.dict || null;
         const vectors = attribute
             ? Array.from({ length: attributeDict?.length || 0 }, () => new Uint32Array(n))
             : [binSumVector];
-        const step = axisTotal / n;
 
         if (mappingToLine !== null) {
             const { cumulative } = getCallStackPopulation(axisLine);
 
             for (let i = 0; i < mappingToLine.length; i++) {
                 const value = values[i];
-                const absValue = cumulative[mappingToLine[i]];
+                const absValue = cumulative[mappingToLine[i]] + skip;
+                if (absValue < 0 || absValue > total) {
+                    continue;
+                }
                 const binIndex = Math.min(n - 1, Math.floor(absValue / step)) | 0;
                 const vector = vectors[attributeValues?.[i] ?? 0];
 
@@ -269,9 +309,13 @@ export const methods = {
                 }
             }
         } else {
-            for (let i = 0, binIndex = 0, binValue = 0; i < values.length; i++) {
+            const { first, last, offset, startCut, endCut } = sampleRange(values, total, skip, valuesLine.axisTotal);
+            let binIndex = Math.floor(offset / step);
+            let binValue = offset - binIndex * step;
+
+            for (let i = first; i <= last; i++) {
                 const vector = vectors[attributeValues?.[i] ?? 0];
-                let value = values[i];
+                let value = values[i] - (i === first ? startCut : 0) - (i === last ? endCut : 0);
 
                 while (binValue + value >= step) {
                     const delta = step - binValue;
@@ -319,16 +363,22 @@ export const methods = {
     },
 
     binScriptFunctionCodes(functionCodes: { tm: number }[], n = 500, profile?: Profile) {
-        const { axisTotal } = getProfileOrScopeProfile(profile, this.context)?.timeline as ProfileLine;
+        const line = getProfileOrScopeProfile(profile, this.context)?.timeline as ProfileLine;
+        const { step, skip, binStart, binEnd, start, end: limit } = timestampBins(
+            line, resolveScopeViewport(null, this.context), n, functionCodes.at(-1)?.tm || 0
+        );
         const bins = new Uint32Array(n);
-        const step = axisTotal / n;
-        let end = step;
-        let binIdx = 0;
+        let binIdx = binStart;
+        let end = (binIdx + 1) * step - skip;
 
-        for (let i = 0; i < functionCodes.length; i++) {
+        for (let i = 0; i < functionCodes.length && binIdx < binEnd && functionCodes[i].tm <= limit; i++) {
             const { tm } = functionCodes[i];
 
-            while (tm > end) {
+            if (tm < start) {
+                continue;
+            }
+
+            while (tm > end && binIdx < binEnd - 1) {
                 binIdx++;
                 end += step;
             }
@@ -336,35 +386,39 @@ export const methods = {
             bins[binIdx] += 1;
         }
 
-        if (binIdx < n - 1) {
-            bins.fill(bins[binIdx], binIdx + 1);
+        if (binIdx < binEnd - 1) {
+            bins.fill(bins[binIdx], binIdx + 1, binEnd);
         }
 
         return bins;
     },
 
     binScriptFunctionCodesTotal(functionCodes: CpuProCallFrameCode[], n = 500, profile?: Profile) {
-        const { axisTotal } = getProfileOrScopeProfile(profile, this.context)?.timeline as ProfileLine;
-        const step = axisTotal / n;
+        const line = getProfileOrScopeProfile(profile, this.context)?.timeline as ProfileLine;
+        const { step, skip, binStart, binEnd, end: limit } = timestampBins(
+            line, resolveScopeViewport(null, this.context), n, functionCodes.at(-1)?.tm || 0
+        );
         const binByTier = new Map<V8CallFrameCodeType, Uint32Array>();
         const fnTier = new Map();
         const fnCount = new Uint32Array(n);
-        let end = step;
-        let binIdx = 0;
+        let binIdx = binStart;
+        let end = (binIdx + 1) * step - skip;
 
         for (const tier of vmFunctionStateTiers) {
             binByTier.set(tier, new Uint32Array(n));
         }
 
-        for (let i = 0; i < functionCodes.length; i++) {
+        for (let i = 0; i < functionCodes.length && binIdx < binEnd && functionCodes[i].tm <= limit; i++) {
             const { tm, tier, callFrameCodes } = functionCodes[i];
 
-            while (tm > end) {
+            while (tm > end && binIdx < binEnd - 1) {
                 binIdx++;
                 fnCount[binIdx] = fnCount[binIdx - 1];
+
                 for (const bins of binByTier.values()) {
                     bins[binIdx] = bins[binIdx - 1];
                 }
+
                 end += step;
             }
 
@@ -382,10 +436,10 @@ export const methods = {
             fnTier.set(callFrameCodes, tier);
         }
 
-        if (binIdx < n - 1) {
-            fnCount.fill(fnCount[binIdx], binIdx + 1);
+        if (binIdx < binEnd - 1) {
+            fnCount.fill(fnCount[binIdx], binIdx + 1, binEnd);
             for (const bins of binByTier.values()) {
-                bins.fill(bins[binIdx], binIdx + 1);
+                bins.fill(bins[binIdx], binIdx + 1, binEnd);
             }
         }
 

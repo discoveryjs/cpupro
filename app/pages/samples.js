@@ -1,5 +1,6 @@
 discovery.page.define('samples', {
     view: 'context',
+    context: '{ ...#, scopeViewport: scopeLine().lineExtent() }',
     data: `{
         $line: scopeLine();
         $totalValue: $line.axisTotal;
@@ -62,7 +63,7 @@ discovery.page.define('samples', {
                 //     ]
                 // },
                 // {
-                //     view: 'sample-histogram',
+                //     view: 'bins-histogram',
                 //     bins: '=sampleBins',
                 //     max: '=sampleBinsMax',
                 //     // binsMax: true,
@@ -76,7 +77,7 @@ discovery.page.define('samples', {
                     ]
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'bins-histogram',
                     bins: '=sampleDiscreteBins',
                     max: '=sampleBinsMax',
                     // binsMax: true,
@@ -108,7 +109,7 @@ discovery.page.define('samples', {
                     ]
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'bins-histogram',
                     bins: '=sampleXBins',
                     color: '="#8db2f8a0"',
                     height: 160

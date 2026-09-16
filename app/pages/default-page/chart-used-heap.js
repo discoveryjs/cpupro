@@ -4,8 +4,7 @@ export const chartUsedHeap = {
     view: 'expand',
     ...sessionExpandState('default-chart-used-heap', false, '$'),
     data: `scopeProfile() | {
-        minX: timeline.axisStart + timeline.axisStartNoSamples,
-        maxX: timeline.axisEnd,
+        extent: timeline.timestampExtent(),
         points: thread.counters[=>name="used-heap-size"].values
             .({ x: tm, y: value, event }),
         pointsTotal: thread.counters[=>name="total-heap-size"].values
@@ -60,8 +59,9 @@ function chartUsedHeapBody() {
     return [
         {
             view: 'cpupro-chart',
-            minX: '=minX',
-            maxX: '=maxX',
+            extent: '=extent',
+            minX: '=scopeViewport().start',
+            maxX: '=scopeViewport().end',
             points: '=points',
             pointsTotal: '=pointsTotal',
             labelFormat: '==>bytes()',

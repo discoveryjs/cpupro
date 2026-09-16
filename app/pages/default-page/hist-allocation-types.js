@@ -59,7 +59,7 @@ export const histAllocationTypes = {
                     content: 'text:100 * value / total | toFixed(2)'
                 },
                 {
-                    view: 'sample-histogram',
+                    view: 'line-histogram',
                     bins: '=bins',
                     max: '=max',
                     scale: '=step ? "linear" : "sqrt"',

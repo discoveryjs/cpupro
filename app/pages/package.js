@@ -92,7 +92,7 @@ const pageContent = [
                         },
                         callFramesCol('callFrames.sort(selfValue desc, totalValue desc, entry.name ascN)')
                         // { header: 'Histogram', content: {
-                        //     view: 'sample-histogram',
+                        //     view: 'bins-histogram',
                         //     bins: '=#.data.modulesTree.binCalls(entry, 100)',
                         //     max: '=#.data.totalValue / 100',
                         //     binsMax: true,
