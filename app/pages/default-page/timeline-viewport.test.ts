@@ -7,7 +7,7 @@ import { methods } from '../../jora/index.mjs';
 import { RangeSelection } from '../../prepare/computations/range.js';
 import { chartUsedHeap } from './chart-used-heap.js';
 import { userTimingsTimeline } from './user-timings-timeline.js';
-import { createSelectionState } from '../../views/time-ruler-range.js';
+import { createSelectionState } from '../../views/ruler-range.js';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { histCodes } from './hist-codes.js';
 import { histHeapTotal } from './hist-heap-total.js';

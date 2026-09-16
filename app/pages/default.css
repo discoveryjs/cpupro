@@ -259,14 +259,14 @@
     user-select: none;
 }
 
-.page-default .category-timelines > .view-time-ruler {
+.page-default .category-timelines > .view-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
     margin: 0 1px;
     --overlay-offset-top: -1px;
     --overlay-offset-bottom: -3px;
 }
-.page-default .category-timelines > .view-time-ruler .interval-marker:first-child {
+.page-default .category-timelines > .view-ruler .interval-marker:first-child {
     margin-left: -1px;
 }
 .page-default .category-timelines > .events-x {

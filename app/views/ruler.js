@@ -1,8 +1,6 @@
 const { utils } = require('@discoveryjs/discovery');
-const { formatMicrosecondsTime } = require('../prepare/misc/time-utils.js');
-const { resolveScopeProfileLine } = require('../jora/profile.js');
-const { createState, createSelectionState, moveState, resizeState } = require('./time-ruler-range.js');
-const usage = require('./time-ruler.usage.js').default;
+const { createState, createSelectionState, moveState, resizeState } = require('./ruler-range.js');
+const usage = require('./ruler.usage.js').default;
 
 const SELECTION_NONE = 'none';
 const SELECTION_HOVERED = 'hovered';
@@ -14,7 +12,7 @@ const MOVING_RANGE = 'range';
 
 const viewByEl = new WeakMap();
 const detailsTooltip = new discovery.view.Popup({
-    className: 'view-time-ruler-tooltip',
+    className: 'view-ruler-tooltip',
     position: 'pointer',
     positionMode: 'natural',
     pointerOffsetX: 30,
@@ -93,9 +91,9 @@ function discardCurrentView() {
     prevAnchorStart = null;
 }
 
-function getRulerFractionForPoint(timeRulerEl, x) {
-    const { segments, state: currentState } = viewByEl.get(timeRulerEl);
-    const rect = timeRulerEl.getBoundingClientRect();
+function getRulerFractionForPoint(rulerEl, x) {
+    const { segments, state: currentState } = viewByEl.get(rulerEl);
+    const rect = rulerEl.getBoundingClientRect();
     const width = rect.width || 1;
     const segmentsCount = segments || Math.max(1, Math.round(width));
     const fraction = Math.min(1, Math.max(0, (x - rect.left) / width));
@@ -103,15 +101,15 @@ function getRulerFractionForPoint(timeRulerEl, x) {
     return { fraction, segmentsCount, rect, width, currentState };
 }
 
-function updateRulerSelection(timeRulerEl, x, y) {
-    const view = viewByEl.get(timeRulerEl);
+function updateRulerSelection(rulerEl, x, y) {
+    const view = viewByEl.get(rulerEl);
     if (!view) {
         return;
     }
     const delta = movingMode === MOVING_TRIGGER ? movingPointerDelta : 0;
-    const { fraction, segmentsCount, width } = getRulerFractionForPoint(timeRulerEl, x + delta);
-    const hasSelection = timeRulerEl.dataset.state === SELECTION_SELECTED;
-    const isSelecting = timeRulerEl.dataset.state === SELECTION_SELECTING;
+    const { fraction, segmentsCount, width } = getRulerFractionForPoint(rulerEl, x + delta);
+    const hasSelection = rulerEl.dataset.state === SELECTION_SELECTED;
+    const isSelecting = rulerEl.dataset.state === SELECTION_SELECTING;
     const {
         data,
         context,
@@ -121,12 +119,12 @@ function updateRulerSelection(timeRulerEl, x, y) {
         details
     } = view;
 
-    if (timeRulerEl !== currentViewEl) {
+    if (rulerEl !== currentViewEl) {
         detailsTooltip.hide();
     }
 
     if (!hasSelection && !isSelecting) {
-        timeRulerEl.dataset.state = SELECTION_HOVERED;
+        rulerEl.dataset.state = SELECTION_HOVERED;
         prevAnchorStart = null;
     }
 
@@ -142,10 +140,10 @@ function updateRulerSelection(timeRulerEl, x, y) {
             : createState(duration, segmentsCount);
 
     if (!hasSelection) {
-        syncStartEndToDom(timeRulerEl, hoverState.start, hoverState.end);
+        syncStartEndToDom(rulerEl, hoverState.start, hoverState.end);
 
         if (isSelecting) {
-            timeRulerEl.dataset.activeTrigger = movingMode === MOVING_RANGE
+            rulerEl.dataset.activeTrigger = movingMode === MOVING_RANGE
                 ? 'both'
                 : (movingMode === MOVING_TRIGGER ? fraction * duration : fraction) >= prevAnchorStart
                     ? 'finish'
@@ -157,13 +155,13 @@ function updateRulerSelection(timeRulerEl, x, y) {
         let displayTooltip = !hasSelection || (fraction >= currentState.start && fraction < currentState.end);
         if (displayTooltip) {
             const tooltipTarget = discovery.dom.root.elementFromPoint(x, y)
-                ?.closest('.discovery-view-has-tooltip, .no-view-time-ruler-tooltip');
-            if (tooltipTarget && timeRulerEl.parentNode?.contains(tooltipTarget)) {
+                ?.closest('.discovery-view-has-tooltip, .no-view-ruler-tooltip');
+            if (tooltipTarget && rulerEl.parentNode?.contains(tooltipTarget)) {
                 displayTooltip = false;
             }
         }
         if (displayTooltip) {
-            detailsTooltip.show(timeRulerEl, el =>
+            detailsTooltip.show(rulerEl, el =>
                 render(el, details, data, { ...context, ...hasSelection ? newState : hoverState })
             );
         } else {
@@ -171,7 +169,7 @@ function updateRulerSelection(timeRulerEl, x, y) {
         }
     }
 
-    setStateIfNeeded(timeRulerEl, newState, false);
+    setStateIfNeeded(rulerEl, newState, false);
 }
 
 // prevent issues when a potential selection started on dragable or text selectable element
@@ -196,15 +194,15 @@ discovery.addGlobalEventListener('pointerup', () => {
     startSelectingRange = null;
 }, true);
 discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y, target }) => {
-    // do nothing when not over a time-ruler element or not a main button is pressed
+    // do nothing when not over a ruler element or not a main button is pressed
     if (currentViewEl === null || !viewByEl.has(currentViewEl) || (buttons & 1) === 0) {
         return;
     }
 
-    // move time-ruler in hover mode when no selected range
+    // move ruler in hover mode when no selected range
     if (currentViewEl.dataset.state === SELECTION_SELECTED) {
         const rulerViewEl = currentViewEl; // preserve reference to view element, since it might be changed before pointerup event
-        const moverEl = rulerViewEl.querySelector('.view-time-ruler__selection-overlay-mover');
+        const moverEl = rulerViewEl.querySelector('.view-ruler__selection-overlay-mover');
         const { rect, width, currentState } = getRulerFractionForPoint(rulerViewEl, x);
 
         if (moverEl.contains(target)) {
@@ -279,8 +277,8 @@ discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y, tar
     };
 });
 
-// thack pointer to determine the pointer is over a time-ruler;
-// using such an approach since time-ruler might be overlaped by another content
+// thack pointer to determine the pointer is over a ruler;
+// using such an approach since ruler might be overlaped by another content
 utils.pointerXY.subscribe(({ x, y }) => {
     if (startSelectingRange !== null) {
         // ignore if pointer is not moved from selection start point at least 2px
@@ -291,60 +289,50 @@ utils.pointerXY.subscribe(({ x, y }) => {
         startSelectingRange();
     }
 
-    // if there is a time-ruler in selecting mode then just update a selection,
+    // if there is a ruler in selecting mode then just update a selection,
     // no need to check elements under the pointer
     if (currentViewEl?.dataset.state === SELECTION_SELECTING) {
         updateRulerSelection(currentViewEl, x, y);
         return;
     }
 
-    // get time-ruler element candidate under the pointer
+    // get ruler element candidate under the pointer
     const elementsFromPoint = discovery.dom.root.elementsFromPoint(x, y);
     const candidateEl = elementsFromPoint.find(el => viewByEl.has(el)) || null;
 
     // check for closest element to cursor is in a subtree of the common parent,
     // this excludes displaying a details popup when the cursor is over another popup or sticky element (e.g. page-header)
-    const timeRulerEl = candidateEl?.parentNode.contains(elementsFromPoint[0])
+    const rulerEl = candidateEl?.parentNode.contains(elementsFromPoint[0])
         ? candidateEl
         : null;
 
-    // update time-ruler selection when its element is found and met all the conditions
-    if (timeRulerEl) {
-        updateRulerSelection(timeRulerEl, x, y);
+    // update ruler selection when its element is found and met all the conditions
+    if (rulerEl) {
+        updateRulerSelection(rulerEl, x, y);
     } else if (currentViewEl) {
-        // there is no time-ruler element under the pointer that met the conditions,
+        // there is no ruler element under the pointer that met the conditions,
         // but we had such previously, so hide its details popup and reset the state if needed
         discardCurrentView();
     }
 
-    // remember time-ruler element as current if any
-    currentViewEl = timeRulerEl;
+    // remember ruler element as current if any
+    currentViewEl = rulerEl;
 });
 
-function formatMemory(size, total) {
-    switch (true) {
-        case total < 1_000_000:
-            return `${(size / 1_000).toFixed(1).replace(/\.0$/, '')}Kb`;
-
-        default:
-            return `${(size / 1_000_000).toFixed(1).replace(/\.0$/, '')}Mb`;
-    }
-}
-
-discovery.view.define('time-ruler', function(el, options, data, context) {
+discovery.view.define('ruler', function(el, options, data, context) {
     const {
         duration,
         segments: segmentsRaw,
         selectionStart = null,
         selectionEnd = null,
         labels = 'top',
+        formatLabel = String,
         name = 'ruler',
         details,
         rangeManager,
         onInit,
         onChange
     } = options;
-    const line = resolveScopeProfileLine(options.line, context);
     const segments = Number.isFinite(segmentsRaw) && segmentsRaw > 0
         ? Math.max(1, Math.min(Math.floor(segmentsRaw), Math.floor(duration)))
         : null;
@@ -383,40 +371,36 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
         : 'none';
 
     // draw interval markers
-    const timeRulerStep = computeStep(duration);
+    const rulerStep = computeStep(duration);
     for (
-        let time = 0;
-        time < duration - timeRulerStep / 10;
-        time += timeRulerStep
+        let value = 0;
+        value < duration - rulerStep / 10;
+        value += rulerStep
     ) {
         const intervalMarkerEl = el.appendChild(utils.createElement('div'));
 
         intervalMarkerEl.className = 'interval-marker';
-        intervalMarkerEl.style.setProperty('--offset', time / duration);
-        intervalMarkerEl.dataset.title = line.type === 'memline'
-            ? formatMemory(time, duration)
-            : line.type === 'timeline'
-                ? formatMicrosecondsTime(time, duration)
-                : time;
+        intervalMarkerEl.style.setProperty('--offset', value / duration);
+        intervalMarkerEl.dataset.title = formatLabel(value, duration);
     }
 
     // overlay element
     el.appendChild(
-        utils.createElement('div', 'view-time-ruler__selection-overlay', [
-            utils.createElement('div', 'view-time-ruler__selection-overlay-mover', [
+        utils.createElement('div', 'view-ruler__selection-overlay', [
+            utils.createElement('div', 'view-ruler__selection-overlay-mover', [
                 utils.createElement('div', {
-                    class: 'view-time-ruler__selection-overlay-mover-trigger',
+                    class: 'view-ruler__selection-overlay-mover-trigger',
                     'data-trigger': 'start'
                 }),
                 utils.createElement('div', {
-                    class: 'view-time-ruler__selection-overlay-mover-trigger',
+                    class: 'view-ruler__selection-overlay-mover-trigger',
                     'data-trigger': 'finish'
                 })
             ])
         ])
     );
 
-    const rangesEl = el.appendChild(utils.createElement('div', 'view-time-ruler__ranges'));
+    const rangesEl = el.appendChild(utils.createElement('div', 'view-ruler__ranges'));
     const renderRanges = ranges => {
         el.dataset.multipleRanges = String(ranges !== null && ranges.length > 1);
         rangesEl.replaceChildren();
@@ -451,7 +435,7 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
     });
 
     // add element for cleanup on destroy
-    const destroyEl = utils.createElement('destroy-time-ruler');
+    const destroyEl = utils.createElement('destroy-ruler');
     el.appendChild(destroyEl);
     destroyEl.onDestroy = () => {
         subscription?.();
@@ -462,7 +446,7 @@ discovery.view.define('time-ruler', function(el, options, data, context) {
     };
 }, { usage });
 
-class TimeRulerElement extends HTMLElement {
+class RulerElement extends HTMLElement {
     connectedCallback() {
         this.onConnect?.();
         this.onConnect = null;
@@ -473,4 +457,4 @@ class TimeRulerElement extends HTMLElement {
     }
 }
 
-customElements.define('destroy-time-ruler', TimeRulerElement);
+customElements.define('destroy-ruler', RulerElement);

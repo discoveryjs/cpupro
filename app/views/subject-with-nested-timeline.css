@@ -21,12 +21,12 @@
     color: #888;
     background-color: color-mix(in srgb, var(--discovery-color) 10%, var(--discovery-background-color));
 }
-.view-subject-with-nested-timeline .view-time-ruler {
+.view-subject-with-nested-timeline .view-ruler {
     margin-left: 1px;
     --overlay-offset-top: -1px;
     --overlay-offset-bottom: -1px;
 }
-.view-subject-with-nested-timeline .view-time-ruler .interval-marker:first-child {
+.view-subject-with-nested-timeline .view-ruler .interval-marker:first-child {
     margin-left: -1px;
 }
 .view-subject-with-nested-timeline .nested-work::before {

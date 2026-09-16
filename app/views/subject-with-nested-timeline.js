@@ -48,7 +48,7 @@ discovery.view.define('subject-with-nested-timeline', {
     `,
     content: [
         {
-            view: 'time-ruler',
+            view: 'line-ruler',
             labels: 'top',
             duration: '=duration',
             segments: '=binCount',

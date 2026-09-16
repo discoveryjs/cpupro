@@ -45,7 +45,7 @@ discovery.page.define('samples', {
             className: 'timeline',
             content: [
                 {
-                    view: 'time-ruler',
+                    view: 'line-ruler',
                     labels: 'top',
                     duration: '=totalValue',
                     segments: '=binCount',
@@ -91,7 +91,7 @@ discovery.page.define('samples', {
             className: 'timeline',
             content: [
                 {
-                    view: 'time-ruler',
+                    view: 'line-ruler',
                     labels: 'top',
                     duration: '=sampleXBinsMax',
                     segments: '=binCount',

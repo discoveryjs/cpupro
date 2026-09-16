@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import { runInNewContext } from 'node:vm';
-import * as ranges from '../../app/views/time-ruler-range.js';
+import * as ranges from '../../app/views/ruler-range.js';
 
 class Element {
     constructor(tag) {
@@ -101,7 +101,7 @@ export function createRulerHarness() {
             globalEvents.set(name, callback);
         }
     };
-    runInNewContext(readFileSync(new URL('../../app/views/time-ruler.js', import.meta.url), 'utf8'), {
+    runInNewContext(readFileSync(new URL('../../app/views/ruler.js', import.meta.url), 'utf8'), {
         discovery,
         document: { createElement: tag => new Element(tag) },
         HTMLElement: Element,
@@ -110,16 +110,10 @@ export function createRulerHarness() {
             if (id === '@discoveryjs/discovery') {
                 return { utils };
             }
-            if (id === './time-ruler-range.js') {
+            if (id === './ruler-range.js') {
                 return ranges;
             }
-            if (id === '../jora/profile.js') {
-                return { resolveScopeProfileLine: () => ({ type: 'timeline' }) };
-            }
-            if (id === '../prepare/misc/time-utils.js') {
-                return { formatMicrosecondsTime: String };
-            }
-            if (id === './time-ruler.usage.js') {
+            if (id === './ruler.usage.js') {
                 return { default: {} };
             }
             throw new Error('Unexpected dependency: ' + id);

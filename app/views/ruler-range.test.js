@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { createState, createSelectionState, moveState, resizeState } from './time-ruler-range.js';
+import { createState, createSelectionState, moveState, resizeState } from './ruler-range.js';
 
 describe('ruler ranges', () => {
     for (const duration of [11, 1000, 4960851]) {

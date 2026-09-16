@@ -1,23 +1,23 @@
-.view-time-ruler {
+.view-ruler {
     --left: calc(var(--selection-start) * 100%);
     --width: calc((var(--selection-end) - var(--selection-start)) * 100% - 0.2px);
 
     position: absolute;
     inset: 0;
 }
-.view-time-ruler, .view-time-ruler * {
+.view-ruler, .view-ruler * {
     -webkit-user-drag: none;
     user-select: none;
 }
-.view-time-ruler[data-active-trigger="start"],
-.view-time-ruler[data-active-trigger="finish"] {
+.view-ruler[data-active-trigger="start"],
+.view-ruler[data-active-trigger="finish"] {
     cursor: col-resize;
 }
-.view-time-ruler[data-active-trigger="both"] {
+.view-ruler[data-active-trigger="both"] {
     cursor: move;
 }
 
-.view-time-ruler__selection-overlay {
+.view-ruler__selection-overlay {
     display: none;
     position: absolute;
     inset: 0;
@@ -25,13 +25,13 @@
     bottom: var(--overlay-offset-bottom, 0);
     z-index: 99;
 }
-.view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay {
+.view-ruler[data-state="hovered"] .view-ruler__selection-overlay {
     pointer-events: none;
 }
-.view-time-ruler:not([data-state="none"]) .view-time-ruler__selection-overlay {
+.view-ruler:not([data-state="none"]) .view-ruler__selection-overlay {
     display: block;
 }
-.view-time-ruler__selection-overlay-mover {
+.view-ruler__selection-overlay-mover {
     position: absolute;
     inset: 0;
     left: var(--left);
@@ -39,7 +39,7 @@
     z-index: 1;
     cursor: move;
 }
-.view-time-ruler__selection-overlay-mover-trigger {
+.view-ruler__selection-overlay-mover-trigger {
     --extra-pointer-size: 2.5px;
     --extra-pointer-inner-size: clamp(0px, (100% - 2 * var(--extra-pointer-size)) / 2, var(--extra-pointer-size));
 
@@ -54,27 +54,27 @@
     transition-property: background-color;
     cursor: col-resize;
 }
-.view-time-ruler[data-state="selecting"] .view-time-ruler__selection-overlay-mover-trigger {
+.view-ruler[data-state="selecting"] .view-ruler__selection-overlay-mover-trigger {
     transition: none;
 }
-.view-time-ruler__selection-overlay-mover-trigger[data-trigger="start"] {
+.view-ruler__selection-overlay-mover-trigger[data-trigger="start"] {
     left: calc(-1 * var(--extra-pointer-size));
     padding-right: var(--extra-pointer-inner-size);
 }
-.view-time-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
+.view-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
     right: calc(-1 * var(--extra-pointer-size));
     padding-left: var(--extra-pointer-inner-size);
 }
-.view-time-ruler__selection-overlay-mover-trigger:hover,
-.view-time-ruler[data-active-trigger="start"] .view-time-ruler__selection-overlay-mover-trigger[data-trigger="start"],
-.view-time-ruler[data-active-trigger="finish"] .view-time-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
+.view-ruler__selection-overlay-mover-trigger:hover,
+.view-ruler[data-active-trigger="start"] .view-ruler__selection-overlay-mover-trigger[data-trigger="start"],
+.view-ruler[data-active-trigger="finish"] .view-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
     background-color: #268fea;
 }
-.view-time-ruler[data-state="hovered"] .view-time-ruler__selection-overlay-mover-trigger {
+.view-ruler[data-state="hovered"] .view-ruler__selection-overlay-mover-trigger {
     display: none;
 }
-.view-time-ruler__selection-overlay::before,
-.view-time-ruler__selection-overlay::after {
+.view-ruler__selection-overlay::before,
+.view-ruler__selection-overlay::after {
     content: '';
     position: absolute;
     top: 0;
@@ -86,18 +86,18 @@
     transition-property: opacity, backdrop-filter;
     pointer-events: none;
 }
-.view-time-ruler__selection-overlay::after {
+.view-ruler__selection-overlay::after {
     left: calc(var(--left) + var(--width));
     right: 0;
     width: auto;
 }
-.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay::before,
-.view-time-ruler[data-state="selected"] .view-time-ruler__selection-overlay::after {
+.view-ruler[data-state="selected"] .view-ruler__selection-overlay::before,
+.view-ruler[data-state="selected"] .view-ruler__selection-overlay::after {
     opacity: 1;
     backdrop-filter: saturate(0);
 }
 
-.view-time-ruler .interval-marker {
+.view-ruler .interval-marker {
     position: absolute;
     z-index: -1;
     left: calc(100% * var(--offset));
@@ -108,23 +108,23 @@
     border-left: 1px solid #6666;
     color: #888b;
 }
-.view-time-ruler:is([data-labels="both"], [data-labels="top"]) .interval-marker::before,
-.view-time-ruler:is([data-labels="both"], [data-labels="bottom"]) .interval-marker::after {
+.view-ruler:is([data-labels="both"], [data-labels="top"]) .interval-marker::before,
+.view-ruler:is([data-labels="both"], [data-labels="bottom"]) .interval-marker::after {
     content: attr(data-title);
     position: absolute;
     left: 3px;
     font-size: 10px;
     line-height: 10px;
 }
-.view-time-ruler .interval-marker::before {
+.view-ruler .interval-marker::before {
     top: 2px;
 }
-.view-time-ruler .interval-marker::after {
+.view-ruler .interval-marker::after {
     bottom: 2px;
 }
 
 /* use pseudo instead styling for mover to not overlay content */
-.view-time-ruler::before {
+.view-ruler::before {
     content: '';
     position: absolute;
     z-index: -1;
@@ -136,20 +136,20 @@
     transition: .2s ease;
     transition-property: background-color;
 }
-.view-time-ruler[data-state="hovered"]::before,
-.view-time-ruler[data-state="selecting"]::before {
+.view-ruler[data-state="hovered"]::before,
+.view-ruler[data-state="selecting"]::before {
     background-color: rgba(0, 152, 251, .2);
 }
-.view-time-ruler[data-state="selected"]::before {
+.view-ruler[data-state="selected"]::before {
     background-color: rgba(0, 152, 251, .1);
 }
 
-.view-time-ruler__ranges {
+.view-ruler__ranges {
     position: absolute;
     inset: var(--overlay-offset-top, 0) 0 var(--overlay-offset-bottom, 0);
     pointer-events: none;
 }
-.view-time-ruler__ranges > div {
+.view-ruler__ranges > div {
     position: absolute;
     top: 0;
     bottom: 0;
@@ -157,13 +157,13 @@
     border-inline: 1px solid #268fea66;
     box-sizing: border-box;
 }
-.view-time-ruler[data-state="selecting"] .view-time-ruler__ranges,
-.view-time-ruler[data-multiple-ranges="true"]:not([data-state="selecting"]) .view-time-ruler__selection-overlay,
-.view-time-ruler[data-multiple-ranges="true"]:not([data-state="selecting"])::before {
+.view-ruler[data-state="selecting"] .view-ruler__ranges,
+.view-ruler[data-multiple-ranges="true"]:not([data-state="selecting"]) .view-ruler__selection-overlay,
+.view-ruler[data-multiple-ranges="true"]:not([data-state="selecting"])::before {
     display: none;
 }
 
-.view-time-ruler-tooltip {
+.view-ruler-tooltip {
     padding: 5px 10px;
     min-width: 200px;
     border: none;
@@ -174,6 +174,6 @@
     backdrop-filter: blur(4px);
     pointer-events: none;
 }
-.discovery-root-darkmode .view-time-ruler-tooltip {
+.discovery-root-darkmode .view-ruler-tooltip {
     background: rgba(36, 36, 36, .8);
 }

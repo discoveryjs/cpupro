@@ -1,17 +1,26 @@
 export default {
     demo: {
-        view: 'time-ruler',
+        view: 'ruler',
         duration: 500000,
         content: 'text:"demo"'
     },
     examples: [
+        {
+            title: 'Custom labels',
+            highlightProps: ['formatLabel'],
+            demo: {
+                view: 'ruler',
+                duration: 100,
+                formatLabel: value => `${value}%`
+            }
+        },
         {
             title: 'Using with context',
             highlightProps: ['name'],
             demo: {
                 view: 'context',
                 modifiers: {
-                    view: 'time-ruler',
+                    view: 'ruler',
                     name: 'myRuler',
                     duration: 500000
                 },
@@ -24,7 +33,7 @@ export default {
             demo: {
                 view: 'context',
                 modifiers: {
-                    view: 'time-ruler',
+                    view: 'ruler',
                     name: 'ruler',
                     duration: 11 || 523423,
                     segments: 10 || 500
@@ -37,7 +46,7 @@ export default {
             highlightProps: ['segments'],
             demo: [
                 {
-                    view: 'time-ruler',
+                    view: 'ruler',
                     duration: 1500000,
                     details: 'struct{ data: #, expanded: 1 }'
                 },
@@ -49,7 +58,7 @@ export default {
             highlightProps: ['segments'],
             demo: [
                 {
-                    view: 'time-ruler',
+                    view: 'ruler',
                     duration: 1500000,
                     selectionStart: 923499,
                     selectionEnd: 1230853,

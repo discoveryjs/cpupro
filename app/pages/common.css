@@ -278,51 +278,51 @@ h2 .logo {
     width: 250px;
 }
 
-.view-time-ruler-tooltip .timeline-segment-info {
+.view-ruler-tooltip .timeline-segment-info {
     padding-bottom: 4px;
     opacity: .8;
 }
-.view-time-ruler-tooltip .timeline-segment-info .view-metric {
+.view-ruler-tooltip .timeline-segment-info .view-metric {
     display: inline-flex;
 }
 
-.view-time-ruler-tooltip > .details-sections {
+.view-ruler-tooltip > .details-sections {
     display: flex;
     margin: 0 -10px;
 }
-.view-time-ruler-tooltip > .details-sections > .details-section {
+.view-ruler-tooltip > .details-sections > .details-section {
     padding-top: 4px;
     padding-left: 10px;
     padding-right: 10px;
     border-top: 1px solid #0004;
     border-left: 1px solid #0004;
 }
-.view-time-ruler-tooltip > .details-sections > .details-section:first-child {
+.view-ruler-tooltip > .details-sections > .details-section:first-child {
     border-left: none;
 }
-.view-time-ruler-tooltip > .details-sections > .details-section > .details-section-title {
+.view-ruler-tooltip > .details-sections > .details-section > .details-section-title {
     font-size: 11px;
     color: #888;
     padding-bottom: 4px;
 }
-.view-time-ruler-tooltip > .details-sections > .details-section > .details-section-title:not(:first-child) {
+.view-ruler-tooltip > .details-sections > .details-section > .details-section-title:not(:first-child) {
     border-top: 1px solid #0004;
     margin: 10px -10px 0;
     padding: 4px 10px;
 }
-.view-time-ruler-tooltip > .details-sections > .details-section .labeled-value__value {
+.view-ruler-tooltip > .details-sections > .details-section .labeled-value__value {
     text-align: right;
 }
 
-.view-time-ruler-tooltip .category-timings-list {
+.view-ruler-tooltip .category-timings-list {
     display: grid;
     grid-template-columns: 80px minmax(100px, auto);
     gap: 2px 1ex;
 }
-.view-time-ruler-tooltip .category-timings-list .view-list-item {
+.view-ruler-tooltip .category-timings-list .view-list-item {
     display: contents;
 }
-.view-time-ruler-tooltip .category-timings-list .category-name::before {
+.view-ruler-tooltip .category-timings-list .category-name::before {
     content: '';
     display: inline-block;
     vertical-align: middle;
@@ -333,21 +333,21 @@ h2 .logo {
     border-radius: 50%;
     background-color: var(--color, #888);
 }
-.view-time-ruler-tooltip .category-timings-list :is(.no-time, .no-value) {
+.view-ruler-tooltip .category-timings-list :is(.no-time, .no-value) {
     color: #666;
     --color: #8884 !important;
 }
-.view-time-ruler-tooltip .category-timings-list .no-time .view-metric,
-.view-time-ruler-tooltip .category-timings-list .no-value .view-value-fraction {
+.view-ruler-tooltip .category-timings-list .no-time .view-metric,
+.view-ruler-tooltip .category-timings-list .no-value .view-value-fraction {
     opacity: 0;
 }
-.view-time-ruler-tooltip .category-timings-list .value-with-from {
+.view-ruler-tooltip .category-timings-list .value-with-from {
     display: flex;
     justify-content: flex-end;
     gap: 5px;
     white-space: nowrap;
 }
-.view-time-ruler-tooltip .category-timings-list .value-with-from > .view-text-numeric {
+.view-ruler-tooltip .category-timings-list .value-with-from > .view-text-numeric {
     color: #888;
 }
 

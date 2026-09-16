@@ -84,10 +84,10 @@ discovery.view.define('call-frame-codes-table', {
                                 },
                                 {
                                     view: 'block',
-                                    className: 'time-ruler-wrapper',
+                                    className: 'ruler-wrapper',
                                     content: [
                                         {
-                                            view: 'time-ruler',
+                                            view: 'line-ruler',
                                             labels: 'top',
                                             duration: '=scopeProfile().timeline.axisTotal'
                                         },

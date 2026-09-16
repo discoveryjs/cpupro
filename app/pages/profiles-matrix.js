@@ -323,7 +323,7 @@ const pageContent = [
                         }`,
                         content: [
                             {
-                                view: 'time-ruler',
+                                view: 'line-ruler',
                                 duration: '=#.totalTime'
                             },
                             {

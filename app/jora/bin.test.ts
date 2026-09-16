@@ -6,7 +6,7 @@ import { methods as profileMethods } from './profile.js';
 import { RangeSelection } from '../prepare/computations/range.js';
 import { methods as samplesMethods } from './samples.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
-import { createSelectionState } from '../views/time-ruler-range.js';
+import { createSelectionState } from '../views/ruler-range.js';
 
 const query = jora.setup({ methods: { ...methods, ...samplesMethods, ...profileMethods } });
 

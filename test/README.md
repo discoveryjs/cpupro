@@ -20,7 +20,7 @@ Put the test next to its module. Import runner functions explicitly and use `nod
 ```js
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { createState } from './time-ruler-range.js';
+import { createState } from './ruler-range.js';
 
 test('restores an exact half-open range', () => {
     const state = createState(1000, 10, 123, 567);
@@ -49,7 +49,9 @@ CPUPRO_TEST_FULL_DICTIONARY=1 npm test
 
 The default environment is Node, without jsdom. For profile preparation tests, the root Discovery import is replaced by the small `utils.isArray` adapter in `test/setup/`. Other Discovery imports are not replaced. The parsing-worker entry is replaced by a guard that throws if a fixture tries to start a browser worker. Current profile fixtures use explicit locations and empty source text; parsing and browser-worker execution are not covered by these tests.
 
-`time-ruler.test.js` preserves the earlier isolated event-handler checks using the minimal adapter in `test/helpers/ruler.js`. It covers range-manager callbacks and teardown, not layout or actual pointer capture. Real drag, rendering and navigation tests should use Playwright Test as a separate future browser suite; Playwright MCP remains useful for exploratory checks.
+`ruler.test.js` preserves the earlier isolated event-handler checks using the minimal adapter in `test/helpers/ruler.js`. It covers range-manager callbacks and teardown, not layout or actual pointer capture. Real drag, rendering and navigation tests should use Playwright Test as a separate future browser suite; Playwright MCP remains useful for exploratory checks.
+
+`ruler` has no CPUpro profile or line dependencies; labels are numeric by default or supplied by `formatLabel(value, duration)`. `line-ruler` resolves the line and supplies the existing time/byte formatting without a container (`tag: false`). `line-ruler.test.js` checks that delegation preserves props, callbacks and the range manager. This separation leaves the existing `duration`, `timeStart`/`timeEnd`, segment rounding and gesture semantics unchanged.
 
 ## Types and production builds
 

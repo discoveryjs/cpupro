@@ -142,7 +142,7 @@ const categoriesTimeline = {
     `,
     content: [
         {
-            view: 'time-ruler',
+            view: 'line-ruler',
             duration: '=scopeViewport() | end - start',
             segments: '=#.binCount',
             rangeManager: '=scopeViewport().viewportRange(line)',

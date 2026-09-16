@@ -3,6 +3,19 @@ import { test } from 'vitest';
 import { createRulerHarness } from '../../test/helpers/ruler.js';
 import { RangeSelection } from '../prepare/computations/range.js';
 
+test('renders numeric labels without a profile and accepts an external label formatter', () => {
+    const harness = createRulerHarness();
+    const element = harness.createElement('ruler');
+    harness.render(element, { duration: 100 }, null, {});
+    const markers = element.children.filter(child => child.className === 'interval-marker');
+    assert.deepEqual(markers.map(marker => marker.dataset.title), ['0', '10', '20', '30', '40', '50', '60', '70', '80', '90']);
+    const formatted = harness.createElement('ruler');
+    harness.render(formatted, { duration: 100, formatLabel: (value, total) => `${value}/${total}` }, null, {});
+    assert.deepEqual(formatted.children.filter(child => child.className === 'interval-marker').map(marker => marker.dataset.title), [
+        '0/100', '10/100', '20/100', '30/100', '40/100', '50/100', '60/100', '70/100', '80/100', '90/100'
+    ]);
+});
+
 test('projects a common range to a local ruler and writes gestures back without feedback', () => {
     const harness = createRulerHarness();
     const selection = new RangeSelection({ name: 'time', unit: 'us' });
@@ -36,7 +49,7 @@ test('projects a common range to a local ruler and writes gestures back without 
     harness.move({ x: 120, y: 30 });
     harness.hostEvents.get('pointerdown')({
         buttons: 1, pointerId: 1, x: 120, y: 30,
-        target: element.querySelector('.view-time-ruler__selection-overlay-mover')
+        target: element.querySelector('.view-ruler__selection-overlay-mover')
     });
     harness.move({ x: 165, y: 30 });
     assert.equal(selection.ranges[0].start, state.timeStart + 1000);
@@ -45,7 +58,7 @@ test('projects a common range to a local ruler and writes gestures back without 
     assert.equal(updates, 4);
     manager.resetRange();
     assert.equal(state.timeStart, null);
-    element.children.find(child => child.tag === 'destroy-time-ruler').onDestroy();
+    element.children.find(child => child.tag === 'destroy-ruler').onDestroy();
     const previousStart = state.timeStart;
     selection.setRange(1000, 1010);
     assert.equal(state.timeStart, previousStart);
@@ -67,7 +80,7 @@ test('renders disjoint local intervals and follows frame movement without changi
             state = value;
         }
     }, {}, {});
-    const intervals = element.querySelector('.view-time-ruler__ranges');
+    const intervals = element.querySelector('.view-ruler__ranges');
     assert.equal(element.dataset.multipleRanges, 'true');
     assert.equal(intervals.children.length, 2);
     local.setOrigin(130);
@@ -79,7 +92,7 @@ test('renders disjoint local intervals and follows frame movement without changi
     local.setOrigin(140);
     assert.equal(state.timeStart, 10);
     assert.equal(state.timeEnd, 30);
-    element.children.find(child => child.tag === 'destroy-time-ruler').onDestroy();
+    element.children.find(child => child.tag === 'destroy-ruler').onDestroy();
     local.setOrigin(150);
     assert.equal(state.timeStart, 10);
 });
@@ -135,7 +148,7 @@ test.each([10, undefined])('synchronizes selection silently and cleans up an act
     harness.move({ x: 120, y: 30 });
     harness.hostEvents.get('pointerdown')({
         buttons: 1, pointerId: 1, x: 120, y: 30,
-        target: element.querySelector('.view-time-ruler__selection-overlay-mover')
+        target: element.querySelector('.view-ruler__selection-overlay-mover')
     });
     harness.move({ x: 165, y: 30 });
     assert.equal(state.timeEnd - state.timeStart, 444);
@@ -146,7 +159,7 @@ test.each([10, undefined])('synchronizes selection silently and cleans up an act
     assert.equal(state.timeEnd - state.timeStart, 444);
     assert.equal(manager.updates, changes + 1);
 
-    element.children.find(child => child.tag === 'destroy-time-ruler').onDestroy();
+    element.children.find(child => child.tag === 'destroy-ruler').onDestroy();
     harness.setActive(null);
     assert.equal(listeners.size, 0);
     assert.doesNotThrow(() => harness.move({ x: 180, y: 30 }));

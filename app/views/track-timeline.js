@@ -37,7 +37,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     const canvasEl = utils.createElement('canvas', 'view-track-timeline__canvas');
     const overlayEl = utils.createElement('canvas', 'view-track-timeline__overlay');
 
-    el.classList.add('no-view-time-ruler-tooltip');
+    el.classList.add('no-view-ruler-tooltip');
     el.append(canvasEl, overlayEl, destroyEl);
 
     if (typeof tooltipClassName === 'string') {
