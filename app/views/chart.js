@@ -1,11 +1,9 @@
 import { setRangeCoverage } from './misc/range-coverage.js';
 import usage from './chart.usage.js';
-import { resolveScopeViewport } from '../jora/profile.js';
 
 const pad = 0.03;
 
-discovery.view.define('cpupro-chart', function(el, config, data, context) {
-    const scopeViewport = resolveScopeViewport(config.viewport, context);
+discovery.view.define('cpupro-chart', function(el, config, data) {
     const points = ensureArray(config.points || data);
     const x = points.map(p => p.x ?? p[0]);
     const y = points.map(p => p.y ?? p[1]);
@@ -14,8 +12,8 @@ discovery.view.define('cpupro-chart', function(el, config, data, context) {
     const totalY = totalPoints.map(p => p.y ?? p[1]);
     const minY = config.minY ?? Math.min(...y);
     const maxY = config.maxY ?? Math.max(...y, ...totalY);
-    const minX = config.minX ?? scopeViewport?.start ?? Math.min(...x);
-    const maxX = config.maxX ?? scopeViewport?.end ?? Math.max(...x);
+    const minX = config.minX ?? Math.min(...x);
+    const maxX = config.maxX ?? Math.max(...x);
     const height = config.height || 150;
     const viewport = { start: minX, end: maxX };
     const extent = config.extent || viewport;

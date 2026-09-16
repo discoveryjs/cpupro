@@ -103,6 +103,10 @@ export class CoordinateFrame extends Observer {
         }
 
         this.#origin = origin;
+        Object.defineProperty(this, 'origin', {
+            enumerable: true,
+            get: () => this.#origin
+        });
     }
 
     get origin() {

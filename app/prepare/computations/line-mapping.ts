@@ -1,4 +1,69 @@
 import { ProfileLine, ProfileLineMapping } from '../lines/types';
+import { normalizeRanges, type RangeSet } from './coordinates.js';
+
+function lowerBound(values: Uint32Array, value: number, upper = false) {
+    let start = 0;
+    let end = values.length;
+
+    while (start < end) {
+        const middle = (start + end) >>> 1;
+
+        if (upper ? values[middle] <= value : values[middle] < value) {
+            start = middle + 1;
+        } else {
+            end = middle;
+        }
+    }
+
+    return start;
+}
+
+export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: RangeSet | null): RangeSet | null | undefined {
+    const allocations = source.kind === 'memory' ? source : target;
+    const time = source.kind === 'time' ? source : target;
+    const relation = allocations.mappings[time.type];
+
+    if (allocations.kind !== 'memory' || time.kind !== 'time' || relation?.line !== time) {
+        return undefined;
+    }
+
+    if (ranges === null) {
+        return null;
+    }
+
+    const allocationPopulation = allocations.breakdowns[0].population;
+    const timePopulation = time.breakdowns[0].population;
+    const allocationStarts = allocationPopulation.cumulative;
+    const timeStarts = timePopulation.cumulative;
+    const mapping = relation._mapping;
+    const result: { start: number; end: number }[] = [];
+
+    for (const { start, end } of source.range.frame.rebase(ranges)) {
+        if (source === time) {
+            const first = lowerBound(mapping, lowerBound(timeStarts, start));
+            const last = lowerBound(mapping, lowerBound(timeStarts, end));
+
+            if (first < last) {
+                result.push({
+                    start: allocationStarts[first],
+                    end: allocationStarts[last] ?? allocationPopulation.cumulativeEnd
+                });
+            }
+        } else if (end > 0 && start < allocationPopulation.cumulativeEnd) {
+            const first = Math.max(0, lowerBound(allocationStarts, start, true) - 1);
+            const last = lowerBound(allocationStarts, end);
+
+            if (first < last) {
+                result.push({
+                    start: timeStarts[mapping[first]],
+                    end: timeStarts[mapping[last - 1] + 1] ?? timePopulation.cumulativeEnd
+                });
+            }
+        }
+    }
+
+    return target.range.frame.resolve(normalizeRanges(result));
+}
 
 export function createLineMapping(
     sourceLine: ProfileLine,

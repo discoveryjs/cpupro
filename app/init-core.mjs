@@ -1,7 +1,9 @@
 import { toggleProfile } from './prepare/profile.mts';
+import { subscribeSelectionSync } from './selection-sync.js';
 import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule, topLevelConvolutionRule } from './prepare/computations/samples-convolution.mjs';
 
 const model = discovery;
+let stopSelectionSync = null;
 
 function normPrimaryBreakdownKind(treeKind) {
     const line = model.context.primaryProfile?.lines.find(line =>
@@ -60,6 +62,8 @@ model.action.define('setSamplesConvolutionRule', (newRule) => {
     }
 });
 model.on('unloadData', () => {
+    stopSelectionSync?.();
+    stopSelectionSync = null;
     model.setContext({
         buckets: [],
         profiles: [],
@@ -132,6 +136,16 @@ model.on('data', () => {
 
         setSamplesConvolutionRule(profiles, callFramesProfilePresence, currentSamplesConvolutionRule);
     }
+
+    stopSelectionSync?.();
+    stopSelectionSync = subscribeSelectionSync(profiles, (profile) => {
+        const entries = model.context.profiles;
+        const source = entries.find(entry => entry.profile === profile);
+
+        return source && !source.disabled
+            ? entries.filter(entry => entry.bucket === source.bucket && !entry.disabled).map(entry => entry.profile)
+            : [];
+    });
 });
 
 // discovery.action.call('setSamplesConvolutionRule', (self) => {

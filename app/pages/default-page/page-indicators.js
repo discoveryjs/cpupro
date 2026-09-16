@@ -57,7 +57,7 @@ export const pageIndicators = {
         },
         {
             view: 'page-indicator-group',
-            className: 'filters',
+            className: 'selected',
             content: {
                 view: 'update-on-line-metrics-changes',
                 metrics: '=scopeLine().range',
@@ -80,8 +80,9 @@ export const pageIndicators = {
                         },
                         {
                             view: 'page-indicator',
-                            title: 'Range',
-                            value: '=scopeLine().range.ranges.(`${start.formatValue()} – ${end.formatValue()}`).join(", ")'
+                            title: '="interval".metricName()',
+                            value: '=(scopeLine().range.coverage.sum(=> end - start) or 0).formatValue()',
+                            unit: true
                         }
                     ]
                 }

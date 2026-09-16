@@ -1,9 +1,50 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
+import jora from 'jora';
 import { CoordinateFrame } from './coordinates.js';
 import { RangeSelection, RangeView } from './range.js';
 import { Population, PopulationFiltered } from './population.js';
 import { applyRangeToPopulation } from '../lines/range.js';
+
+test('exposes live requested ranges, frame origin and resolved extent to Jora and object inspection', () => {
+    const selection = new RangeSelection({ name: 'time', unit: 'us' });
+    const view = selection.view({ start: 0, end: 30 }, 100);
+    const inspect = jora(`{
+        requested: selection.ranges,
+        origin: frame.origin,
+        extent,
+        resolvedExtent,
+        ranges,
+        coverage
+    }`);
+    assert.equal(inspect(view).requested, null);
+    selection.setRanges([{ start: 95, end: 105 }, { start: 120, end: 140 }]);
+    assert.deepEqual(inspect(view), {
+        requested: [{ start: 95, end: 105 }, { start: 120, end: 140 }],
+        origin: 100,
+        extent: { start: 0, end: 30 },
+        resolvedExtent: { start: 100, end: 130 },
+        ranges: [{ start: -5, end: 5 }, { start: 20, end: 40 }],
+        coverage: [{ start: 0, end: 5 }, { start: 20, end: 30 }]
+    });
+    assert.ok(Object.keys(selection).includes('ranges'));
+    assert.ok(Object.keys(view.frame).includes('origin'));
+    assert.ok(['ranges', 'coverage', 'resolvedExtent'].every(key => Object.keys(view).includes(key)));
+    const request = selection.ranges;
+    view.frame.setOrigin(200);
+    assert.equal(inspect(view).origin, 200);
+    assert.deepEqual(inspect(view).resolvedExtent, { start: 200, end: 230 });
+    assert.deepEqual(inspect(view).coverage, []);
+    assert.equal(inspect(view).requested, request);
+    const snapshot = JSON.parse(JSON.stringify(view));
+    assert.equal(snapshot.frame.origin, 200);
+    assert.deepEqual(snapshot.selection.ranges, request);
+    assert.deepEqual(snapshot.resolvedExtent, { start: 200, end: 230 });
+    selection.setRanges([]);
+    assert.deepEqual(inspect(view).requested, []);
+    selection.resetRange();
+    assert.equal(inspect(view).requested, null);
+});
 
 test('independent presentations of one base population do not compete for scope authority', () => {
     const frame = new CoordinateFrame({ name: 'time', unit: 'us' });
@@ -68,4 +109,22 @@ test('creates independently placed views of one request without a source frame',
     assert.deepEqual(second.coverage, [{ start: 0, end: 3 }, { start: 5, end: 9 }]);
     second.setRange(1, 4);
     assert.deepEqual(selection.ranges, [{ start: 16, end: 19 }]);
+});
+
+test('reports repeated requests separately from changes to the selected ranges', () => {
+    const selection = new RangeSelection({ name: 'time', unit: 'us' });
+    let changes = 0;
+    let updates = 0;
+    selection.subscribe(() => changes++);
+    const stop = selection.updates.subscribe(() => updates++);
+    selection.setRange(1, 5);
+    const ranges = selection.ranges;
+    selection.setRange(1, 5);
+    assert.equal(selection.ranges, ranges);
+    assert.equal(changes, 1);
+    assert.equal(updates, 2);
+    stop();
+    selection.resetRange();
+    assert.equal(changes, 2);
+    assert.equal(updates, 2);
 });

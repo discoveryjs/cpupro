@@ -3,9 +3,14 @@ import { CoordinateFrame, normalizeRanges, intersectRanges, equalRanges, type Co
 
 export class RangeSelection extends Observer {
     #ranges: RangeSet | null = null;
+    readonly updates = new Observer();
 
     constructor(readonly space: CoordinateSpace) {
         super();
+        Object.defineProperty(this, 'ranges', {
+            enumerable: true,
+            get: () => this.#ranges
+        });
     }
 
     view(extent: Range, origin = 0) {
@@ -19,13 +24,13 @@ export class RangeSelection extends Observer {
     setRanges(ranges: RangeSet | null) {
         const next = ranges === null ? null : normalizeRanges(ranges);
 
-        if (equalRanges(next, this.#ranges)) {
-            return;
+        if (!equalRanges(next, this.#ranges)) {
+            // null is unrestricted; [] is an explicit empty request. Neither is population coverage.
+            this.#ranges = next;
+            this.notify();
         }
 
-        // null is unrestricted; [] is an explicit empty request. Neither is population coverage.
-        this.#ranges = next;
-        this.notify();
+        this.updates.notify();
     }
 
     setRange(start: number | null, end: number | null) {
@@ -49,8 +54,9 @@ export class RangeView {
         this.extent = Object.freeze({ ...extent });
         // Expose computed properties to Jora without storing competing mutable copies.
         Object.defineProperties(this, {
-            ranges: { get: () => this.requestedRanges() },
-            coverage: { get: () => this.effectiveCoverage() }
+            ranges: { enumerable: true, get: () => this.requestedRanges() },
+            coverage: { enumerable: true, get: () => this.effectiveCoverage() },
+            resolvedExtent: { enumerable: true, get: () => this.resolveExtent() }
         });
     }
 
@@ -60,6 +66,17 @@ export class RangeView {
 
     get coverage(): RangeSet {
         return this.effectiveCoverage();
+    }
+
+    get resolvedExtent(): Range {
+        return this.resolveExtent();
+    }
+
+    private resolveExtent(): Range {
+        return {
+            start: this.frame.resolveValue(this.extent.start),
+            end: this.frame.resolveValue(this.extent.end)
+        };
     }
 
     private requestedRanges(): RangeSet | null {

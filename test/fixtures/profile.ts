@@ -6,6 +6,7 @@ import type { V8CpuProfile } from '../../app/prepare/types.js';
 import { noopWorkHandler } from '../../app/prepare/misc/work.js';
 
 export type ProfileFixtureOptions = {
+    startTime?: number;
     noSourceMap?: boolean;
     fallback?: boolean;
     cpuOnly?: boolean;
@@ -35,8 +36,8 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
         dictionary.resolveLocationIndex(null, scriptsMap.get(1), column, 0, column);
     }
     const data: V8CpuProfile = {
-        startTime: 0,
-        endTime: 40,
+        startTime: options.startTime ?? 0,
+        endTime: (options.startTime ?? 0) + 40,
         nodes: [
             { id: 1, callFrame: { scriptId: 0, url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 }, children: [2, 3] },
             { id: 2, callFrame: { scriptId: 1, url: '/compiled.js', functionName: 'first', lineNumber: 0, columnNumber: 0 } },
