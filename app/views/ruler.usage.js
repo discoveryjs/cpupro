@@ -1,8 +1,8 @@
 export default {
     demo: {
         view: 'ruler',
-        duration: 500000,
-        content: 'text:"demo"'
+        range: [-1, 1],
+        details: 'struct: #.detail'
     },
     examples: [
         {
@@ -10,36 +10,39 @@ export default {
             highlightProps: ['formatLabel'],
             demo: {
                 view: 'ruler',
-                duration: 100,
+                range: 100,
                 formatLabel: value => `${value}%`
             }
         },
         {
-            title: 'Using with context',
-            highlightProps: ['name'],
+            title: 'Continuous selection',
+            highlightProps: ['range', 'selection'],
             demo: {
-                view: 'context',
-                modifiers: {
-                    view: 'ruler',
-                    name: 'myRuler',
-                    duration: 500000
-                },
-                content: 'struct{ data: #.myRuler, expanded: 1 }'
+                view: 'ruler',
+                range: { start: 100, end: 200 },
+                selection: { start: 123.5, end: 156.25 },
+                details: 'struct: #.detail'
             }
         },
         {
             title: 'Segmented ruler',
             highlightProps: ['segments'],
             demo: {
-                view: 'context',
-                modifiers: {
-                    view: 'ruler',
-                    name: 'ruler',
-                    duration: 11 || 523423,
-                    segments: 10 || 500
-                },
-                content: 'struct{ data: #.ruler, expanded: 1 }'
+                view: 'ruler',
+                range: [0, 1],
+                segments: 10,
+                details: 'struct: #.detail'
             }
+        },
+        {
+            title: 'Explicit segment boundaries',
+            highlightProps: ['segments'],
+            demo: { view: 'ruler', range: [100, 200], segments: [100, 110, 140, 200], details: 'struct: #.detail' }
+        },
+        {
+            title: 'Without grid or labels',
+            highlightProps: ['grid', 'labels'],
+            demo: { view: 'ruler', range: 100, grid: false, labels: false, selection: { start: 20, end: 60 } }
         },
         {
             title: 'Details popup',
@@ -47,22 +50,23 @@ export default {
             demo: [
                 {
                     view: 'ruler',
-                    duration: 1500000,
-                    details: 'struct{ data: #, expanded: 1 }'
+                    range: 1500000,
+                    segments: 10,
+                    details: 'struct{ data: { ruler: #.ruler, detail: #.detail }, expanded: 1 }'
                 },
                 'badge:"Hover me and hold the pointer for a while"'
             ]
         },
         {
-            title: 'Starting selection',
-            highlightProps: ['segments'],
+            title: 'Multiple selection',
+            highlightProps: ['multiple', 'selection'],
             demo: [
                 {
                     view: 'ruler',
-                    duration: 1500000,
-                    selectionStart: 923499,
-                    selectionEnd: 1230853,
-                    details: 'struct{ data: #, expanded: 1 }'
+                    range: 1500000,
+                    multiple: true,
+                    selection: [{ start: 100000, end: 300000 }, { start: 923499, end: 1230853 }],
+                    details: 'struct{ data: { ruler: #.ruler, detail: #.detail }, expanded: 1 }'
                 },
                 'badge:"Hover me and hold the pointer for a while"'
             ]

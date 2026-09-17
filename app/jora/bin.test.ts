@@ -6,7 +6,7 @@ import { methods as profileMethods } from './profile.js';
 import { RangeSelection } from '../prepare/computations/range.js';
 import { methods as samplesMethods } from './samples.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
-import { createSelectionState } from '../views/ruler-range.js';
+import { createState, selectRange } from '../views/ruler-range.js';
 
 const query = jora.setup({ methods: { ...methods, ...samplesMethods, ...profileMethods } });
 
@@ -362,10 +362,11 @@ test.each([101, 1001, 4961966])('bounds ruler approximation without removing int
         }
     };
     const bins = methods.binCallsFromMask.call({ context }, new Uint8Array([1]), count);
+    const state = createState(total, count);
     let boundary = 0;
     for (let index = 0; index < count; index++) {
-        const selection = createSelectionState(total, count, (index + 0.1) / count, (index + 0.9) / count);
-        assert.ok(Math.abs(boundary - selection.timeStart!) < Math.ceil(total / count));
+        const selection = selectRange(state, (index + 0.1) / count, (index + 0.9) / count);
+        assert.ok(Math.abs(boundary - selection.start) < Math.ceil(total / count));
         boundary += bins[index];
     }
     assert.ok(Math.abs(boundary - total) < 1e-6);

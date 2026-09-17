@@ -89,7 +89,7 @@ discovery.view.define('call-frame-codes-table', {
                                         {
                                             view: 'line-ruler',
                                             labels: 'top',
-                                            duration: '=scopeProfile().timeline.axisTotal'
+                                            range: '=scopeProfile().timeline.axisTotal'
                                         },
                                         {
                                             view: 'list',

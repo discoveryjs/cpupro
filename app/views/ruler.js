@@ -1,14 +1,11 @@
 const { utils } = require('@discoveryjs/discovery');
-const { createState, createSelectionState, moveState, resizeState } = require('./ruler-range.js');
+const { createState, normalizeSelection, selectRange, moveRange, resizeRange, valueAt } = require('./ruler-range.js');
 const usage = require('./ruler.usage.js').default;
 
 const SELECTION_NONE = 'none';
 const SELECTION_HOVERED = 'hovered';
 const SELECTION_SELECTING = 'selecting';
 const SELECTION_SELECTED = 'selected';
-const MOVING_NONE = 'none';
-const MOVING_TRIGGER = 'trigger';
-const MOVING_RANGE = 'range';
 
 const viewByEl = new WeakMap();
 const detailsTooltip = new discovery.view.Popup({
@@ -20,17 +17,16 @@ const detailsTooltip = new discovery.view.Popup({
     showDelay: 100
 });
 
-let startSelectingRange = null;
-let startSelectingPointerX = null;
-let startSelectingPointerY = null;
-let movingRange = null;
-let movingPointerDelta = null;
-let movingMode = MOVING_NONE;
-let prevAnchorStart = null;
+let gesture = null;
 let currentViewEl = null;
 
 function computeStep(n) {
     let b = 1;
+
+    while (n > 0 && n < 1) {
+        b /= 10;
+        n *= 10;
+    }
 
     while (n > 10) {
         b *= 10;
@@ -40,136 +36,194 @@ function computeStep(n) {
     return n > 5 ? b : n >= 2.5 ? b / 2 : b / 4;
 }
 
-function setStateIfNeeded(el, newState, syncDom = true, notify = true) {
+function selectionRanges(view) {
+    const { selection } = view.state;
+    return selection === null ? [] : view.multiple ? selection : [selection];
+}
+
+function fractionAt(state, value) {
+    return state.length > 0 ? Math.max(0, Math.min(1, (value - state.range.start) / state.length)) : 0;
+}
+
+function renderInterval(el, state, range) {
+    el.style.setProperty('--selection-start', range ? fractionAt(state, range.start) : 0);
+    el.style.setProperty('--selection-end', range ? fractionAt(state, range.end) : 0);
+}
+
+function renderSelection(el, view) {
+    const { state } = view;
+    const ranges = selectionRanges(view);
+
+    el.dataset.multipleRanges = String(ranges.length > 1);
+    el.dataset.state = gesture?.el === el && gesture.started
+        ? SELECTION_SELECTING
+        : state.selection === null
+            ? SELECTION_NONE
+            : SELECTION_SELECTED;
+
+    renderInterval(el, state, ranges.length === 1 ? ranges[0] : null);
+    view.rangesEl.replaceChildren();
+
+    if (ranges.length > 1) {
+        for (const range of ranges) {
+            const start = fractionAt(state, range.start);
+            const end = fractionAt(state, range.end);
+
+            if (start < end) {
+                const interval = view.rangesEl.appendChild(utils.createElement('div'));
+                interval.style.setProperty('left', `${start * 100}%`);
+                interval.style.setProperty('width', `${(end - start) * 100}%`);
+            }
+        }
+    }
+}
+
+function updateSelection(el, selection, notify = false) {
     const view = viewByEl.get(el);
+
     if (!view) {
         return;
     }
-    const { state, onChange, name, data, context } = view;
 
-    if (!utils.equal(state, newState)) {
-        const rangeChanged = state.timeStart !== newState.timeStart || state.timeEnd !== newState.timeEnd;
-        Object.assign(state, newState);
+    const next = normalizeSelection(selection, view.multiple);
 
-        if (syncDom) {
-            syncStateToDom(el, state);
-        }
+    if (!utils.deepEqual(view.state.selection, next)) {
+        view.state.selection = next;
+        renderSelection(el, view);
 
-        if (notify && rangeChanged && typeof onChange === 'function') {
-            onChange(newState, name, el, data, context);
+        if (notify) {
+            view.onChange?.(view.api, view.data, view.context);
         }
     }
 }
-function syncStartEndToDom(el, start, end) {
-    el.style.setProperty('--selection-start', Math.max(0, Number.isFinite(start) ? start : 0));
-    el.style.setProperty('--selection-end', Math.min(1, Number.isFinite(end) ? end : 1));
-}
-function syncStateToDom(el, state) {
-    if (state.start !== null) {
-        if (el.dataset.state !== SELECTION_SELECTING) {
-            el.dataset.state = SELECTION_SELECTED;
+
+function clearGesture() {
+    const previous = gesture;
+
+    gesture = null;
+
+    if (previous) {
+        previous.el.dataset.activeTrigger = 'none';
+
+        if (previous.el.hasPointerCapture(previous.pointerId)) {
+            previous.el.releasePointerCapture(previous.pointerId);
         }
-        syncStartEndToDom(el, state.start, state.end);
-    } else {
-        el.dataset.state = SELECTION_NONE;
     }
+
+    return previous;
+}
+
+function cancelGesture() {
+    const previous = clearGesture();
+
+    if (previous && viewByEl.has(previous.el)) {
+        updateSelection(previous.el, previous.original, true);
+        renderSelection(previous.el, viewByEl.get(previous.el));
+    }
+
+    detailsTooltip.hide();
 }
 
 function discardCurrentView() {
-    if (currentViewEl) {
-        detailsTooltip.hide();
+    detailsTooltip.hide();
 
-        if (currentViewEl.dataset.state !== SELECTION_SELECTED) {
-            currentViewEl.dataset.state = SELECTION_NONE;
-        }
-
-        currentViewEl = null;
+    if (currentViewEl && viewByEl.has(currentViewEl)) {
+        renderSelection(currentViewEl, viewByEl.get(currentViewEl));
     }
-    startSelectingRange = null;
-    movingMode = MOVING_NONE;
-    movingRange = null;
-    prevAnchorStart = null;
+
+    currentViewEl = null;
 }
 
-function getRulerFractionForPoint(rulerEl, x) {
-    const { segments, state: currentState } = viewByEl.get(rulerEl);
-    const rect = rulerEl.getBoundingClientRect();
-    const width = rect.width || 1;
-    const segmentsCount = segments || Math.max(1, Math.round(width));
-    const fraction = Math.min(1, Math.max(0, (x - rect.left) / width));
+function getRulerFractionForPoint(el, x) {
+    const rect = el.getBoundingClientRect();
 
-    return { fraction, segmentsCount, rect, width, currentState };
+    return Math.max(0, Math.min(1, (x - rect.left) / (rect.width || 1)));
 }
 
-function updateRulerSelection(rulerEl, x, y) {
-    const view = viewByEl.get(rulerEl);
+function showDetails(el, detail, x, y) {
+    const view = viewByEl.get(el);
+
     if (!view) {
         return;
     }
-    const delta = movingMode === MOVING_TRIGGER ? movingPointerDelta : 0;
-    const { fraction, segmentsCount, width } = getRulerFractionForPoint(rulerEl, x + delta);
-    const hasSelection = rulerEl.dataset.state === SELECTION_SELECTED;
-    const isSelecting = rulerEl.dataset.state === SELECTION_SELECTING;
-    const {
-        data,
-        context,
-        render,
-        state: currentState,
-        duration,
-        details
-    } = view;
 
-    if (rulerEl !== currentViewEl) {
+    const target = discovery.dom.root.elementFromPoint(x, y)
+        ?.closest('.discovery-view-has-tooltip, .no-view-ruler-tooltip');
+
+    if (view.details && detail && !(target && el.parentNode?.contains(target))) {
+        detailsTooltip.show(el, tooltipEl => view.render(tooltipEl, view.details, view.data, {
+            ...view.context, ruler: view.state, detail
+        }));
+    } else {
         detailsTooltip.hide();
     }
+}
 
-    if (!hasSelection && !isSelecting) {
-        rulerEl.dataset.state = SELECTION_HOVERED;
-        prevAnchorStart = null;
+function updatePointer(el, x, y) {
+    const view = viewByEl.get(el);
+
+    if (!view || view.state.length <= 0) {
+        return;
     }
 
-    const hoverState = movingMode === MOVING_RANGE
-        ? moveState(duration, segmentsCount, movingRange, (x - movingPointerDelta) / width)
-        : movingMode === MOVING_TRIGGER
-            ? resizeState(duration, segmentsCount, prevAnchorStart, fraction)
-            : createSelectionState(duration, segmentsCount, prevAnchorStart ?? fraction, fraction);
-    const newState = hasSelection
-        ? currentState
-        : isSelecting
-            ? hoverState
-            : createState(duration, segmentsCount);
+    const { state } = view;
+    const fraction = getRulerFractionForPoint(el, x);
+    let detail;
 
-    if (!hasSelection) {
-        syncStartEndToDom(rulerEl, hoverState.start, hoverState.end);
+    if (gesture?.el === el && gesture.started) {
+        const width = el.getBoundingClientRect().width || 1;
+        const minimum = state.length / width;
+        const direction = el.dataset.activeTrigger === 'start' ? -1 : 1;
+        let activeTrigger;
 
-        if (isSelecting) {
-            rulerEl.dataset.activeTrigger = movingMode === MOVING_RANGE
-                ? 'both'
-                : (movingMode === MOVING_TRIGGER ? fraction * duration : fraction) >= prevAnchorStart
-                    ? 'finish'
-                    : 'start';
-        }
-    }
+        switch (gesture.mode) {
+            case 'move':
+                detail = moveRange(state, gesture.range, (x - gesture.x) / width);
+                activeTrigger = 'both';
+                break;
 
-    if (details) {
-        let displayTooltip = !hasSelection || (fraction >= currentState.start && fraction < currentState.end);
-        if (displayTooltip) {
-            const tooltipTarget = discovery.dom.root.elementFromPoint(x, y)
-                ?.closest('.discovery-view-has-tooltip, .no-view-ruler-tooltip');
-            if (tooltipTarget && rulerEl.parentNode?.contains(tooltipTarget)) {
-                displayTooltip = false;
+            case 'resize':
+                detail = resizeRange(state, gesture.anchor, getRulerFractionForPoint(el, x + gesture.offset), minimum, direction);
+                activeTrigger = detail.start < gesture.anchor
+                    ? 'start'
+                    : 'finish';
+                break;
+
+            default: {
+                const anchorValue = valueAt(state, gesture.anchor);
+                const startTrigger = state.segments
+                    ? fraction < gesture.anchor
+                    : detail.start < anchorValue;
+
+                detail = state.segments
+                    ? selectRange(state, gesture.anchor, fraction)
+                    : resizeRange(state, anchorValue, fraction, minimum, direction);
+                activeTrigger = startTrigger
+                    ? 'start'
+                    : 'finish';
             }
         }
-        if (displayTooltip) {
-            detailsTooltip.show(rulerEl, el =>
-                render(el, details, data, { ...context, ...hasSelection ? newState : hoverState })
-            );
-        } else {
-            detailsTooltip.hide();
+
+        el.dataset.activeTrigger = activeTrigger;
+        updateSelection(el, view.multiple ? [detail] : detail, true);
+    } else if (state.selection !== null) {
+        const value = valueAt(state, fraction);
+
+        detail = selectionRanges(view).find(range => value >= range.start && value < range.end);
+
+        if (detail) {
+            detail = {
+                start: Math.max(state.range.start, detail.start),
+                end: Math.min(state.range.end, detail.end)
+            };
         }
+    } else {
+        detail = selectRange(state, fraction, fraction);
+        el.dataset.state = SELECTION_HOVERED;
+        renderInterval(el, state, detail);
     }
 
-    setStateIfNeeded(rulerEl, newState, false);
+    showDetails(el, detail, x, y);
 }
 
 // prevent issues when a potential selection started on dragable or text selectable element
@@ -186,12 +240,46 @@ discovery.addHostElEventListener('selectstart', (e) => {
 
 // discard the current ruler when the pointer leaves the document;
 // this has no effect when selection mode is active, as currentView is capturing pointer events
-discovery.addGlobalEventListener('pointerleave', discardCurrentView, true);
+discovery.addGlobalEventListener('pointerleave', () => {
+    if (!gesture?.started) {
+        cancelGesture();
+        discardCurrentView();
+    }
+}, true);
 
 // track pointer pointer buttons
-discovery.addGlobalEventListener('pointerup', () => {
-    // cancel selection if not started
-    startSelectingRange = null;
+discovery.addGlobalEventListener('pointerup', (event) => {
+    if (!gesture || event.pointerId !== gesture.pointerId) {
+        return;
+    }
+
+    if (gesture.started) {
+        updatePointer(gesture.el, event.x, event.y);
+    }
+
+    const previous = clearGesture();
+    const view = previous && viewByEl.get(previous.el);
+
+    if (!view) {
+        return;
+    }
+
+    if (!previous.started && view.state.selection !== null) {
+        updateSelection(previous.el, null, true);
+    }
+
+    renderSelection(previous.el, view);
+
+    if (previous.started || previous.original !== null) {
+        view.onCommit?.(view.api, view.data, view.context);
+    }
+}, true);
+discovery.addGlobalEventListener('pointercancel', cancelGesture, true);
+discovery.addGlobalEventListener('keydown', event => {
+    if (event.key === 'Escape' && gesture) {
+        event.preventDefault();
+        cancelGesture();
+    }
 }, true);
 discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y, target }) => {
     // do nothing when not over a ruler element or not a main button is pressed
@@ -199,100 +287,53 @@ discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y, tar
         return;
     }
 
-    // move ruler in hover mode when no selected range
-    if (currentViewEl.dataset.state === SELECTION_SELECTED) {
-        const rulerViewEl = currentViewEl; // preserve reference to view element, since it might be changed before pointerup event
-        const moverEl = rulerViewEl.querySelector('.view-ruler__selection-overlay-mover');
-        const { rect, width, currentState } = getRulerFractionForPoint(rulerViewEl, x);
+    const el = currentViewEl;
+    const view = viewByEl.get(el);
 
-        if (moverEl.contains(target)) {
-            switch (target.dataset.trigger) {
-                case 'start': {
-                    movingMode = MOVING_TRIGGER;
-                    movingPointerDelta = rect.left + currentState.start * width - x;
-                    prevAnchorStart = currentState.timeEnd;
-                    break;
-                }
-
-                case 'finish': {
-                    movingMode = MOVING_TRIGGER;
-                    movingPointerDelta = rect.left + currentState.end * width - x;
-                    prevAnchorStart = currentState.timeStart;
-                    break;
-                }
-
-                default:
-                    movingMode = MOVING_RANGE;
-                    movingPointerDelta = x;
-                    movingRange = { timeStart: currentState.timeStart, timeEnd: currentState.timeEnd };
-            }
-
-            startSelectingRange = null;
-            rulerViewEl.dataset.state = SELECTION_SELECTING;
-            rulerViewEl.setPointerCapture(pointerId);
-            rulerViewEl.addEventListener('pointerup', () => {
-                if (!viewByEl.has(rulerViewEl)) {
-                    return;
-                }
-                rulerViewEl.releasePointerCapture(pointerId);
-                rulerViewEl.dataset.state = SELECTION_SELECTED;
-                rulerViewEl.dataset.activeTrigger = 'none';
-                movingMode = MOVING_NONE;
-            }, { capture: true, once: true });
-
-            return;
-        }
-
-        currentViewEl.dataset.state = SELECTION_HOVERED;
+    if (view.state.length <= 0) {
+        return;
     }
 
-    // reset selection state and remenber a selection start point coordinates
-    prevAnchorStart = null;
-    startSelectingPointerX = x;
-    startSelectingPointerY = y;
-    updateRulerSelection(currentViewEl, x, y);
+    const ranges = selectionRanges(view);
+    const mover = el.querySelector('.view-ruler__selection-overlay-mover');
+    const editing = ranges.length === 1 && mover.contains(target);
+    const range = editing ? {
+        start: Math.max(view.state.range.start, ranges[0].start),
+        end: Math.min(view.state.range.end, ranges[0].end)
+    } : null;
+    const trigger = editing ? target.dataset.trigger : null;
+    const rect = el.getBoundingClientRect();
 
-    // create a callback on selection start
-    startSelectingRange = () => {
-        if (!currentViewEl || !viewByEl.has(currentViewEl)) {
-            startSelectingRange = null;
-            return;
-        }
-        const { fraction } = getRulerFractionForPoint(currentViewEl, startSelectingPointerX);
-        const rulerViewEl = currentViewEl; // preserve reference to view element, since it might be changed before pointerup event
-
-        startSelectingRange = null;
-        prevAnchorStart = fraction;
-        rulerViewEl.dataset.state = SELECTION_SELECTING;
-
-        rulerViewEl.setPointerCapture(pointerId);
-        rulerViewEl.addEventListener('pointerup', () => {
-            if (!viewByEl.has(rulerViewEl)) {
-                return;
-            }
-            rulerViewEl.releasePointerCapture(pointerId);
-            rulerViewEl.dataset.state = SELECTION_SELECTED;
-            rulerViewEl.dataset.activeTrigger = 'none';
-        }, { capture: true, once: true });
+    gesture = {
+        el, pointerId, x, y, range, original: view.state.selection,
+        mode: editing ? trigger ? 'resize' : 'move' : 'select',
+        anchor: editing ? trigger === 'start' ? range.end : range.start : getRulerFractionForPoint(el, x),
+        offset: trigger ? rect.left + fractionAt(view.state, trigger === 'start' ? range.start : range.end) * rect.width - x : 0,
+        started: editing
     };
+
+    if (editing) {
+        el.dataset.activeTrigger = trigger || 'both';
+        el.setPointerCapture(pointerId);
+        renderSelection(el, view);
+    }
 });
 
 // thack pointer to determine the pointer is over a ruler;
 // using such an approach since ruler might be overlaped by another content
 utils.pointerXY.subscribe(({ x, y }) => {
-    if (startSelectingRange !== null) {
-        // ignore if pointer is not moved from selection start point at least 2px
-        if (Math.abs(startSelectingPointerX - x) < 2 && Math.abs(startSelectingPointerY - y) < 2) {
+    if (gesture) {
+        if (!gesture.started && Math.abs(gesture.x - x) < 2 && Math.abs(gesture.y - y) < 2) {
             return;
         }
 
-        startSelectingRange();
-    }
+        if (!gesture.started) {
+            gesture.started = true;
+            gesture.el.setPointerCapture(gesture.pointerId);
+            renderSelection(gesture.el, viewByEl.get(gesture.el));
+        }
 
-    // if there is a ruler in selecting mode then just update a selection,
-    // no need to check elements under the pointer
-    if (currentViewEl?.dataset.state === SELECTION_SELECTING) {
-        updateRulerSelection(currentViewEl, x, y);
+        updatePointer(gesture.el, x, y);
         return;
     }
 
@@ -308,7 +349,11 @@ utils.pointerXY.subscribe(({ x, y }) => {
 
     // update ruler selection when its element is found and met all the conditions
     if (rulerEl) {
-        updateRulerSelection(rulerEl, x, y);
+        if (currentViewEl !== rulerEl) {
+            discardCurrentView();
+        }
+
+        updatePointer(rulerEl, x, y);
     } else if (currentViewEl) {
         // there is no ruler element under the pointer that met the conditions,
         // but we had such previously, so hide its details popup and reset the state if needed
@@ -321,67 +366,53 @@ utils.pointerXY.subscribe(({ x, y }) => {
 
 discovery.view.define('ruler', function(el, options, data, context) {
     const {
-        duration,
-        segments: segmentsRaw,
-        selectionStart = null,
-        selectionEnd = null,
+        range,
+        segments = null,
+        selection = null,
+        multiple = false,
+        grid = true,
         labels = 'top',
         formatLabel = String,
         name = 'ruler',
         details,
-        rangeManager,
         onInit,
-        onChange
+        onChange,
+        onCommit
     } = options;
-    const segments = Number.isFinite(segmentsRaw) && segmentsRaw > 0
-        ? Math.max(1, Math.min(Math.floor(segmentsRaw), Math.floor(duration)))
-        : null;
-
-    const readRanges = rangeManager && 'ranges' in rangeManager
-        ? () => rangeManager.ranges
-        : () => (rangeManager?.rangeStart ?? selectionStart) === null ? null : [{
-            start: rangeManager?.rangeStart ?? selectionStart,
-            end: rangeManager?.rangeEnd ?? selectionEnd
-        }];
-    // Multiple intervals have no single draggable envelope. A new drag replaces them with one interval.
-    const rangeState = ranges => ranges === null ? createState(duration, segments) : ranges.length === 1
-        ? createState(duration, segments, ranges[0].start, ranges[0].end)
-        : createState(duration, segments, 0, 0);
-    const state = rangeState(readRanges());
-
-    syncStateToDom(el, state);
-
-    // register the view
-    viewByEl.set(el, {
-        data,
-        context,
-        state,
-        render: this.render,
-        duration,
-        segments,
-        name,
-        details,
-        // The coordinate view owns resolve/rebase. Rendering must never write clipped bounds back to the request.
-        onChange: onChange || (rangeManager ? state => rangeManager.setRange(state.timeStart, state.timeEnd) : null)
-    });
+    const state = createState(range, segments, selection, multiple);
+    const api = { state, name, el, setSelection(selection) {
+        if (viewByEl.has(el)) {
+            const next = normalizeSelection(selection, multiple);
+            if (!utils.deepEqual(state.selection, next)) {
+                if (gesture?.el === el) {
+                    clearGesture();
+                }
+                updateSelection(el, next);
+                detailsTooltip.hide();
+            }
+        }
+    } };
 
     // apply interval marker labels position if any
     el.dataset.labels = ['top', 'bottom', 'both'].includes(labels)
         ? labels
         : 'none';
+    el.dataset.grid = String(grid);
 
     // draw interval markers
-    const rulerStep = computeStep(duration);
-    for (
-        let value = 0;
-        value < duration - rulerStep / 10;
-        value += rulerStep
-    ) {
-        const intervalMarkerEl = el.appendChild(utils.createElement('div'));
+    const rulerStep = computeStep(state.length);
+    if (grid || el.dataset.labels !== 'none') {
+        for (
+            let offset = 0;
+            offset < state.length - rulerStep / 10;
+            offset += rulerStep
+        ) {
+            const intervalMarkerEl = el.appendChild(utils.createElement('div'));
 
-        intervalMarkerEl.className = 'interval-marker';
-        intervalMarkerEl.style.setProperty('--offset', value / duration);
-        intervalMarkerEl.dataset.title = formatLabel(value, duration);
+            intervalMarkerEl.className = 'interval-marker';
+            intervalMarkerEl.style.setProperty('--offset', offset / state.length);
+            intervalMarkerEl.dataset.title = formatLabel(state.range.start + offset, state.range);
+        }
     }
 
     // overlay element
@@ -401,49 +432,35 @@ discovery.view.define('ruler', function(el, options, data, context) {
     );
 
     const rangesEl = el.appendChild(utils.createElement('div', 'view-ruler__ranges'));
-    const renderRanges = ranges => {
-        el.dataset.multipleRanges = String(ranges !== null && ranges.length > 1);
-        rangesEl.replaceChildren();
+    const view = { state, api, data, context, multiple, details, onChange, onCommit, rangesEl, render: this.render };
 
-        if (ranges && ranges.length > 1 && duration > 0) {
-            for (const range of ranges) {
-                const start = Math.max(0, Math.min(duration, range.start));
-                const end = Math.max(0, Math.min(duration, range.end));
-
-                if (start < end) {
-                    const interval = rangesEl.appendChild(utils.createElement('div'));
-
-                    interval.style.setProperty('left', `${start / duration * 100}%`);
-                    interval.style.setProperty('width', `${(end - start) / duration * 100}%`);
-                }
-            }
-        }
-    };
-
-    renderRanges(readRanges());
-
-    // call init state callback if any
-    if (typeof onInit === 'function') {
-        onInit(state, name, el, data, context);
-    }
-
-    // subscribe on range changes when range manager is provided
-    const subscription = rangeManager?.subscribe(() => {
-        const ranges = readRanges();
-        setStateIfNeeded(el, rangeState(ranges), true, false);
-        renderRanges(ranges);
-    });
+    viewByEl.set(el, view);
+    renderSelection(el, view);
 
     // add element for cleanup on destroy
     const destroyEl = utils.createElement('destroy-ruler');
     el.appendChild(destroyEl);
+    let cleanup;
     destroyEl.onDestroy = () => {
-        subscription?.();
+        if (!viewByEl.has(el)) {
+            return;
+        }
+
+        if (gesture?.el === el) {
+            clearGesture();
+        }
+
         if (currentViewEl === el) {
             discardCurrentView();
         }
+
         viewByEl.delete(el);
+
+        if (typeof cleanup === 'function') {
+            cleanup();
+        }
     };
+    cleanup = onInit?.(api, data, context);
 }, { usage });
 
 class RulerElement extends HTMLElement {

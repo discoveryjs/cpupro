@@ -65,7 +65,7 @@
     right: calc(-1 * var(--extra-pointer-size));
     padding-left: var(--extra-pointer-inner-size);
 }
-.view-ruler__selection-overlay-mover-trigger:hover,
+.view-ruler:not([data-state="selecting"]) .view-ruler__selection-overlay-mover-trigger:hover,
 .view-ruler[data-active-trigger="start"] .view-ruler__selection-overlay-mover-trigger[data-trigger="start"],
 .view-ruler[data-active-trigger="finish"] .view-ruler__selection-overlay-mover-trigger[data-trigger="finish"] {
     background-color: #268fea;
@@ -107,6 +107,9 @@
     bottom: 0;
     border-left: 1px solid #6666;
     color: #888b;
+}
+.view-ruler[data-grid="false"] .interval-marker {
+    border-left: none;
 }
 .view-ruler:is([data-labels="both"], [data-labels="top"]) .interval-marker::before,
 .view-ruler:is([data-labels="both"], [data-labels="bottom"]) .interval-marker::after {

@@ -50,9 +50,9 @@ discovery.view.define('subject-with-nested-timeline', {
         {
             view: 'line-ruler',
             labels: 'top',
-            duration: '=duration',
+            range: '=scopeViewport()',
             segments: '=binCount',
-            rangeManager: '=scopeViewport().viewportRange(scopeLine)',
+            rangeManager: '=scopeLine.range.selection',
             details: [
                 {
                     view: 'block',

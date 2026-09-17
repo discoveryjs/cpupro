@@ -47,9 +47,9 @@ discovery.page.define('samples', {
                 {
                     view: 'line-ruler',
                     labels: 'top',
-                    duration: '=totalValue',
+                    range: '=scopeViewport()',
                     segments: '=binCount',
-                    rangeManager: '=line.range',
+                    rangeManager: '=line.range.selection',
                     details: [
                         // 'text:"Continues: " + sampleBins[#.segmentStart:#.segmentEnd + 1].sum()',
                         // 'html:"<br>"',
@@ -93,7 +93,7 @@ discovery.page.define('samples', {
                 {
                     view: 'line-ruler',
                     labels: 'top',
-                    duration: '=sampleXBinsMax',
+                    range: '=sampleXBinsMax',
                     segments: '=binCount',
                     details: [
                         {

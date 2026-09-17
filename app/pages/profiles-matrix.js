@@ -324,7 +324,7 @@ const pageContent = [
                         content: [
                             {
                                 view: 'line-ruler',
-                                duration: '=#.totalTime'
+                                range: '=#.totalTime'
                             },
                             {
                                 view: 'block',

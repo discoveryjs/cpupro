@@ -23,9 +23,8 @@ import { test } from 'vitest';
 import { createState } from './ruler-range.js';
 
 test('restores an exact half-open range', () => {
-    const state = createState(1000, 10, 123, 567);
-    assert.equal(state.timeStart, 123);
-    assert.equal(state.timeEnd, 567);
+    const state = createState(1000, 10, { start: 123, end: 567 });
+    assert.deepEqual(state.selection, { start: 123, end: 567 });
 });
 ```
 
@@ -49,9 +48,26 @@ CPUPRO_TEST_FULL_DICTIONARY=1 npm test
 
 The default environment is Node, without jsdom. For profile preparation tests, the root Discovery import is replaced by the small `utils.isArray` adapter in `test/setup/`. Other Discovery imports are not replaced. The parsing-worker entry is replaced by a guard that throws if a fixture tries to start a browser worker. Current profile fixtures use explicit locations and empty source text; parsing and browser-worker execution are not covered by these tests.
 
-`ruler.test.js` preserves the earlier isolated event-handler checks using the minimal adapter in `test/helpers/ruler.js`. It covers range-manager callbacks and teardown, not layout or actual pointer capture. Real drag, rendering and navigation tests should use Playwright Test as a separate future browser suite; Playwright MCP remains useful for exploratory checks.
+`ruler.test.js` uses the minimal adapter in `test/helpers/ruler.js` to check pointer transitions, preview/commit/cancel, external updates, tooltip context and cleanup. It does not replace real layout or pointer-capture checks. Playwright MCP remains useful for those browser checks.
 
-`ruler` has no CPUpro profile or line dependencies; labels are numeric by default or supplied by `formatLabel(value, duration)`. `line-ruler` resolves the line and supplies the existing time/byte formatting without a container (`tag: false`). `line-ruler.test.js` checks that delegation preserves props, callbacks and the range manager. This separation leaves the existing `duration`, `timeStart`/`timeEnd`, segment rounding and gesture semantics unchanged.
+### Ruler API
+
+`ruler` has no CPUpro profile, line or range-manager dependencies. Its props are:
+
+- `range`: a number (`[0, end]`), a pair `[start, end]`, or `{ start, end }`.
+- `selection`: `{ start, end } | null` by default; an array of ranges or `null` with `multiple: true`. An empty array stays distinct from `null`. External ranges remain unclipped and unsnapped.
+- `segments`: omitted for continuous selection, a positive count for uniform segments, or a strictly increasing array of boundaries covering the complete range. A count of N produces N + 1 boundaries, including both endpoints. Invalid/degenerate segmentation is treated as absent.
+- `grid` (default true) and `labels` (`'top'`, `'bottom'`, `'both'`, or false) independently control grid lines and labels. Neither changes snapping.
+- `formatLabel(value, range)`: numeric labels by default; receives coordinates and the normalized scale range.
+- `details`: rendered with the original data and context extended by `ruler` (the state) and `detail` (the explained interval). Hover without selection explains a segment, or a point on a continuous scale, without changing selection. Selected-range details describe its visible intersection; gaps do not show a selected tooltip.
+
+State contains only `{ range, length, segments, selection }`. Segment boundaries are computed once per render, independent of hover and selection changes. `rangeToSegments(range, boundaries)` is a separate pure function returning half-open segment indices or null, not a state field.
+
+Pointer creation and resize do not collapse the selection. On segmented scales, resize stops at the nearest distinct boundary on the pointer side of the fixed anchor; an off-grid external anchor stays exact. On continuous scales, the gesture minimum is one CSS pixel in scale coordinates, clipped at scale edges. At the anchor, resize retains its current side; crossing the anchor switches sides without an empty selection. Pointer release retains the resulting range. External selections, hover, translation and later layout changes do not apply this minimum.
+
+Callbacks use `onInit({ state, setSelection, name, el }, data, context)`, `onChange(...)`, and `onCommit(...)`. `setSelection` silently updates the existing ruler; changed external values replace and cancel an obsolete gesture, while an equal synchronous echo does not interrupt it. It is safe to call during `onInit` and becomes inert after destruction. An `onInit` cleanup function is called once on destruction. `onChange` reports preview changes, `onCommit` reports an accepted gesture or click reset after capture is released. Escape/pointer cancellation restores the pre-gesture selection through `onChange`, without commit. Destruction releases capture and cleanup without later callbacks. A new drag replaces the selection with one interval even in multiple mode; editing separate members remains future work.
+
+`line-ruler` uses `tag: false`, resolves the line and provides time/byte labels. It defaults to `multiple: true`. Its optional `rangeManager` uses `ranges`, `setRanges()` and `subscribe()` in the same coordinates as the supplied `range`. Viewport rulers pass `scopeViewport()` and `line.range.selection` directly, without a zero-based intermediate view. The wrapper owns the subscription, writes previews, invokes the caller's `onInit`/`onChange`, and combines both cleanup functions. It forwards `range` and `segments` unchanged; only `ruler` normalizes them and constructs boundaries. Until tooltip computations move off bins, the details adapter supplies viewport-local `timeStart`/`timeEnd`, `duration`, and inclusive `segmentStart`/`segmentEnd`. These aliases are not part of ruler state. No-overlap segment slices use `0:0` through the old `segmentEnd + 1` convention. Optimized sample-binning steps are independent of ruler segmentation and remain unchanged.
 
 ## Types and production builds
 

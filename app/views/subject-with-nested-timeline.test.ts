@@ -59,10 +59,11 @@ test('inherits the viewport for bins, ruler and selection without changing total
         assert.equal(data.binCount, duration);
         assert.equal(data.totalValue, line.axisTotal);
         assert.equal(data.bins.length, data.binCount);
-        assert.equal(query(ruler.duration.slice(1))(data, context), duration);
+        assert.equal(query(ruler.range.slice(1))(data, context), scopeViewport);
         assert.equal(query('scopeViewport()')(data, context), scopeViewport);
         const range = query(ruler.rangeManager.slice(1))(data, context);
-        range.setRange(1, 5);
+        assert.equal(range, line.range.selection);
+        range.setRange(scopeViewport.start + 1, scopeViewport.start + 5);
         assert.deepEqual(line.range.selection.ranges, [{ start: scopeViewport.start + 1, end: scopeViewport.start + 5 }]);
         if (scopeViewport.start < 0) {
             assert.ok(data.bins.slice(0, 20).every((value: number) => value === 0));

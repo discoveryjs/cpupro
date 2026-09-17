@@ -4,8 +4,6 @@ import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import usage from './chart.usage.js';
-import { resolveScopeViewport } from '../jora/profile.js';
-import { RangeSelection } from '../prepare/computations/range.js';
 
 function createElement() {
     return {
@@ -28,28 +26,30 @@ const generateCurve = runInNewContext(
         discovery: { view: { define(name, render) {
             renderChart = render;
         } } },
-        usage, resolveScopeViewport, setRangeCoverage,
+        usage, setRangeCoverage,
         document: { createElement, createElementNS: createElement }
     }
 );
 
-test('renders against default, scoped and explicit viewport without caller-supplied minX/maxX', () => {
-    const scopeLine = { range: new RangeSelection({ name: 'time', unit: 'us' }).view({ start: 0, end: 1000 }) };
-    const scopeViewport = { start: 100, end: 200 };
-    const explicitViewport = { start: 110, end: 190 };
-    for (const [config, context, start] of [
-        [{}, { scopeLine }, 110],
-        [{}, { scopeLine, scopeViewport }, 100],
-        [{ viewport: explicitViewport }, { scopeLine, scopeViewport }, 0]
+test('uses point bounds by default and caller-supplied minX/maxX independently of context', () => {
+    for (const [config, minX, maxX] of [
+        [{}, 120, 180],
+        [{ minX: 100, maxX: 200 }, 100, 200],
+        [{ minX: 110, maxX: 190 }, 110, 190],
+        [{ minX: 100 }, 100, 180],
+        [{ maxX: 200 }, 120, 200]
     ]) {
-        const element = createElement();
-        renderChart(element, {
-            ...config, extent: { start: 110, end: 190 },
-            points: [{ x: 120, y: 10 }, { x: 180, y: 20 }]
-        }, null, context);
-        const svg = element.children.at(-1);
-        const curve = svg.children.at(-1).attributes.get('d');
-        assert.ok(curve.startsWith(`M ${start} `));
+        for (const context of [{}, { scopeViewport: { start: 0, end: 1000 } }]) {
+            const element = createElement();
+            const extent = { start: 110, end: 190 };
+            renderChart(element, {
+                ...config, extent, height: 100,
+                points: [{ x: 120, y: 10 }, { x: 180, y: 20 }]
+            }, null, context);
+            const svg = element.children.at(-1);
+            const curve = svg.children.at(-1).attributes.get('d');
+            assert.equal(curve, generateCurve([120, 180], [10, 20], 100, minX, maxX, 10, 20, false, extent));
+        }
     }
 });
 

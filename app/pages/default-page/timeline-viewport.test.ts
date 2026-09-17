@@ -7,7 +7,7 @@ import { methods } from '../../jora/index.mjs';
 import { RangeSelection } from '../../prepare/computations/range.js';
 import { chartUsedHeap } from './chart-used-heap.js';
 import { userTimingsTimeline } from './user-timings-timeline.js';
-import { createSelectionState } from '../../views/ruler-range.js';
+import { createState, selectRange, rangeToSegments } from '../../views/ruler-range.js';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { histCodes } from './hist-codes.js';
 import { histHeapTotal } from './hist-heap-total.js';
@@ -70,20 +70,28 @@ test.each([100, 1000])('shares the viewport bin grid with rendering, ruler and d
         primaryProfile: profile, primaryLineType: 'timeline',
         data: { profiles: [{ timeline: { axisStart: origin, axisEnd: origin + duration } }, { timeline: line }] }
     });
-    assert.deepEqual(query('scopeViewport()')({}, context), { start: origin, end: origin + duration });
+    const viewport = query('scopeViewport()')({}, context);
+    assert.deepEqual(viewport, { start: origin, end: origin + duration });
     const ruler = timeline.content[0];
-    assert.equal(query(ruler.duration.slice(1))({}, context), duration);
+    assert.deepEqual(query(ruler.range.slice(1))({}, context), viewport);
     const binCount = query(ruler.segments.slice(1))({}, context);
     assert.equal(binCount, Math.min(500, duration));
     const range = query(ruler.rangeManager.slice(1))({ line }, context);
-    range.setRange(duration * 0.1, duration * 0.4);
+    assert.equal(range, line.range.selection);
+    range.setRange(origin + duration * 0.1, origin + duration * 0.4);
+    assert.deepEqual(range.ranges, [{ start: origin + duration * 0.1, end: origin + duration * 0.4 }]);
     assert.deepEqual(line.range.ranges, [{ start: -duration * 0.1, end: duration * 0.2 }]);
     const bins = new Uint32Array(binCount).fill(1, binCount * 0.2, binCount * 0.8);
     for (const [start, end, count, noCoverage] of [[0, 0.1, 0, true], [0.2, 0.5, binCount * 0.3, false], [0.9, 1, 0, true]]) {
-        const state = createSelectionState(duration, binCount, start, end);
-        const details = query(ruler.details.context)({}, { ...context, ...state });
-        assert.equal(details.binStart, state.segmentStart);
-        assert.equal(details.binEnd, state.segmentEnd! + 1);
+        const state = createState(viewport, binCount);
+        const selected = selectRange(state, start, end);
+        const indices = rangeToSegments(selected, state.segments)!;
+        const details = query(ruler.details.context)({}, {
+            ...context, timeStart: selected.start - viewport.start, timeEnd: selected.end - viewport.start,
+            segmentStart: indices.start, segmentEnd: indices.end - 1
+        });
+        assert.equal(details.binStart, indices.start);
+        assert.equal(details.binEnd, indices.end);
         assert.equal(details.noCoverage, noCoverage);
         const countQuery = ruler.details.content[0].content[2].content.slice('text-numeric:'.length);
         assert.equal(query(countQuery)([{ binSamples: bins }], details), `Samples: ${count}`);
@@ -126,8 +134,8 @@ test('profile time charts keep their viewport and selection owner when the prima
                 assert.deepEqual(data.extent, { start: 120, end: 180 });
                 const view = chart.content.content[0].content[0];
                 assert.equal(query(view.extent.slice(1))(data, context), data.extent);
-                assert.equal(view.minX, undefined);
-                assert.equal(view.maxX, undefined);
+                assert.equal(query(view.minX.slice(1))(data, context), 100);
+                assert.equal(query(view.maxX.slice(1))(data, context), 200);
             } else {
                 const view = chart.content.content[0].content[0];
                 assert.equal(view.minX, undefined);
@@ -155,7 +163,7 @@ test('a nested viewport reaches bins, ruler and time charts without being recomp
     const chartsContext = query(timeline.content.at(-1).context)(panel, context);
 
     assert.equal(query('scopeViewport()')(panel, context), scopeViewport);
-    assert.equal(query(ruler.duration.slice(1))(panel, context), 10);
+    assert.equal(query(ruler.range.slice(1))(panel, context), scopeViewport);
     assert.equal(panel.samples[0].bins.length, 10);
     assert.equal(query('scopeViewport()')(panel, chartsContext), scopeViewport);
     assert.deepEqual(query('scopeViewport()')({}, parent), { start: 0, end: 100 });

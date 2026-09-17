@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { isDeepStrictEqual } from 'node:util';
+import { equal, deepEqual } from '@discoveryjs/discovery/lib/core/utils/compare.js';
 import { runInNewContext } from 'node:vm';
 import * as ranges from '../../app/views/ruler-range.js';
 
@@ -44,21 +44,30 @@ class Element {
     addEventListener(name, callback) {
         this.listeners.set(name, callback);
     }
-    setPointerCapture() {}
-    releasePointerCapture() {}
+    setPointerCapture(pointerId) {
+        this.pointerId = pointerId;
+    }
+    hasPointerCapture(pointerId) {
+        return this.pointerId === pointerId;
+    }
+    releasePointerCapture() {
+        this.pointerId = null;
+    }
     closest() {
         return null;
     }
 }
 
-export function createRulerHarness() {
+export function createRulerHarness(render = () => {}) {
     const hostEvents = new Map();
     const globalEvents = new Map();
     let pointerMove;
     let renderRuler;
     let activeElement = null;
+    let tooltip = null;
     const utils = {
-        equal: isDeepStrictEqual,
+        equal,
+        deepEqual,
         pointerXY: {
             subscribe(callback) {
                 pointerMove = callback;
@@ -83,8 +92,12 @@ export function createRulerHarness() {
     const discovery = {
         view: {
             Popup: class {
-                show() {}
-                hide() {}
+                show(element, callback) {
+                    tooltip = callback;
+                }
+                hide() {
+                    tooltip = null;
+                }
             },
             define(name, render) {
                 renderRuler = render;
@@ -124,7 +137,8 @@ export function createRulerHarness() {
         hostEvents,
         globalEvents,
         createElement: tag => new Element(tag),
-        render: (...args) => renderRuler.call({ render() {} }, ...args),
+        render: (...args) => renderRuler.call({ render }, ...args),
+        showTooltip: () => tooltip?.(new Element('tooltip')),
         move: position => pointerMove(position),
         setActive(element) {
             activeElement = element;

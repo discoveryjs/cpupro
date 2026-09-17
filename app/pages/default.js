@@ -143,9 +143,9 @@ const categoriesTimeline = {
     content: [
         {
             view: 'line-ruler',
-            duration: '=scopeViewport() | end - start',
+            range: '=scopeViewport()',
             segments: '=#.binCount',
-            rangeManager: '=scopeViewport().viewportRange(line)',
+            rangeManager: '=line.range.selection',
             details: {
                 view: 'context',
                 context: `{
