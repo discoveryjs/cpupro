@@ -60,14 +60,16 @@ describe('PopulationFiltered', () => {
         };
         const verify = () => {
             let rangeSamples = 0;
+            const fullValues = new Uint32Array(weights.length);
             const expectedValues = population.values.map((value, index) => {
                 const contribution = filtered.rangeStart === null || filtered.rangeEnd === null
                     ? value
                     : Math.max(0, Math.min(population.cumulative[index] + value, filtered.rangeEnd) - Math.max(population.cumulative[index], filtered.rangeStart));
                 rangeSamples += contribution > 0 ? 1 : 0;
-                return index >= (filtered.indexStart ?? 0) && index < (filtered.indexEnd ?? weights.length) &&
-                    value >= (filtered.valueMin ?? -Infinity) && value < (filtered.valueMax ?? Infinity)
-                    ? contribution : 0;
+                const accepted = index >= (filtered.indexStart ?? 0) && index < (filtered.indexEnd ?? weights.length) &&
+                    value >= (filtered.valueMin ?? -Infinity) && value < (filtered.valueMax ?? Infinity);
+                fullValues[index] = accepted && contribution > 0 ? value : 0;
+                return accepted ? contribution : 0;
             });
             const totals = new Uint32Array(filtered.samplesTotal.length + 1);
             const counts = new Uint32Array(totals.length);
@@ -78,10 +80,10 @@ describe('PopulationFiltered', () => {
             });
             assert.equal(filtered.values, values);
             assert.equal(filtered.samples, samples);
-            assert.deepEqual(filtered.values, expectedValues);
+            assert.deepEqual(filtered.values, fullValues);
             assert.equal(filtered.rangeSamples, filtered.rangeStart === null ? null : rangeSamples);
-            assert.deepEqual(filtered.samplesTotal, totals.subarray(0, filtered.sinkId));
-            assert.deepEqual(filtered.samplesCount, counts.subarray(0, filtered.sinkId));
+            assert.deepEqual(filtered.samplesTotal, totals.subarray(0, filtered.samplesTotal.length));
+            assert.deepEqual(filtered.samplesCount, counts.subarray(0, filtered.samplesCount.length));
             assert.deepEqual(filtered.sink, { total: totals[filtered.sinkId], count: counts[filtered.sinkId] });
         };
 
@@ -122,7 +124,7 @@ describe('PopulationFiltered', () => {
         for (const [start, end] of [[5, 35], [35, 55], [10, 10], [0, 60], [0.5, 30.5]]) {
             filtered.setRange(start, end);
             const expected = population.values.map((value, index) =>
-                Math.max(0, Math.min(population.cumulative[index] + value, end) - Math.max(population.cumulative[index], start))
+                Math.max(0, Math.min(population.cumulative[index] + value, end) - Math.max(population.cumulative[index], start)) > 0 ? value : 0
             );
             assert.deepEqual(filtered.values, expected);
             assert.deepEqual(filtered.samples, destinations);
@@ -147,7 +149,8 @@ describe('PopulationFiltered', () => {
         const population = new Population(new Uint32Array([0, 0, 0, 1, 1, 2, 2]), new Uint32Array([0, 10, 0, 20, 0, 30, 0]));
         const filtered = new PopulationFiltered(population);
         filtered.setRange(start, end);
-        assert.deepEqual([...filtered.values], values);
+        assert.deepEqual([...filtered.values], values.map((value, index) => value > 0 ? population.values[index] : 0));
+        assert.deepEqual([...filtered.samplesTotal], [values[1], values[3], values[5]]);
         assert.equal(filtered.rangeSamples, count);
         assert.equal(filtered.samplesCount.reduce((sum, value) => sum + value, 0), count);
         assert.deepEqual([...population.values], [0, 10, 0, 20, 0, 30, 0]);
@@ -170,7 +173,7 @@ describe('PopulationFiltered', () => {
         second.setRange(15, 65);
         second.updateMask(maskFn);
         assert.equal(filterCalls, 2);
-        assert.deepEqual([...first.values], [0, 15, 30, 0, 0]);
+        assert.deepEqual([...first.values], [0, 20, 30, 0, 0]);
         assert.deepEqual([...first.samplesTotal], [0, 15, 0]);
         assert.deepEqual(first.sink, { count: 1, total: 30 });
         assert.deepEqual(first.values, second.values);
@@ -240,7 +243,7 @@ describe('PopulationFiltered', () => {
             for (const index of order) {
                 operations[index][0](filtered);
             }
-            assert.deepEqual([...filtered.values], [0, 15, 30, 0]);
+            assert.deepEqual([...filtered.values], [0, 20, 30, 0]);
             assert.deepEqual([...filtered.samplesTotal], [0, 15, 0]);
             assert.deepEqual([...filtered.samplesCount], [0, 1, 0]);
             assert.deepEqual(filtered.sink, { count: 1, total: 30 });
@@ -386,7 +389,7 @@ describe('PopulationFiltered', () => {
         const unsubscribe = filtered.subscribe(() => notifications++);
 
         filtered.setRange(5, 35);
-        assert.deepEqual([...filtered.values], [5, 20, 5]);
+        assert.deepEqual([...filtered.values], [10, 20, 30]);
         assert.deepEqual([...filtered.samplesTotal], [10, 20]);
         assert.deepEqual([...filtered.samplesCount], [2, 1]);
         assert.equal(notifications, 1);

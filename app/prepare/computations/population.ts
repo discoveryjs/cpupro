@@ -8,6 +8,10 @@ import { normalizeRanges, intersectRanges, equalRanges, validateRangeBounds, typ
 const computeMetricsJavaScriptApi = createJavaScriptApi();
 
 export class Population extends Observer {
+    readonly ranges: RangeSet | null = null;
+    readonly sinkId: number;
+    readonly sink: { count: number; total: number };
+    readonly samplesRevision = 0;
     samples: Uint32Array;
     values: Uint32Array;
     // FIXME: Prefix sums wrap at 2^32, breaking coordinate order and binary range search.
@@ -21,7 +25,8 @@ export class Population extends Observer {
 
     constructor(
         samples: Uint32Array,
-        values: Uint32Array
+        values: Uint32Array,
+        sampleCount = findMaxId(samples) + 1
     ) {
         super();
 
@@ -29,30 +34,40 @@ export class Population extends Observer {
         this.values = values;
         this.cumulative = computeCumulative(values);
         this.cumulativeEnd = values.length ? this.cumulative[values.length - 1] + values[values.length - 1] : 0;
+        this.sinkId = sampleCount;
 
-        const maxSampleId = findMaxId(samples) + 1;
-        this.samplesCount = new Uint32Array(maxSampleId);
-        this.samplesTotal = new Uint32Array(maxSampleId);
+        const samplesCount = new Uint32Array(sampleCount + 1);
+        const samplesTotal = new Uint32Array(sampleCount + 1);
+        this.samplesCount = samplesCount.subarray(0, sampleCount);
+        this.samplesTotal = samplesTotal.subarray(0, sampleCount);
 
         computeMetricsJavaScriptApi.computeMetrics({
             memory: null,
             values: this.values,
             samples: this.samples,
-            samplesCount: this.samplesCount,
-            samplesTotal: this.samplesTotal
+            samplesCount,
+            samplesTotal
         }, false);
+        this.sink = {
+            count: samplesCount[this.sinkId],
+            total: samplesTotal[this.sinkId]
+        };
     }
 }
 
 export type MaskFunction = (mask: Uint32Array) => void;
 export class PopulationFiltered extends Observer {
     population: Population;
+    readonly source: Population | PopulationFiltered;
     filter: PopulationFilter;
-    declare readonly sink: { count: number; total: number };
+    readonly sink: { count: number; total: number };
     buffer: PopulationBufferMap;
     #recompute: (clear?: boolean) => void;
     #hasMask = false;
     #acceptsEvent: Acceptance | null = null;
+    #unsubscribe: () => void;
+    #boundaryCuts: { index: number; value: number }[] = [];
+    samplesRevision = 0;
     samples: Uint32Array;
     values: Uint32Array;
     cumulative: Uint32Array;   // size of values
@@ -61,31 +76,43 @@ export class PopulationFiltered extends Observer {
     samplesTotal: Uint32Array; // size of samples
     samplesMask: Uint32Array;
     #ranges: RangeSet | null = null;
+    #effectiveRanges: RangeSet | null = null;
     rangeSamples: number | null = null;
     indexStart: number | null = null;
     indexEnd: number | null = null;
     valueMin: number | null = null;
     valueMax: number | null = null;
 
-    constructor(population: Population) {
+    constructor(source: Population | PopulationFiltered) {
         super();
 
-        this.population = population;
-        this.buffer = createComputeBuffer(population, USE_WASM);
+        const sampleCount = source.samplesCount.length;
+        this.source = source;
+        this.population = source instanceof PopulationFiltered ? source.population : source;
+        this.buffer = createComputeBuffer(source, USE_WASM);
         this.samples = this.buffer.samples;
         this.values = this.buffer.values;
-        this.cumulative = population.cumulative;
-        this.samplesCount = this.buffer.samplesCount.subarray(0, population.samplesCount.length);
-        this.samplesTotal = this.buffer.samplesTotal.subarray(0, population.samplesTotal.length);
-        this.samplesMask = new Uint32Array(population.samplesCount.length);
+        this.cumulative = source.cumulative;
+        this.samplesCount = this.buffer.samplesCount.subarray(0, sampleCount);
+        this.samplesTotal = this.buffer.samplesTotal.subarray(0, sampleCount);
+        this.samplesMask = new Uint32Array(sampleCount);
 
         const api = USE_WASM && this.buffer.memory
             ? createWasmApi(this.buffer.memory)
             : computeMetricsJavaScriptApi;
-        this.#recompute = api.computeMetrics.bind(null, this.buffer);
+        this.#recompute = (clear = true) => {
+            api.computeMetrics(this.buffer, clear);
+            for (const { index, value } of this.#boundaryCuts) {
+                const sampleId = this.samples[index];
+                this.buffer.samplesTotal[sampleId] -= value;
+                if (value === this.values[index]) {
+                    this.buffer.samplesCount[sampleId]--;
+                }
+            }
+        };
         this.filter = new PopulationFilter(
-            population.samplesCount.length,
-            population.samples.length,
+            sampleCount,
+            source.samples.length,
             (updateMask, acceptsEvent) => {
                 this.#acceptsEvent = acceptsEvent;
                 this.updateMask(updateMask);
@@ -95,10 +122,34 @@ export class PopulationFiltered extends Observer {
         Object.defineProperty(this, 'sink', {
             get: () => this.#sink
         });
+
+        this.#effectiveRanges = source.ranges;
+        this.#compileValues();
+        this.#recompute();
+        let samplesRevision = source.samplesRevision;
+        this.#unsubscribe = source.subscribe(() => {
+            if (samplesRevision !== source.samplesRevision) {
+                samplesRevision = source.samplesRevision;
+                this.#compileSamples();
+            }
+
+            this.#effectiveRanges = intersectRangeSets(source.ranges, this.#ranges);
+            this.#compileValues();
+            this.#recompute();
+            this.notify();
+        });
+    }
+
+    destroy() {
+        this.#unsubscribe();
+    }
+
+    get cumulativeEnd(): number {
+        return this.population.cumulativeEnd;
     }
 
     get sinkId() {
-        return this.samplesCount.length;
+        return this.population.sinkId;
     }
 
     get #sink() {
@@ -123,7 +174,6 @@ export class PopulationFiltered extends Observer {
     }
 
     updateMask(maskFn: MaskFunction) {
-        const originalSamples = this.population.samples;
         const hadMask = this.#hasMask;
 
         maskFn(this.samplesMask);
@@ -133,37 +183,49 @@ export class PopulationFiltered extends Observer {
             return;
         }
 
+        if (this.#compileSamples()) {
+            this.#recompute();
+            this.notify();
+        }
+    }
+
+    #compileSamples() {
+        const originalSamples = this.source.samples;
         const samples = this.samples;
         const sinkId = this.sinkId;
         let changed = false;
 
         for (let i = 0; i < samples.length; i++) {
             const sampleId = originalSamples[i];
-            const target = this.samplesMask[sampleId] === 0 && (!this.#acceptsEvent || this.#acceptsEvent(i)) ? sampleId : sinkId;
+            const target = sampleId !== sinkId && this.samplesMask[sampleId] === 0 &&
+                (!this.#acceptsEvent || this.#acceptsEvent(i)) ? sampleId : sinkId;
 
             changed = changed || samples[i] !== target;
             samples[i] = target;
         }
 
-        if (!changed) {
-            return;
+        if (changed) {
+            this.samplesRevision++;
         }
 
-        this.#recompute();
-        this.notify();
+        return changed;
     }
 
     get ranges() {
+        return this.#effectiveRanges;
+    }
+
+    get requestedRanges() {
         return this.#ranges;
     }
 
     // Legacy bounds describe the envelope only. Computation always uses the complete interval set.
     get rangeStart() {
-        return this.#ranges === null ? null : this.#ranges[0]?.start ?? 0;
+        return this.ranges === null ? null : this.ranges[0]?.start ?? 0;
     }
 
     get rangeEnd() {
-        return this.#ranges === null ? null : this.#ranges[this.#ranges.length - 1]?.end ?? 0;
+        return this.ranges === null ? null : this.ranges[this.ranges.length - 1]?.end ?? 0;
     }
 
     resetRange() {
@@ -183,6 +245,7 @@ export class PopulationFiltered extends Observer {
         }
 
         this.#ranges = next;
+        this.#effectiveRanges = intersectRangeSets(this.source.ranges, next);
         this.#compileValues();
         this.#recompute();
         this.notify();
@@ -234,13 +297,15 @@ export class PopulationFiltered extends Observer {
     }
 
     #compileValues() {
-        if (this.#ranges && this.#ranges.length > 1) {
-            this.#compileMultipleRanges(this.#ranges);
+        this.#boundaryCuts.length = 0;
+
+        if (this.ranges && this.ranges.length > 1) {
+            this.#compileMultipleRanges(this.ranges);
             return;
         }
 
         // Range changes affect weights only; compiled sample destinations and attribute acceptance are reused.
-        const originalValues = this.population.values;
+        const originalValues = this.source.values;
         const { values, cumulative, rangeStart, rangeEnd } = this;
         const indexStart = this.indexStart ?? 0;
         const indexEnd = this.indexEnd ?? values.length;
@@ -290,15 +355,15 @@ export class PopulationFiltered extends Observer {
                 : 0;
         }
 
-        // Test original weights first, then clip only admitted edges. A single-event range must be clipped once,
-        // from the original weight, not by sequential subtraction from an already truncated Uint32 value.
+        // Keep admitted edge weights whole; patch aggregates after accumulation. A single-event range is
+        // clipped once from its full weight, never by subtracting from an already truncated Uint32 value.
         if (hasRange && first < last) {
             if (values[first] !== 0) {
-                values[first] = Math.min(cumulative[first] + originalValues[first], rangeEnd) - Math.max(cumulative[first], rangeStart);
+                this.#addBoundaryCut(first, Math.min(cumulative[first] + originalValues[first], rangeEnd) - Math.max(cumulative[first], rangeStart));
             }
 
             if (last - 1 !== first && values[last - 1] !== 0) {
-                values[last - 1] = rangeEnd - cumulative[last - 1];
+                this.#addBoundaryCut(last - 1, rangeEnd - cumulative[last - 1]);
             }
         }
 
@@ -307,7 +372,7 @@ export class PopulationFiltered extends Observer {
 
     #compileMultipleRanges(ranges: RangeSet) {
         const { values, cumulative } = this;
-        const originalValues = this.population.values;
+        const originalValues = this.source.values;
         const indexStart = this.indexStart ?? 0;
         const indexEnd = this.indexEnd ?? values.length;
         const min = this.valueMin ?? -Infinity;
@@ -318,19 +383,23 @@ export class PopulationFiltered extends Observer {
         let rangeSamples = 0;
 
         // Called only at interval edges, never from the event loop. Successive intervals can touch the same event;
-        // keep its sum in Number across writes so fractional contributions survive Uint32 truncation.
+        // keep its sum in Number until recording the cut so fractional contributions survive Uint32 truncation.
         const addBoundary = (index: number, contribution: number) => {
             const originalValue = originalValues[index];
 
             if (index !== boundaryIndex) {
+                if (boundaryIndex !== -1) {
+                    this.#addBoundaryCut(boundaryIndex, boundaryValue);
+                }
+
                 boundaryIndex = index;
                 boundaryValue = 0;
-                rangeSamples++;
+                rangeSamples += originalValue > 0 ? 1 : 0;
             }
 
             boundaryValue += contribution;
             values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
-                ? boundaryValue : 0;
+                ? originalValue : 0;
         };
 
         // Normalized ranges are ordered and disjoint. Seek each interval; do not scan events in the gaps.
@@ -359,23 +428,40 @@ export class PopulationFiltered extends Observer {
             }
         }
 
+        if (boundaryIndex !== -1) {
+            this.#addBoundaryCut(boundaryIndex, boundaryValue);
+        }
+
         values.fill(0, clearedEnd);
         this.rangeSamples = rangeSamples;
+    }
+
+    #addBoundaryCut(index: number, contribution: number) {
+        const value = this.values[index];
+
+        if (value > 0) {
+            const cut = value - Math.min(value, Math.max(0, Math.trunc(contribution)));
+
+            if (cut > 0) {
+                this.#boundaryCuts.push({ index, value: cut });
+            }
+        }
     }
 }
 
 function createComputeBuffer(
-    population: Population,
+    population: Population | PopulationFiltered,
     useWasm = true
 ) {
-    const { samples, values, samplesCount, samplesTotal } = population;
+    const { samples, values, samplesCount } = population;
+    const aggregateSize = samplesCount.length + 1;
     // estimate buffer size
     let bufferOffset = 0;
     const bufferSize =
         values.length + // values
         samples.length + // samples
-        samplesCount.length + 1 +
-        samplesTotal.length + 1;
+        aggregateSize +
+        aggregateSize;
 
     const memory = useWasm
         ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
@@ -383,20 +469,56 @@ function createComputeBuffer(
     const buffer = new Uint32Array(memory.buffer);
     const bufferMap: PopulationBufferMap = {
         memory,
-        values: adopt(values),
+        values: reserve(values.length),
         samples: adopt(samples),
-        samplesCount: adopt(samplesCount, 1),
-        samplesTotal: adopt(samplesTotal, 1)
+        samplesCount: reserve(aggregateSize),
+        samplesTotal: reserve(aggregateSize)
     };
 
     return bufferMap;
 
-    function adopt(array: Uint32Array, extraLength = 0) {
+    function adopt(array: Uint32Array) {
         buffer.set(array, bufferOffset);
 
-        return buffer.subarray(bufferOffset, bufferOffset += array.length + extraLength);
+        return buffer.subarray(bufferOffset, bufferOffset += array.length);
     }
 
+    function reserve(length: number) {
+        return buffer.subarray(bufferOffset, bufferOffset += length);
+    }
+}
+
+function intersectRangeSets(source: RangeSet | null, ranges: RangeSet | null): RangeSet | null {
+    if (source === null) {
+        return ranges;
+    }
+
+    if (ranges === null) {
+        return source;
+    }
+
+    const result: { start: number; end: number }[] = [];
+    let sourceIndex = 0;
+    let rangeIndex = 0;
+
+    while (sourceIndex < source.length && rangeIndex < ranges.length) {
+        const parent = source[sourceIndex];
+        const own = ranges[rangeIndex];
+        const start = Math.max(parent.start, own.start);
+        const end = Math.min(parent.end, own.end);
+
+        if (start < end) {
+            result.push({ start, end });
+        }
+
+        if (parent.end <= own.end) {
+            sourceIndex++;
+        } else {
+            rangeIndex++;
+        }
+    }
+
+    return normalizeRanges(result);
 }
 
 function computeCumulative(values: Uint32Array) {

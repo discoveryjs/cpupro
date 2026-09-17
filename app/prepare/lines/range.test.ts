@@ -74,7 +74,10 @@ test('retains global selection while populations move into, across and out of it
     assert.equal(first.cumulative, cumulative);
     selection.setRange(110.5, 110.75);
     assert.equal(first.rangeSamples, 1);
-    assert.ok(first.values.every(value => value === 0));
+    assert.equal(first.values.filter(value => value > 0).length, 1);
+    assert.ok(first.samplesTotal.every(value => value === 0));
+    assert.ok(first.samplesCount.every(value => value === 0));
+    assert.deepEqual(first.sink, { total: 0, count: 0 });
     selection.resetRange();
     firstFrame.setOrigin(1000);
     assert.equal(first.rangeStart, null);

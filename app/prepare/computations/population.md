@@ -1,6 +1,12 @@
 # Population Filtering
 
-`Population` keeps the original event vectors and aggregates by sample ID. `PopulationFiltered` prepares independent `samples` and `values` vectors for the existing JS/WASM aggregation kernels. Events and sample IDs are different domains: there may be many events for one sample ID.
+`Population` keeps the original event vectors and aggregates by sample ID. `PopulationFiltered` accepts a Base or another `PopulationFiltered` as its immediate `source`; its existing `population` property still identifies Base for structural consumers. Each derived owns independent `samples`, `values` and aggregate buffers. Events and sample IDs are different domains: there may be many events for one sample ID.
+
+`values` retains the full source weight of each participating event, with zeros outside effective ranges or rejected by local index/value constraints. Attribute filters preserve weights and route rejected events to sink. Event indices never change, and `cumulative` and `cumulativeEnd` retain the Base coordinate axis. Do not derive coordinates by summing derived values or pass them to a binning routine that interprets weights as consecutive coordinate lengths.
+
+The unchanged JS/WASM kernels aggregate these full weights. A second pass applies boundary cuts to `samplesTotal` and, when the truncated contribution is zero, `samplesCount`, including their sink cells. Subscribers see only the completed result. Cut descriptors cost O(range boundaries); there is no second event-sized values vector or second totals vector. Derived consumers use source events and coverage, never source aggregates as input.
+
+Each derived keeps `requestedRanges` separately from effective `ranges`, which intersect its request with source ranges. Local `null` inherits the source; `[]` stays empty. Source updates refresh the child, even when a changed range has identical aggregate totals. `samplesRevision` tracks destination changes so a source range-only update does not execute attribute predicates again. The existing observers remain synchronous; `destroy()` detaches the source subscription without resetting the last result.
 
 ## Attribute Filters
 
@@ -51,13 +57,15 @@ filtered.updateMask(mask => {
 });
 ```
 
-The callback evaluates bucket-level predicates. Compilation then maps each original event's sample ID to itself or `sinkId`. Changing ranges does not rerun this callback. Different attribution domains may have different masks even when their filter descriptions are shared.
+The callback evaluates bucket-level predicates over ordinary sample IDs. Compilation then maps each source event's sample ID to itself or `sinkId`. An incoming sink stays sink without consulting local masks or event predicates. Changing ranges does not rerun this callback. Source filters and their bit assignments are not copied into the child. Different attribution domains may have different masks even when their filter descriptions are shared.
 
-The hot aggregation kernels retain their current semantics: total sums effective values, count counts nonzero effective values. No filter predicates are evaluated by these kernels.
+The hot aggregation kernels retain their current operations: sum input values and count nonzero input values. The boundary patch produces effective totals and counts after this accumulation. No filter predicates are evaluated by these kernels.
 
 ## Sink
 
 For a public sample domain of size `U`, `sinkId` is `U`. Internal `buffer.samplesCount` and `buffer.samplesTotal` have `U + 1` cells. Public `samplesCount` and `samplesTotal` are stable views of `[0, U)`; projections never consume the sink cell.
+
+Base exposes the same sink contract. `new Population(samples, values, sampleCount)` can declare the ordinary sample-domain size when input already contains sink IDs; omitted `sampleCount` preserves inference from ordinary samples. All descendants retain this domain and sink ID. Local filter reset cannot restore a source sink; a subsequent source destination update can. Attribute domains exclude sink: it has no category or event attributes to query.
 
 `sink` returns `{ count, total }` for masked events that still have a nonzero effective contribution after all range/value constraints. Events outside those constraints contribute zero, including to the sink. This is not a total of every excluded event in the original profile.
 
@@ -81,7 +89,7 @@ After collecting breakdowns, `prepareLineRange()` connects distinct existing wor
 
 UI gestures call `RangeView.setRange()` in local display coordinates; the view resolves them into the request's coordinate space. Rulers have no separate origin parameter. They render multiple intervals without filling internal gaps; the current drag operation replaces the request with one interval. Runtime tracks consume the request directly in space coordinates. Full absent-coverage shading and multi-interval editing controls remain representation work.
 
-Coordinate descriptors and their transient transformations cost O(number of intervals). There are no additional occurrence-sized arrays, projection mappings, WASM memories or topology copies. Multi-range values use the existing workspace; the optimized single-range path and JS/WASM aggregation kernels are retained.
+Coordinate descriptors and their transient transformations cost O(number of intervals). Each derived uses its own existing-style workspace, with no additional occurrence-sized arrays for clipping, projection mappings or topology copies. Multi-range preparation uses that workspace; the optimized single-range path and JS/WASM aggregation kernels are retained.
 
 AC installs `subscribeSelectionSync()` for the loaded profiles and supplies the current peers. Its present policy synchronizes enabled profiles in the same bucket immediately, using their aligned recording-time coordinates. Bucket membership is read for each request, not fixed during preparation; other synchronization policies and unrelated recording clocks are not inferred from equal units. Switching a profile or line is navigation only and does not replay a translated selection. Unload detaches the subscriptions.
 
@@ -91,24 +99,24 @@ AC installs `subscribeSelectionSync()` for the loaded profiles and supplies the 
 
 Mapping borrows immutable cumulative vectors from existing population workspaces; that access through breakdowns remains a migration dependency, not projection ownership of coordinates. Binary searches locate the endpoints of each range without scanning intervening samples or allocations. Only interval descriptors are produced; no new occurrence vectors, mappings, trees or WASM memories are retained. Changed local coverage eagerly updates existing recipient workspaces, including inactive profiles selected by the AC policy. Lazy computation, batched publication and editable bucket policies remain separate work.
 
-All local constraints are half-open. They are applied to original data, not to the result of an earlier constraint:
+All local constraints are half-open. They are applied to the source's full participating weights, not its clipped aggregates. Within one derived, index/value/range constraints remain independent of setter order:
 
 | Method | Meaning |
 | --- | --- |
-| `setRanges(ranges)` | Local interval-set compatibility input; overlapping intervals are normalized, then clipped to the local extent. |
+| `setRanges(ranges)` | Local request; overlapping intervals are normalized, clipped to the Base extent, then intersected with source coverage for execution. |
 | `setRange(start, end)` | Coordinate range on the original cumulative axis; boundary events contribute only their overlap. |
 | `setIndexRange(start, end)` | Original event-index interval; events outside it get zero effective value. |
 | `setValueRange(min, max)` | Accept original values in `[min, max)`; this is a predicate, not value clamping. |
 
 Index boundaries must be integers. Coordinate/index endpoints are clamped to the input domain; reversed or non-finite endpoints are rejected. For index/value ranges, `null` is an open bound and two nulls clear the constraint. For the existing coordinate API, either null endpoint resets the range. `resetRange()`, `resetIndexRange()` and `resetValueRange()` reset only their respective constraint, leaving the mask and other constraints in place.
 
-`PopulationFiltered.rangeStart/rangeEnd` are legacy envelope getters, not a multi-interval request. Computation uses `ranges`, including gaps. When several ranges overlap one duration-bearing event, contributions are summed before typed-array truncation and the event is counted once. The existing cumulative-bytes allocation clipping policy is preserved in this compatibility path; native allocation-timestamp participation is not implemented by treating byte weights as durations.
+`PopulationFiltered.rangeStart/rangeEnd` are legacy effective-envelope getters, not a multi-interval request. Computation uses `ranges`, including gaps. When several ranges overlap one duration-bearing event, contributions are summed before typed-array truncation and the event is counted once. Every descendant computes cuts from full source weights and exact effective ranges, so it does not inherit an earlier level's truncation. The existing cumulative-bytes allocation clipping policy is preserved in this compatibility path; native allocation-timestamp participation is not implemented by treating byte weights as durations.
 
 `rangeSamples` counts events with positive coordinate overlap before bucket masking and index/value acceptance; it is null when no coordinate range is active. It is not the filtered count. Effective values and counts still use the existing integer typed-array representation. Fractional storage and cumulative-axis overflow are not redesigned here.
 
-Range preparation assumes a non-overflowed cumulative axis: it finds the event interval by binary search, clears the prefix/suffix with typed-array fills and processes only the interval. Interior events retain their original weights; only the first and last events need clipping. Repeated coordinates from zero-sized events are handled by distinct lower/upper boundaries. `computeCumulative()` builds the coordinate vector using local arrays. This does not allocate an additional event vector or change the aggregation kernel's full scan.
+Range preparation assumes a non-overflowed cumulative axis: it finds the event interval by binary search, clears the prefix/suffix with typed-array fills and processes only the interval. Participating events retain their full weights; only the first and last events need aggregate cuts. Repeated coordinates from zero-sized events are handled by distinct lower/upper boundaries. `computeCumulative()` builds the coordinate vector using local arrays. This does not allocate an additional event vector or change the aggregation kernel's full scan.
 
-Multi-range preparation iterates normalized intervals, seeking each interval's event boundaries separately. Gaps are zeroed with typed-array fills; their events are not visited by the JavaScript event loop. That loop copies whole interior weights and applies index/value constraints without inspecting ranges or computing overlaps. Only interval edges use overlap arithmetic. A scalar accumulator retains contributions when successive intervals share an edge event, preserving fractional sums and counting that event once. No event-sized scratch vector is needed. The aggregation kernel still scans the resulting full vector.
+Multi-range preparation iterates normalized intervals, seeking each interval's event boundaries separately. Gaps are zeroed with typed-array fills; their events are not visited by the JavaScript event loop. That loop copies whole weights and applies index/value constraints without inspecting ranges or computing overlaps. Only interval edges use overlap arithmetic. A scalar accumulator retains contributions when successive intervals share an edge event, preserving fractional sums and recording one aggregate cut per affected event. Cuts are reused on mask changes with the new sample destinations. No event-sized scratch vector is needed. The aggregation kernel still scans the resulting full vector.
 
 Overflow handling is deferred for both `cumulative` and aggregate vectors such as `samplesTotal`. They remain `Uint32Array`; there is no separate fallback for wrapped coordinates or claim of correct range results after overflow. Widening only the coordinate vector would not solve aggregate overflow.
 
@@ -116,7 +124,7 @@ Set/reset order must not affect compiled inputs or aggregates. Base vectors, sou
 
 ## Current Boundaries
 
-This is not the complete target derived-population pipeline. Base values remain stable; a separate Viewport Population is still missing. `PopulationFiltered` remains the existing selection-like workspace for detailed projections, not both Viewport and Selection states. Navigation histograms still use Base, and range counters still read that selection-like workspace. Those consumer assignments need explicit revision when Viewport is introduced.
+The computation layer supports `Base -> PopulationFiltered(viewport) -> PopulationFiltered(selection)`. The application does not yet construct this chain: `PopulationFiltered` remains the existing selection-like workspace for detailed projections. Navigation histograms still use Base, and range counters still read that selection-like workspace. The next integration step must construct the viewport state, move current user filters to it, retain independent selection filters, and adapt bins to full values plus effective coverage. No viewport UI or filter relocation is included in this computation slice.
 
 `Population.samples` still contains attribution-specific bucket IDs, category acceptance still uses that basis, and effective contribution/local coverage materialization remain fused in `PopulationFiltered`. Frame placement does not merge attribution domains. The coordinate module itself has no dependency on population, line or projection types. Higher-level scope ownership, classifier capabilities upstream of breakdowns, and source-map readiness remain open construction work.
 

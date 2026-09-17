@@ -58,11 +58,14 @@ test('independent presentations of one base population do not compete for scope 
     const stopFirst = applyRangeToPopulation(firstView, first);
     const stopSecond = applyRangeToPopulation(secondView, second);
     firstScope.setRanges([{ start: 0, end: 5 }, { start: 15, end: 20 }]);
-    assert.deepEqual([...first.values], [5, 5]);
+    assert.deepEqual([...first.values], [10, 20]);
+    assert.deepEqual([...first.samplesTotal], [5, 5]);
     assert.deepEqual(second.values, base.values);
     secondScope.setRange(10, 15);
-    assert.deepEqual([...second.values], [0, 5]);
-    assert.deepEqual([...first.values], [5, 5]);
+    assert.deepEqual([...second.values], [0, 20]);
+    assert.deepEqual([...second.samplesTotal], [0, 5]);
+    assert.deepEqual([...first.values], [10, 20]);
+    assert.deepEqual([...first.samplesTotal], [5, 5]);
     assert.deepEqual([...base.values], [10, 20]);
     stopFirst();
     stopSecond();
