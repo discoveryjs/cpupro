@@ -1,13 +1,13 @@
 import type { Dictionary } from '../dictionary.js';
 import type { IProfileScriptsMap, V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
-import { ProfileScriptsMap } from './scripts.js';
+import { OriginalScriptsMap, ProfileScriptsMap } from './scripts.js';
 import { createNodesCallFrameIndex, GeneratedNodes } from './nodes.js';
 
 export function extractCallFramesFromNodes(
     dict: Dictionary,
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     callFrames?: V8CpuProfileCallFrame[] | null,
-    scriptsMap: IProfileScriptsMap = new ProfileScriptsMap(dict),
+    scriptsMap: IProfileScriptsMap = new ProfileScriptsMap(dict, new OriginalScriptsMap(dict)),
     generatedNodes?: GeneratedNodes | null
 ) {
     // callFrames
