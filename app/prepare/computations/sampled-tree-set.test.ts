@@ -9,7 +9,8 @@ import { noopWorkHandler } from '../misc/work.js';
 
 test('preserves source identity and sparse sample IDs through source mapping', async () => {
     const { profile, dictionary, scriptsMap } = await createProfileFixture();
-    const population = new PopulationFiltered(new Population(new Uint32Array([1, 1]), new Uint32Array([16, 32])));
+    const viewport = new PopulationFiltered(new Population(new Uint32Array([1, 1]), new Uint32Array([16, 32])));
+    const population = new PopulationFiltered(viewport);
     const source = {
         dictionary: dictionary.locations,
         parent: new Uint32Array([0, 0, 0]),
@@ -23,13 +24,14 @@ test('preserves source identity and sparse sample IDs through source mapping', a
     if (!inject('useUsage')) {
         assert.equal(trees.dictionary, dictionary);
     }
-    const original = await createLineBreakdown('extra', profile.memline!, population, trees, noopWorkHandler);
+    const original = await createLineBreakdown('extra', profile.memline!, population, viewport, trees, noopWorkHandler);
     const previousBreakdowns = profile.memline!.breakdowns.slice();
     const mapped = await createSourceMappedBreakdown('extra-sm', profile.memline!, dictionary, scriptsMap, original, null, noopWorkHandler);
     assert.ok(mapped);
     assert.deepEqual(profile.memline!.breakdowns, previousBreakdowns);
     assert.equal(mapped.population, population.population);
     assert.equal(mapped.populationFiltered, population);
+    assert.equal(mapped.populationViewport, viewport);
     assert.equal(mapped.population.samples, originalSamples);
     assert.deepEqual([...originalSamples], [1, 1]);
     const all = mapped.locations!.all.nodes;

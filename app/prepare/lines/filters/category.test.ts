@@ -22,9 +22,11 @@ test('unions categories per population and line without depending on breakdown k
     for (const reverse of [false, true]) {
         const first = new PopulationFiltered(new Population(new Uint32Array([0, 1]), new Uint32Array([10, 20])));
         const second = new PopulationFiltered(new Population(new Uint32Array([0, 1]), new Uint32Array([30, 40])));
-        const execution = { ...original, kind: 'first-view', population: first.population, populationFiltered: first, source: makeSource(['script', 'script']) };
+        const execution = { ...original, kind: 'first-view', population: first.population,
+            populationViewport: first, populationFiltered: new PopulationFiltered(first), source: makeSource(['script', 'script']) };
         const mapped = { ...execution, kind: 'another-view', source: makeSource(['source-only', 'script']) };
-        const other = { ...original, population: second.population, populationFiltered: second, source: makeSource(['other', 'other']) };
+        const other = { ...original, population: second.population,
+            populationViewport: second, populationFiltered: new PopulationFiltered(second), source: makeSource(['other', 'other']) };
         const local = createCategoryFilter([execution, mapped]);
         assert.deepEqual(local.settings.options.map(option => option.key), ['script', 'source-only']);
         assert.deepEqual(createCategoryFilter([other]).settings.options.map(option => option.key), ['other']);

@@ -5,23 +5,11 @@ import { test } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { lineExtent } from '../jora/viewport.js';
 import { validateRange } from '../prepare/computations/coordinates.js';
-import { RangeSelection } from '../prepare/computations/range.js';
+import { createLineFixture } from '../../test/fixtures/profile.js';
 import usage from './line-histogram.usage.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
 
 type Render = (element: unknown, props: unknown, data: unknown, context: unknown) => Promise<void>;
-
-function createLine(origin = 120, total = 60) {
-    const profile = { runtime: {}, lines: [] as unknown[] };
-    const line = {
-        type: 'timeline', profile, breakdowns: [] as unknown[],
-        range: new RangeSelection({ name: 'time', unit: 'us' }).view({ start: 0, end: total }, origin)
-    };
-    profile.lines.push(line);
-    Object.assign(profile, { timeline: line });
-    line.breakdowns.push({ kind: 'call-stack', line });
-    return line;
-}
 
 function renderHistogram(props = {}, context = {}) {
     let render: Render = () => assert.fail('View was not registered');
@@ -55,8 +43,8 @@ function renderHistogram(props = {}, context = {}) {
     return { styles, child, bins, calls };
 }
 
-test('renders viewport bins without rebucketing or mutating selection', () => {
-    const line = createLine();
+test('renders viewport bins without rebucketing or mutating selection', async () => {
+    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
     line.range.setRange(10, 20);
     const requested = line.range.selection.ranges;
     const presence = new Uint8Array([1, 1, 1]);
@@ -71,9 +59,9 @@ test('renders viewport bins without rebucketing or mutating selection', () => {
     assert.equal(line.range.selection.ranges, requested);
 });
 
-test('uses an explicit line or resolves the line from context', () => {
-    const line = createLine();
-    const other = createLine(100, 100);
+test('uses an explicit line or resolves the line from context', async () => {
+    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
+    const { line: other } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const context = {
         primaryProfile: other.profile, primaryLineType: 'timeline',
         scopeLine: other, scopeBreakdown: other.breakdowns[0], scopeViewport: { start: 100, end: 200 }
@@ -93,8 +81,8 @@ test('uses an explicit line or resolves the line from context', () => {
 });
 
 
-test('explicit viewport overrides context and local viewport keeps the full width', () => {
-    const line = createLine();
+test('explicit viewport overrides context and local viewport keeps the full width', async () => {
+    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
     for (const props of [{}, { viewport: { start: 120, end: 180 } }]) {
         const { styles } = renderHistogram(props, { scopeLine: line });
         assert.equal(styles.get('--range-pad-start'), 0);
@@ -107,9 +95,10 @@ test('explicit viewport overrides context and local viewport keeps the full widt
     assert.equal(styles.get('--range-pad-end'), 0);
 });
 
-test('uses the context line for the default viewport independently of the displayed extent', () => {
-    const line = createLine();
-    const { styles } = renderHistogram({ line }, { scopeLine: createLine(100, 100) });
+test('uses the context line for the default viewport independently of the displayed extent', async () => {
+    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
+    const { line: scopeLine } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+    const { styles } = renderHistogram({ line }, { scopeLine });
 
     assert.equal(styles.get('--range-pad-start'), 0.2);
     assert.equal(styles.get('--range-pad-end'), 0.2);

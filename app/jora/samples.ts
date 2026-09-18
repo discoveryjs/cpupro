@@ -1,54 +1,116 @@
 import { ProfileLine, ProfileLineType } from '../prepare/lines/types.js';
-import { resolveScopeProfileLine, resolveScopeViewport } from './profile.js';
+import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange } from './viewport.js';
+import { findCumulativeBoundary, type PopulationFiltered } from '../prepare/computations/population.js';
 
-export function sampleRange(values: number[] | Uint32Array, total: number, skip: number, sourceTotal: number) {
-    let first = 0;
-    let last = values.length - 1;
-    let start = skip;
-    let end = skip + sourceTotal;
+export function sampleRange(cumulative: Uint32Array, total: number, skip: number, sourceTotal: number) {
+    const start = Math.max(0, -skip);
+    const end = Math.min(sourceTotal, total - skip);
 
-    // Trim whole occurrences first; only the two retained boundary values need clipping.
-    while (first <= last && start < 0 && start + values[first] <= 0) {
-        start += values[first++];
+    if (start >= end) {
+        return {
+            first: 0,
+            last: -1,
+            offset: 0,
+            startCut: 0,
+            endCut: 0
+        };
     }
 
-    while (last >= first && end >= total && end - values[last] >= total) {
-        end -= values[last--];
-    }
+    const first = Math.max(0, findCumulativeBoundary(cumulative, start, true) - 1);
+    const last = findCumulativeBoundary(cumulative, end, false) - 1;
+    const lastEnd = last + 1 < cumulative.length ? cumulative[last + 1] : sourceTotal;
 
-    return { first, last, offset: Math.max(0, start), startCut: Math.max(0, -start), endCut: Math.max(0, end - total) };
+    return {
+        first,
+        last,
+        offset: start + skip,
+        startCut: start - cumulative[first],
+        endCut: lastEnd - end
+    };
 }
 
-function countSamples(n: number, values: number[] | Uint32Array, total: number, continues: boolean, skip: number, sourceTotal: number) {
+function countSamples(n: number, viewport: PopulationFiltered, total: number, continues: boolean, skip: number) {
     const bins = new Uint32Array(n);
     const step = total / n;
-    const { first, last, offset: start, startCut, endCut } = sampleRange(values, total, skip, sourceTotal);
-    let binIdx = Math.floor(start / step);
-    let end = (binIdx + 1) * step;
+    const { population, samples, values, sinkId } = viewport;
+    const { values: originalValues, cumulative, cumulativeEnd } = population;
+    let previousEvent = -1;
+    let previousBin = -1;
 
-    for (let i = first, offset = start; i <= last; i++) {
-        const delta = values[i] - (i === first ? startCut : 0) - (i === last ? endCut : 0);
+    for (const range of viewport.ranges ?? [{ start: 0, end: cumulativeEnd }]) {
+        const start = Math.max(0, range.start + skip);
+        const end = Math.min(total, range.end + skip);
 
-        bins[binIdx] += continues || i !== first || startCut === 0 ? 1 : 0;
-        offset += delta;
+        if (start >= end) {
+            continue;
+        }
 
-        if (offset >= end) {
-            const nextBin = binIdx + 1;
+        const { first, last, offset, startCut } = sampleRange(cumulative, end - start, skip - start, cumulativeEnd);
+        let position = offset + start - startCut;
+        let binIndex = Math.floor((offset + start) / step);
+        let binEnd = (binIndex + 1) * step;
+        let count = 0;
 
-            binIdx = Math.min(n, Math.floor(offset / step));
-            end = (binIdx + 1) * step;
+        if (continues) {
+            const lastBin = Math.min(n - 1, Math.ceil(end / step) - 1);
 
-            if (continues) {
-                for (let j = nextBin; j < binIdx; j++) {
-                    bins[j]++;
+            if (first === previousEvent && binIndex <= previousBin) {
+                count = -1;
+            }
+
+            for (let index = first; index <= last; index++) {
+                const accepted = samples[index] !== sinkId && values[index] > 0;
+
+                if (accepted) {
+                    count++;
                 }
 
-                if (offset !== binIdx * step) {
-                    bins[binIdx]++;
+                position += originalValues[index];
+
+                if (position >= binEnd) {
+                    const nextBin = Math.floor(position / step);
+
+                    bins[binIndex] += count;
+                    count = 0;
+
+                    if (accepted) {
+                        const finish = Math.min(lastBin, position === nextBin * step ? nextBin - 1 : nextBin);
+
+                        for (let crossedBin = binIndex + 1; crossedBin <= finish; crossedBin++) {
+                            bins[crossedBin]++;
+                        }
+                    }
+
+                    binIndex = nextBin;
+                    binEnd = (binIndex + 1) * step;
                 }
             }
+
+            previousEvent = last >= first && samples[last] !== sinkId && values[last] > 0 ? last : -1;
+            previousBin = Math.min(lastBin, Math.ceil(position / step) - 1);
+        } else {
+            const firstIndex = startCut > 0 ? first + 1 : first;
+
+            position = cumulative[firstIndex] + skip;
+
+            for (let index = firstIndex; index <= last; index++) {
+                if (position >= binEnd) {
+                    bins[binIndex] += count;
+                    count = 0;
+                    binIndex = Math.floor(position / step);
+                    binEnd = (binIndex + 1) * step;
+                }
+
+                if (samples[index] !== sinkId && values[index] > 0) {
+                    count++;
+                }
+
+                position += originalValues[index];
+            }
         }
+
+        bins[binIndex] += count;
     }
 
     return bins;
@@ -58,15 +120,17 @@ export const methods = {
     countSamples(n = 500, line?: ProfileLine | ProfileLineType) {
         const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
         const { total, skip } = binningRange(resolvedLine, resolveScopeViewport(null, this.context), n);
+        const breakdown = resolveScopeProfileLineBreakdown(null, resolvedLine, this.context)!;
 
-        return countSamples(n, resolvedLine.values, total, true, skip, resolvedLine.axisTotal);
+        return countSamples(n, breakdown.populationViewport, total, true, skip);
     },
 
     countSamplesDiscrete(n = 500, line: unknown) {
         const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
         const { total, skip } = binningRange(resolvedLine, resolveScopeViewport(null, this.context), n);
+        const breakdown = resolveScopeProfileLineBreakdown(null, resolvedLine, this.context)!;
 
-        return countSamples(n, resolvedLine.values, total, false, skip, resolvedLine.axisTotal);
+        return countSamples(n, breakdown.populationViewport, total, false, skip);
     },
 
     sampleXBins(n = 500, line?: ProfileLine | ProfileLineType) {

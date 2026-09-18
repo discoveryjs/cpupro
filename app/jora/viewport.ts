@@ -1,7 +1,7 @@
 import { validateRange, type Range } from '../prepare/computations/coordinates.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
 
-type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'axisStart' | 'axisEnd'>;
+type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'axisStart' | 'axisEnd' | 'viewport'>;
 
 export function lineExtent(line: Pick<ProfileLine, 'range'>) {
     const { frame, extent } = line.range;
@@ -21,6 +21,14 @@ export function timestampExtent(line: Pick<ProfileLine, 'axisStart' | 'axisEnd'>
 
 export function lineViewport(line: ViewportLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
     const extent = lineExtent(line);
+    const ranges = line.viewport.selection.ranges;
+
+    if (ranges) {
+        return {
+            start: ranges[0]?.start ?? extent.start,
+            end: ranges.at(-1)?.end ?? extent.start
+        };
+    }
 
     // Current recordings share timestamps. Cumulative bytes have no cross-thread coordinate relation.
     if (line.kind === 'time' && profiles.length > 0) {

@@ -532,7 +532,7 @@ function computeCumulative(values: Uint32Array) {
     return cumulative;
 }
 
-function findCumulativeBoundary(cumulative: Uint32Array, value: number, afterEqual: boolean) {
+export function findCumulativeBoundary(cumulative: Uint32Array, value: number, afterEqual: boolean) {
     let left = 0;
     let right = cumulative.length;
 

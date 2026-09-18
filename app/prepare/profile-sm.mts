@@ -266,6 +266,7 @@ export async function createSourceMappedBreakdown(
         breakdownName,
         line,
         breakdown.populationFiltered,
+        breakdown.populationViewport,
         sampledTreeSet,
         work
     );

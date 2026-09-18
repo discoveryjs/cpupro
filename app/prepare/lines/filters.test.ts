@@ -12,7 +12,7 @@ test('shared category settings do not imply the same event participation for dis
     category.setSelection('include', ['script']);
 
     const acceptedEvents = [stack, location].map(breakdown => {
-        const accepts = breakdown.populationFiltered.filter.get('category')!.accepts!;
+        const accepts = breakdown.populationViewport.filter.get('category')!.accepts!;
 
         return Array.from(breakdown.population.samples, sampleId => accepts(sampleId));
     });
@@ -41,10 +41,11 @@ test('line owns one setting per attribute across distinct populations and source
     assert.deepEqual(line.filters.filters.map(filter => filter.key), ['category', 'allocationSpace', 'allocationLiveness']);
     for (const breakdown of line.breakdowns) {
         for (const settings of line.filters.filters) {
-            assert.equal(breakdown.populationFiltered.filter.get(settings.key)!.key, settings.key);
+            assert.equal(breakdown.populationViewport.filter.get(settings.key)!.key, settings.key);
+            assert.equal(breakdown.populationFiltered.filter.get(settings.key), undefined);
         }
     }
-    assert.notEqual(populations[0].filter.get('category'), populations[1].filter.get('category'));
+    assert.notEqual(originals[0].populationViewport.filter.get('category'), originals[1].populationViewport.filter.get('category'));
     assert.notEqual(populations[0].samplesMask, populations[1].samplesMask);
     const liveness = line.filters.get('allocationLiveness') as SetAttributeFilter;
     const space = line.filters.get('allocationSpace') as SetAttributeFilter;
@@ -54,7 +55,7 @@ test('line owns one setting per attribute across distinct populations and source
     });
     assert.deepEqual(updates, [1, 1]);
     for (const key of ['allocationLiveness', 'allocationSpace']) {
-        assert.equal(populations[0].filter.get(key), populations[1].filter.get(key));
+        assert.equal(originals[0].populationViewport.filter.get(key), originals[1].populationViewport.filter.get(key));
     }
     for (const breakdown of line.breakdowns) {
         const population = breakdown.populationFiltered;
@@ -75,7 +76,7 @@ test('line owns one setting per attribute across distinct populations and source
     category.setSelection('include', ['script']);
     assert.ok(profile.timeline!.filters.filters.every(filter => !filter.active));
     for (const breakdown of originals) {
-        const binding = breakdown.populationFiltered.filter.get('category')!;
+        const binding = breakdown.populationViewport.filter.get('category')!;
         const accepts = binding.accepts!;
         const categories = breakdown.categories!;
         for (let sampleId = 0; sampleId < binding.size; sampleId++) {

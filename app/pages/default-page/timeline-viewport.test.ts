@@ -4,11 +4,10 @@ import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../../jora/index.mjs';
-import { RangeSelection } from '../../prepare/computations/range.js';
 import { chartUsedHeap } from './chart-used-heap.js';
 import { userTimingsTimeline } from './user-timings-timeline.js';
 import { createState, selectRange, rangeToSegments } from '../../views/ruler-range.js';
-import { createProfileFixture } from '../../../test/fixtures/profile.js';
+import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
 import { histCodes } from './hist-codes.js';
 import { histHeapTotal } from './hist-heap-total.js';
 
@@ -20,10 +19,11 @@ const query = jora.setup({ methods: { ...methods, marker: () => ({ href: '#' }) 
 
 test('evaluates the full panel query with heap timestamps beyond sample coverage', async () => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
+    const other = await createLineFixture({ values: new Uint32Array([100]) });
     profile.heap = { available: 200, capacity: 100, events: [{ tm: 60, event: 'new', size: 10, address: '0x1' }] };
     const context = query(timeline.context)(profile, {
         primaryProfile: profile, primaryLineType: 'timeline',
-        data: { profiles: [profile, { timeline: { axisStart: 0, axisEnd: 100 } }] }
+        data: { profiles: [profile, other.profile] }
     });
     const panel = query(timeline.data)(profile, context);
 
@@ -57,18 +57,13 @@ test('passes code coverage explicitly to each histogram without a context overri
     assert.equal(data.byTier[0].bins, rows[0].bins);
 });
 
-test.each([100, 1000])('shares the viewport bin grid with rendering, ruler and details for duration=%i', duration => {
-    const profile = { runtime: {}, lines: [] as unknown[] };
+test.each([100, 1000])('shares the viewport bin grid with rendering, ruler and details for duration=%i', async duration => {
     const origin = 1000;
-    const line = {
-        profile, type: 'timeline', kind: 'time', axisStart: origin + duration * 0.2, axisEnd: origin + duration * 0.8,
-        range: new RangeSelection({ name: 'time', unit: 'us' })
-            .view({ start: 0, end: duration * 0.6 }, origin + duration * 0.2)
-    };
-    profile.lines.push(line);
+    const { profile, line } = await createLineFixture({ origin: origin + duration * 0.2, values: new Uint32Array([duration * 0.6]) });
+    const other = await createLineFixture({ origin, values: new Uint32Array([duration]) });
     const context = query(timeline.context)({}, {
         primaryProfile: profile, primaryLineType: 'timeline',
-        data: { profiles: [{ timeline: { axisStart: origin, axisEnd: origin + duration } }, { timeline: line }] }
+        data: { profiles: [other.profile, profile] }
     });
     const viewport = query('scopeViewport()')({}, context);
     assert.deepEqual(viewport, { start: origin, end: origin + duration });
@@ -98,18 +93,14 @@ test.each([100, 1000])('shares the viewport bin grid with rendering, ruler and d
     }
 });
 
-test('profile time charts keep their viewport and selection owner when the primary line changes', () => {
-    const profile = { runtime: {}, lines: [] as unknown[], thread: { counters: [], userTimings: [], events: [] } };
-    const timeLine = {
-        profile, type: 'timeline', kind: 'time', axisStart: 120, axisEnd: 180,
-        range: new RangeSelection({ name: 'time', unit: 'us' }).view({ start: 0, end: 60 }, 120)
-    };
-    const memline = {
-        profile, type: 'memline', kind: 'memory', axisStart: 0, axisEnd: 1000,
-        range: new RangeSelection({ name: 'bytes', unit: 'bytes' }).view({ start: 0, end: 1000 })
-    };
-    profile.lines.push(timeLine, memline);
-    Object.assign(profile, { timeline: timeLine, memline });
+test('profile time charts keep their viewport and selection owner when the primary line changes', async () => {
+    const { profile, line: timeLine } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
+    const { line: memline } = await createLineFixture({ type: 'memline', values: new Uint32Array([1000]) });
+    assert.equal(memline.type, 'memline');
+    profile.memline = memline;
+    profile.lines.push(memline);
+    memline.profile = profile;
+    const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     memline.range.setRange(2, 5);
     const memorySelection = memline.range.selection.ranges;
     const charts = timeline.content.at(-1);
@@ -120,7 +111,7 @@ test('profile time charts keep their viewport and selection owner when the prima
         const parentContext = query(timeline.context)({}, {
             primaryProfile: profile, primaryLineType: selectedLine.type,
             scopeLine: selectedLine, scopeBreakdown: { line: selectedLine },
-            data: { profiles: [{ timeline: { axisStart: 100, axisEnd: 200 } }, { timeline: timeLine }] }
+            data: { profiles: [other.profile, profile] }
         });
         const context = query(charts.context)({}, parentContext);
         assert.equal(context.scopeLine, timeLine);
@@ -152,10 +143,11 @@ test('profile time charts keep their viewport and selection owner when the prima
 
 test('a nested viewport reaches bins, ruler and time charts without being recomputed', async () => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
+    const other = await createLineFixture({ values: new Uint32Array([100]) });
     const scopeViewport = { start: 15, end: 25 };
     const parent = {
         primaryProfile: profile, primaryLineType: 'timeline',
-        data: { profiles: [profile, { timeline: { axisStart: 0, axisEnd: 100 } }] }
+        data: { profiles: [profile, other.profile] }
     };
     const context = query(timeline.context)(profile, { ...parent, scopeViewport });
     const panel = query(timeline.data)(profile, context);

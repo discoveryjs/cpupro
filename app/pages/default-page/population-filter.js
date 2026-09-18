@@ -45,11 +45,11 @@ export const populationFilter = {
             },
             {
                 view: 'update-on-line-metrics-changes',
-                metrics: '=populationFiltered',
+                metrics: '=populationViewport',
                 content: {
                     view: 'block',
                     className: 'population-filter__summary',
-                    data: '{ included: populationFiltered.samplesTotal.sum(), excluded: populationFiltered.sink.total }',
+                    data: '{ included: populationViewport.samplesTotal.sum(), excluded: populationViewport.sink.total }',
                     content: [
                         'text:`Included: ${included.formatValue()}`',
                         'text:`Excluded: ${excluded.formatValue()}`'

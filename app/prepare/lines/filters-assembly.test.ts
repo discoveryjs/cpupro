@@ -33,7 +33,7 @@ test('later source attribution contributes options without replacing selected se
     const original = profile.timeline!.breakdowns[0];
     const mapped = profile.timeline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack-sm')!;
     const populationFiltered = new PopulationFiltered(original.population);
-    const execution = { ...original, populationFiltered };
+    const execution = { ...original, populationViewport: populationFiltered, populationFiltered: new PopulationFiltered(populationFiltered) };
     const line = { ...profile.timeline!, filters: new FilterSet(), breakdowns: [execution] };
     const settings = line.filters.add(new SetAttributeFilter('category', 'Categories', []));
     settings.setSelection('include', ['source-only']);
@@ -51,7 +51,7 @@ test('later source attribution contributes options without replacing selected se
         ...mapped.source,
         dictionary: locations.map(entry => ({ ...entry, callFrame: { ...entry.callFrame, category: { id: -1, name: 'source-only' } } }))
     };
-    line.breakdowns.push({ ...mapped, source, populationFiltered });
+    line.breakdowns.push({ ...mapped, source, populationViewport: populationFiltered, populationFiltered: execution.populationFiltered });
     const stopUpdated = prepareLineFilters(line);
     assert.equal(line.filters.get('category'), category);
     assert.deepEqual(line.filters.filters.map(filter => filter.key), ['category']);
@@ -69,7 +69,7 @@ test('later source attribution contributes options without replacing selected se
 test('integration reuses unchanged results and applies a settings batch once per population', async () => {
     const { profile } = await createProfileFixture({ allocationGc: [0, 1, 0, 2] });
     const line = profile.memline!;
-    const populations = [...new Set(line.breakdowns.map(breakdown => breakdown.populationFiltered))];
+    const populations = [...new Set(line.breakdowns.map(breakdown => breakdown.populationViewport))];
     const categories = populations.map(population => population.filter.get('category'));
     const liveness = line.filters.get('allocationLiveness') as SetAttributeFilter;
     let changes = 0;
@@ -116,8 +116,8 @@ test('one category condition covers every attribution of each population', async
     const settings = line.filters.get('category') as SetAttributeFilter;
     assert.ok(settings);
     settings.setSelection('include', ['script']);
-    for (const populationFiltered of new Set(line.breakdowns.map(breakdown => breakdown.populationFiltered))) {
-        const sources = line.breakdowns.filter(breakdown => breakdown.populationFiltered === populationFiltered).map(breakdown => breakdown.source);
+    for (const populationFiltered of new Set(line.breakdowns.map(breakdown => breakdown.populationViewport))) {
+        const sources = line.breakdowns.filter(breakdown => breakdown.populationViewport === populationFiltered).map(breakdown => breakdown.source);
         assert.deepEqual(populationFiltered.filter.filters.map(filter => filter.key), ['category']);
         const accepts = populationFiltered.filter.get('category')!.accepts!;
         for (let sampleId = 0; sampleId < populationFiltered.samplesCount.length; sampleId++) {

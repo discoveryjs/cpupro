@@ -93,12 +93,13 @@ test('integration applies existing selection, detaches both subscriptions and ho
     const origin = line.axisStart + line.axisStartNoSamples;
     assert.equal(line.range.frame.origin, origin);
     const population = new Population(original.population.samples, original.population.values);
-    const filtered = new PopulationFiltered(population);
+    const populationViewport = new PopulationFiltered(population);
+    const filtered = new PopulationFiltered(populationViewport);
     const selection = new RangeSelection(line.range.selection.space);
     const frame = new CoordinateFrame(selection.space, origin);
     const range = new RangeView(selection, frame, { start: 0, end: 30 });
     selection.setRange(origin + 5, origin + 25);
-    const testLine = { ...line, range, breakdowns: [{ ...original, population, populationFiltered: filtered }] };
+    const testLine = { ...line, range, breakdowns: [{ ...original, population, populationViewport, populationFiltered: filtered }] };
     const stop = prepareLineRange(testLine);
     assert.equal(filtered.rangeStart, 5);
     assert.equal(filtered.rangeEnd, 25);
@@ -114,4 +115,45 @@ test('integration applies existing selection, detaches both subscriptions and ho
     range.resetRange();
     assert.equal(filtered.rangeStart, null);
     stopUpdated();
+});
+
+test('viewport limits selection without changing its request, baseline or topology', async () => {
+    const { profile } = await createProfileFixture();
+    for (const line of profile.lines) {
+        const total = line.axisTotal;
+        const origin = line.range.frame.origin;
+        const selections = new Set(line.breakdowns.map(breakdown => breakdown.populationFiltered));
+        const viewports = new Set(line.breakdowns.map(breakdown => breakdown.populationViewport));
+        const baselines = line.breakdowns.map(breakdown => breakdown.callFrames!.all.nodes.selfValues.slice());
+        const trees = line.breakdowns.map(breakdown => breakdown.callFrames!.tree);
+        line.range.selection.setRange(origin + total * 0.5, origin + total * 0.9);
+        const request = line.range.selection.ranges;
+        line.viewport.selection.setRange(origin + total * 0.2, origin + total * 0.6);
+        for (const viewport of viewports) {
+            assert.ok(Math.abs(viewport.samplesTotal.reduce((sum, value) => sum + value, 0) - total * 0.4) < 1);
+        }
+        for (const selection of selections) {
+            assert.ok(Math.abs(selection.samplesTotal.reduce((sum, value) => sum + value, 0) - total * 0.1) < 1);
+            assert.deepEqual(selection.ranges, [{ start: total * 0.5, end: total * 0.6 }]);
+        }
+        assert.equal(line.range.selection.ranges, request);
+        line.viewport.setRange(0, total * 0.4);
+        for (const selection of selections) {
+            assert.deepEqual(selection.ranges, []);
+        }
+        line.range.resetRange();
+        for (const selection of selections) {
+            assert.deepEqual(selection.samplesTotal, selection.source.samplesTotal);
+            selection.filter.set({ key: 'selection-only', domain: 'sample', size: selection.samplesCount.length, accepts: () => false });
+            assert.ok(selection.samplesTotal.every(value => value === 0));
+            assert.ok(selection.source.samplesTotal.some(value => value > 0));
+            selection.filter.remove('selection-only');
+        }
+        line.viewport.resetRange();
+        for (const [index, breakdown] of line.breakdowns.entries()) {
+            assert.deepEqual(breakdown.populationFiltered.samplesTotal, breakdown.population.samplesTotal);
+            assert.deepEqual(breakdown.callFrames!.all.nodes.selfValues, baselines[index]);
+            assert.equal(breakdown.callFrames!.tree, trees[index]);
+        }
+    }
 });

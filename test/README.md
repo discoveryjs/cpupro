@@ -32,6 +32,8 @@ Use small deterministic inputs and assert the intended contract. Prefer invarian
 
 Fixtures shared by several modules live in `test/fixtures/`; reusable adapters live in `test/helpers/`. Module-specific fixtures can stay beside their test. Nothing in production imports the test directories.
 
+Line consumers (Jora methods and views) use `createLineFixture()` from `test/fixtures/profile.ts`. It returns `{ profile, line, breakdown }` with a real prepared profile, production projection/metric construction, a Base/Viewport/Selection chain and independent requests in one frame. Configure `type`, `origin`, `before`, `after`, `values` and `samples`; do not assemble partial lines with `as ProfileLine` or replace their related fields separately. Sample IDs and weights are kept exactly as supplied; the small structural basis repeats its attribution mappings for extra sample IDs. Use `createProfileFixture()` instead when testing preparation, source maps or actual allocation attribution. Each call creates fresh mutable state; no prepared objects are cached between tests. Benchmark setup belongs outside timed callbacks.
+
 The Vitest VS Code extension can run tests from the editor. Vite handles JS/TS and the project's `.js`/`.mjs` import specifiers; no per-test bundler is needed.
 
 ## Computation modes

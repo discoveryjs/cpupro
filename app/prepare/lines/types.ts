@@ -36,6 +36,7 @@ export type ProfileLineBreakdown = {
     line: ProfileLine;
     source: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>;
     population: Population;
+    populationViewport: PopulationFiltered;
     populationFiltered: PopulationFiltered;
     recomputeMetrics: () => void;
     locations: LineTreeDimension<CpuProLocation> | null;
@@ -122,6 +123,7 @@ export type ProfileLine = {
     values: Uint32Array;
     attributes: ProfileLineAttribute[];
     filters: FilterSet;
+    viewport: RangeView;
     range: RangeView;
 
     // Line-owned tree breakdowns. Several lines may reuse the same tree structure,

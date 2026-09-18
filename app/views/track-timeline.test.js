@@ -3,19 +3,17 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { afterEach, test, vi } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { RangeSelection } from '../prepare/computations/range.js';
+import { createLineFixture } from '../../test/fixtures/profile.js';
 import { TrackTimeline as CanvasTrackTimeline } from './track-timeline/index.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-function renderTimeline(config = {}, scopeViewport) {
-    const selection = new RangeSelection({ name: 'time', unit: 'us' });
-    const scopeLine = {
-        kind: 'time', axisStart: 120, axisEnd: 180,
-        range: selection.view({ start: 0, end: 50 }, 125)
-    };
+async function renderTimeline(config = {}, scopeViewport) {
+    const { line: scopeLine } = await createLineFixture({ origin: 125, values: new Uint32Array([50]), before: 5, after: 5 });
+    const { selection } = scopeLine.range;
+    const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const context = { scopeLine, scopeViewport, data: { profiles: [
-        { timeline: scopeLine }, { timeline: { axisStart: 100, axisEnd: 200 } }
+        scopeLine.profile, other.profile
     ] } };
     let render;
     let timeline;
@@ -57,14 +55,14 @@ function renderTimeline(config = {}, scopeViewport) {
     } };
 }
 
-test('uses the common viewport or its scoped and explicit overrides', () => {
+test('uses the common viewport or its scoped and explicit overrides', async () => {
     for (const [config, scoped, expected] of [
         [{}, undefined, { start: 100, end: 200 }],
         [{}, { start: 130, end: 160 }, { start: 130, end: 160 }],
         [{ viewport: { start: 90, end: 210 } }, { start: 130, end: 160 }, { start: 90, end: 210 }],
         [{ minX: 10, maxX: 900 }, { start: 130, end: 160 }, { start: 10, end: 900 }]
     ]) {
-        const { timeline, hover } = renderTimeline(config, scoped);
+        const { timeline, hover } = await renderTimeline(config, scoped);
         assert.equal(timeline.options.minX, expected.start);
         assert.equal(timeline.options.maxX, expected.end);
         const tooltipContext = hover({ start: 135, end: 145 });
@@ -73,8 +71,8 @@ test('uses the common viewport or its scoped and explicit overrides', () => {
     }
 });
 
-test('preserves absolute selection on span clicks, external changes and reset', () => {
-    const { timeline, selection, destroyElement } = renderTimeline();
+test('preserves absolute selection on span clicks, external changes and reset', async () => {
+    const { timeline, selection, destroyElement } = await renderTimeline();
     timeline.options.onClick({ start: 110, end: 140 });
     assert.deepEqual(selection.ranges, [{ start: 110, end: 140 }]);
     assert.equal(timeline.selection, selection.ranges);

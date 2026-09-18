@@ -37,9 +37,10 @@ export async function createMemlineLocationsBreakdown(
     };
     const population = await work('create allocation location population', () => {
         const population = new Population(samples, allocationSizes);
-        const populationFiltered = new PopulationFiltered(population);
+        const populationViewport = new PopulationFiltered(population);
+        const populationFiltered = new PopulationFiltered(populationViewport);
 
-        return populationFiltered;
+        return { populationViewport, populationFiltered };
     });
     const locationTreeSamples = await createSampledTreeSet(
         dictionary,
@@ -50,7 +51,8 @@ export async function createMemlineLocationsBreakdown(
     return createLineBreakdown(
         kind,
         line,
-        population,
+        population.populationFiltered,
+        population.populationViewport,
         locationTreeSamples,
         work
     );

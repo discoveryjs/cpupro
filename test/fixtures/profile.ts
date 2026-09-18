@@ -4,6 +4,13 @@ import { OriginalScriptsMap, ProfileScriptsMap } from '../../app/prepare/preproc
 import { createProfile } from '../../app/prepare/profile.mjs';
 import type { V8CpuProfile } from '../../app/prepare/types.js';
 import { noopWorkHandler } from '../../app/prepare/misc/work.js';
+import { Population, PopulationFiltered } from '../../app/prepare/computations/population.js';
+import { RangeSelection, RangeView } from '../../app/prepare/computations/range.js';
+import { FilterSet } from '../../app/prepare/computations/filter-set.js';
+import { createSampledTreeSet } from '../../app/prepare/computations/sampled-tree-set.js';
+import { createLineBreakdown } from '../../app/prepare/lines/breakdown.js';
+import { prepareLineRange } from '../../app/prepare/lines/range.js';
+import type { ProfileLineType } from '../../app/prepare/lines/types.js';
 
 export type ProfileFixtureOptions = {
     startTime?: number;
@@ -69,4 +76,52 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
 
     const profile = await createProfile(data, { dictionary, originalScripts, work: noopWorkHandler });
     return { profile, dictionary, scriptsMap };
+}
+
+export async function createLineFixture({
+    type = 'timeline', origin = 0, before = 0, after = 0,
+    values = new Uint32Array([10, 10, 5]),
+    samples = Uint32Array.from(values, (_, index) => index % 2)
+}: {
+    type?: ProfileLineType;
+    origin?: number;
+    before?: number;
+    after?: number;
+    values?: Uint32Array;
+    samples?: Uint32Array;
+} = {}) {
+    const { profile, dictionary } = await createProfileFixture({ cpuOnly: type === 'timeline', noSourceMap: true });
+    const line = profile[type]!;
+    const population = new Population(samples, values);
+    const original = line.breakdowns[0].source;
+    const source = {
+        ...original,
+        sourceIdToNode: Int32Array.from({ length: population.samplesCount.length }, (_, index) =>
+            original.sourceIdToNode[index % original.sourceIdToNode.length])
+    };
+    const trees = await createSampledTreeSet(dictionary, source, noopWorkHandler);
+    const populationViewport = new PopulationFiltered(population);
+    const populationFiltered = new PopulationFiltered(populationViewport);
+    const range = new RangeSelection(line.range.selection.space).view({ start: 0, end: population.cumulativeEnd }, origin);
+
+    line.axisStart = origin - before;
+    line.axisStartNoSamples = before;
+    line.axisEnd = origin + population.cumulativeEnd + after;
+    line.axisEndNoSamples = after;
+    line.axisTotal = population.cumulativeEnd;
+    line.values = values;
+    line.sourceInfo = { nodes: source.nodes.length, samples: samples.length, samplesInterval: 10 };
+    line.attributes = [];
+    line.filters = new FilterSet();
+    line.range = range;
+    line.viewport = new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent);
+    line.mappings = Object.create(null);
+    const breakdown = await createLineBreakdown('call-stack', line, populationFiltered, populationViewport, trees, noopWorkHandler);
+    line.breakdowns = [breakdown];
+    profile.lines = [line];
+    profile.timeline = line.type === 'timeline' ? line : null;
+    profile.memline = line.type === 'memline' ? line : null;
+    prepareLineRange(line);
+
+    return { profile, line, breakdown };
 }

@@ -48,12 +48,14 @@ export async function createMemlineCpuSamplesBreakdown(
     });
 
     const population = new Population(allocationCpuSamples, allocationSizes);
-    const populationFiltered = new PopulationFiltered(population);
+    const populationViewport = new PopulationFiltered(population);
+    const populationFiltered = new PopulationFiltered(populationViewport);
 
     return createLineBreakdown(
         kind,
         line,
         populationFiltered,
+        populationViewport,
         cpuSampledTreeSet,
         work
     );

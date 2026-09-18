@@ -11,7 +11,7 @@ import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdow
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { sum } from '../misc/utils.js';
 import { FilterSet } from '../computations/filter-set.js';
-import { RangeSelection } from '../computations/range.js';
+import { RangeSelection, RangeView } from '../computations/range.js';
 import {
     createMemlineAllocationCodeTypeAttribute,
     createMemlineAllocationLifespanAttribute,
@@ -165,6 +165,8 @@ export async function createMemline(
         )
     ].filter(attr => attr !== null));
 
+    const range = new RangeSelection({ name: 'cumulative-allocated-bytes', unit: 'bytes' })
+        .view({ start: 0, end: totalAllocationSize });
     const line: ProfileMemline = {
         type: 'memline',
         kind: 'memory' as const,
@@ -184,8 +186,8 @@ export async function createMemline(
         values: allocationSizes,
         attributes,
         filters: new FilterSet(),
-        range: new RangeSelection({ name: 'cumulative-allocated-bytes', unit: 'bytes' })
-            .view({ start: 0, end: totalAllocationSize }),
+        viewport: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
+        range,
         breakdowns: [],
         mappings: Object.create(null),
 

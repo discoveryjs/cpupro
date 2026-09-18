@@ -22,7 +22,7 @@ type PreparedComputation = FilterComputation & {
 
 export function prepareLineFilters(line: ProfileLine) {
     const { filters, breakdowns, attributes } = line;
-    const targets = [...new Set(breakdowns.map(breakdown => breakdown.populationFiltered.filter))];
+    const targets = [...new Set(breakdowns.map(breakdown => breakdown.populationViewport.filter))];
     const computations: PreparedComputation[] = [];
     const include = (computation: FilterComputation | null, targets: PopulationFilter[]) => {
         if (!computation) {
@@ -46,7 +46,7 @@ export function prepareLineFilters(line: ProfileLine) {
         const populationBreakdowns = new Map<PopulationFilter, ProfileLine['breakdowns']>();
 
         for (const breakdown of breakdowns) {
-            const target = breakdown.populationFiltered.filter;
+            const target = breakdown.populationViewport.filter;
             const sources = populationBreakdowns.get(target);
 
             if (sources) {

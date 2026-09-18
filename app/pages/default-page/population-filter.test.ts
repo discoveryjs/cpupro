@@ -93,7 +93,7 @@ test.each(['exclude', 'include'] as const)('keeps data/context chains and derive
     }
     for (const filter of filters) {
         assert.equal(filter, breakdown.line.filters.get(filter.key));
-        assert.equal(filter.key, breakdown.populationFiltered.filter.get(filter.key)!.key);
+        assert.equal(filter.key, breakdown.populationViewport.filter.get(filter.key)!.key);
         const context = query(filterContext)(filter, { kept: 'context' });
         assert.equal(context.kept, 'context');
         assert.equal(context.attributeFilter, filter);
@@ -105,6 +105,9 @@ test.each(['exclude', 'include'] as const)('keeps data/context chains and derive
         liveness.change(false); space.change(false);
     });
     assert.deepEqual(summaryQuery(breakdown), { included: 16, excluded: 144 });
+    breakdown.line.range.setRange(80, 120);
+    assert.deepEqual(summaryQuery(breakdown), { included: 16, excluded: 144 });
+    breakdown.line.range.resetRange();
     const updated = getOptions(breakdown);
     assert.equal(updated.find(option => option.filterKey === 'allocationLiveness' && option.key === 'gced')!.checked, false);
     assert.equal(updated.find(option => option.filterKey === 'allocationSpace' && option.key === 'old_space')!.checked, false);

@@ -13,24 +13,26 @@ export function applyRangeToPopulation(view: RangeView, filtered: PopulationFilt
     return unsubscribe;
 }
 
-export function prepareLineRange({ range, breakdowns }: ProfileLine) {
+export function prepareLineRange({ range, viewport, breakdowns }: ProfileLine) {
     const populations = new Set<PopulationFiltered>();
     const subscriptions: (() => void)[] = [];
 
     // Original/source-mapped breakdowns share an executor; subscribe once per distinct population workspace.
-    for (const { populationFiltered } of breakdowns) {
-        if (populations.has(populationFiltered)) {
-            continue;
+    for (const { populationFiltered, populationViewport } of breakdowns) {
+        for (const [scope, population] of [[viewport, populationViewport], [range, populationFiltered]] as const) {
+            if (populations.has(population)) {
+                continue;
+            }
+
+            populations.add(population);
+
+            const view = new RangeView(scope.selection, scope.frame, {
+                start: 0,
+                end: population.population.cumulativeEnd
+            });
+
+            subscriptions.push(applyRangeToPopulation(view, population));
         }
-
-        populations.add(populationFiltered);
-
-        const view = new RangeView(range.selection, range.frame, {
-            start: 0,
-            end: populationFiltered.population.cumulativeEnd
-        });
-
-        subscriptions.push(applyRangeToPopulation(view, populationFiltered));
     }
 
     return () => {

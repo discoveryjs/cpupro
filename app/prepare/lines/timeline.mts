@@ -5,7 +5,7 @@ import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
 import { PopulationFiltered, type Population } from '../computations/population.js';
 import { FilterSet } from '../computations/filter-set.js';
-import { RangeSelection } from '../computations/range.js';
+import { RangeSelection, RangeView } from '../computations/range.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 
 export type CreateTimelineOptions = {
@@ -74,6 +74,8 @@ export async function createTimeline(
         samplesInterval: data._samplesInterval || axis.samplesInterval
     };
 
+    const range = new RangeSelection({ name: 'profile-time', unit: 'us' })
+        .view({ start: 0, end: axis.total }, axis.start + axis.startNoSamples);
     const line: TimelineLine = {
         type: 'timeline',
         kind: 'time' as const,
@@ -89,8 +91,8 @@ export async function createTimeline(
         values: population.values,
         attributes: [],
         filters: new FilterSet(),
-        range: new RangeSelection({ name: 'profile-time', unit: 'us' })
-            .view({ start: 0, end: axis.total }, axis.start + axis.startNoSamples),
+        viewport: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
+        range,
         breakdowns: [],
         mappings: Object.create(null),
 
@@ -100,11 +102,13 @@ export async function createTimeline(
         ...timelineMethods
     };
 
-    const populationFiltered = new PopulationFiltered(population);
+    const populationViewport = new PopulationFiltered(population);
+    const populationFiltered = new PopulationFiltered(populationViewport);
     const callStackBreakdown = await createLineBreakdown(
         'call-stack',
         line,
         populationFiltered,
+        populationViewport,
         sampledTreeSet,
         work
     );

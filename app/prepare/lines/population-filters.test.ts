@@ -14,7 +14,9 @@ test('binds filters without a breakdown and preserves source category attributio
             const { population, source, categories } = breakdown;
             assert.ok(categories);
             const filtered = new PopulationFiltered(population);
-            const preparedLine = { ...line, filters: new FilterSet(), breakdowns: [{ ...breakdown, source, populationFiltered: filtered }] };
+            const preparedLine = { ...line, filters: new FilterSet(), breakdowns: [{ ...breakdown, source,
+                populationViewport: filtered, populationFiltered: new PopulationFiltered(filtered)
+            }] };
             prepareLineFilters(preparedLine);
             const category = preparedLine.filters.get('category') as SetAttributeFilter;
 
@@ -38,11 +40,12 @@ test('registers only available filters and shares their state across source-mapp
     const { profile } = await createProfileFixture();
     for (const line of profile.lines) {
         for (const breakdown of line.breakdowns) {
-            assert.deepEqual(breakdown.populationFiltered.filter.filters.map(filter => filter.key), ['category']);
+            assert.deepEqual(breakdown.populationViewport.filter.filters.map(filter => filter.key), ['category']);
+            assert.deepEqual(breakdown.populationFiltered.filter.filters, []);
         }
         const first = line.breakdowns[0];
         const mapped = line.breakdowns.find(breakdown => breakdown.kind === `${first.kind}-sm`)!;
-        assert.equal(first.populationFiltered.filter, mapped.populationFiltered.filter);
+        assert.equal(first.populationViewport.filter, mapped.populationViewport.filter);
     }
 });
 
@@ -52,7 +55,7 @@ test('does not register event filters with incomplete data or a missing dictiona
         allocationSpaces: [1, 1, 1, 1]
     });
     for (const breakdown of profile.memline!.breakdowns) {
-        assert.deepEqual(breakdown.populationFiltered.filter.filters.map(filter => filter.key), ['category']);
+        assert.deepEqual(breakdown.populationViewport.filter.filters.map(filter => filter.key), ['category']);
     }
 });
 

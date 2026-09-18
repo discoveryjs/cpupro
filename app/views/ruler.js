@@ -191,13 +191,13 @@ function updatePointer(el, x, y) {
 
             default: {
                 const anchorValue = valueAt(state, gesture.anchor);
-                const startTrigger = state.segments
-                    ? fraction < gesture.anchor
-                    : detail.start < anchorValue;
 
                 detail = state.segments
                     ? selectRange(state, gesture.anchor, fraction)
                     : resizeRange(state, anchorValue, fraction, minimum, direction);
+                const startTrigger = state.segments
+                    ? fraction < gesture.anchor
+                    : detail.start < anchorValue;
                 activeTrigger = startTrigger
                     ? 'start'
                     : 'finish';

@@ -105,6 +105,7 @@ describe('profile breakdowns', () => {
         const breakdowns = profile.lines.flatMap(line => line.breakdowns);
         assert.equal(new Set(breakdowns.map(breakdown => breakdown.population)).size, populations);
         assert.equal(new Set(breakdowns.map(breakdown => breakdown.populationFiltered)).size, populations);
+        assert.equal(new Set(breakdowns.map(breakdown => breakdown.populationFiltered.source)).size, populations);
 
         for (const line of profile.lines) {
             const expectedKinds = line.type === 'timeline'
@@ -118,6 +119,10 @@ describe('profile breakdowns', () => {
             for (const breakdown of line.breakdowns) {
                 assert.equal(breakdown.line, line);
                 assert.equal(breakdown.populationFiltered.population, breakdown.population);
+                assert.notEqual(breakdown.populationFiltered.source, breakdown.population);
+                assert.equal(breakdown.populationFiltered.source, breakdown.populationViewport);
+                assert.equal(breakdown.populationViewport.source, breakdown.population);
+                assert.equal(breakdown.populationFiltered.source.cumulative, breakdown.population.cumulative);
                 for (const sample of breakdown.population.samples) {
                     const node = breakdown.source.sourceIdToNode[sample];
                     assert.ok(node >= 0 && node < breakdown.source.nodes.length);

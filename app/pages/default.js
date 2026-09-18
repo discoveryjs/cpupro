@@ -622,7 +622,11 @@ const pageContent = [
         ...sessionExpandState('default-timelines', true),
         className: 'timelines trigger-outside',
         header: categoriesFractionBars,
-        content: categoriesTimeline
+        content: {
+            view: 'update-on-line-metrics-changes',
+            metrics: '=scopeBreakdown().populationViewport',
+            content: categoriesTimeline
+        }
     },
 
     hierarchicalComponentsTables,
