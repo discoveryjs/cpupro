@@ -71,6 +71,50 @@ Callbacks use `onInit({ state, setSelection, name, el }, data, context)`, `onCha
 
 `line-ruler` uses `tag: false`, resolves the line and provides time/byte labels. It defaults to `multiple: true`. Its optional `rangeManager` uses `ranges`, `setRanges()` and `subscribe()` in the same coordinates as the supplied `range`. Viewport rulers pass `scopeViewport()` and `line.range.selection` directly, without a zero-based intermediate view. The wrapper owns the subscription, writes previews, invokes the caller's `onInit`/`onChange`, and combines both cleanup functions. It forwards `range` and `segments` unchanged; only `ruler` normalizes them and constructs boundaries. Until tooltip computations move off bins, the details adapter supplies viewport-local `timeStart`/`timeEnd`, `duration`, and inclusive `segmentStart`/`segmentEnd`. These aliases are not part of ruler state. No-overlap segment slices use `0:0` through the old `segmentEnd + 1` convention. Optimized sample-binning steps are independent of ruler segmentation and remain unchanged.
 
+## Track timeline layout
+
+The [optimization ledger](../specs/track-timeline-optimization-ledger.md) records the algorithm's evolution, rejected experiments, benchmark conditions, V8 findings and current evidence limits.
+
+`track-timeline.test.js` compares layout with an independent duration-first, first-fit reference, including stable ties, corrected short spans, precision boundaries, partial overlaps, nested fast-path fallback and deep nesting. It also checks atomic group publication, pause/resume, cancellation, cached group layouts, visible-track rendering and image invalidation.
+
+After sorting by start, the layout first attempts a linear stack pass for nested or disjoint spans. It checks containment with corrected ends and original duration priority; equal-duration ties retain input order. A crossing or priority inversion abandons this unpublished attempt, but no longer sends the whole group through the general algorithm.
+
+For mixed groups a sweep marks the current span and all active spans whenever it detects a crossing or priority inversion. This crossing core includes the relevant containing ancestors: any higher-priority intersecting dependency of a marked span is also marked. Its first-fit assignment is therefore independent of the unmarked spans. Prefix minima of effective ends and the lowest active priority avoid rescanning ancestors on ordinary nested entry/exit; expiration inside the active stack compacts it in place. Only the core needs the additional duration/end sorts and linked index buffers. Its indices are densely remapped without copying or identifying user objects by reference, and duration ties still use the original input indices.
+
+Once core tracks are assigned, the remaining spans can be placed chronologically, checking only track ends. A remaining span cannot contain a core span or cross any other span; no future start can invalidate its placement. Its active non-core parent's track also gives a lower bound for the first available track. Outputs preserve original span references and start order, including repeated references. Core results are not published as final tracks: publication waits for the complete reconstructed group. A wholly mixed core uses the existing general algorithm directly. If minimum-duration correction collapses numerically to an empty effective interval, the general path preserves the original strict-overlap behavior instead of treating the interval as an ordinary sweep event.
+
+Computation runs in timer tasks with a 12 ms budget, independently of animation frames. Several small groups can finish in one task. A new expanded group is published only when complete; collapsed groups need no layout. Publication follows input order, so a collapsed group behind an unfinished group waits for that predecessor. Already published groups remain visible during expansion, and change height only once its layout completes. Unpublished tracks cause no geometry rebuild or paint. Collapsing a group preserves its iterator and completed tracks; replacing spans or destroying the timeline cancels both queued work and the iterator. Only visible track images are cached, until horizontal coordinates change.
+
+Coordinate preparation and native sorting remain synchronous; the task budget is cooperative, not a hard bound on sorting or canvas painting. The nested path takes O(N log N) including sorting. Mixed groups keep O(N) working storage and the O(N log N + N*M) worst-case bound for N spans and M tracks; a small crossing core avoids applying all general passes to the whole input, but does not establish a universally linear algorithm. Measurements must separate computation time, scheduling delay and painting time; summing frame delays does not measure algorithm cost.
+
+### Rendering detail and labels
+
+Each rendered track lazily acquires a balanced temporal index. Nodes store maximum ends over contiguous ranges of the original start-ordered spans. Offscreen nodes are skipped; a fully visible node whose entire time extent projects to less than one CSS pixel is represented by its first original span. The threshold is evaluated against the current scale, not a fixed set of zoom levels. Large spans and pixel-sized gaps prevent collapse, and isolated point/negative-duration events retain a minimum marker. The index costs O(N) time and storage once per rendered track and survives zoom, pan and collapse; replacement or destruction releases it.
+
+Minimum markers align to the device-pixel grid and subsequent rectangles are clipped against the already painted right edge. This deliberately replaces repeated translucent overdraw with a presence-oriented image at unresolved scales. Original layout, timestamps and selection ranges are unchanged. Hit testing uses a binary search over the actual published rectangles and returns the displayed original representative; zoom reveals the underlying events. Cached track images and hit rectangles are invalidated together on horizontal coordinate or DPR changes.
+
+Invalidating image content does not discard its canvas. Zoom and pan clear and repaint each visible track's existing canvas/context and refill the same representative/position arrays. Bitmap dimensions and the DPR transform are reset only when size or DPR changes. Offscreen tracks are still evicted; input replacement, font loading and destruction retain their existing invalidation behavior. Tests check buffer identity, clearing, refreshed picking and resize. Smoothness measurements should use a frame-paced gesture and tail latencies, not only repeated average redraw times.
+
+Span text metrics retain only full width and first-grapheme-plus-ellipsis width per unique text in the fixed label font. A complete short label can appear below the former 20px cutoff. Truncation never emits an ellipsis without a grapheme and does not split grapheme clusters. Truncated strings and intermediate measurements are not retained. Font loading, data replacement and destruction clear the metrics; font loading also invalidates track images. The viewport-clipped visible rectangle determines the text budget.
+
+Deep zoom is limited by coordinate precision instead of a fixed 1000x factor. The relative ruler starts at the first visible tick while retaining its original time origin. Renderer tests cover progressive detail, offscreen skipping, large spans and gaps, point markers, representative picking, font invalidation, device-pixel alignment and deep zoom. Browser timing must distinguish a cold temporal index from a warm index and must invalidate image caches when measuring redraw cost.
+
+An optional local fixture comparison includes preparation in the timings and checks exact span identity and order on every track. It does not impose machine-dependent timing thresholds or make the normal suite depend on a large trace:
+
+```sh
+CPUPRO_TRACK_TIMELINE_FIXTURE=tmp/events-test-fixture.json npm test -- app/views/track-timeline.test.js --project js
+```
+
+## Events page preparation
+
+`events.test.js` evaluates the Events page's Jora query through the application method registry and compares it with the previous bulk Jora expression. The page query selects and sorts the small thread list, preserving the original name/count ordering, then calls `eventsTimeline(#.intervals)` once. The specialized method in `app/jora/events.js` takes the ordered threads as its receiver and the selected intervals as an explicit argument; it neither reads page context nor evaluates a nested query. A single event pass per thread computes bounds, display spans and selected overlays without flattened event projections, repeated filters or mapped metric arrays. Bounds intentionally include events excluded from display (including Animation), and overlays do not inherit the positive-time/positive-duration display filter. Output spans retain original event references and repeated occurrences. Missing event/thread lists normalize to empty arrays instead of the old query's `undefined` or `[undefined]` artifacts. No process/result cache is used, so changed process or interval selection is evaluated afresh.
+
+The optional trace test adapts the existing fixture's `start/end` fields to `tm/duration` and verifies complete results against Jora, both with and without selected intervals:
+
+```sh
+CPUPRO_TRACK_TIMELINE_FIXTURE=tmp/events-test-fixture.json npm test -- app/pages/events.test.js
+```
+
 ## Types and production builds
 
 Vitest transforms TypeScript but does not typecheck it. Test files are excluded from the production TypeScript roots. `tsconfig.test.json` includes tests, fixtures, setup and the runner config:

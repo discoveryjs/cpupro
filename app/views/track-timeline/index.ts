@@ -1,5 +1,26 @@
 import type { Span, SpanGroup, Track, TrackTimelineOptions, VisibleTrackRange, Interval } from './types.js';
 import type { RangeSet } from '../../prepare/computations/coordinates.js';
+import { layoutSpans } from './layout.js';
+import { SpanIndex } from './span-index.js';
+import { SpanLabels, SPAN_LABEL_FONT } from './labels.js';
+
+type TrackImage = {
+    canvas: HTMLCanvasElement;
+    context: CanvasRenderingContext2D;
+    spans: Span[];
+    positions: number[];
+};
+
+type TimelineGroup = SpanGroup & {
+    tracks: Track[];
+    layout: ReturnType<typeof layoutSpans> | null;
+    complete: boolean;
+    published: boolean;
+    startY: number;
+    endY: number;
+};
+
+const LAYOUT_BUDGET = 12;
 
 // Conversion factors to convert FROM each unit TO milliseconds
 const UNIT_TO_MS = {
@@ -42,7 +63,17 @@ export class TrackTimeline {
 
     private options: Required<TrackTimelineOptions>;
     private tracks: Track[] = [];
-    private groups: SpanGroup[] = [];
+    private trackOffsets: number[] = [];
+    private contentHeight = 0;
+    private trackImages = new Map<Track, TrackImage>();
+    private trackIndexes = new WeakMap<Span[], SpanIndex>();
+    private labels = new SpanLabels();
+    private trackImageWidth = 0;
+    private trackImageScale = 0;
+    private trackImageOffset = 0;
+    private trackImageDpr = 0;
+    private groups: TimelineGroup[] = [];
+    private visibleGroups: TimelineGroup[] = [];
     private intervals: Interval[] = [];
     private minX = 0;
     private maxX = 1000;
@@ -55,6 +86,7 @@ export class TrackTimeline {
 
     // Interaction state
     private hoveredSpan: Span | null = null;
+    private pointerEvent: PointerEvent | null = null;
     private selection: RangeSet | null = null;
     private isDragging = false;
     private dragStartX = 0;
@@ -63,6 +95,10 @@ export class TrackTimeline {
     private lastPointerY = 0;
     #renderScheduled: number | null = null;
     #shouldResize = true;
+    #layoutGroupIndex = 0;
+    #layoutScheduled: ReturnType<typeof setTimeout> | null = null;
+    #destroyed = false;
+    #events = new AbortController();
 
     // Wheel gesture tracking
     private lastWheelAction: 'zoom' | 'pan' | 'vscroll' | null = null;
@@ -106,25 +142,50 @@ export class TrackTimeline {
     }
 
     public setSpans(spans: Span[] | SpanGroup[], useGroups?: boolean): void {
+        if (this.#layoutScheduled !== null) {
+            clearTimeout(this.#layoutScheduled);
+            this.#layoutScheduled = null;
+        }
+
+        for (const group of this.groups) {
+            group.layout?.return();
+        }
+
         if (useGroups !== undefined) {
             this.options.groups = useGroups;
         }
 
-        if (this.options.groups) {
-            this.groups = (spans as SpanGroup[]).map(group => ({
-                name: group.name || 'Unnamed Group',
-                collapsed: group.collapsed || false,
-                spans: group.spans,
-                intervals: this.sortIntervals(group.intervals || [])
-            }));
-            this.options.spans = [];
-        } else {
-            this.options.spans = spans as Span[];
-            this.groups = [];
+        const groups = this.options.groups
+            ? spans as SpanGroup[]
+            : [{ name: '', spans: spans as Span[] }];
+
+        this.groups = groups.map(group => ({
+            name: group.name || 'Unnamed Group',
+            collapsed: group.collapsed || false,
+            spans: group.spans,
+            intervals: this.sortIntervals(group.intervals || []),
+            tracks: [],
+            layout: null,
+            complete: false,
+            published: false,
+            startY: 0,
+            endY: 0
+        }));
+
+        this.options.spans = spans;
+        this.trackImages.clear();
+        this.trackIndexes = new WeakMap();
+        this.labels.clear();
+        this.#layoutGroupIndex = 0;
+
+        if (this.hoveredSpan && this.pointerEvent) {
+            this.options.onHover?.(null, this.pointerEvent);
         }
 
+        this.hoveredSpan = null;
         this.computeBounds();
         this.layoutTracks();
+        this.#scheduleLayout();
         this.#scheduleRender();
     }
 
@@ -156,8 +217,24 @@ export class TrackTimeline {
     }
 
     public destroy(): void {
+        this.#destroyed = true;
+        this.#events.abort();
+        this.trackImages.clear();
+        this.trackIndexes = new WeakMap();
+        this.labels.clear();
         this.resizeObserver.disconnect();
-        if (this.#renderScheduled) {
+
+        if (this.#layoutScheduled !== null) {
+            clearTimeout(this.#layoutScheduled);
+            this.#layoutScheduled = null;
+        }
+
+        for (const group of this.groups) {
+            group.layout?.return();
+            group.layout = null;
+        }
+
+        if (this.#renderScheduled !== null) {
             cancelAnimationFrame(this.#renderScheduled);
             this.#renderScheduled = null;
         }
@@ -167,28 +244,40 @@ export class TrackTimeline {
         return [...intervals].sort((a, b) => {
             const zIndexA = a.zIndex ?? 0;
             const zIndexB = b.zIndex ?? 0;
+
             if (zIndexA !== zIndexB) {
                 return zIndexA - zIndexB;
             }
+
             const startA = 'offset' in a ? a.offset : a.start;
             const startB = 'offset' in b ? b.offset : b.start;
+
             return startA - startB;
         });
     }
 
     private setupEventListeners(): void {
-        this.overlayCanvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
-        this.overlayCanvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
-        this.overlayCanvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
-        this.overlayCanvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
-        this.overlayCanvas.addEventListener('pointerleave', (e) => this.onPointerLeave(e));
+        const { signal } = this.#events;
+
+        this.overlayCanvas.addEventListener('wheel', (event) => this.onWheel(event), { passive: false, signal });
+        this.overlayCanvas.addEventListener('pointermove', (event) => this.onPointerMove(event), { signal });
+        this.overlayCanvas.addEventListener('pointerdown', (event) => this.onPointerDown(event), { signal });
+        this.overlayCanvas.addEventListener('pointerup', (event) => this.onPointerUp(event), { signal });
+        this.overlayCanvas.addEventListener('pointerleave', (event) => this.onPointerLeave(event), { signal });
+        document.fonts?.addEventListener('loadingdone', () => {
+            this.labels.clear();
+            this.trackImages.clear();
+            this.#scheduleRender();
+        }, { signal });
     }
 
     private resize(): void {
         const prevWidth = this.width;
         const rect = this.container.getBoundingClientRect();
+
         this.width = rect.width;
         this.height = rect.height;
+        this.dpr = window.devicePixelRatio || 1;
 
         for (const canvas of [this.baseCanvas, this.overlayCanvas]) {
             canvas.width = this.width * this.dpr;
@@ -205,81 +294,116 @@ export class TrackTimeline {
         } else {
             this.resetView(false);
         }
+
+        this.handleVerticalScroll(0);
     }
 
     private computeBounds(): void {
-        let minX = Number.isFinite(this.options.minX) ? this.options.minX : Infinity;
-        let maxX = Number.isFinite(this.options.maxX) ? this.options.maxX : -Infinity;
+        const explicitMin = Number.isFinite(this.options.minX);
+        const explicitMax = Number.isFinite(this.options.maxX);
+        let minX = explicitMin ? this.options.minX : Infinity;
+        let maxX = explicitMax ? this.options.maxX : -Infinity;
 
-        if (!isFinite(minX) || !isFinite(maxX)) {
-            const allSpans = this.options.groups
-                ? this.groups.flatMap(group => group.spans)
-                : this.options.spans;
+        if (!explicitMin || !explicitMax) {
+            for (const group of this.groups) {
+                for (const span of group.spans) {
+                    if (!explicitMin) {
+                        minX = Math.min(minX, span.start);
+                    }
 
-            if (allSpans.length > 0) {
-                if (!isFinite(minX)) {
-                    minX = Math.min(...allSpans.map(s => s.start));
-                }
-                if (!isFinite(maxX)) {
-                    maxX = Math.max(...allSpans.map(s => s.end));
+                    if (!explicitMax) {
+                        maxX = Math.max(maxX, span.end);
+                    }
                 }
             }
+        }
+
+        if (!Number.isFinite(minX)) {
+            minX = Number.isFinite(maxX) ? maxX - 1 : 0;
+        }
+
+        if (!Number.isFinite(maxX) || maxX <= minX) {
+            maxX = minX + Math.max(1, Math.abs(minX) * Number.EPSILON);
         }
 
         this.setBounds(minX, maxX);
     }
 
     private layoutTracks(): void {
-        if (this.options.groups) {
-            this.tracks = [];
-            for (const group of this.groups) {
+        let offset = 0;
+
+        this.tracks = [];
+        this.trackOffsets = [];
+        this.visibleGroups = [];
+
+        for (const group of this.groups) {
+            if (!group.published && !group.collapsed && !group.complete) {
+                break;
+            }
+
+            group.published = true;
+            this.visibleGroups.push(group);
+            group.startY = offset;
+
+            if (this.options.groups) {
+                this.trackOffsets.push(offset);
                 this.tracks.push({ isGroupTitle: true, group, spans: [] });
-                if (!group.collapsed) {
-                    const groupTracks = this.layoutGroupTracks(group.spans);
-                    this.tracks.push(...groupTracks.map(spans => ({
-                        isGroupTitle: false,
-                        group,
-                        spans
-                    })));
+                offset += LAYOUT.GROUP_TITLE_HEIGHT + LAYOUT.TRACK_GAP;
+            }
+
+            if (!group.collapsed && group.complete) {
+                for (const track of group.tracks) {
+                    this.trackOffsets.push(offset);
+                    this.tracks.push(track);
+                    offset += LAYOUT.TRACK_HEIGHT + LAYOUT.TRACK_GAP;
                 }
             }
-        } else {
-            const groupTracks = this.layoutGroupTracks(this.options.spans as Span[]);
-            this.tracks = groupTracks.map(spans => ({
-                isGroupTitle: false,
-                group: null,
-                spans
-            }));
+
+            group.endY = Math.max(group.startY, offset - LAYOUT.TRACK_GAP);
         }
+
+        this.contentHeight = offset;
+        this.handleVerticalScroll(0);
     }
 
-    private layoutGroupTracks(spans: Span[]): Span[][] {
-        const sorted = [...spans].sort((a, b) => (b.end - b.start) - (a.end - a.start));
-        const tracks: Span[][] = [];
+    private advanceLayout(): void {
+        const deadline = performance.now() + LAYOUT_BUDGET;
+        let changed = false;
 
-        for (const span of sorted) {
-            const trackIdx = tracks.findIndex(track => !this.hasConflict(track, span));
-            if (trackIdx !== -1) {
-                tracks[trackIdx].push(span);
-            } else {
-                tracks.push([span]);
+        while (this.#layoutGroupIndex < this.groups.length) {
+            const group = this.groups[this.#layoutGroupIndex];
+
+            if (group.collapsed || group.complete) {
+                this.#layoutGroupIndex++;
+                continue;
+            }
+
+            group.layout ??= layoutSpans(group.spans);
+            const result = group.layout.next();
+
+            if (result.done) {
+                group.complete = true;
+                group.layout = null;
+                this.#layoutGroupIndex++;
+                changed = true;
+            }
+
+            if (result.value) {
+                group.tracks.push({
+                    isGroupTitle: false,
+                    group: this.options.groups ? group : null,
+                    spans: result.value
+                });
+            }
+
+            if (performance.now() >= deadline) {
+                break;
             }
         }
 
-        // Sort each track by start time
-        tracks.forEach(track => track.sort((a, b) => a.start - b.start));
-
-        return tracks;
-    }
-
-    private hasConflict(track: Span[], span: Span): boolean {
-        const minDuration = 0.001;
-        const spanEnd = Math.max(span.end, span.start + minDuration);
-
-        return track.some(existing => {
-            const existingEnd = Math.max(existing.end, existing.start + minDuration);
-            return existing.start < spanEnd && span.start < existingEnd;
-        });
+        if (changed) {
+            this.layoutTracks();
+        }
     }
 
     private resetView(resetViewport = true): void {
@@ -303,32 +427,39 @@ export class TrackTimeline {
     }
 
     private getVisibleTrackRange(): VisibleTrackRange {
-        const contentHeight = this.height - LAYOUT.RULER_HEIGHT - LAYOUT.MINIMAP_HEIGHT;
-        const visibleStart = this.scrollY;
-        const visibleEnd = this.scrollY + contentHeight;
+        const start = this.findTrackAtOffset(this.scrollY);
+        const visibleEnd = this.scrollY + Math.max(0, this.height - LAYOUT.RULER_HEIGHT - LAYOUT.MINIMAP_HEIGHT);
+        let lower = start;
+        let upper = this.tracks.length;
 
-        let start = 0;
-        let end = this.tracks.length;
+        while (lower < upper) {
+            const middle = (lower + upper) >>> 1;
 
-        for (let i = 0; i < this.tracks.length; i++) {
-            const trackStart = this.getTrackStartY(i);
-            const trackEnd = trackStart + this.getTrackHeight(i);
-
-            if (trackEnd > visibleStart && trackStart < visibleEnd) {
-                if (i < start) {
-                    start = i;
-                }
-                if (i + 1 > end) {
-                    end = i + 1;
-                }
-            }
-
-            if (trackStart >= visibleEnd) {
-                break;
+            if (this.trackOffsets[middle] < visibleEnd) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
             }
         }
 
-        return { start, end };
+        return { start, end: lower };
+    }
+
+    private findTrackAtOffset(offset: number): number {
+        let lower = 0;
+        let upper = this.tracks.length;
+
+        while (lower < upper) {
+            const middle = (lower + upper) >>> 1;
+
+            if (this.trackOffsets[middle] + this.getTrackHeight(middle) <= offset) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
+            }
+        }
+
+        return lower;
     }
 
     private getTrackHeight(trackIdx: number): number {
@@ -337,19 +468,25 @@ export class TrackTimeline {
     }
 
     private getTrackStartY(trackIdx: number): number {
-        let y = 0;
-        for (let i = 0; i < trackIdx; i++) {
-            y += this.getTrackHeight(i) + LAYOUT.TRACK_GAP;
-        }
-        return y;
+        return this.trackOffsets[trackIdx];
     }
 
     private getTrackY(trackIdx: number): number {
         return LAYOUT.RULER_HEIGHT + this.getTrackStartY(trackIdx) - this.scrollY;
     }
 
+    #scheduleLayout() {
+        if (!this.#destroyed && this.#layoutScheduled === null && this.#layoutGroupIndex < this.groups.length) {
+            this.#layoutScheduled = setTimeout(() => {
+                this.#layoutScheduled = null;
+                this.advanceLayout();
+                this.#scheduleLayout();
+            }, 0);
+        }
+    }
+
     #scheduleRender() {
-        if (!this.#renderScheduled) {
+        if (!this.#destroyed && this.#renderScheduled === null) {
             this.#renderScheduled = requestAnimationFrame(() => {
                 this.render();
                 this.#renderScheduled = null;
@@ -364,11 +501,28 @@ export class TrackTimeline {
         }
 
         this.renderBase();
+
+        if (this.pointerEvent && !this.isDragging) {
+            this.onPointerMove(this.pointerEvent);
+        }
+
         this.renderOverlay();
     }
 
     private renderBase(): void {
         const ctx = this.baseCtx;
+        const imagesChanged = this.trackImageWidth !== this.width ||
+            this.trackImageScale !== this.pxPerMs ||
+            this.trackImageOffset !== this.offsetMs ||
+            this.trackImageDpr !== this.dpr;
+        const imageSizeChanged = this.trackImageWidth !== this.width || this.trackImageDpr !== this.dpr;
+
+        if (imagesChanged) {
+            this.trackImageWidth = this.width;
+            this.trackImageScale = this.pxPerMs;
+            this.trackImageOffset = this.offsetMs;
+            this.trackImageDpr = this.dpr;
+        }
 
         ctx.fillStyle = COLORS.BACKGROUND;
         ctx.fillRect(0, 0, this.width, this.height);
@@ -376,7 +530,6 @@ export class TrackTimeline {
 
         // Render global intervals first (under everything)
         this.renderIntervals(ctx, this.intervals, 0, this.height - LAYOUT.MINIMAP_HEIGHT);
-
         this.renderRuler(ctx);
 
         const trackRange = this.getVisibleTrackRange();
@@ -387,35 +540,62 @@ export class TrackTimeline {
         ctx.rect(0, contentY, this.width, this.height - contentY - LAYOUT.MINIMAP_HEIGHT);
         ctx.clip();
 
-        for (let i = trackRange.start; i < trackRange.end; i++) {
-            const track = this.tracks[i];
-            const trackY = this.getTrackY(i);
+        if (this.options.groups) {
+            for (const group of this.visibleGroups) {
+                const top = contentY + group.startY - this.scrollY;
+                const bottom = contentY + group.endY - this.scrollY;
 
-            if (track.isGroupTitle) {
-                this.renderGroupTitleBackground(ctx, trackY);
-
-                // Render group intervals after group title
-                if (track.group?.intervals) {
-                    const groupStartY = trackY;
-                    let groupEndY = trackY + LAYOUT.GROUP_TITLE_HEIGHT;
-
-                    // Find the end of this group
-                    if (!track.group.collapsed) {
-                        for (let j = i + 1; j < this.tracks.length; j++) {
-                            const nextTrack = this.tracks[j];
-                            if (nextTrack.isGroupTitle || nextTrack.group !== track.group) {
-                                break;
-                            }
-                            groupEndY = this.getTrackY(j) + LAYOUT.TRACK_HEIGHT;
-                        }
-                    }
-
-                    this.renderIntervals(ctx, track.group.intervals, groupStartY, groupEndY);
+                if (bottom <= contentY || top >= this.height - LAYOUT.MINIMAP_HEIGHT) {
+                    continue;
                 }
 
-                this.renderGroupTitleForeground(ctx, trackY, track);
-            } else {
-                this.renderTrack(ctx, track.spans, trackY);
+                this.renderGroupTitleBackground(ctx, top);
+                this.renderIntervals(ctx, group.intervals || [], top, bottom);
+                this.renderGroupTitleForeground(ctx, top, group);
+            }
+        }
+
+        const visibleTracks = new Set<Track>();
+
+        for (let index = trackRange.start; index < trackRange.end; index++) {
+            const track = this.tracks[index];
+
+            if (!track.isGroupTitle) {
+                let image = this.trackImages.get(track);
+                const newImage = !image;
+
+                if (!image) {
+                    const canvas = document.createElement('canvas');
+
+                    image = { canvas, context: canvas.getContext('2d')!, spans: [], positions: [] };
+                    this.trackImages.set(track, image);
+                }
+
+                if (newImage || imagesChanged) {
+                    if (newImage || imageSizeChanged) {
+                        image.canvas.width = Math.ceil(this.width * this.dpr);
+                        image.canvas.height = Math.ceil(LAYOUT.TRACK_HEIGHT * this.dpr);
+                        image.context.scale(this.dpr, this.dpr);
+                    } else {
+                        image.context.clearRect(0, 0, this.width, LAYOUT.TRACK_HEIGHT);
+                    }
+
+                    this.renderTrack(image.context, track.spans, 0, image);
+                }
+
+                visibleTracks.add(track);
+
+                if (image.canvas.width > 0) {
+                    ctx.drawImage(image.canvas,
+                        0, 0, this.width * this.dpr, LAYOUT.TRACK_HEIGHT * this.dpr,
+                        0, this.getTrackY(index), this.width, LAYOUT.TRACK_HEIGHT);
+                }
+            }
+        }
+
+        for (const track of this.trackImages.keys()) {
+            if (!visibleTracks.has(track)) {
+                this.trackImages.delete(track);
             }
         }
 
@@ -497,9 +677,7 @@ export class TrackTimeline {
         const range = viewEnd - viewStart;
 
         const tickInterval = this.getNiceInterval(range * 80 / this.width);
-        const startTick = this.options.ruler === 'absolute'
-            ? Math.ceil(viewStart / tickInterval) * tickInterval
-            : tickBase;
+        const startTick = tickBase + Math.ceil((viewStart - tickBase) / tickInterval) * tickInterval;
 
         ctx.fillStyle = COLORS.TEXT_SECONDARY;
         ctx.font = '11px system-ui';
@@ -508,6 +686,7 @@ export class TrackTimeline {
 
         for (let tick = startTick; tick <= viewEnd; tick += tickInterval) {
             const x = this.msToX(tick);
+            const label = this.formatTime(tick - tickBase, tickInterval, range);
 
             ctx.strokeStyle = COLORS.BORDER;
             ctx.beginPath();
@@ -515,7 +694,6 @@ export class TrackTimeline {
             ctx.lineTo(x, rulerHeight);
             ctx.stroke();
 
-            const label = this.formatTime(tick - tickBase, tickInterval, range);
             ctx.fillText(label, x, rulerHeight / 2 - 2);
         }
     }
@@ -523,8 +701,8 @@ export class TrackTimeline {
     private getNiceInterval(rawInterval: number): number {
         const magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)));
         const normalized = rawInterval / magnitude;
-
         let nice: number;
+
         if (normalized < 1.5) {
             nice = 1;
         } else if (normalized < 3) {
@@ -602,8 +780,7 @@ export class TrackTimeline {
         ctx.stroke();
     }
 
-    private renderGroupTitleForeground(ctx: CanvasRenderingContext2D, trackY: number, trackData: Track): void {
-        const group = trackData.group!;
+    private renderGroupTitleForeground(ctx: CanvasRenderingContext2D, trackY: number, group: SpanGroup): void {
         const height = LAYOUT.GROUP_TITLE_HEIGHT;
         const iconX = 8;
         const iconY = trackY + height / 2;
@@ -630,58 +807,65 @@ export class TrackTimeline {
         ctx.fillText(group.name, iconX + iconSize + 8, iconY);
     }
 
-    private renderTrack(ctx: CanvasRenderingContext2D, track: Span[], trackY: number): void {
+    private renderTrack(
+        ctx: CanvasRenderingContext2D,
+        track: Span[],
+        trackY: number,
+        image: Pick<TrackImage, 'spans' | 'positions'> = { spans: [], positions: [] }
+    ) {
         const viewStart = this.offsetMs;
         const viewEnd = this.offsetMs + this.width / this.pxPerMs;
+        const { spans, positions } = image;
+        let rightEdge = 0;
+        let index = this.trackIndexes.get(track);
 
-        for (const span of track) {
-            if (span.end <= viewStart) {
-                continue;
-            }
-            if (span.start >= viewEnd) {
-                break;
-            }
-            this.renderSpan(ctx, span, trackY);
+        spans.length = 0;
+        positions.length = 0;
+        ctx.font = SPAN_LABEL_FONT;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+
+        if (!index) {
+            index = new SpanIndex(track);
+            this.trackIndexes.set(track, index);
         }
+
+        index.forEachVisible(viewStart - 1 / this.pxPerMs, viewEnd, 1 / this.pxPerMs, (span, start, end) => {
+            const startX = this.msToX(start);
+            const endX = this.msToX(end);
+            const small = endX - startX < 1;
+            const left = small ? Math.floor(startX * this.dpr) / this.dpr : startX;
+            const right = Math.min(this.width, small ? left + 1 : endX);
+            const visibleLeft = Math.max(0, rightEdge, left);
+
+            if (right <= visibleLeft) {
+                return;
+            }
+
+            this.renderSpan(ctx, span, trackY, visibleLeft, right - visibleLeft);
+            spans.push(span);
+            positions.push(visibleLeft, right);
+            rightEdge = right;
+        });
+
+        return image;
     }
 
-    private renderSpan(ctx: CanvasRenderingContext2D, span: Span, trackY: number): void {
-        const x1 = this.msToX(span.start);
-        const x2 = this.msToX(span.end);
-        const width = Math.max(1, x2 - x1);
+    private renderSpan(ctx: CanvasRenderingContext2D, span: Span, trackY: number, x1: number, width: number): void {
         const height = LAYOUT.TRACK_HEIGHT;
 
         ctx.fillStyle = span.color || this.getDefaultColor(span);
         ctx.fillRect(x1, trackY, width, height);
 
-        if (width > 20 && span.text) {
-            const maxWidth = width - (LAYOUT.TRACK_PADDING + 2) * 2;
+        const maxWidth = width - (LAYOUT.TRACK_PADDING + 2) * 2;
+        const displayText = span.text ? this.labels.fit(ctx, span.text, maxWidth) : '';
 
+        if (displayText) {
             ctx.save();
-            ctx.fillStyle = '#fff';
-            ctx.font = '10px system-ui';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-
-            let displayText = span.text;
-            if (ctx.measureText(span.text).width > maxWidth) {
-                let low = 0;
-                let high = span.text.length;
-                while (low < high) {
-                    const mid = Math.floor((low + high + 1) / 2);
-                    const testText = span.text.substring(0, mid) + '…';
-                    if (ctx.measureText(testText).width <= maxWidth) {
-                        low = mid;
-                    } else {
-                        high = mid - 1;
-                    }
-                }
-                displayText = span.text.substring(0, low) + '…';
-            }
-
             ctx.beginPath();
             ctx.rect(x1 + LAYOUT.TRACK_PADDING, trackY, width - LAYOUT.TRACK_PADDING * 2, height);
             ctx.clip();
+            ctx.fillStyle = '#fff';
             ctx.fillText(displayText, x1 + LAYOUT.TRACK_PADDING + 2, trackY + height / 2 + 1);
             ctx.restore();
         }
@@ -690,11 +874,14 @@ export class TrackTimeline {
     private getDefaultColor(span: Span): string {
         let hash = 0;
         const text = span.text || '';
+
         for (let i = 0; i < text.length; i++) {
             hash = ((hash << 5) - hash) + text.charCodeAt(i);
             hash = hash & hash;
         }
+
         const hue = Math.abs(hash) % 360;
+
         return `hsl(${hue}, 30%, 40%, 80%)`;
     }
 
@@ -761,8 +948,10 @@ export class TrackTimeline {
 
         if (this.hoveredSpan) {
             const trackIdx = this.findTrackForSpan(this.hoveredSpan);
+
             if (trackIdx !== -1) {
                 const trackY = this.getTrackY(trackIdx);
+
                 this.renderSpanHighlight(ctx, this.hoveredSpan, trackY, COLORS.HOVER_FILL, COLORS.HOVER_BORDER);
             }
         }
@@ -771,9 +960,16 @@ export class TrackTimeline {
     }
 
     private renderSpanHighlight(ctx: CanvasRenderingContext2D, span: Span, trackY: number, color: string, borderColor: string): void {
-        const x1 = this.msToX(span.start);
-        const x2 = this.msToX(span.end);
-        const width = Math.max(1, x2 - x1);
+        const trackIdx = this.findTrackForSpan(span);
+        const image = this.trackImages.get(this.tracks[trackIdx]);
+        const position = image?.spans.indexOf(span) ?? -1;
+
+        if (!image || position === -1) {
+            return;
+        }
+
+        const x1 = image.positions[position * 2];
+        const width = image.positions[position * 2 + 1] - x1;
         const height = LAYOUT.TRACK_HEIGHT;
 
         ctx.fillStyle = color;
@@ -781,11 +977,11 @@ export class TrackTimeline {
 
         ctx.strokeStyle = borderColor;
         ctx.lineWidth = 1;
-        ctx.strokeRect(x1 + 1, trackY + 1, width - 2, height - 2);
+        ctx.strokeRect(x1 + 0.5, trackY + 0.5, Math.max(0, width - 1), height - 1);
     }
 
     private findTrackForSpan(span: Span): number {
-        return this.tracks.findIndex(track => !track.isGroupTitle && track.spans.includes(span));
+        return this.tracks.findIndex(track => this.trackImages.get(track)?.spans.includes(span));
     }
 
     private onWheel(e: WheelEvent): void {
@@ -793,7 +989,6 @@ export class TrackTimeline {
 
         const rect = this.overlayCanvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
-
         const now = Date.now();
         const timeSinceLastWheel = now - this.lastWheelTime;
         const isPrimaryVertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX);
@@ -801,6 +996,7 @@ export class TrackTimeline {
         const isNewGesture = timeSinceLastWheel > 100 || totalDelta > this.lastWheelDelta * 1.5;
 
         let intendedAction: 'zoom' | 'pan' | 'vscroll';
+
         if (e.shiftKey && isPrimaryVertical) {
             intendedAction = 'vscroll';
         } else if (!isPrimaryVertical) {
@@ -810,6 +1006,7 @@ export class TrackTimeline {
         }
 
         const action = (isNewGesture || !this.lastWheelAction) ? intendedAction : this.lastWheelAction;
+
         this.lastWheelAction = intendedAction;
         this.lastWheelTime = now;
         this.lastWheelDelta = totalDelta;
@@ -826,26 +1023,34 @@ export class TrackTimeline {
     private handleZoom(delta: number, centerX: number): void {
         const mouseMs = this.xToMs(centerX);
         const factor = Math.exp(-delta * 0.0015);
-
-        this.pxPerMs *= factor;
-
         const fullRange = this.maxX - this.minX;
         const minPxPerMs = this.width / fullRange;
-        const maxPxPerMs = minPxPerMs * 1000;
-        this.pxPerMs = Math.max(minPxPerMs, Math.min(maxPxPerMs, this.pxPerMs));
+        const precision = Number.EPSILON * Math.max(1, Math.abs(this.minX), Math.abs(this.maxX));
+        const maxPxPerMs = Math.max(minPxPerMs, 1 / precision);
+
+        this.pxPerMs = Math.max(minPxPerMs, Math.min(
+            maxPxPerMs,
+            this.pxPerMs * factor
+        ));
 
         const viewWidth = this.width / this.pxPerMs;
-        this.offsetMs = Math.max(this.minX, Math.min(this.maxX - viewWidth, mouseMs - centerX / this.pxPerMs));
+
+        this.offsetMs = Math.max(this.minX, Math.min(
+            this.maxX - viewWidth,
+            mouseMs - centerX / this.pxPerMs
+        ));
 
         this.#scheduleRender();
     }
 
     private handlePan(delta: number): void {
         const panAmount = delta / this.pxPerMs;
-        this.offsetMs += panAmount;
-
         const viewWidth = this.width / this.pxPerMs;
-        this.offsetMs = Math.max(this.minX, Math.min(this.maxX - viewWidth, this.offsetMs));
+
+        this.offsetMs = Math.max(this.minX, Math.min(
+            this.maxX - viewWidth,
+            this.offsetMs + panAmount
+        ));
 
         this.#scheduleRender();
     }
@@ -853,10 +1058,8 @@ export class TrackTimeline {
     private handleVerticalScroll(delta: number): void {
         this.scrollY += delta;
 
-        const contentHeight = this.height - LAYOUT.RULER_HEIGHT - LAYOUT.MINIMAP_HEIGHT;
-        const totalHeight = this.tracks.reduce((sum, _, i) =>
-            sum + this.getTrackHeight(i) + LAYOUT.TRACK_GAP, 0);
-        const maxScroll = Math.max(0, totalHeight - contentHeight);
+        const contentHeight = Math.max(0, this.height - LAYOUT.RULER_HEIGHT - LAYOUT.MINIMAP_HEIGHT);
+        const maxScroll = Math.max(0, this.contentHeight - contentHeight);
 
         this.scrollY = Math.max(0, Math.min(maxScroll, this.scrollY));
 
@@ -869,6 +1072,7 @@ export class TrackTimeline {
         const y = e.clientY - rect.top;
 
         e.stopPropagation();
+        this.pointerEvent = e;
 
         if (this.isDragging) {
             const dx = x - this.lastPointerX;
@@ -876,9 +1080,9 @@ export class TrackTimeline {
 
             this.handlePan(-dx * this.width / rect.width);
             this.handleVerticalScroll(-dy);
-
             this.lastPointerX = x;
             this.lastPointerY = y;
+
             return;
         }
 
@@ -901,6 +1105,7 @@ export class TrackTimeline {
     private onPointerDown(e: PointerEvent): void {
         if (e.button === 0) {
             const rect = this.overlayCanvas.getBoundingClientRect();
+
             this.dragStartX = e.clientX - rect.left;
             this.dragStartY = e.clientY - rect.top;
             this.isDragging = true;
@@ -937,6 +1142,7 @@ export class TrackTimeline {
     }
 
     private onPointerLeave(e: PointerEvent): void {
+        this.pointerEvent = null;
         this.isDragging = false;
         this.overlayCanvas.style.cursor = 'default';
 
@@ -959,13 +1165,10 @@ export class TrackTimeline {
             return null;
         }
 
-        const trackIdx = this.tracks.findIndex((_, i) => {
-            const trackY = this.getTrackY(i);
-            const trackHeight = this.getTrackHeight(i);
-            return y >= trackY && y < trackY + trackHeight;
-        });
+        const offset = y - contentY + this.scrollY;
+        const trackIdx = this.findTrackAtOffset(offset);
 
-        if (trackIdx === -1) {
+        if (trackIdx === this.tracks.length || offset < this.trackOffsets[trackIdx]) {
             return null;
         }
 
@@ -974,52 +1177,38 @@ export class TrackTimeline {
             return null;
         }
 
-        const ms = this.xToMs(x);
-        const spans = track.spans;
+        const image = this.trackImages.get(track);
 
-        if (spans.length === 0) {
+        if (!image || x < 0 || x >= this.width) {
             return null;
         }
 
-        const minHitWidth = 1 / this.pxPerMs;
-        const extraHitPadding = 2 / this.pxPerMs;
+        let lower = 0;
+        let upper = image.spans.length;
 
-        let bestMatch: Span | null = null;
-        let bestDistance = Infinity;
+        while (lower < upper) {
+            const middle = (lower + upper) >>> 1;
 
-        for (let i = 0; i < spans.length; i++) {
-            const span = spans[i];
-            const spanWidth = Math.max(span.end - span.start, minHitWidth);
-
-            let hitStart = span.start;
-            let hitEnd = Math.max(span.end, span.start + minHitWidth);
-
-            if (spanWidth < minHitWidth * 5) {
-                const prevSpan = i > 0 ? spans[i - 1] : null;
-                const maxLeftExpand = prevSpan
-                    ? span.start - Math.max(prevSpan.end, prevSpan.start + minHitWidth)
-                    : Infinity;
-                const leftExpand = Math.min(extraHitPadding, maxLeftExpand, span.start - hitStart);
-                hitStart = Math.max(0, hitStart - leftExpand);
-
-                const nextSpan = i < spans.length - 1 ? spans[i + 1] : null;
-                const maxRightExpand = nextSpan ? nextSpan.start - hitEnd : Infinity;
-                const rightExpand = Math.min(extraHitPadding, maxRightExpand);
-                hitEnd += rightExpand;
-            }
-
-            if (ms >= hitStart && ms < hitEnd) {
-                const spanCenter = (span.start + Math.max(span.end, span.start + minHitWidth)) / 2;
-                const distance = Math.abs(ms - spanCenter);
-
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    bestMatch = span;
-                }
+            if (image.positions[middle * 2] <= x) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
             }
         }
 
-        return bestMatch;
+        const position = lower - 1;
+
+        if (position < 0) {
+            return null;
+        }
+
+        const start = image.positions[position * 2];
+        const end = image.positions[position * 2 + 1];
+        const hitEnd = end - start < 5
+            ? Math.min(end + 2, image.positions[lower * 2] ?? this.width)
+            : end;
+
+        return x < hitEnd ? image.spans[position] : null;
     }
 
     private handleGroupTitleClick(x: number, y: number): boolean {
@@ -1036,6 +1225,7 @@ export class TrackTimeline {
 
         for (let i = 0; i < this.tracks.length; i++) {
             const track = this.tracks[i];
+
             if (!track.isGroupTitle) {
                 continue;
             }
@@ -1045,8 +1235,11 @@ export class TrackTimeline {
 
             if (y >= trackY && y < trackY + height) {
                 track.group!.collapsed = !track.group!.collapsed;
+                this.#layoutGroupIndex = 0;
                 this.layoutTracks();
+                this.#scheduleLayout();
                 this.#scheduleRender();
+
                 return true;
             }
         }

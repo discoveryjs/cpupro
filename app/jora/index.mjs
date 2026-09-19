@@ -9,6 +9,7 @@ import { methods as sourceMethods } from './source.js';
 import { methods as ownershipMethods } from './ownership.js';
 import { methods as filterMethods, assertions as filterAssertions } from './filters.js';
 import { methods as viewportMethods } from './viewport.js';
+import { methods as eventsMethods } from './events.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 
 const sessionColorComponents = new Map();
@@ -59,6 +60,7 @@ export const methods = {
     ...ownershipMethods,
     ...filterMethods,
     ...viewportMethods,
+    ...eventsMethods,
 
     order(value) {
         return typeOrder[value] || 100;
