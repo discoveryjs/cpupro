@@ -152,7 +152,7 @@ test('canvas flame graph preserves lazy sorted tree geometry and root content', 
     assert.equal(chart.findFrameAt(100, 20), 3);
     assert.equal(chart.findFrameAt(650, 20), 1);
     assert.equal(chart.findFrameAt(650, 40), 2);
-    assert.equal(chart.findFrameAt(100, 33), -1);
+    assert.equal(chart.findFrameAt(100, 33), 3);
     assert.equal(root[0], chart.el.children[1]);
     assert.notEqual(root[0], canvas);
     assert.equal(root[1].value, tree.dictionary[0]);
@@ -206,6 +206,84 @@ test('canvas picking preserves click zoom, meta selection, similar identity and 
     assert.ok(leave.mock.calls.length > 0);
     assert.ok(canvas.context.fillRect.mock.calls.length > 0);
 
+    chart.destroy();
+});
+
+test('frame separators belong to the preceding frame without swallowing empty space', () => {
+    for (const dpr of [1, 1.5, 2]) {
+        const { chart, pointer, scroll, flush } = createChart(1000, 100, dpr);
+        const { tree, values } = fixture();
+        const enter = vi.fn();
+        const leave = vi.fn();
+
+        chart.setData(tree, {
+            value: index => values[index],
+            childrenSort: true
+        });
+        flush();
+        chart.on('frame:enter', enter).on('frame:leave', leave);
+
+        pointer('pointermove', 598, 22);
+        pointer('pointermove', 599.5, 22);
+        pointer('pointermove', 599.5, 33.5);
+
+        assert.equal(enter.mock.calls.length, 1);
+        assert.equal(enter.mock.calls[0][0], 3);
+        assert.equal(leave.mock.calls.length, 0);
+        assert.equal(chart.findFrameAt(599.5, 33.5), 3);
+        assert.equal(chart.findFrameAt(600, 22), 1);
+        assert.equal(chart.findFrameAt(100, 34), 4);
+        assert.equal(chart.findFrameAt(299.5, 39), 4);
+        assert.equal(chart.findFrameAt(300, 39), -1);
+        assert.equal(chart.findFrameAt(500, 39), -1);
+        assert.equal(chart.findFrameAt(999.5, 22), 1);
+        assert.equal(chart.findFrameAt(1000, 22), -1);
+        assert.equal(chart.findFrameAt(-0.5, 22), -1);
+
+        pointer('click', 599.5, 22, true);
+        assert.equal(chart.selectedNode, 3);
+        pointer('pointermove', 600, 22);
+        assert.equal(enter.mock.calls.at(-1)[0], 1);
+        assert.equal(leave.mock.calls.length, 0);
+        pointer('pointermove', 500, 39);
+        assert.equal(leave.mock.calls.length, 1);
+
+        scroll.scrollTop = 17.25;
+        scroll.dispatchEvent(new Event('scroll'));
+        flush();
+
+        assert.equal(chart.findFrameAt(599.5, 16.5), 3);
+        assert.equal(chart.findFrameAt(100, 16.75), 4);
+        chart.destroy();
+    }
+});
+
+test('animated frame fills take precedence over another frame separator', () => {
+    const { chart, canvas, flush } = createChart(1000, 170, 1, false);
+    const { tree, values } = fixture();
+
+    chart.setData(tree, { value: index => values[index] });
+    flush(0);
+    chart.zoomFrame(1);
+    canvas.context.fillRect.mockClear();
+    flush(65);
+
+    const row = canvas.context.fillRect.mock.calls.filter(([, top]) => top === 17);
+    const retained = row.find(([left]) => left === 0);
+    const right = retained[0] + retained[2];
+
+    assert.equal(chart.findFrameAt(right - 0.25, 22), 1);
+    assert.equal(chart.findFrameAt(right + 0.25, 22), 3, 'Visible departing fill wins over the common frame border');
+    assert.equal(chart.findFrameAt(right + 0.25, 33.5), 3);
+
+    canvas.context.fillRect.mockClear();
+    flush(15);
+
+    const next = canvas.context.fillRect.mock.calls.find(([left, top]) => left === 0 && top === 17);
+    const nextRight = next[0] + next[2];
+
+    assert.equal(chart.findFrameAt(nextRight + 0.25, 22), 1, 'An unpickable faded frame does not block border ownership');
+    assert.equal(chart.findFrameAt(nextRight + 1, 22), -1);
     chart.destroy();
 });
 
@@ -412,7 +490,7 @@ test('viewport clipping does not move an offscreen frame border into the visible
     ]);
     assert.equal(chart.findFrameAt(99.75, 5), 0);
     assert.equal(chart.findFrameAt(99.75, 20), 3);
-    assert.equal(chart.findFrameAt(99.75, 40), -1);
+    assert.equal(chart.findFrameAt(99.75, 40), 4);
 
     chart.destroy();
 });
@@ -633,7 +711,7 @@ test('zoom retargeting starts at the displayed position and settles without reso
 
     assert.ok(frames > 1 && frames < 200);
     assert.equal(scheduled.size, 0);
-    assert.equal(chart.findFrameAt(599, 22), -1);
+    assert.equal(chart.findFrameAt(599, 22), 3);
     assert.equal(chart.findFrameAt(600, 22), 1);
     assert.equal(elements.length, 3);
     assert.equal(canvas.context.setTransform.mock.calls.length, 1);
@@ -1321,8 +1399,11 @@ test('metric animation retargets mid-reorder while keeping parent identity and p
                 const painted = fills.findLast(item => item.top === top &&
                     item.alpha > 0.01 && position >= item.left && position < item.right
                 );
+                const border = fills.findLast(item => item.top === top &&
+                    item.alpha > 0.01 && position >= item.left && position < item.right + 1
+                );
 
-                assert.equal(chart.findFrameAt(position, top + 5), painted?.node ?? -1);
+                assert.equal(chart.findFrameAt(position, top + 5), painted?.node ?? border?.node ?? -1);
             }
         }
     }

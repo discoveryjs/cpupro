@@ -50,7 +50,8 @@ type TransitionRow = {
 type ZoomMode = 'select' | 'continuous';
 
 const ROW_HEIGHT = 17;
-const FRAME_HEIGHT = 16;
+const FRAME_GAP = 1;
+const FRAME_HEIGHT = ROW_HEIGHT - FRAME_GAP;
 const ZOOM_TIME_CONSTANT = 65;
 const FRAME_REVEAL_DISTANCE = 1;
 const FRAME_REVEAL_DELAY_FACTOR = 0.6;
@@ -198,16 +199,21 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const offset = y + this.#scrollTop;
         const row = this.#rows[Math.floor(offset / ROW_HEIGHT)];
 
-        if (!row || x < 0 || x >= this.#width || y < 0 || offset % ROW_HEIGHT >= FRAME_HEIGHT) {
+        if (!row || x < 0 || x >= this.#width || y < 0) {
             return -1;
         }
 
         if (this.#transitionProgress < 1) {
-            for (let layer = 2; layer >= 0; layer--) {
-                for (let index = row.nodes.length - 1; index >= 0; index--) {
-                    if (row.layer[index] === layer && row.opacity[index] > 0.01 &&
-                        x >= row.bounds[index * 2] && x < row.bounds[index * 2 + 1]) {
-                        return row.nodes[index];
+            for (const padding of [0, FRAME_GAP]) {
+                for (let layer = 2; layer >= 0; layer--) {
+                    for (let index = row.nodes.length - 1; index >= 0; index--) {
+                        const left = row.bounds[index * 2];
+                        const right = row.bounds[index * 2 + 1];
+
+                        if (row.layer[index] === layer && row.opacity[index] > 0.01 && right > left &&
+                            x >= left && x < right + padding) {
+                            return row.nodes[index];
+                        }
                     }
                 }
             }
@@ -230,7 +236,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         const index = lower - 1;
 
-        return index >= 0 && x < row.bounds[index * 2 + 1] ? row.nodes[index] : -1;
+        return index >= 0 && row.bounds[index * 2 + 1] > row.bounds[index * 2] &&
+            x < row.bounds[index * 2 + 1] + FRAME_GAP ? row.nodes[index] : -1;
     }
 
     #updateHover() {
@@ -529,7 +536,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
             );
             const right = Math.min(
                 parentRight,
-                small ? Math.floor(x0 * this.#dpr) / this.#dpr + markerWidth : x1 - 1
+                small ? Math.floor(x0 * this.#dpr) / this.#dpr + markerWidth : x1 - FRAME_GAP
             );
 
             if (right <= left) {
