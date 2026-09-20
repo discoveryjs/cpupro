@@ -1,100 +1,27 @@
 .flamechart {
-    --transition-duration: 250ms;
-    --transition-delay: 250ms;
-    --transition: var(--transition-duration) ease-in-out;
     --frame-height: 17px;
 
     position: relative;
-    height: calc(max(var(--max-depth) + 1, 10) * var(--frame-height) + 2px);
+    height: 172px;
     contain: strict;
 }
 
-.flamechart .frames-group {
-    opacity: 1;
-    transition: var(--transition);
-    transition-delay: var(--transition-delay);
-    transition-property: opacity;
-    contain: layout size style;
-}
-.flamechart.first-enter .frames-group {
-    --transition-duration: 125ms;
-    --transition-delay: 0ms;
-}
-.flamechart .frames-group_init-enter-state {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-}
-
-.flamechart .frame {
-    --fill-opacity: .4;
+.flamechart__canvas {
     position: absolute;
-    overflow: hidden;
+    left: 0;
+    display: block;
     cursor: pointer;
-    left: calc(100% * var(--x0));
-    right: calc(100% - 100% * var(--x1));
-    top: calc(var(--depth) * var(--frame-height));
-    height: calc(var(--frame-height) - 1px);
-    border: solid transparent;
-    border-width: 0 1px 1px 0;
-    background-clip: content-box;
-    background-color: rgba(
-        var(--color, 128, 128, 128),
-        var(--fill-opacity)
-    );
-    background-color: color-mix(in srgb,
-        rgb(var(--color, 128, 128, 128)) calc(var(--fill-opacity)*100%),
-        var(--discovery-background-color)
-    );
-    transition: var(--transition);
-    transition-property: left, right, opacity;
-    /* contain: layout size style; */
 }
-.flamechart .frame:hover {
-    --fill-opacity: .5;
-}
-.flamechart .frame.fade {
-    opacity: .65;
-}
-.flamechart .frame.similar {
-    transition-property: left, right, opacity, color;
-    transition-duration: var(--transition-duration), var(--transition-duration), var(--transition-duration), .15s;
-    color: black;
-}
-.flamechart .frame::before {
-    content: '';
+
+.flamechart__root-label {
     position: absolute;
-    inset: 0;
-    z-index: 0;
-    opacity: 0;
-    background-color: #d6bb2d;
-    pointer-events: none;
-}
-.flamechart .frame.similar::before {
-    opacity: 1;
-    transition: .15s ease-in-out;
-    transition-property: opacity;
-}
-
-.flamechart .frame.zoomed {
-    box-shadow: 0 0 0 1.5px #d6bb2d inset;
-}
-.flamechart .frame.zoomed::before {
-    inset: 2px;
-}
-
-.flamechart .frame-label {
-    position: relative;
+    top: 0;
+    left: 3px;
+    right: 3px;
+    height: 16px;
+    overflow: hidden;
     pointer-events: none;
     font-size: 10px;
     line-height: 14px;
-    padding: 0 3px;
-
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-
-    opacity: calc(max(var(--x1) - var(--x0) - 20 * var(--width-scale), 0) * 100000);
-    transition: var(--transition);
-    transition-property: opacity;
 }

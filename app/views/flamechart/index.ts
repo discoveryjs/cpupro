@@ -1,27 +1,27 @@
 import { CallTree } from '../../prepare/computations/call-tree';
 import { generateColorVector, calculateColor } from './color-utils';
 import { EventEmitter } from './event-emmiter';
+import { SpanLabels, SPAN_LABEL_FONT } from '../track-timeline/labels';
 
-type FrameElement = HTMLElement;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FrameData = any;
 type FrameColorGenerator<T> = (frame: T, colorHue: string | null) => string;
+
 type SetDataOptions = {
     name?(data: FrameData): string;
     value?(data: FrameData): number;
-    offset?(data: FrameData, parentData: FrameData): number;
-    children?(data: FrameData): FrameData[] | null | undefined;
-    childrenSort?: true | 'name' | 'value' | ((a: number, b: number) => number);
-}
+    childrenSort?: true | 'name' | 'value' | ((left: number, right: number) => number);
+};
+
 type Events = {
     render<T>(rootEl: Element | null, rootFrame: Frame<T> | null, rootValue: number): void;
     select(nodeIndex: number, prevNodeIndex: number): void;
     zoom(nodeIndex: number, start: number, end: number): void;
-    'frame:click'(nodeIndex: number, element: FrameElement, event: MouseEvent): void;
-    'frame:enter'(nodeIndex: number, element: FrameElement): void;
+    'frame:click'(nodeIndex: number, element: HTMLElement, event: MouseEvent): void;
+    'frame:enter'(nodeIndex: number, element: HTMLElement): void;
     'frame:leave'(): void;
     destroy(): void;
-}
+};
 
 type Frame<T> = {
     nodeIndex: number;
@@ -33,59 +33,58 @@ type Frame<T> = {
     depth: number;
 };
 
-const defaultGetName: Exclude<SetDataOptions['name'], undefined> = (frameData: FrameData) => frameData.name;
-const defaultGetValue: Exclude<SetDataOptions['value'], undefined> = (frameData: FrameData) => frameData.value;
+type FrameRow = {
+    nodes: number[];
+    bounds: number[];
+};
 
-function ensureFunction<T, U>(value: T, fallback: U) {
-    return typeof value === 'function' ? value : fallback;
-}
+const ROW_HEIGHT = 17;
+const FRAME_HEIGHT = 16;
 
-function defaultColorMapper(frame: FrameData, colorHue: string | null = null) {
-    const { name } = frame;
-    const vector = generateColorVector(name);
-    const libtype = undefined;
-
-    // default when libtype is not in use
-    let hue = colorHue || 'warm';
-
-    if (!colorHue && !(typeof libtype === 'undefined' || libtype === '')) {
-        // Select hue. Order is important.
-        hue = 'red';
-        if (typeof name !== 'undefined' && name && name.indexOf('::') !== -1) {
-            hue = 'yellow';
-        }
-        if (libtype === 'kernel') {
-            hue = 'orange';
-        } else if (libtype === 'jit') {
-            hue = 'green';
-        } else if (libtype === 'inlined') {
-            hue = 'aqua';
-        }
-    }
-
-    return calculateColor(hue, vector);
-}
+const defaultGetName = (frame: FrameData) => frame.name;
+const defaultGetValue = (frame: FrameData) => frame.value;
+const defaultColorMapper = (frame: FrameData, hue: string | null) =>
+    calculateColor(hue || 'warm', generateColorVector(frame.name));
 
 export class FlameChart<T> extends EventEmitter<Events> {
     el: HTMLElement;
+    #canvas: HTMLCanvasElement;
+    #ctx: CanvasRenderingContext2D;
+    #rootLabel: HTMLElement;
+    #scrollEl: HTMLElement | null;
     #resizeObserver: ResizeObserver | null = null;
+    #events = new AbortController();
 
+    #labels = new SpanLabels();
     #colorMapper: FrameColorGenerator<T> = defaultColorMapper;
     #colorHue: string | null = null;
+
     #scheduleRenderTimer: number | null = null;
-    #childrenSort: ((a: number, b: number) => number) | null = null;
+    #childrenSort: ((left: number, right: number) => number) | null = null;
     #lastVisibleFramesEpoch = 0;
     #epoch = 0;
 
-    #width = 0; // graph width
+    #width = 0;
+    #scrollTop = 0;
+    #dpr = 0;
     #minFrameWidth = 2;
-    zoomStart = 0;
-    zoomEnd = 1;
 
     #getValue = defaultGetValue;
+    #rows: FrameRow[] = [];
+    #walkStack: number[] = [];
+    #paintedEnds: number[] = [];
+    #rootEpoch = -1;
+    #rootZoom = -1;
+
+    #hoveredNode = -1;
+    #pointer: {
+        x: number;
+        y: number;
+    } | null = null;
+    #destroyed = false;
 
     tree: CallTree<T>;
-    nodesMaxDepth: number;
+    nodesMaxDepth = 0;
     nodesDepth: Uint32Array;
     nodesValue: Uint32Array;
     nodesX: Uint32Array;
@@ -95,120 +94,126 @@ export class FlameChart<T> extends EventEmitter<Events> {
     nodesNames: string[];
     nodesColors: string[];
 
+    zoomStart = 0;
+    zoomEnd = 1;
     zoomedNode = 0;
     zoomedNodesStack: number[] = [];
     selectedNode = -1;
-    frameEls = new Map<number, HTMLElement>();
-    frameByEl = new WeakMap<Node, Frame<T>>();
 
-    constructor() {
+    constructor(scrollEl: HTMLElement | null = null) {
         super();
 
-        // create chart element
-        this.el = this.createElement(this);
-        this.on('frame:click', (nodeIndex, _, event) => {
-            if (event.metaKey) {
-                this.selectFrame(nodeIndex);
-            } else {
-                this.zoomFrame(nodeIndex, true);
+        this.#scrollEl = scrollEl;
+        this.el = document.createElement('div');
+        this.el.className = 'flamechart';
+
+        this.#canvas = document.createElement('canvas');
+        this.#canvas.className = 'flamechart__canvas';
+
+        this.#rootLabel = document.createElement('div');
+        this.#rootLabel.className = 'flamechart__root-label';
+
+        this.el.append(this.#canvas, this.#rootLabel);
+        this.#ctx = this.#canvas.getContext('2d')!;
+
+        const { signal } = this.#events;
+
+        this.#canvas.addEventListener('click', event => {
+            const rect = this.#canvas.getBoundingClientRect();
+            const node = this.findFrameAt(event.clientX - rect.left, event.clientY - rect.top);
+
+            if (node !== -1) {
+                if (event.metaKey) {
+                    this.selectFrame(node);
+                } else {
+                    this.zoomFrame(node, true);
+                }
+
+                this.emit('frame:click', node, this.#canvas, event);
             }
-        });
-    }
-
-    createElement(chart: FlameChart<T>) {
-        const chartEl = document.createElement('div');
-
-        chartEl.className = 'flamechart';
-        chartEl.addEventListener('click', event => {
-            const result = chart.findFrameByEl(event.target as Node);
-
-            if (result !== null) {
-                chart.emit('frame:click', result.frame.nodeIndex, result.element as FrameElement, event);
-            }
-        }, true);
-        chartEl.addEventListener('pointerenter', event => {
-            const result = chart.findFrameByEl(event.target as Node);
-
-            if (result !== null) {
-                chart.emit('frame:enter', result.frame.nodeIndex, result.element as FrameElement);
-            }
-        }, true);
-        chartEl.addEventListener('pointerleave', () => {
-            chart.emit('frame:leave');
-        }, true);
-        // chartEl.addEventListener('mousewheel', (e) => {
-        //     const deltaY = (e as WheelEvent).deltaY;
-        //     const scale = Math.sign(deltaY) < 0 ? 0.99 : 1.01;
-        //     const curDelta = chart.zoomEnd - chart.zoomStart;
-        //     const newDelta = Math.max(0.0001, Math.min(1, curDelta));
-
-        //     chart.zoomStart = chart.zoomStart + (curDelta - newDelta * scale) / 2;
-        //     chart.zoomEnd = chart.zoomEnd - (curDelta - newDelta * scale) / 2;
-        //     const t = Date.now();
-        //     chart.render();
-        //     console.log(Date.now() - t, { deltaY, scale, curDelta, newDelta }, [chart.zoomStart, chart.zoomEnd]);
-
-        //     e.preventDefault();
-
-        //     const xScale = 1 / (chart.zoomEnd - chart.zoomStart);
-        //     const xOffset = chart.zoomStart * xScale;
-
-        //     // add / update frame elements
-        //     for (const [frame, frameEl] of chart.frameEls) {
-        //         const x0 = Math.max(0, frame.x0 * xScale - xOffset);
-        //         const x1 = Math.max(0, frame.x1 * xScale - xOffset);
-
-        //         if (frameEl) {
-        //             // update
-        //             frameEl.style.setProperty('--x0', x0.toFixed(8));
-        //             frameEl.style.setProperty('--x1', x1.toFixed(8));
-        //         }
-        //     }
-        // });
+        }, { signal });
+        this.#canvas.addEventListener('pointermove', event => {
+            this.#pointer = { x: event.clientX, y: event.clientY };
+            this.#updateHover();
+        }, { signal });
+        this.#canvas.addEventListener('pointerleave', () => {
+            this.#pointer = null;
+            this.#updateHover();
+        }, { signal });
+        scrollEl?.addEventListener('scroll', () => {
+            this.#pointer = null;
+            this.scheduleRender();
+        }, { passive: true, signal });
+        document.fonts?.addEventListener('loadingdone', () => {
+            this.#labels.clear();
+            this.scheduleRender();
+        }, { signal });
 
         if (typeof ResizeObserver === 'function') {
-            this.#resizeObserver = new ResizeObserver(entries => {
-                const newWidth = entries[entries.length - 1].contentRect.width;
+            this.#resizeObserver = new ResizeObserver(() => this.scheduleRender());
+            this.#resizeObserver.observe(this.el);
 
-                if (typeof newWidth === 'number' && this.#width !== newWidth) {
-                    this.#width = newWidth;
-                    this.scheduleRender();
-                }
-            });
-            this.#resizeObserver.observe(chartEl);
+            if (scrollEl) {
+                this.#resizeObserver.observe(scrollEl);
+            }
         }
-
-        return chartEl;
     }
 
-    findFrameByEl(cursor: Node | null) {
-        if (this.el.contains(cursor)) {
-            while (cursor !== null && cursor !== this.el) {
-                if (this.frameByEl.has(cursor)) {
-                    return {
-                        element: cursor,
-                        frame: this.frameByEl.get(cursor) as Frame<T>
-                    };
-                }
+    findFrameAt(x: number, y: number): number {
+        const offset = y + this.#scrollTop;
+        const row = this.#rows[Math.floor(offset / ROW_HEIGHT)];
 
-                cursor = cursor.parentNode;
+        if (!row || x < 0 || x >= this.#width || y < 0 || offset % ROW_HEIGHT >= FRAME_HEIGHT) {
+            return -1;
+        }
+
+        let lower = 0;
+        let upper = row.nodes.length;
+
+        while (lower < upper) {
+            const middle = (lower + upper) >>> 1;
+
+            if (row.bounds[middle * 2] <= x) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
             }
         }
 
-        return null;
+        const index = lower - 1;
+
+        return index >= 0 && x < row.bounds[index * 2 + 1] ? row.nodes[index] : -1;
+    }
+
+    #updateHover() {
+        const rect = this.#canvas.getBoundingClientRect();
+        const node = this.#pointer
+            ? this.findFrameAt(this.#pointer.x - rect.left, this.#pointer.y - rect.top)
+            : -1;
+
+        if (node !== this.#hoveredNode) {
+            this.#hoveredNode = node;
+
+            if (node === -1) {
+                this.emit('frame:leave');
+            } else {
+                this.emit('frame:enter', node, this.#canvas);
+            }
+
+            this.scheduleRender();
+        }
     }
 
     selectFrame(nodeIndex: number) {
+        if (this.#destroyed || !this.tree || nodeIndex < 0 || nodeIndex >= this.tree.nodes.length) {
+            return this.selectedNode;
+        }
+
         const prevSelected = this.selectedNode;
         const subjectId = this.tree.nodes[nodeIndex];
         const selectedSubjectId = this.tree.nodes[this.selectedNode];
 
-        if (selectedSubjectId !== subjectId && nodeIndex !== 0) {
-            this.selectedNode = nodeIndex;
-        } else {
-            this.selectedNode = -1;
-        }
-
+        this.selectedNode = selectedSubjectId !== subjectId && nodeIndex !== 0 ? nodeIndex : -1;
         this.emit('select', this.selectedNode, prevSelected);
         this.scheduleRender();
 
@@ -219,56 +224,58 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.zoomedNode = 0;
         this.zoomedNodesStack = [];
         this.selectedNode = -1;
-        this.frameByEl = new WeakMap();
-        this.frameEls.clear();
+        this.zoomStart = 0;
+        this.zoomEnd = 1;
+        this.#rows.length = 0;
+        this.#hoveredNode = -1;
+        this.#pointer = null;
     }
 
-    setData(tree: CallTree<T>, options?: SetDataOptions) {
-        // this.resetFrameRefs();
+    setData(tree: CallTree<T>, options: SetDataOptions = {}) {
+        if (this.#destroyed) {
+            return;
+        }
 
-        options = options || {};
+        this.resetFrameRefs();
+        this.#labels.clear();
+        this.emit('frame:leave');
 
-        const getName = ensureFunction(options.name, defaultGetName);
-        const getValue = ensureFunction(options.value, defaultGetValue);
-        this.#childrenSort =
-            options.childrenSort === true || options.childrenSort === 'value'
-                ? (a: number, b: number) => values[b] - values[a]
-                : options.childrenSort === 'name'
-                    ? (a: number, b: number) => {
-                        const nameA = names[a];
-                        const nameB = names[b];
-
-                        return nameA > nameB ? 1 : nameA < nameB ? -1 : 0;
-                    }
-                    : ensureFunction(options.childrenSort, null);
-
-        const nodes = tree.nodes;
-        const parent = tree.parent;
-        const subtreeSize = tree.subtreeSize;
+        const getName = options.name || defaultGetName;
+        const getValue = options.value || defaultGetValue;
+        const { nodes, parent, subtreeSize } = tree;
         const depth = new Uint32Array(nodes.length);
         const children = new Uint32Array(nodes.length);
         const childrenOffset = new Uint32Array(nodes.length);
-        const childrenComputed = new Uint32Array(nodes.length);
         const names = tree.dictionary.map(getName);
         const values = new Uint32Array(nodes.length);
-        const x = new Uint32Array(nodes.length);
-        const nodesLength = nodes.length;
+        const positions = new Uint32Array(nodes.length);
         let maxDepth = 0;
         let childrenCursor = 0;
 
-        for (let i = 0; i < nodes.length; i++) {
-            const nodeDepth = depth[parent[i]] + (i !== 0 ? 1 : 0);
-            let cursor = i + 1;
+        this.#childrenSort = options.childrenSort === true || options.childrenSort === 'value'
+            ? (left, right) => values[right] - values[left]
+            : options.childrenSort === 'name'
+                ? (left, right) => {
+                    const leftName = names[nodes[left]];
+                    const rightName = names[nodes[right]];
 
-            depth[i] = nodeDepth;
-            values[i] = getValue(i);
+                    return leftName > rightName ? 1 : leftName < rightName ? -1 : 0;
+                }
+                : typeof options.childrenSort === 'function'
+                    ? options.childrenSort
+                    : null;
 
-            if (maxDepth < nodeDepth) {
-                maxDepth = nodeDepth;
-            }
+        for (let index = 0; index < nodes.length; index++) {
+            const nodeDepth = depth[parent[index]] + (index !== 0 ? 1 : 0);
 
-            if (cursor !== nodesLength && parent[cursor] === i) {
-                const end = i + subtreeSize[i];
+            depth[index] = nodeDepth;
+            values[index] = getValue(index);
+            maxDepth = Math.max(maxDepth, nodeDepth);
+
+            let cursor = index + 1;
+
+            if (cursor < nodes.length && parent[cursor] === index) {
+                const end = index + subtreeSize[index];
 
                 while (cursor <= end) {
                     children[childrenCursor++] = cursor;
@@ -276,7 +283,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 }
             }
 
-            childrenOffset[i] = childrenCursor;
+            childrenOffset[index] = childrenCursor;
         }
 
         this.#epoch++;
@@ -284,10 +291,10 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.nodesMaxDepth = maxDepth;
         this.nodesDepth = depth;
         this.nodesValue = values;
-        this.nodesX = x;
+        this.nodesX = positions;
         this.children = children;
         this.childrenOffset = childrenOffset;
-        this.childrenComputed = childrenComputed;
+        this.childrenComputed = new Uint32Array(nodes.length);
         this.nodesNames = names;
         this.nodesColors = tree.dictionary.map(entry => this.#colorMapper(entry, this.#colorHue));
         this.tree = tree;
@@ -296,255 +303,335 @@ export class FlameChart<T> extends EventEmitter<Events> {
     }
 
     resetValues() {
+        if (this.#destroyed) {
+            return;
+        }
+
         this.#epoch++;
+        this.#hoveredNode = -1;
+        this.emit('frame:leave');
         this.scheduleRender();
     }
 
-    #computeChildren(nodeIdx: number, nodeX: number) {
-        const { nodesX, nodesValue, children, childrenOffset, childrenComputed } = this;
-        const { subtreeSize } = this.tree;
-        const getValue = this.#getValue;
+    #computeChildren(nodeIndex: number, nodeX: number) {
+        if (this.childrenComputed[nodeIndex] !== 0) {
+            return;
+        }
 
-        // if children is not computed before, then sort them and calculate x and width
-        if (childrenComputed[nodeIdx] === 0) {
-            childrenComputed[nodeIdx] = 1;
+        this.childrenComputed[nodeIndex] = 1;
 
-            if (subtreeSize[nodeIdx] > 0) {
-                const offsetEnd = childrenOffset[nodeIdx];
-                const count = offsetEnd - (nodeIdx === 0 ? 0 : childrenOffset[nodeIdx - 1]);
-                const offset = offsetEnd - count;
+        const end = this.childrenOffset[nodeIndex];
+        const start = nodeIndex === 0 ? 0 : this.childrenOffset[nodeIndex - 1];
+        const children = this.children.subarray(start, end);
 
-                if (count > 1) {
-                    const array = this.children.subarray(offset, offset + count);
+        for (const child of children) {
+            this.nodesValue[child] = this.#getValue(child);
+        }
 
-                    for (let j = 0; j < array.length; j++) {
-                        const childId = array[j];
+        if (children.length > 1 && this.#childrenSort) {
+            children.sort(this.#childrenSort);
+        }
 
-                        nodesValue[childId] = getValue(childId);
-                    }
-
-                    if (this.#childrenSort !== null) {
-                        array.sort(this.#childrenSort);
-                    }
-
-                    for (let j = 0, childX = nodeX; j < array.length; j++) {
-                        const childId = array[j];
-
-                        nodesX[childId] = childX;
-                        childX += nodesValue[childId];
-                    }
-                } else if (count === 1) {
-                    // no need for sort & loop through children
-                    const childId = children[offset];
-
-                    nodesValue[childId] = getValue(childId);
-                    nodesX[childId] = nodeX;
-                }
-            }
+        for (const child of children) {
+            this.nodesX[child] = nodeX;
+            nodeX += this.nodesValue[child];
         }
     }
 
     #syncChildrenComputations() {
-        if (this.#lastVisibleFramesEpoch !== this.#epoch) {
-            this.#lastVisibleFramesEpoch = this.#epoch;
-            this.childrenComputed.fill(0);
+        if (this.#lastVisibleFramesEpoch === this.#epoch) {
+            return;
+        }
 
-            // this.nodesValue[0] = this.#getValue(0);
-            this.#computeChildren(0, 0);
-            let rootValue = 0;
-            for (const childIndex of this.tree.children(0)) {
-                rootValue += this.nodesValue[childIndex];
+        this.#lastVisibleFramesEpoch = this.#epoch;
+        this.childrenComputed.fill(0);
+        this.#computeChildren(0, 0);
+
+        let rootValue = 0;
+
+        for (const child of this.tree.children(0)) {
+            rootValue += this.nodesValue[child];
+        }
+
+        this.nodesValue[0] = rootValue;
+
+        if (this.zoomedNode > 0) {
+            for (const ancestor of [...this.tree.ancestors(this.zoomedNode)].reverse()) {
+                this.#computeChildren(ancestor, this.nodesX[ancestor]);
             }
-            this.nodesValue[0] = rootValue;
 
-            if (this.zoomedNode > 0) {
-                for (const ancestorIdx of [...this.tree.ancestors(this.zoomedNode)].reverse()) {
-                    this.#computeChildren(ancestorIdx, this.nodesX[ancestorIdx]);
-                }
-
-                this.zoomFrame(this.zoomedNode);
-            }
+            this.zoomFrame(this.zoomedNode);
         }
     }
 
-    getVisibleFrames(
-        start = this.zoomStart,
-        end = this.zoomEnd,
-        minScale = 0
-    ) {
-        if (this.tree === null) {
+    getVisibleFrames(start = this.zoomStart, end = this.zoomEnd, minScale = 0) {
+        if (!this.tree || this.#destroyed) {
             return [];
         }
 
-        const { nodesX, nodesValue, nodesDepth } = this;
-        const { dictionary, nodes, subtreeSize } = this.tree;
-
         this.#syncChildrenComputations();
 
-        const rootWidth = nodesValue[0];
+        const rootWidth = this.nodesValue[0];
+        const frames: Frame<T>[] = [];
+
+        if (!(rootWidth > 0)) {
+            return frames;
+        }
+
         const minValue = (end - start) * rootWidth * minScale;
-        const nodeList: Frame<T>[] = [];
 
-        for (let i = 0; i < nodes.length; i++) {
-            const nodeValue = nodesValue[i];
-            const nodeX = nodesX[i];
-            const x0 = nodeX / rootWidth;
-            const x1 = (nodeX + nodeValue) / rootWidth;
+        for (let index = 0; index < this.tree.nodes.length; index++) {
+            const value = this.nodesValue[index];
+            const position = this.nodesX[index];
+            const x0 = position / rootWidth;
+            const x1 = (position + value) / rootWidth;
 
-            if (x0 < end && x1 > start && nodeValue >= minValue) {
-                nodeList.push({
-                    nodeIndex: i,
-                    value: dictionary[nodes[i]],
-                    name: this.nodesNames[nodes[i]],
-                    color: this.nodesColors[nodes[i]],
-                    x0,
-                    x1,
-                    depth: nodesDepth[i]
-                });
-
-                this.#computeChildren(i, nodeX);
+            if (x0 < end && x1 > start && value >= minValue) {
+                frames.push(this.#frame(index));
+                this.#computeChildren(index, position);
             } else {
-                i += subtreeSize[i];
+                index += this.tree.subtreeSize[index];
             }
         }
 
-        return nodeList;
+        return frames;
+    }
+
+    #frame(nodeIndex: number): Frame<T> {
+        const root = this.nodesValue[0];
+        const entry = this.tree.nodes[nodeIndex];
+
+        return {
+            nodeIndex,
+            value: this.tree.dictionary[entry],
+            name: this.nodesNames[entry],
+            color: this.nodesColors[entry],
+            x0: root > 0 ? this.nodesX[nodeIndex] / root : 0,
+            x1: root > 0 ? (this.nodesX[nodeIndex] + this.nodesValue[nodeIndex]) / root : 1,
+            depth: this.nodesDepth[nodeIndex]
+        };
+    }
+
+    #projectFrames(viewHeight: number) {
+        const { nodesValue, nodesX, nodesDepth, children, childrenOffset } = this;
+        const root = nodesValue[0];
+        const start = this.zoomStart * root;
+        const end = this.zoomEnd * root;
+        const scale = this.#width / (end - start);
+        const markerWidth = Math.max(1 / this.#dpr, this.#minFrameWidth);
+        const stack = this.#walkStack;
+        const paintedEnds = this.#paintedEnds;
+        let maxDepth = 0;
+
+        stack.length = 0;
+        paintedEnds.length = 0;
+
+        for (const row of this.#rows) {
+            row.nodes.length = 0;
+            row.bounds.length = 0;
+        }
+
+        if (!(root > 0) || !(end > start)) {
+            return maxDepth;
+        }
+
+        stack.push(0);
+
+        while (stack.length > 0) {
+            const node = stack.pop()!;
+            const value = nodesValue[node];
+            const position = nodesX[node];
+
+            if (!(value > 0) || position >= end || position + value <= start) {
+                continue;
+            }
+
+            const depth = nodesDepth[node];
+            const x0 = (position - start) * scale;
+            const x1 = (position + value - start) * scale;
+            const small = value * scale < markerWidth;
+
+            if (small && x1 <= (paintedEnds[depth] || 0)) {
+                continue;
+            }
+
+            const left = Math.max(
+                0,
+                paintedEnds[depth] || 0,
+                small ? Math.floor(x0 * this.#dpr) / this.#dpr : x0
+            );
+            const right = Math.min(
+                this.#width,
+                small ? Math.floor(x0 * this.#dpr) / this.#dpr + markerWidth : x1
+            );
+
+            maxDepth = Math.max(maxDepth, depth);
+
+            if (right > left) {
+                paintedEnds[depth] = right;
+
+                const top = depth * ROW_HEIGHT - this.#scrollTop;
+
+                if (top + FRAME_HEIGHT > 0 && top < viewHeight) {
+                    while (this.#rows.length <= depth) {
+                        this.#rows.push({ nodes: [], bounds: [] });
+                    }
+
+                    const row = this.#rows[depth];
+
+                    row.nodes.push(node);
+                    row.bounds.push(left, small ? right : Math.max(left, right - 1));
+                }
+            }
+
+            if (!small) {
+                this.#computeChildren(node, position);
+
+                const from = node === 0 ? 0 : childrenOffset[node - 1];
+
+                for (let cursor = childrenOffset[node] - 1; cursor >= from; cursor--) {
+                    stack.push(children[cursor]);
+                }
+            }
+        }
+
+        return maxDepth;
     }
 
     scheduleRender() {
-        if (this.el !== null && this.#scheduleRenderTimer === null) {
-            const requestId = requestAnimationFrame(() => {
-                if (this.#scheduleRenderTimer === requestId) {
-                    // const renderStart = Date.now();
-
-                    this.render();
-                    this.#scheduleRenderTimer = null;
-
-                    // if (this.#width) {
-                    //     console.log('Flamechart.render()', Date.now() - renderStart);
-                    // }
-                }
+        if (!this.#destroyed && this.#scheduleRenderTimer === null) {
+            this.#scheduleRenderTimer = requestAnimationFrame(() => {
+                this.#scheduleRenderTimer = null;
+                this.render();
             });
-
-            this.#scheduleRenderTimer = requestId;
         }
     }
 
     render() {
-        this.#syncChildrenComputations();
-        this.#scheduleRenderTimer = null;
-
-        if (this.el === null || (this.#width === 0 && this.#resizeObserver)) {
+        if (this.#destroyed || !this.tree) {
             return;
         }
 
-        const widthScale = 1 / (this.#width || 1000);
-        const xScale = 1 / (this.zoomEnd - this.zoomStart);
-        const xOffset = this.zoomStart * xScale;
-        const firstEnter = !this.frameEls.size;
-        const removeFrameNodeIndecies = new Set(this.frameEls.keys());
-        const visibleFrames = this.getVisibleFrames(
-            this.zoomStart,
-            this.zoomEnd,
-            this.#minFrameWidth * widthScale
-        );
+        this.#syncChildrenComputations();
+        this.#width = this.el.getBoundingClientRect().width;
 
-        const enterFramesBuffer = document.createDocumentFragment();
-        const nodes = this.tree.nodes;
-        const selectedId = this.selectedNode !== -1 ? nodes[this.selectedNode] : -1;
-        let maxDepth = 0;
+        if (!(this.#width > 0)) {
+            return;
+        }
 
-        // add / update frame elements
-        for (const frame of visibleFrames) {
-            const nodeIndex = frame.nodeIndex;
-            const className = nodeIndex === 0
-                ? 'frame'
-                : `frame${
-                    nodeIndex < this.zoomedNode ? ' fade' : ''
-                }${
-                    this.zoomedNode === nodeIndex ? ' zoomed' : ''
-                }${
-                    nodes[nodeIndex] === selectedId ? ' similar' : ''
-                }`;
-            const x0 = Math.max(0, frame.x0 * xScale - xOffset);
-            const x1 = Math.max(0, frame.x1 * xScale - xOffset);
-            let frameEl = this.frameEls.get(frame.nodeIndex);
+        const dpr = window.devicePixelRatio || 1;
 
-            if (frame.depth > maxDepth) {
-                maxDepth = frame.depth;
+        this.#scrollTop = this.#scrollEl?.scrollTop || 0;
+
+        const viewportHeight = this.#scrollEl?.clientHeight || 300;
+        const previousDpr = this.#dpr;
+
+        this.#dpr = dpr;
+
+        const maxDepth = this.#projectFrames(viewportHeight);
+        const height = Math.max(maxDepth + 1, 10) * ROW_HEIGHT + 2;
+
+        this.el.style.height = `${height}px`;
+
+        const scrollTop = Math.min(this.#scrollTop, Math.max(0, height - viewportHeight));
+
+        if (scrollTop !== this.#scrollTop) {
+            this.#scrollTop = scrollTop;
+
+            if (this.#scrollEl) {
+                this.#scrollEl.scrollTop = scrollTop;
             }
 
-            if (frameEl === undefined) {
-                // enter (add)
-                frameEl = document.createElement('div');
-                frameEl.className = className;
-                frameEl.style.setProperty('--x0', x0.toFixed(8));
-                frameEl.style.setProperty('--x1', x1.toFixed(8));
-                frameEl.style.setProperty('--depth', String(frame.depth));
-                frameEl.style.setProperty('--color', frame.color);
+            this.#projectFrames(viewportHeight);
+        }
 
-                const labelEl = frameEl.appendChild(document.createElement('div'));
+        const viewHeight = Math.min(height, viewportHeight);
+        const widthPixels = Math.ceil(this.#width * dpr);
+        const heightPixels = Math.ceil(viewHeight * dpr);
 
-                labelEl.className = 'frame-label';
-                labelEl.textContent = frame.name;
+        if (this.#canvas.width !== widthPixels || this.#canvas.height !== heightPixels || previousDpr !== dpr) {
+            this.#canvas.width = widthPixels;
+            this.#canvas.height = heightPixels;
+            this.#dpr = dpr;
+            this.#ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
 
-                enterFramesBuffer.append(frameEl);
-                this.frameByEl.set(frameEl, frame);
-                this.frameEls.set(frame.nodeIndex, frameEl);
-            } else {
-                // update
-                frameEl.className = className;
-                frameEl.style.setProperty('--x0', x0.toFixed(8));
-                frameEl.style.setProperty('--x1', x1.toFixed(8));
+        this.#canvas.style.width = `${this.#width}px`;
+        this.#canvas.style.height = `${viewHeight}px`;
+        this.#canvas.style.top = `${this.#scrollTop}px`;
+
+        const ctx = this.#ctx;
+        const style = getComputedStyle(this.el);
+        const selectedId = this.selectedNode >= 0 ? this.tree.nodes[this.selectedNode] : -1;
+
+        ctx.clearRect(0, 0, this.#width, viewHeight);
+        ctx.font = SPAN_LABEL_FONT;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+
+        for (let depth = 0; depth < this.#rows.length; depth++) {
+            const row = this.#rows[depth];
+            const top = depth * ROW_HEIGHT - this.#scrollTop;
+
+            for (let index = 0; index < row.nodes.length; index++) {
+                const node = row.nodes[index];
+                const entry = this.tree.nodes[node];
+                const left = row.bounds[index * 2];
+                const width = row.bounds[index * 2 + 1] - left;
+                const similar = node !== 0 && entry === selectedId;
+
+                ctx.globalAlpha = node < this.zoomedNode ? 0.65 : 1;
+                ctx.fillStyle = similar
+                    ? '#d6bb2d'
+                    : `rgba(${this.nodesColors[entry]}, ${node === this.#hoveredNode ? 0.5 : 0.4})`;
+                ctx.fillRect(left, top, width, FRAME_HEIGHT);
+
+                if (node === this.zoomedNode && node !== 0) {
+                    ctx.strokeStyle = '#d6bb2d';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(left + 0.75, top + 0.75, Math.max(0, width - 1.5), FRAME_HEIGHT - 1.5);
+                }
+
+                if (node !== 0) {
+                    const text = this.#labels.fit(ctx, this.nodesNames[entry] || '', width - 6);
+
+                    if (text) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.rect(left, top, width, FRAME_HEIGHT);
+                        ctx.clip();
+                        ctx.fillStyle = similar ? '#000' : style.color;
+                        ctx.fillText(text, left + 3, top + FRAME_HEIGHT / 2);
+                        ctx.restore();
+                    }
+                }
             }
-
-            removeFrameNodeIndecies.delete(frame.nodeIndex);
         }
 
-        // remove non-visible frames
-        for (const nodeIndex of removeFrameNodeIndecies) {
-            this.frameEls.get(nodeIndex)?.remove();
-            this.frameEls.delete(nodeIndex);
+        ctx.globalAlpha = 1;
+        this.#updateHover();
+
+        if (this.#rootEpoch !== this.#epoch || this.#rootZoom !== this.zoomedNode) {
+            this.#rootEpoch = this.#epoch;
+            this.#rootZoom = this.zoomedNode;
+            this.emit('render', this.#rootLabel, this.#frame(0), this.nodesValue[0]);
         }
-
-        // update chart level state
-        this.el.classList.toggle('first-enter', firstEnter);
-        this.el.style.setProperty('--max-depth', String(maxDepth));
-        this.el.style.setProperty('--width-scale', widthScale.toFixed(8));
-
-        // finalize enter frames group element
-        if (enterFramesBuffer.firstChild !== null) {
-            const enterFramesGroupEl =
-                this.el.querySelector('.frames-group:empty') ||
-                document.createElement('div');
-
-            enterFramesGroupEl.append(enterFramesBuffer);
-            enterFramesGroupEl.className = 'frames-group frames-group_init-enter-state';
-            setTimeout(() => enterFramesGroupEl.classList.remove('frames-group_init-enter-state'), 1);
-            this.el.prepend(enterFramesGroupEl);
-        }
-
-        // emit render event
-        this.emit('render',
-            this.frameEls.get(0)?.firstElementChild || null,
-            this.frameByEl.get(this.frameEls.get(0) as Node) || null,
-            this.nodesValue[0]
-        );
     }
 
     zoomFrame(nodeIndex = 0, toggle = false) {
-        const rootValue = this.nodesValue[0];
-        const nodesDepth = this.nodesDepth;
+        if (this.#destroyed || !this.tree || nodeIndex < 0 || nodeIndex >= this.tree.nodes.length) {
+            return;
+        }
+
         const prevZoomedNode = this.zoomedNode;
         const prevZoomStart = this.zoomStart;
         const prevZoomEnd = this.zoomEnd;
 
         if (this.zoomedNode !== nodeIndex && nodeIndex !== 0) {
             if (this.zoomedNode !== 0) {
-                this.zoomedNodesStack = this.zoomedNodesStack
-                    .filter(item => nodesDepth[item] < nodesDepth[nodeIndex]);
+                this.zoomedNodesStack = this.zoomedNodesStack.filter(index => this.nodesDepth[index] < this.nodesDepth[nodeIndex]);
 
-                if (nodesDepth[this.zoomedNode] < nodesDepth[nodeIndex]) {
+                if (this.nodesDepth[this.zoomedNode] < this.nodesDepth[nodeIndex]) {
                     this.zoomedNodesStack.push(this.zoomedNode);
                 }
             }
@@ -552,78 +639,91 @@ export class FlameChart<T> extends EventEmitter<Events> {
             this.zoomedNode = nodeIndex;
         } else if (this.zoomedNode === nodeIndex) {
             if (toggle) {
-                this.zoomedNode = 0;
-
-                if (this.zoomedNodesStack.length > 0) {
-                    this.zoomedNode = this.zoomedNodesStack.pop() as number;
-                }
+                this.zoomedNode = this.zoomedNodesStack.pop() || 0;
             } else {
-                while (this.zoomedNode !== 0 && this.nodesValue[this.zoomedNode] === 0 && this.zoomedNodesStack.length > 0) {
-                    this.zoomedNode = this.zoomedNodesStack.pop() as number;
-                }
-
-                if (this.nodesValue[this.zoomedNode] === 0) {
-                    this.zoomedNode = 0;
+                while (this.zoomedNode !== 0 && this.nodesValue[this.zoomedNode] === 0) {
+                    this.zoomedNode = this.zoomedNodesStack.pop() || 0;
                 }
             }
-        } else if (this.zoomedNode !== 0) {
+        } else {
             this.zoomedNode = 0;
             this.zoomedNodesStack = [];
         }
 
-        this.zoomStart = this.nodesX[this.zoomedNode] / rootValue;
-        this.zoomEnd = this.zoomStart + this.nodesValue[this.zoomedNode] / rootValue;
+        const root = this.nodesValue[0];
 
-        // emit event
-        if (prevZoomedNode !== this.zoomedNode ||
-            prevZoomStart !== this.zoomStart ||
-            prevZoomEnd !== this.zoomEnd) {
+        this.zoomStart = root > 0 ? this.nodesX[this.zoomedNode] / root : 0;
+        this.zoomEnd = root > 0 ? this.zoomStart + this.nodesValue[this.zoomedNode] / root : 1;
+
+        if (this.zoomEnd <= this.zoomStart) {
+            this.zoomedNode = 0;
+            this.zoomStart = 0;
+            this.zoomEnd = 1;
+        }
+
+        if (prevZoomedNode !== this.zoomedNode || prevZoomStart !== this.zoomStart || prevZoomEnd !== this.zoomEnd) {
             this.emit('zoom', this.zoomedNode, this.zoomStart, this.zoomEnd);
         }
 
-        // schedule render
         this.scheduleRender();
     }
 
     resetZoom() {
-        this.zoomFrame(0); // zoom to root
+        this.zoomFrame(0);
     }
 
     get colorHue() {
         return this.#colorHue;
     }
-    set colorHue(colorHue: string | null) {
-        this.#colorHue = colorHue;
+    set colorHue(hue: string | null) {
+        this.#colorHue = hue;
+
+        if (this.tree) {
+            this.nodesColors = this.tree.dictionary.map(entry => this.#colorMapper(entry, hue));
+        }
+
         this.scheduleRender();
     }
 
     get colorMapper() {
         return this.#colorMapper;
     }
-    set colorMapper(colorMapper: FrameColorGenerator<T>) {
-        this.#colorMapper = colorMapper;
+    set colorMapper(mapper: FrameColorGenerator<T>) {
+        this.#colorMapper = mapper;
+
+        if (this.tree) {
+            this.nodesColors = this.tree.dictionary.map(entry => mapper(entry, this.#colorHue));
+        }
+
         this.scheduleRender();
     }
 
     get minFrameWidth() {
         return this.#minFrameWidth;
     }
-    set minFrameWidth(minWidth: number) {
-        this.#minFrameWidth = minWidth;
+    set minFrameWidth(width: number) {
+        this.#minFrameWidth = width;
         this.scheduleRender();
     }
 
     destroy() {
-        this.emit('destroy');
-
-        this.#scheduleRenderTimer = null;
-        this.resetFrameRefs();
-
-        if (this.#resizeObserver) {
-            this.#resizeObserver.disconnect();
-            this.#resizeObserver = null;
+        if (this.#destroyed) {
+            return;
         }
 
+        this.#destroyed = true;
+        this.emit('destroy');
+
+        if (this.#scheduleRenderTimer !== null) {
+            cancelAnimationFrame(this.#scheduleRenderTimer);
+        }
+
+        this.#scheduleRenderTimer = null;
+        this.#events.abort();
+        this.#labels.clear();
+        this.resetFrameRefs();
+        this.#resizeObserver?.disconnect();
+        this.#resizeObserver = null;
         this.el.remove();
         this.el = null as unknown as HTMLElement;
     }
