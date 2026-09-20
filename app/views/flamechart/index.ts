@@ -605,6 +605,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     #prepareTransition(viewHeight: number, widthScale: number) {
         // Retargeting reads the last frame, including rows whose interpolation was deferred offscreen.
+        // Restored rows retain transition order, so source indices also address previous origins.
         if (this.#transitionProgress < 1) {
             this.#projectTransitionRows(0, this.#transitionRows.length, this.#transitionScrollTop);
         }
@@ -614,7 +615,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const rowCount = Math.max(this.#rows.length, this.#targetRows.length);
         const sourcePositions = new Map<number, number>();
         const targetPositions = new Map<number, number>();
-        const previousPositions = continuing ? new Map<number, number>() : null;
         let parentPositions = new Map<number, number>();
         let currentPositions = new Map<number, number>();
         let fromBuffer: number[] | null = continuing ? [] : null;
@@ -639,13 +639,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const target = this.#targetRows[rowIndex];
             const row = this.#transitionRows[rowIndex] ||= { nodes: [], from: [], to: [], parents: [], layer: [] };
 
-            // Rows stay depth-indexed for parent links; empty depths need no lookup structures.
-            if (!source?.nodes.length && !target?.nodes.length) {
-                row.nodes.length = 0;
-                row.from.length = 0;
-                row.to.length = 0;
-                row.parents.length = 0;
-                row.layer.length = 0;
+            // An empty restored source has no transition entries; retain its depth slot for parent links.
+            if (!source.nodes.length && !target?.nodes.length) {
                 parentPositions.clear();
                 continue;
             }
@@ -661,29 +656,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
             sourcePositions.clear();
             targetPositions.clear();
             currentPositions.clear();
-            previousPositions?.clear();
-
-            if (previousPositions) {
-                for (let index = 0; index < row.nodes.length; index++) {
-                    previousPositions.set(row.nodes[index], index);
-                }
-            }
-
-            if (target) {
-                for (let index = 0; index < target.nodes.length; index++) {
-                    targetPositions.set(target.nodes[index], index);
-                }
-            }
-
-            if (source) {
-                for (let index = 0; index < source.nodes.length; index++) {
-                    // A still-targeted node is a source even before its first visible paint.
-                    if (targetPositions.has(source.nodes[index]) ||
-                        source.opacity[index] > 0.001 && source.bounds[index * 2 + 1] > source.bounds[index * 2]) {
-                        sourcePositions.set(source.nodes[index], index);
-                    }
-                }
-            }
 
             row.nodes.length = 0;
             row.from.length = 0;
@@ -691,13 +663,27 @@ export class FlameChart<T> extends EventEmitter<Events> {
             row.parents.length = 0;
             row.layer.length = 0;
 
-            for (const node of sourcePositions.keys()) {
-                row.nodes.push(node);
+            if (target) {
+                for (let index = 0; index < target.nodes.length; index++) {
+                    const node = target.nodes[index];
+
+                    targetPositions.set(node, index);
+                    row.nodes.push(node);
+                }
             }
 
-            for (const node of targetPositions.keys()) {
-                if (!sourcePositions.has(node)) {
-                    row.nodes.push(node);
+            for (let index = 0; index < source.nodes.length; index++) {
+                const node = source.nodes[index];
+                const inTarget = targetPositions.has(node);
+
+                // A still-targeted node is a source even before its first visible paint.
+                if (inTarget ||
+                    source.opacity[index] > 0.001 && source.bounds[index * 2 + 1] > source.bounds[index * 2]) {
+                    sourcePositions.set(node, index);
+
+                    if (!inTarget) {
+                        row.nodes.push(node);
+                    }
                 }
             }
 
@@ -709,7 +695,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 const node = row.nodes[index];
                 const sourceIndex = sourcePositions.get(node);
                 const targetIndex = targetPositions.get(node);
-                const previousIndex = previousPositions?.get(node);
+                const previousIndex = continuing ? sourceIndex : undefined;
                 const left = previousIndex !== undefined
                     ? previousFrom![previousIndex * 3] * widthScale
                     : sourceIndex !== undefined
@@ -778,7 +764,11 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         for (let depth = firstDepth; depth < endDepth; depth++) {
             const transition = this.#transitionRows[depth];
-            const row = this.#rows[depth] ||= { nodes: [], bounds: [], opacity: [], layer: [] };
+            const { from, to } = transition;
+            const row = this.#rows[depth];
+            const parentRow = depth > 0 && (depth - 1) * ROW_HEIGHT + FRAME_HEIGHT > scrollTop
+                ? this.#rows[depth - 1]
+                : null;
 
             row.nodes.length = 0;
             row.bounds.length = 0;
@@ -787,7 +777,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
             for (let index = 0; index < transition.nodes.length; index++) {
                 const offset = index * 3;
-                const { from, to } = transition;
                 const layer = transition.layer[index];
                 const opacityProgress = layer === 0
                     ? departureProgress
@@ -798,9 +787,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 let right = from[offset + 1] + (to[offset + 1] - from[offset + 1]) * geometryProgress;
                 let opacity = from[offset + 2] + (to[offset + 2] - from[offset + 2]) * opacityProgress;
 
-                if (depth > 0 && (depth - 1) * ROW_HEIGHT + FRAME_HEIGHT > scrollTop) {
+                if (parentRow) {
                     const parent = transition.parents[index];
-                    const parentRow = this.#rows[depth - 1];
 
                     if (parent === -1) {
                         opacity = 0;
@@ -867,11 +855,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
                 return true;
             }
-
-            this.#transitionRows.length = 0;
-            this.#maxDepth = this.#projectFrames(viewHeight);
-
-            return false;
         }
 
         this.#transitionPending = false;

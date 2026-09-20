@@ -1752,6 +1752,7 @@ test('transition preparation reuses row lookups and skips empty-depth work', () 
     const OriginalMap = globalThis.Map;
     let maps = 0;
     let entryPairs = 0;
+    let keyIterators = 0;
     let sorts = 0;
     let copies = 0;
 
@@ -1766,6 +1767,12 @@ test('transition preparation reuses row lookups and skips empty-depth work', () 
             super(...args);
             maps++;
             entryPairs += args[0]?.length || 0;
+        }
+
+        keys() {
+            keyIterators++;
+
+            return super.keys();
         }
     });
 
@@ -1786,16 +1793,19 @@ test('transition preparation reuses row lookups and skips empty-depth work', () 
 
         assert.ok(maps <= 5, `Row lookups are reused across depths, got ${maps} maps`);
         assert.equal(entryPairs, 0, 'Lookup construction does not materialize entry-pair arrays');
+        assert.equal(keyIterators, 0, 'Node collection shares the source and target lookup traversals');
         assert.equal(sorts, 0, 'Single-node and empty rows need no sorting');
         assert.equal(chart.findFrameAt(100, 5), 80);
 
         maps = 0;
+        keyIterators = 0;
         scroll.scrollTop = 81 * 17;
         scroll.dispatchEvent(new Event('scroll'));
         flush(0);
 
-        assert.ok(maps <= 5, `Continuation reuses row lookups, got ${maps} maps`);
+        assert.ok(maps <= 4, `Continuation shares source and origin positions, got ${maps} maps`);
         assert.equal(entryPairs, 0);
+        assert.equal(keyIterators, 0, 'Continuation needs no additional lookup-key traversal');
         assert.equal(copies, 0, 'Continuation reads old origins without copying every row');
         assert.equal(sorts, 0);
         assert.equal(chart.findFrameAt(100, 5), 81);
