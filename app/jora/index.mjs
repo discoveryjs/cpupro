@@ -245,8 +245,8 @@ export const methods = {
     },
 
     selectCountersWithOuters(counters, start, end) {
-        const firstIndex = counters.findIndex(counter => counter.tm >= start);
-        const lastIndex = counters.findLastIndex(counter => counter.tm <= end);
+        const firstIndex = counters?.findIndex(counter => counter.tm >= start) ?? -1;
+        const lastIndex = counters?.findLastIndex(counter => counter.tm <= end) ?? -1;
 
         if (firstIndex === -1 || lastIndex === -1) {
             return [];
