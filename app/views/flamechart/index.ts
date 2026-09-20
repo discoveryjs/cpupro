@@ -36,10 +36,26 @@ type Frame<T> = {
 type FrameRow = {
     nodes: number[];
     bounds: number[];
+    opacity: number[];
+    layer: number[];
 };
+
+type TransitionRow = {
+    nodes: number[];
+    from: number[];
+    to: number[];
+    parents: number[];
+};
+
+type ZoomMode = 'select' | 'continuous';
 
 const ROW_HEIGHT = 17;
 const FRAME_HEIGHT = 16;
+const ZOOM_TIME_CONSTANT = 65;
+const FRAME_REVEAL_DISTANCE = 1;
+const FRAME_REVEAL_DELAY_FACTOR = 0.6;
+const FRAME_FADE_IN_DURATION = 250;
+const FRAME_FADE_OUT_TIME_CONSTANT = 15;
 
 const defaultGetName = (frame: FrameData) => frame.name;
 const defaultGetValue = (frame: FrameData) => frame.value;
@@ -68,6 +84,21 @@ export class FlameChart<T> extends EventEmitter<Events> {
     #scrollTop = 0;
     #dpr = 0;
     #minFrameWidth = 2;
+
+    #viewStart = 0;
+    #viewEnd = 1;
+    #viewReady = false;
+    #zoomTime: number | null = null;
+    #reducedMotion: MediaQueryList | null = null;
+    #zoomMode: ZoomMode = 'select';
+    #transitionPending = false;
+    #transitionProgress = 1;
+    #transitionElapsed = 0;
+    #transitionMotionTime = 0;
+    #transitionDepth = 0;
+    #maxDepth = 0;
+    #targetRows: FrameRow[] = [];
+    #transitionRows: TransitionRow[] = [];
 
     #getValue = defaultGetValue;
     #rows: FrameRow[] = [];
@@ -119,6 +150,9 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         const { signal } = this.#events;
 
+        this.#reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
+        this.#reducedMotion?.addEventListener('change', () => this.scheduleRender(), { signal });
+
         this.#canvas.addEventListener('click', event => {
             const rect = this.#canvas.getBoundingClientRect();
             const node = this.findFrameAt(event.clientX - rect.left, event.clientY - rect.top);
@@ -165,6 +199,19 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const row = this.#rows[Math.floor(offset / ROW_HEIGHT)];
 
         if (!row || x < 0 || x >= this.#width || y < 0 || offset % ROW_HEIGHT >= FRAME_HEIGHT) {
+            return -1;
+        }
+
+        if (this.#transitionProgress < 1) {
+            for (let layer = 2; layer >= 0; layer--) {
+                for (let index = row.nodes.length - 1; index >= 0; index--) {
+                    if (row.layer[index] === layer && row.opacity[index] > 0.01 &&
+                        x >= row.bounds[index * 2] && x < row.bounds[index * 2 + 1]) {
+                        return row.nodes[index];
+                    }
+                }
+            }
+
             return -1;
         }
 
@@ -227,6 +274,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.selectedNode = -1;
         this.zoomStart = 0;
         this.zoomEnd = 1;
+        this.#viewReady = false;
+        this.#zoomTime = null;
+        this.#transitionPending = false;
+        this.#transitionProgress = 1;
+        this.#transitionRows.length = 0;
+        this.#targetRows.length = 0;
         this.#rows.length = 0;
         this.#hoveredNode = -1;
         this.#pointer = null;
@@ -345,6 +398,13 @@ export class FlameChart<T> extends EventEmitter<Events> {
         }
 
         this.#lastVisibleFramesEpoch = this.#epoch;
+
+        if (this.#viewReady) {
+            this.#zoomMode = 'select';
+            this.#transitionPending = true;
+            this.#zoomTime = performance.now();
+        }
+
         this.childrenComputed.fill(0);
         this.#computeChildren(0, 0);
 
@@ -413,11 +473,11 @@ export class FlameChart<T> extends EventEmitter<Events> {
         };
     }
 
-    #projectFrames(viewHeight: number) {
+    #projectFrames(viewHeight: number, rows = this.#rows, viewStart = this.#viewStart, viewEnd = this.#viewEnd) {
         const { nodesValue, nodesX, nodesDepth, children, childrenOffset } = this;
         const root = nodesValue[0];
-        const start = this.zoomStart * root;
-        const end = this.zoomEnd * root;
+        const start = viewStart * root;
+        const end = viewEnd * root;
         const scale = this.#width / (end - start);
         const markerWidth = Math.max(1 / this.#dpr, this.#minFrameWidth);
         const stack = this.#walkStack;
@@ -429,9 +489,11 @@ export class FlameChart<T> extends EventEmitter<Events> {
         paintedEnds.length = 0;
         ancestorBounds.length = 0;
 
-        for (const row of this.#rows) {
+        for (const row of rows) {
             row.nodes.length = 0;
             row.bounds.length = 0;
+            row.opacity.length = 0;
+            row.layer.length = 0;
         }
 
         if (!(root > 0) || !(end > start)) {
@@ -482,11 +544,11 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const top = depth * ROW_HEIGHT - this.#scrollTop;
 
             if (top + FRAME_HEIGHT > 0 && top < viewHeight) {
-                while (this.#rows.length <= depth) {
-                    this.#rows.push({ nodes: [], bounds: [] });
+                while (rows.length <= depth) {
+                    rows.push({ nodes: [], bounds: [], opacity: [], layer: [] });
                 }
 
-                const row = this.#rows[depth];
+                const row = rows[depth];
 
                 if (!small && row.bounds.length > 0) {
                     const prevEndIndex = row.bounds.length - 1;
@@ -496,6 +558,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
                 row.nodes.push(node);
                 row.bounds.push(left, right);
+                row.opacity.push(1);
+                row.layer.push(2);
             }
 
             if (!small) {
@@ -512,21 +576,264 @@ export class FlameChart<T> extends EventEmitter<Events> {
         return maxDepth;
     }
 
+    #prepareTransition(viewHeight: number, widthScale: number) {
+        const continuing = !this.#transitionPending && this.#transitionProgress < 1;
+        const depth = this.#projectFrames(viewHeight, this.#targetRows, this.zoomStart, this.zoomEnd);
+        const rowCount = Math.max(this.#rows.length, this.#targetRows.length);
+        let parentPositions = new Map<number, number>();
+        let distance = 0;
+
+        this.#transitionDepth = Math.max(this.#maxDepth, depth);
+
+        if (!continuing) {
+            this.#transitionProgress = 0;
+            this.#transitionElapsed = 0;
+        }
+
+        this.#transitionPending = false;
+
+        for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+            const source = this.#rows[rowIndex];
+            const target = this.#targetRows[rowIndex];
+            const sourcePositions = new Map<number, number>();
+            const targetPositions = new Map(target?.nodes.map((node, index) => [node, index]));
+            const row = this.#transitionRows[rowIndex] ||= { nodes: [], from: [], to: [], parents: [] };
+            const previousPositions = continuing ? new Map(row.nodes.map((node, index) => [node, index])) : null;
+            const previousFrom = continuing ? row.from.slice() : null;
+
+            if (source) {
+                for (let index = 0; index < source.nodes.length; index++) {
+                    if (source.opacity[index] > 0.001 && source.bounds[index * 2 + 1] > source.bounds[index * 2]) {
+                        sourcePositions.set(source.nodes[index], index);
+                    }
+                }
+            }
+
+            row.nodes.length = 0;
+            row.from.length = 0;
+            row.to.length = 0;
+            row.parents.length = 0;
+
+            for (const node of sourcePositions.keys()) {
+                row.nodes.push(node);
+            }
+
+            for (const node of targetPositions.keys()) {
+                if (!sourcePositions.has(node)) {
+                    row.nodes.push(node);
+                }
+            }
+
+            row.nodes.sort((left, right) => this.nodesX[left] - this.nodesX[right] || left - right);
+
+            for (const node of row.nodes) {
+                const sourceIndex = sourcePositions.get(node);
+                const targetIndex = targetPositions.get(node);
+                const previousIndex = previousPositions?.get(node);
+                const left = previousIndex !== undefined
+                    ? previousFrom![previousIndex * 3] * widthScale
+                    : sourceIndex !== undefined
+                        ? source.bounds[sourceIndex * 2] * widthScale
+                        : target.bounds[targetIndex! * 2];
+                const right = previousIndex !== undefined
+                    ? previousFrom![previousIndex * 3 + 1] * widthScale
+                    : sourceIndex !== undefined
+                        ? source.bounds[sourceIndex * 2 + 1] * widthScale
+                        : target.bounds[targetIndex! * 2 + 1];
+                const opacity = previousIndex !== undefined
+                    ? previousFrom![previousIndex * 3 + 2]
+                    : sourceIndex !== undefined
+                        ? source.opacity[sourceIndex]
+                        : continuing ? 1 : 0;
+                const targetLeft = targetIndex !== undefined ? target.bounds[targetIndex * 2] : left;
+                const targetRight = targetIndex !== undefined ? target.bounds[targetIndex * 2 + 1] : right;
+
+                distance = Math.max(distance, Math.abs(targetLeft - left), Math.abs(targetRight - right));
+
+                row.from.push(left, right, opacity);
+                row.to.push(
+                    targetLeft,
+                    targetRight,
+                    targetIndex !== undefined ? 1 : 0
+                );
+                row.parents.push(parentPositions.get(this.tree.parent[node]) ?? -1);
+            }
+
+            parentPositions = new Map(row.nodes.map((node, index) => [node, index]));
+        }
+
+        this.#transitionRows.length = rowCount;
+
+        if (!continuing || widthScale !== 1) {
+            this.#transitionMotionTime = ZOOM_TIME_CONSTANT * Math.log(Math.max(1, distance * this.#dpr / 0.25));
+        }
+    }
+
+    #advanceTransition(time: number) {
+        const elapsed = Math.max(0, time - (this.#zoomTime ?? time));
+
+        this.#transitionProgress += (1 - this.#transitionProgress) * -Math.expm1(-elapsed / ZOOM_TIME_CONSTANT);
+        this.#transitionElapsed += elapsed;
+        this.#zoomTime = time;
+
+        const geometryProgress = this.#transitionElapsed >= this.#transitionMotionTime ? 1 : this.#transitionProgress;
+        const arrivalDelay = Math.max(0,
+            this.#transitionMotionTime - ZOOM_TIME_CONSTANT * Math.log(FRAME_REVEAL_DISTANCE / 0.25)
+        ) * FRAME_REVEAL_DELAY_FACTOR;
+        const arrivalTime = Math.min(1, Math.max(0, this.#transitionElapsed - arrivalDelay) / FRAME_FADE_IN_DURATION);
+        const arrivalProgress = arrivalTime * arrivalTime * (3 - 2 * arrivalTime);
+        const departureProgress = -Math.expm1(-this.#transitionElapsed / FRAME_FADE_OUT_TIME_CONSTANT);
+        let error = 0;
+
+        for (let depth = 0; depth < this.#transitionRows.length; depth++) {
+            const transition = this.#transitionRows[depth];
+            const row = this.#rows[depth] ||= { nodes: [], bounds: [], opacity: [], layer: [] };
+
+            row.nodes.length = 0;
+            row.bounds.length = 0;
+            row.opacity.length = 0;
+            row.layer.length = 0;
+
+            for (let index = 0; index < transition.nodes.length; index++) {
+                const offset = index * 3;
+                const { from, to } = transition;
+                const opacityProgress = to[offset + 2] === 0
+                    ? departureProgress
+                    : from[offset + 2] === 0
+                        ? arrivalProgress
+                        : this.#transitionProgress;
+                let left = from[offset] + (to[offset] - from[offset]) * geometryProgress;
+                let right = from[offset + 1] + (to[offset + 1] - from[offset + 1]) * geometryProgress;
+                let opacity = from[offset + 2] + (to[offset + 2] - from[offset + 2]) * opacityProgress;
+
+                error = Math.max(error,
+                    Math.abs(left - to[offset]) * this.#dpr,
+                    Math.abs(right - to[offset + 1]) * this.#dpr,
+                    Math.abs(opacity - to[offset + 2]) * 255
+                );
+
+                if (depth > 0 && (depth - 1) * ROW_HEIGHT + FRAME_HEIGHT > this.#scrollTop) {
+                    const parent = transition.parents[index];
+                    const parentRow = this.#rows[depth - 1];
+
+                    if (parent === -1) {
+                        opacity = 0;
+                    } else {
+                        left = Math.max(left, parentRow.bounds[parent * 2]);
+                        right = Math.min(right, parentRow.bounds[parent * 2 + 1]);
+                        opacity = Math.min(opacity, parentRow.opacity[parent]);
+                    }
+                }
+
+                row.nodes.push(transition.nodes[index]);
+                row.bounds.push(left, Math.max(left, right));
+                row.opacity.push(opacity);
+                row.layer.push(to[offset + 2] === 0 ? 0 : from[offset + 2] === 0 ? 1 : 2);
+            }
+        }
+
+        if (error <= 0.25) {
+            this.#transitionProgress = 1;
+            this.#zoomTime = null;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    #projectView(viewHeight: number, time: number, layoutChanged: boolean, widthScale: number) {
+        if (this.#zoomMode === 'select' && this.#viewReady && !this.#reducedMotion?.matches) {
+            if (this.#transitionPending || this.#transitionProgress < 1 && layoutChanged) {
+                this.#prepareTransition(viewHeight, widthScale);
+            }
+
+            this.#viewStart = this.zoomStart;
+            this.#viewEnd = this.zoomEnd;
+
+            if (this.#transitionProgress < 1 && this.#advanceTransition(time)) {
+                this.#maxDepth = this.#transitionDepth;
+
+                return true;
+            }
+
+            this.#transitionRows.length = 0;
+            this.#maxDepth = this.#projectFrames(viewHeight);
+
+            return false;
+        }
+
+        this.#transitionPending = false;
+        this.#transitionProgress = 1;
+        this.#transitionRows.length = 0;
+
+        const moving = this.#advanceViewport(time);
+
+        this.#maxDepth = this.#projectFrames(viewHeight);
+
+        return moving;
+    }
+
+    #advanceViewport(time: number) {
+        if (!this.#viewReady || this.#reducedMotion?.matches) {
+            this.#viewStart = this.zoomStart;
+            this.#viewEnd = this.zoomEnd;
+            this.#viewReady = true;
+            this.#zoomTime = null;
+
+            return false;
+        }
+
+        if (this.#viewStart === this.zoomStart && this.#viewEnd === this.zoomEnd) {
+            this.#zoomTime = null;
+
+            return false;
+        }
+
+        const elapsed = Math.max(0, time - (this.#zoomTime ?? time));
+        const amount = -Math.expm1(-elapsed / ZOOM_TIME_CONSTANT);
+        const prevStart = this.#viewStart;
+        const prevEnd = this.#viewEnd;
+
+        this.#viewStart += (this.zoomStart - this.#viewStart) * amount;
+        this.#viewEnd += (this.zoomEnd - this.#viewEnd) * amount;
+        this.#zoomTime = time;
+
+        const error = Math.max(
+            Math.abs(this.zoomStart - this.#viewStart),
+            Math.abs(this.zoomEnd - this.#viewEnd)
+        ) * this.#width * this.#dpr / (this.zoomEnd - this.zoomStart);
+
+        if (error <= 0.25 || elapsed > 0 && this.#viewStart === prevStart && this.#viewEnd === prevEnd) {
+            this.#viewStart = this.zoomStart;
+            this.#viewEnd = this.zoomEnd;
+            this.#zoomTime = null;
+
+            return false;
+        }
+
+        return true;
+    }
+
     scheduleRender() {
         if (!this.#destroyed && this.#scheduleRenderTimer === null) {
-            this.#scheduleRenderTimer = requestAnimationFrame(() => {
+            this.#scheduleRenderTimer = requestAnimationFrame(time => {
                 this.#scheduleRenderTimer = null;
-                this.render();
+                this.render(time);
             });
         }
     }
 
-    render() {
+    render(time = performance.now()) {
         if (this.#destroyed || !this.tree) {
             return;
         }
 
         this.#syncChildrenComputations();
+
+        const previousWidth = this.#width;
+        const previousScrollTop = this.#scrollTop;
+
         this.#width = this.el.getBoundingClientRect().width;
 
         if (!(this.#width > 0)) {
@@ -542,8 +849,9 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         this.#dpr = dpr;
 
-        const maxDepth = this.#projectFrames(viewportHeight);
-        const height = Math.max(maxDepth + 1, 10) * ROW_HEIGHT + 2;
+        const layoutChanged = previousWidth !== this.#width || previousScrollTop !== this.#scrollTop || previousDpr !== dpr;
+        let moving = this.#projectView(viewportHeight, time, layoutChanged, previousWidth > 0 ? this.#width / previousWidth : 1);
+        const height = Math.max(this.#maxDepth + 1, 10) * ROW_HEIGHT + 2;
 
         this.el.style.height = `${height}px`;
 
@@ -556,7 +864,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 this.#scrollEl.scrollTop = scrollTop;
             }
 
-            this.#projectFrames(viewportHeight);
+            moving = this.#projectView(viewportHeight, time, true, 1);
         }
 
         const viewHeight = Math.min(height, viewportHeight);
@@ -576,6 +884,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         const ctx = this.#ctx;
         const style = getComputedStyle(this.el);
+        const background = style.getPropertyValue('--discovery-background-color').trim() || '#242424';
         const selectedId = this.selectedNode >= 0 ? this.tree.nodes[this.selectedNode] : -1;
 
         ctx.clearRect(0, 0, this.#width, viewHeight);
@@ -587,36 +896,43 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const row = this.#rows[depth];
             const top = depth * ROW_HEIGHT - this.#scrollTop;
 
-            for (let index = 0; index < row.nodes.length; index++) {
-                const node = row.nodes[index];
-                const entry = this.tree.nodes[node];
-                const left = row.bounds[index * 2];
-                const width = row.bounds[index * 2 + 1] - left;
-                const similar = node !== 0 && entry === selectedId;
+            for (let layer = 0; layer < 3; layer++) {
+                for (let index = 0; index < row.nodes.length; index++) {
+                    if (row.layer[index] !== layer || row.opacity[index] <= 0 || row.bounds[index * 2 + 1] <= row.bounds[index * 2]) {
+                        continue;
+                    }
 
-                ctx.globalAlpha = node < this.zoomedNode ? 0.65 : 1;
-                ctx.fillStyle = similar
-                    ? '#d6bb2d'
-                    : `rgba(${this.nodesColors[entry]}, ${node === this.#hoveredNode ? 0.5 : 0.4})`;
-                ctx.fillRect(left, top, width, FRAME_HEIGHT);
+                    const node = row.nodes[index];
+                    const entry = this.tree.nodes[node];
+                    const left = row.bounds[index * 2];
+                    const width = row.bounds[index * 2 + 1] - left;
+                    const similar = node !== 0 && entry === selectedId;
+                    const ancestor = node < this.zoomedNode && node + this.tree.subtreeSize[node] >= this.zoomedNode;
 
-                if (node === this.zoomedNode && node !== 0) {
-                    ctx.strokeStyle = '#d6bb2d';
-                    ctx.lineWidth = 1.5;
-                    ctx.strokeRect(left + 0.75, top + 0.75, Math.max(0, width - 1.5), FRAME_HEIGHT - 1.5);
-                }
+                    ctx.globalAlpha = row.opacity[index] * (ancestor ? 0.65 : 1);
+                    ctx.fillStyle = similar
+                        ? '#d6bb2d'
+                        : `color-mix(in srgb, rgb(${this.nodesColors[entry]}) ${node === this.#hoveredNode ? 50 : 40}%, ${background})`;
+                    ctx.fillRect(left, top, width, FRAME_HEIGHT);
 
-                if (node !== 0) {
-                    const text = this.#labels.fit(ctx, this.nodesNames[entry] || '', width - 6);
+                    if (node === this.zoomedNode && node !== 0) {
+                        ctx.strokeStyle = '#d6bb2d';
+                        ctx.lineWidth = 1.5;
+                        ctx.strokeRect(left + 0.75, top + 0.75, Math.max(0, width - 1.5), FRAME_HEIGHT - 1.5);
+                    }
 
-                    if (text) {
-                        ctx.save();
-                        ctx.beginPath();
-                        ctx.rect(left, top, width, FRAME_HEIGHT);
-                        ctx.clip();
-                        ctx.fillStyle = similar ? '#000' : style.color;
-                        ctx.fillText(text, left + 3, top + FRAME_HEIGHT / 2);
-                        ctx.restore();
+                    if (node !== 0) {
+                        const text = this.#labels.fit(ctx, this.nodesNames[entry] || '', width - 6);
+
+                        if (text) {
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.rect(left, top, width, FRAME_HEIGHT);
+                            ctx.clip();
+                            ctx.fillStyle = similar ? '#000' : style.color;
+                            ctx.fillText(text, left + 3, top + FRAME_HEIGHT / 2);
+                            ctx.restore();
+                        }
                     }
                 }
             }
@@ -630,9 +946,13 @@ export class FlameChart<T> extends EventEmitter<Events> {
             this.#rootZoom = this.zoomedNode;
             this.emit('render', this.#rootLabel, this.#frame(0), this.nodesValue[0]);
         }
+
+        if (moving) {
+            this.scheduleRender();
+        }
     }
 
-    zoomFrame(nodeIndex = 0, toggle = false) {
+    zoomFrame(nodeIndex = 0, toggle = false, mode: ZoomMode = 'select') {
         if (this.#destroyed || !this.tree || nodeIndex < 0 || nodeIndex >= this.tree.nodes.length) {
             return;
         }
@@ -676,14 +996,17 @@ export class FlameChart<T> extends EventEmitter<Events> {
         }
 
         if (prevZoomedNode !== this.zoomedNode || prevZoomStart !== this.zoomStart || prevZoomEnd !== this.zoomEnd) {
+            this.#zoomMode = mode;
+            this.#transitionPending = mode === 'select';
+            this.#zoomTime = performance.now();
             this.emit('zoom', this.zoomedNode, this.zoomStart, this.zoomEnd);
         }
 
         this.scheduleRender();
     }
 
-    resetZoom() {
-        this.zoomFrame(0);
+    resetZoom(mode: ZoomMode = this.#zoomMode) {
+        this.zoomFrame(0, false, mode);
     }
 
     get colorHue() {
