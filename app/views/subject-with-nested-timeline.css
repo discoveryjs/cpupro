@@ -41,6 +41,9 @@
     opacity: .5;
     pointer-events: none;
 }
+.view-subject-with-nested-timeline .nested-work .view-bins-histogram {
+    transform: scaleY(-1);
+}
 .view-subject-with-nested-timeline > .self-time,
 .view-subject-with-nested-timeline > .nested-time {
     position: relative;
