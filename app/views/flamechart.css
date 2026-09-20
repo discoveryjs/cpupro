@@ -138,10 +138,6 @@
     pointer-events: none;
 }
 
-.discovery-root-darkmode .flamechart .frame:hover {
-    --fill-opacity: .3;
-}
-
 .flamechart-tooltip {
     padding: 5px 10px;
     min-width: 250px;

@@ -28,6 +28,10 @@ export default function(host, render) {
             hideTimer = setTimeout(() => popup.hide(), 150);
         },
 
+        invalidate() {
+            renderedFrame = null;
+        },
+
         destroy() {
             if (popup === null) {
                 return;

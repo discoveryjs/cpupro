@@ -45,6 +45,7 @@ type TransitionRow = {
     from: number[];
     to: number[];
     parents: number[];
+    layer: number[];
 };
 
 type ZoomMode = 'select' | 'continuous';
@@ -82,9 +83,11 @@ export class FlameChart<T> extends EventEmitter<Events> {
     #epoch = 0;
 
     #width = 0;
+    #viewportHeight = 0;
     #scrollTop = 0;
     #dpr = 0;
     #minFrameWidth = 2;
+    #projectionDirty = true;
 
     #viewStart = 0;
     #viewEnd = 1;
@@ -97,6 +100,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
     #transitionElapsed = 0;
     #transitionMotionTime = 0;
     #transitionDepth = 0;
+    #transitionDelta = { bounds: 0, arrival: 0, departure: 0, common: 0 };
+    #transitionScrollTop = 0;
     #maxDepth = 0;
     #targetRows: FrameRow[] = [];
     #transitionRows: TransitionRow[] = [];
@@ -117,7 +122,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
     #destroyed = false;
 
     tree: CallTree<T>;
-    nodesMaxDepth = 0;
     nodesDepth: Uint32Array;
     nodesValue: Uint32Array;
     nodesX: Uint32Array;
@@ -149,6 +153,15 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.el.append(this.#canvas, this.#rootLabel);
         this.#ctx = this.#canvas.getContext('2d')!;
 
+        // Later click observers run first and see the state before the default action.
+        this.on('frame:click', (node, _element, event) => {
+            if (event.metaKey) {
+                this.selectFrame(node);
+            } else {
+                this.zoomFrame(node, true);
+            }
+        });
+
         const { signal } = this.#events;
 
         this.#reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
@@ -159,12 +172,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const node = this.findFrameAt(event.clientX - rect.left, event.clientY - rect.top);
 
             if (node !== -1) {
-                if (event.metaKey) {
-                    this.selectFrame(node);
-                } else {
-                    this.zoomFrame(node, true);
-                }
-
                 this.emit('frame:click', node, this.#canvas, event);
             }
         }, { signal });
@@ -204,6 +211,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
         }
 
         if (this.#transitionProgress < 1) {
+            const depth = Math.floor(offset / ROW_HEIGHT);
+
+            if (depth >= Math.ceil((this.#scrollTop + this.#viewportHeight) / ROW_HEIGHT)) {
+                this.#projectTransitionRows(0, depth + 1, this.#transitionScrollTop);
+            }
+
             for (const padding of [0, FRAME_GAP]) {
                 for (let layer = 2; layer >= 0; layer--) {
                     for (let index = row.nodes.length - 1; index >= 0; index--) {
@@ -282,6 +295,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.zoomStart = 0;
         this.zoomEnd = 1;
         this.#viewReady = false;
+        this.#projectionDirty = true;
         this.#zoomTime = null;
         this.#transitionPending = false;
         this.#transitionProgress = 1;
@@ -297,12 +311,19 @@ export class FlameChart<T> extends EventEmitter<Events> {
             return;
         }
 
-        this.resetFrameRefs();
+        // Only a different tree invalidates node identities and navigation history.
+        if (tree !== this.tree) {
+            this.resetFrameRefs();
+        }
+
+        this.#hoveredNode = -1;
         this.#labels.clear();
         this.emit('frame:leave');
 
-        const getName = options.name || defaultGetName;
-        const getValue = options.value || defaultGetValue;
+        options ||= {};
+
+        const getName = typeof options.name === 'function' ? options.name : defaultGetName;
+        const getValue = typeof options.value === 'function' ? options.value : defaultGetValue;
         const { nodes, parent, subtreeSize } = tree;
         const depth = new Uint32Array(nodes.length);
         const children = new Uint32Array(nodes.length);
@@ -310,7 +331,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const names = tree.dictionary.map(getName);
         const values = new Uint32Array(nodes.length);
         const positions = new Uint32Array(nodes.length);
-        let maxDepth = 0;
         let childrenCursor = 0;
 
         this.#childrenSort = options.childrenSort === true || options.childrenSort === 'value'
@@ -331,7 +351,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
             depth[index] = nodeDepth;
             values[index] = getValue(index);
-            maxDepth = Math.max(maxDepth, nodeDepth);
 
             let cursor = index + 1;
 
@@ -349,7 +368,6 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         this.#epoch++;
         this.#getValue = getValue;
-        this.nodesMaxDepth = maxDepth;
         this.nodesDepth = depth;
         this.nodesValue = values;
         this.nodesX = positions;
@@ -405,11 +423,13 @@ export class FlameChart<T> extends EventEmitter<Events> {
         }
 
         this.#lastVisibleFramesEpoch = this.#epoch;
+        this.#projectionDirty = true;
 
         if (this.#viewReady) {
             this.#zoomMode = 'select';
             this.#transitionPending = true;
-            this.#zoomTime = performance.now();
+            // Retargeting must preserve elapsed time since the last animation frame.
+            this.#zoomTime ??= performance.now();
         }
 
         this.childrenComputed.fill(0);
@@ -584,11 +604,26 @@ export class FlameChart<T> extends EventEmitter<Events> {
     }
 
     #prepareTransition(viewHeight: number, widthScale: number) {
+        // Retargeting reads the last frame, including rows whose interpolation was deferred offscreen.
+        if (this.#transitionProgress < 1) {
+            this.#projectTransitionRows(0, this.#transitionRows.length, this.#transitionScrollTop);
+        }
+
         const continuing = !this.#transitionPending && this.#transitionProgress < 1;
         const depth = this.#projectFrames(viewHeight, this.#targetRows, this.zoomStart, this.zoomEnd);
         const rowCount = Math.max(this.#rows.length, this.#targetRows.length);
+        const sourcePositions = new Map<number, number>();
+        const targetPositions = new Map<number, number>();
+        const previousPositions = continuing ? new Map<number, number>() : null;
         let parentPositions = new Map<number, number>();
-        let distance = 0;
+        let currentPositions = new Map<number, number>();
+        let fromBuffer: number[] | null = continuing ? [] : null;
+        const delta = this.#transitionDelta;
+
+        delta.bounds = 0;
+        delta.arrival = 0;
+        delta.departure = 0;
+        delta.common = 0;
 
         this.#transitionDepth = Math.max(this.#maxDepth, depth);
 
@@ -600,17 +635,51 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.#transitionPending = false;
 
         for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
-            const source = this.#rows[rowIndex];
+            const source = this.#rows[rowIndex] ||= { nodes: [], bounds: [], opacity: [], layer: [] };
             const target = this.#targetRows[rowIndex];
-            const sourcePositions = new Map<number, number>();
-            const targetPositions = new Map(target?.nodes.map((node, index) => [node, index]));
-            const row = this.#transitionRows[rowIndex] ||= { nodes: [], from: [], to: [], parents: [] };
-            const previousPositions = continuing ? new Map(row.nodes.map((node, index) => [node, index])) : null;
-            const previousFrom = continuing ? row.from.slice() : null;
+            const row = this.#transitionRows[rowIndex] ||= { nodes: [], from: [], to: [], parents: [], layer: [] };
+
+            // Rows stay depth-indexed for parent links; empty depths need no lookup structures.
+            if (!source?.nodes.length && !target?.nodes.length) {
+                row.nodes.length = 0;
+                row.from.length = 0;
+                row.to.length = 0;
+                row.parents.length = 0;
+                row.layer.length = 0;
+                parentPositions.clear();
+                continue;
+            }
+
+            const previousFrom = continuing ? row.from : null;
+
+            // Read each row's old origins before recycling its buffer for the next row.
+            if (previousFrom) {
+                row.from = fromBuffer!;
+                fromBuffer = previousFrom;
+            }
+
+            sourcePositions.clear();
+            targetPositions.clear();
+            currentPositions.clear();
+            previousPositions?.clear();
+
+            if (previousPositions) {
+                for (let index = 0; index < row.nodes.length; index++) {
+                    previousPositions.set(row.nodes[index], index);
+                }
+            }
+
+            if (target) {
+                for (let index = 0; index < target.nodes.length; index++) {
+                    targetPositions.set(target.nodes[index], index);
+                }
+            }
 
             if (source) {
                 for (let index = 0; index < source.nodes.length; index++) {
-                    if (source.opacity[index] > 0.001 && source.bounds[index * 2 + 1] > source.bounds[index * 2]) {
+                    // A still-targeted node is a source even before its first visible paint.
+                    if (targetPositions.has(source.nodes[index]) ||
+                        source.opacity[index] > 0.001 && source.bounds[index * 2 + 1] > source.bounds[index * 2]) {
                         sourcePositions.set(source.nodes[index], index);
                     }
                 }
@@ -620,6 +689,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
             row.from.length = 0;
             row.to.length = 0;
             row.parents.length = 0;
+            row.layer.length = 0;
 
             for (const node of sourcePositions.keys()) {
                 row.nodes.push(node);
@@ -631,9 +701,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 }
             }
 
-            row.nodes.sort((left, right) => this.nodesX[left] - this.nodesX[right] || left - right);
+            if (row.nodes.length > 1) {
+                row.nodes.sort((left, right) => this.nodesX[left] - this.nodesX[right] || left - right);
+            }
 
-            for (const node of row.nodes) {
+            for (let index = 0; index < row.nodes.length; index++) {
+                const node = row.nodes[index];
                 const sourceIndex = sourcePositions.get(node);
                 const targetIndex = targetPositions.get(node);
                 const previousIndex = previousPositions?.get(node);
@@ -654,35 +727,40 @@ export class FlameChart<T> extends EventEmitter<Events> {
                         : continuing ? 1 : 0;
                 const targetLeft = targetIndex !== undefined ? target.bounds[targetIndex * 2] : left;
                 const targetRight = targetIndex !== undefined ? target.bounds[targetIndex * 2 + 1] : right;
+                const targetOpacity = targetIndex !== undefined ? 1 : 0;
+                const layer = targetOpacity === 0
+                    ? 0
+                    : previousIndex !== undefined
+                        ? source.layer[sourceIndex!] === 1 ? 1 : 2
+                        : sourceIndex !== undefined || continuing ? 2 : 1;
+                const opacityMode = layer === 0 ? 'departure' : layer === 1 ? 'arrival' : 'common';
 
-                distance = Math.max(distance, Math.abs(targetLeft - left), Math.abs(targetRight - right));
+                // Shared progress curves let unclipped error maxima include offscreen nodes without a per-frame scan.
+                delta.bounds = Math.max(delta.bounds, Math.abs(targetLeft - left), Math.abs(targetRight - right));
+                delta[opacityMode] = Math.max(delta[opacityMode], Math.abs(targetOpacity - opacity));
 
                 row.from.push(left, right, opacity);
-                row.to.push(
-                    targetLeft,
-                    targetRight,
-                    targetIndex !== undefined ? 1 : 0
-                );
+                row.to.push(targetLeft, targetRight, targetOpacity);
                 row.parents.push(parentPositions.get(this.tree.parent[node]) ?? -1);
+                row.layer.push(layer);
+                currentPositions.set(node, index);
             }
 
-            parentPositions = new Map(row.nodes.map((node, index) => [node, index]));
+            // Only the preceding depth's positions survive into the next row.
+            const previousParentPositions = parentPositions;
+
+            parentPositions = currentPositions;
+            currentPositions = previousParentPositions;
         }
 
         this.#transitionRows.length = rowCount;
 
         if (!continuing || widthScale !== 1) {
-            this.#transitionMotionTime = ZOOM_TIME_CONSTANT * Math.log(Math.max(1, distance * this.#dpr / 0.25));
+            this.#transitionMotionTime = ZOOM_TIME_CONSTANT * Math.log(Math.max(1, delta.bounds * this.#dpr / 0.25));
         }
     }
 
-    #advanceTransition(time: number) {
-        const elapsed = Math.max(0, time - (this.#zoomTime ?? time));
-
-        this.#transitionProgress += (1 - this.#transitionProgress) * -Math.expm1(-elapsed / ZOOM_TIME_CONSTANT);
-        this.#transitionElapsed += elapsed;
-        this.#zoomTime = time;
-
+    #projectTransitionRows(firstDepth: number, endDepth: number, scrollTop: number) {
         const geometryProgress = this.#transitionElapsed >= this.#transitionMotionTime ? 1 : this.#transitionProgress;
         const arrivalDelay = Math.max(0,
             this.#transitionMotionTime - ZOOM_TIME_CONSTANT * Math.log(FRAME_REVEAL_DISTANCE / 0.25)
@@ -690,9 +768,15 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const arrivalTime = Math.min(1, Math.max(0, this.#transitionElapsed - arrivalDelay) / FRAME_FADE_IN_DURATION);
         const arrivalProgress = arrivalTime * arrivalTime * (3 - 2 * arrivalTime);
         const departureProgress = -Math.expm1(-this.#transitionElapsed / FRAME_FADE_OUT_TIME_CONSTANT);
-        let error = 0;
+        const delta = this.#transitionDelta;
+        const error = Math.max(
+            delta.bounds * (1 - geometryProgress) * this.#dpr,
+            delta.arrival * (1 - arrivalProgress) * 255,
+            delta.departure * (1 - departureProgress) * 255,
+            delta.common * (1 - this.#transitionProgress) * 255
+        );
 
-        for (let depth = 0; depth < this.#transitionRows.length; depth++) {
+        for (let depth = firstDepth; depth < endDepth; depth++) {
             const transition = this.#transitionRows[depth];
             const row = this.#rows[depth] ||= { nodes: [], bounds: [], opacity: [], layer: [] };
 
@@ -704,22 +788,17 @@ export class FlameChart<T> extends EventEmitter<Events> {
             for (let index = 0; index < transition.nodes.length; index++) {
                 const offset = index * 3;
                 const { from, to } = transition;
-                const opacityProgress = to[offset + 2] === 0
+                const layer = transition.layer[index];
+                const opacityProgress = layer === 0
                     ? departureProgress
-                    : from[offset + 2] === 0
+                    : layer === 1
                         ? arrivalProgress
                         : this.#transitionProgress;
                 let left = from[offset] + (to[offset] - from[offset]) * geometryProgress;
                 let right = from[offset + 1] + (to[offset + 1] - from[offset + 1]) * geometryProgress;
                 let opacity = from[offset + 2] + (to[offset + 2] - from[offset + 2]) * opacityProgress;
 
-                error = Math.max(error,
-                    Math.abs(left - to[offset]) * this.#dpr,
-                    Math.abs(right - to[offset + 1]) * this.#dpr,
-                    Math.abs(opacity - to[offset + 2]) * 255
-                );
-
-                if (depth > 0 && (depth - 1) * ROW_HEIGHT + FRAME_HEIGHT > this.#scrollTop) {
+                if (depth > 0 && (depth - 1) * ROW_HEIGHT + FRAME_HEIGHT > scrollTop) {
                     const parent = transition.parents[index];
                     const parentRow = this.#rows[depth - 1];
 
@@ -735,9 +814,24 @@ export class FlameChart<T> extends EventEmitter<Events> {
                 row.nodes.push(transition.nodes[index]);
                 row.bounds.push(left, Math.max(left, right));
                 row.opacity.push(opacity);
-                row.layer.push(to[offset + 2] === 0 ? 0 : from[offset + 2] === 0 ? 1 : 2);
+                row.layer.push(layer);
             }
         }
+
+        return error;
+    }
+
+    #advanceTransition(time: number) {
+        const elapsed = Math.max(0, time - (this.#zoomTime ?? time));
+
+        this.#transitionProgress += (1 - this.#transitionProgress) * -Math.expm1(-elapsed / ZOOM_TIME_CONSTANT);
+        this.#transitionElapsed += elapsed;
+        this.#transitionScrollTop = this.#scrollTop;
+        this.#zoomTime = time;
+
+        const firstDepth = Math.max(0, Math.floor(this.#scrollTop / ROW_HEIGHT));
+        const endDepth = Math.min(this.#transitionRows.length, Math.ceil((this.#scrollTop + this.#viewportHeight) / ROW_HEIGHT));
+        const error = this.#projectTransitionRows(firstDepth, endDepth, this.#scrollTop);
 
         if (error <= 0.25) {
             this.#transitionProgress = 1;
@@ -750,6 +844,16 @@ export class FlameChart<T> extends EventEmitter<Events> {
     }
 
     #projectView(viewHeight: number, time: number, layoutChanged: boolean, widthScale: number) {
+        layoutChanged ||= this.#projectionDirty;
+
+        // Paint-only updates reuse settled geometry; active motion still advances every frame.
+        if (this.#viewReady && !layoutChanged && !this.#transitionPending && this.#transitionProgress === 1 &&
+            this.#viewStart === this.zoomStart && this.#viewEnd === this.zoomEnd) {
+            return false;
+        }
+
+        this.#projectionDirty = false;
+
         if (this.#zoomMode === 'select' && this.#viewReady && !this.#reducedMotion?.matches) {
             if (this.#transitionPending || this.#transitionProgress < 1 && layoutChanged) {
                 this.#prepareTransition(viewHeight, widthScale);
@@ -852,11 +956,14 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.#scrollTop = this.#scrollEl?.scrollTop || 0;
 
         const viewportHeight = this.#scrollEl?.clientHeight || 300;
+        const previousViewportHeight = this.#viewportHeight;
         const previousDpr = this.#dpr;
 
+        this.#viewportHeight = viewportHeight;
         this.#dpr = dpr;
 
-        const layoutChanged = previousWidth !== this.#width || previousScrollTop !== this.#scrollTop || previousDpr !== dpr;
+        const layoutChanged = previousWidth !== this.#width || previousViewportHeight !== viewportHeight ||
+            previousScrollTop !== this.#scrollTop || previousDpr !== dpr;
         let moving = this.#projectView(viewportHeight, time, layoutChanged, previousWidth > 0 ? this.#width / previousWidth : 1);
         const height = Math.max(this.#maxDepth + 1, 10) * ROW_HEIGHT + 2;
 
@@ -888,22 +995,32 @@ export class FlameChart<T> extends EventEmitter<Events> {
         this.#canvas.style.width = `${this.#width}px`;
         this.#canvas.style.height = `${viewHeight}px`;
         this.#canvas.style.top = `${this.#scrollTop}px`;
+        this.#rootLabel.style.opacity = this.zoomedNode > 0 ? '0.65' : '1';
 
         const ctx = this.#ctx;
         const style = getComputedStyle(this.el);
         const background = style.getPropertyValue('--discovery-background-color').trim() || '#242424';
         const selectedId = this.selectedNode >= 0 ? this.tree.nodes[this.selectedNode] : -1;
+        const firstDepth = Math.max(0, Math.floor(this.#scrollTop / ROW_HEIGHT));
+        const endDepth = Math.min(this.#rows.length, Math.ceil((this.#scrollTop + viewHeight) / ROW_HEIGHT));
+        // Settled rows contain only common frames; the other layers are needed during transitions.
+        const firstLayer = this.#transitionProgress < 1 ? 0 : 2;
 
         ctx.clearRect(0, 0, this.#width, viewHeight);
         ctx.font = SPAN_LABEL_FONT;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
 
-        for (let depth = 0; depth < this.#rows.length; depth++) {
+        // Keep offscreen transition origins for reverse scrolling, but do not paint their rows.
+        for (let depth = firstDepth; depth < endDepth; depth++) {
             const row = this.#rows[depth];
             const top = depth * ROW_HEIGHT - this.#scrollTop;
 
-            for (let layer = 0; layer < 3; layer++) {
+            if (top + FRAME_HEIGHT <= 0) {
+                continue;
+            }
+
+            for (let layer = firstLayer; layer < 3; layer++) {
                 for (let index = 0; index < row.nodes.length; index++) {
                     if (row.layer[index] !== layer || row.opacity[index] <= 0 || row.bounds[index * 2 + 1] <= row.bounds[index * 2]) {
                         continue;
@@ -919,7 +1036,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
                     ctx.globalAlpha = row.opacity[index] * (ancestor ? 0.65 : 1);
                     ctx.fillStyle = similar
                         ? '#d6bb2d'
-                        : `color-mix(in srgb, rgb(${this.nodesColors[entry]}) ${node === this.#hoveredNode ? 50 : 40}%, ${background})`;
+                        : `color-mix(in srgb, rgb(${this.nodesColors[entry]}) ${node === this.#hoveredNode ? 30 : 40}%, ${background})`;
                     ctx.fillRect(left, top, width, FRAME_HEIGHT);
 
                     if (node === this.zoomedNode && node !== 0) {
@@ -948,6 +1065,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         ctx.globalAlpha = 1;
         this.#updateHover();
 
+        // Root content follows metadata and zoom, not intermediate animation geometry.
         if (this.#rootEpoch !== this.#epoch || this.#rootZoom !== this.zoomedNode) {
             this.#rootEpoch = this.#epoch;
             this.#rootZoom = this.zoomedNode;
@@ -1005,7 +1123,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
         if (prevZoomedNode !== this.zoomedNode || prevZoomStart !== this.zoomStart || prevZoomEnd !== this.zoomEnd) {
             this.#zoomMode = mode;
             this.#transitionPending = mode === 'select';
-            this.#zoomTime = performance.now();
+            this.#zoomTime ??= performance.now();
             this.emit('zoom', this.zoomedNode, this.zoomStart, this.zoomEnd);
         }
 
@@ -1024,6 +1142,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         if (this.tree) {
             this.nodesColors = this.tree.dictionary.map(entry => this.#colorMapper(entry, hue));
+            this.#rootEpoch = -1;
         }
 
         this.scheduleRender();
@@ -1037,6 +1156,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
         if (this.tree) {
             this.nodesColors = this.tree.dictionary.map(entry => mapper(entry, this.#colorHue));
+            this.#rootEpoch = -1;
         }
 
         this.scheduleRender();
@@ -1046,7 +1166,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
         return this.#minFrameWidth;
     }
     set minFrameWidth(width: number) {
+        if (this.#minFrameWidth === width) {
+            return;
+        }
+
         this.#minFrameWidth = width;
+        this.#projectionDirty = true;
         this.scheduleRender();
     }
 

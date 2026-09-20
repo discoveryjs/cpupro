@@ -185,15 +185,18 @@ discovery.view.define('flamechart', function(el, config, data, context) {
     `);
 
     const { selfValues, nestedValues } = timings;
-    const unsubscribeTimings = timings.subscribe(utils.debounce(() => {
+    const updateTimings = utils.debounce(() => {
         timings.recompute?.();
+        // Node identity survives metric updates, but cached tooltip content does not.
+        tooltip.invalidate();
         chart.resetValues();
         renderDetails(true);
 
         if (lockScrolling) {
             el.classList.add('disable-scrolling');
         }
-    }, 16, { maxWait: 48 }));
+    }, { wait: 16, maxWait: 48 });
+    const unsubscribeTimings = timings.subscribe(updateTimings);
 
     chart.setData(tree, {
         name: value => value.kind === 'script'
@@ -275,11 +278,12 @@ discovery.view.define('flamechart', function(el, config, data, context) {
         removeOnPointerDownListener?.();
         removeOnScrollListener();
         unsubscribeTimings();
+        // Unsubscribing stops new notifications, not the already queued update.
+        updateTimings.cancel();
         intersectionObserver.disconnect();
         intersectionObserver = null;
         detailsResizeObserver.disconnect();
         detailsResizeObserver = null;
-        tooltip.destroy();
         chart.destroy();
     };
 }, { tag: 'div' });

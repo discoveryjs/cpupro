@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test, vi } from 'vitest';
 import { FlameChart } from './flamechart/index.js';
+import Tooltip from './flamechart/tooltip.js';
 import { CallTree } from '../prepare/computations/call-tree.js';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -114,7 +115,10 @@ function createChart(width = 1000, height = 170, dpr = 1, reducedMotion = true) 
         pointer,
         scheduled,
         motion,
-        resize: () => resize()
+        resize: (nextWidth = width) => {
+            width = nextWidth;
+            resize();
+        }
     };
 }
 
@@ -162,6 +166,174 @@ test('canvas flame graph preserves lazy sorted tree geometry and root content', 
     chart.destroy();
 });
 
+test('setData retains legacy handling of absent options and non-callable accessors', () => {
+    const { chart, flush } = createChart();
+    const { tree, values } = fixture();
+
+    try {
+        for (const options of [undefined, null, { name: 'name', value: 42 }]) {
+            assert.doesNotThrow(() => chart.setData(tree, options));
+            flush();
+            assert.deepEqual(chart.nodesNames, ['root', 'A', 'B', 'C']);
+        }
+
+        chart.setData(tree, { name: {}, value: index => values[index], childrenSort: 'invalid' });
+        flush();
+        assert.equal(chart.findFrameAt(100, 22), 1);
+        assert.equal(chart.findFrameAt(600, 22), 3);
+    } finally {
+        chart.destroy();
+    }
+});
+
+test('name sorting uses dictionary identities and preserves equal-name sibling order', () => {
+    const { chart, flush } = createChart();
+    const tree = new CallTree(
+        [{ name: 'root' }, { name: 'Zulu' }, { name: 'Alpha' }, { name: 'Middle' }],
+        new Uint32Array([0, 2, 1, 2, 3, 1]),
+        new Uint32Array(6),
+        new Uint32Array([5, 0, 0, 0, 0, 0])
+    );
+    const values = [150, 10, 20, 30, 40, 50];
+    const checkOrder = expected => {
+        assert.deepEqual(Array.from(chart.children.subarray(0, chart.childrenOffset[0])), expected);
+
+        let position = 0;
+
+        for (const node of expected) {
+            assert.equal(chart.nodesX[node], position);
+            assert.equal(chart.findFrameAt((position + values[node] / 2) / 150 * 1000, 22), node);
+            position += values[node];
+        }
+    };
+
+    try {
+        chart.setData(tree, { value: index => values[index], childrenSort: 'name' });
+        flush();
+        checkOrder([1, 3, 4, 2, 5]);
+
+        chart.setData(tree, {
+            name: entry => entry.name === 'Zulu' ? 'First' : entry.name === 'Alpha' ? 'Last' : entry.name,
+            value: index => values[index],
+            childrenSort: 'name'
+        });
+        flush();
+        checkOrder([2, 5, 1, 3, 4]);
+
+        chart.setData(tree, { value: index => values[index], childrenSort: (left, right) => right - left });
+        flush();
+        checkOrder([5, 4, 3, 2, 1]);
+    } finally {
+        chart.destroy();
+    }
+});
+
+test('dark frame colors preserve hover and dictionary-wide selection priority', () => {
+    const { chart, canvas, pointer, flush } = createChart();
+    const { tree, values } = fixture();
+    const fills = [];
+    const labels = [];
+    const normalFill = 'color-mix(in srgb, rgb(200, 120, 80) 40%, #242424)';
+    const hoverFill = 'color-mix(in srgb, rgb(200, 120, 80) 30%, #242424)';
+
+    chart.colorMapper = () => '200, 120, 80';
+    canvas.context.fillRect.mockImplementation((left, top) => {
+        fills.push({ left, top, color: canvas.context.fillStyle, opacity: canvas.context.globalAlpha });
+    });
+    canvas.context.fillText.mockImplementation(text => {
+        labels.push({ text, color: canvas.context.fillStyle });
+    });
+    chart.setData(tree, { value: index => values[index] });
+    flush();
+
+    try {
+        assert.equal(fills.find(frame => frame.left === 0 && frame.top === 17).color, normalFill);
+        assert.ok(labels.every(label => label.color === '#ccc'));
+
+        fills.length = 0;
+        pointer('pointermove', 100, 22);
+        flush();
+        assert.equal(fills.find(frame => frame.left === 0 && frame.top === 17).color, hoverFill);
+
+        fills.length = 0;
+        pointer('pointerleave', 0, 0);
+        flush();
+        assert.equal(fills.find(frame => frame.left === 0 && frame.top === 17).color, normalFill);
+
+        fills.length = 0;
+        labels.length = 0;
+        chart.selectFrame(2);
+        pointer('pointermove', 500, 40);
+        flush();
+
+        assert.deepEqual(fills.filter(frame => frame.top === 34).map(frame => frame.color), ['#d6bb2d', '#d6bb2d']);
+        assert.deepEqual(labels.filter(label => label.text === 'B').map(label => label.color), ['#000', '#000']);
+
+        fills.length = 0;
+        chart.zoomFrame(1);
+        flush();
+        assert.equal(fills.find(frame => frame.top === 0).opacity, 0.65);
+        assert.equal(chart.el.children[1].style.opacity, '0.65');
+        assert.equal(canvas.context.strokeStyle, '#d6bb2d');
+        assert.equal(canvas.context.lineWidth, 1.5);
+
+        chart.resetZoom();
+        flush();
+        assert.equal(chart.el.children[1].style.opacity, '1');
+    } finally {
+        chart.destroy();
+    }
+});
+
+test('root content refreshes on metadata changes without following intermediate motion', () => {
+    const { chart, flush, pointer, resize } = createChart(1000, 170, 1, false);
+    const { tree, values } = fixture();
+    const renderRoot = vi.fn();
+
+    chart.on('render', renderRoot);
+    chart.setData(tree, { value: index => values[index] });
+    flush(0);
+    assert.equal(renderRoot.mock.calls.length, 1);
+
+    try {
+        chart.zoomFrame(1);
+        flush(20);
+        flush(20);
+        flush(20);
+        assert.equal(renderRoot.mock.calls.length, 2);
+
+        chart.colorMapper = (entry, hue) => hue === 'blue' ? '10, 20, 30' : '40, 50, 60';
+        flush(0);
+        assert.equal(renderRoot.mock.calls.length, 3);
+        assert.equal(renderRoot.mock.calls.at(-1)[1].color, '40, 50, 60');
+
+        chart.colorHue = 'blue';
+        flush(0);
+        assert.equal(renderRoot.mock.calls.length, 4);
+        assert.equal(renderRoot.mock.calls.at(-1)[1].color, '10, 20, 30');
+
+        chart.selectFrame(2);
+        pointer('pointermove', 100, 20);
+        resize(800);
+        flush(20);
+        assert.equal(renderRoot.mock.calls.length, 4);
+
+        values[1] = 70;
+        values[3] = 50;
+        chart.resetValues();
+        flush(0);
+        assert.equal(renderRoot.mock.calls.length, 5);
+        assert.equal(renderRoot.mock.calls.at(-1)[2], 120);
+
+        chart.setData(tree, { name: entry => `Updated ${entry.name}`, value: index => values[index] });
+        flush(0);
+        assert.equal(renderRoot.mock.calls.length, 6);
+        assert.equal(renderRoot.mock.calls.at(-1)[1].name, 'Updated root');
+    } finally {
+        chart.destroy();
+    }
+});
+
 test('canvas picking preserves click zoom, meta selection, similar identity and tooltip events', () => {
     const { chart, canvas, pointer, flush } = createChart();
     const { tree, values } = fixture();
@@ -207,6 +379,37 @@ test('canvas picking preserves click zoom, meta selection, similar identity and 
     assert.ok(canvas.context.fillRect.mock.calls.length > 0);
 
     chart.destroy();
+});
+
+test('frame click observers run before the default action for pointer and emitted events', () => {
+    const { chart, canvas, pointer, flush } = createChart();
+    const { tree, values } = fixture();
+    const events = [];
+
+    chart.setData(tree, { value: index => values[index], childrenSort: true });
+    flush();
+    chart.on('frame:click', (node, element, event) => {
+        assert.equal(element, canvas);
+        assert.equal(event.type, 'click');
+        events.push(['click', node, chart.selectedNode, chart.zoomedNode]);
+    });
+    chart.on('select', node => events.push(['select', node]));
+    chart.on('zoom', node => events.push(['zoom', node]));
+
+    try {
+        pointer('click', 650, 40, true);
+        assert.deepEqual(events, [['click', 2, -1, 0], ['select', 2]]);
+
+        events.length = 0;
+        pointer('click', 650, 20);
+        assert.deepEqual(events, [['click', 1, 2, 0], ['zoom', 1]]);
+
+        events.length = 0;
+        chart.emit('frame:click', 1, canvas, new Event('click'));
+        assert.deepEqual(events, [['click', 1, 2, 1], ['zoom', 0]]);
+    } finally {
+        chart.destroy();
+    }
 });
 
 test('frame separators belong to the preceding frame without swallowing empty space', () => {
@@ -326,6 +529,110 @@ test('metric updates recover zoom geometry, handle zero values and replace tree 
     assert.equal(chart.getVisibleFrames()[1].value, replacement.tree.dictionary[1]);
 
     chart.destroy();
+});
+
+test('rebinding the same tree preserves selection, zoom history and displayed motion', () => {
+    for (const elapsed of [20, 1000]) {
+        const { chart, canvas, flush, scheduled } = createChart(1000, 170, 1, false);
+        const { tree, values } = fixture();
+        const fills = [];
+
+        canvas.context.fillRect.mockImplementation((left, top, width, height) => {
+            fills.push([left, top, width, height, canvas.context.globalAlpha]);
+        });
+        chart.setData(tree, { value: index => values[index], childrenSort: true });
+        flush(0);
+        chart.selectFrame(2);
+        chart.zoomFrame(1);
+        flush(1000);
+        chart.zoomFrame(2);
+        fills.length = 0;
+        flush(elapsed);
+
+        const before = fills.slice();
+
+        values[1] = 70;
+        values[2] = 35;
+        values[3] = 30;
+        chart.setData(tree, {
+            name: entry => `Updated ${entry.name}`,
+            value: index => values[index],
+            childrenSort: true
+        });
+
+        try {
+            assert.equal(chart.selectedNode, 2);
+            assert.equal(chart.zoomedNode, 2);
+            assert.deepEqual(chart.zoomedNodesStack, [1]);
+
+            fills.length = 0;
+            flush(0);
+
+            assert.deepEqual(fills, before, 'Same-tree updates begin at the displayed frame');
+            assert.equal(chart.zoomStart, 0);
+            assert.equal(chart.zoomEnd, 0.35);
+            assert.equal(chart.nodesNames[2], 'Updated B');
+
+            for (let frame = 0; scheduled.size > 0 && frame < 120; frame++) {
+                flush();
+            }
+
+            assert.equal(scheduled.size, 0);
+            assert.equal(chart.findFrameAt(100, 40), 2);
+            chart.zoomFrame(2, true);
+            assert.equal(chart.zoomedNode, 1);
+            assert.equal(chart.selectedNode, 2);
+        } finally {
+            chart.destroy();
+        }
+    }
+});
+
+test('tooltip refreshes metrics for the same hovered node after invalidation', () => {
+    const { chart, pointer, flush } = createChart();
+    const { tree, values } = fixture();
+    const renderedValues = [];
+    const popup = {
+        show: vi.fn((anchor, render) => render?.({})),
+        hide: vi.fn(),
+        destroy: vi.fn()
+    };
+
+    class Popup {
+        constructor() {
+            return popup;
+        }
+    }
+
+    const tooltip = new Tooltip({ view: { Popup } }, (el, node) => renderedValues.push(values[node]));
+
+    chart.on('frame:enter', tooltip.show);
+    chart.on('frame:leave', tooltip.hide);
+    chart.on('destroy', tooltip.destroy);
+    chart.setData(tree, { value: index => values[index] });
+    flush();
+
+    try {
+        pointer('pointermove', 100, 20);
+        flush();
+        assert.deepEqual(renderedValues, [40]);
+
+        tooltip.show(1);
+        assert.deepEqual(renderedValues, [40], 'Unchanged content is reused');
+
+        values[1] = 70;
+        values[3] = 30;
+        tooltip.invalidate();
+        chart.resetValues();
+        flush();
+
+        assert.deepEqual(renderedValues, [40, 70], 'Stable node identity does not imply stable metrics');
+    } finally {
+        chart.destroy();
+    }
+
+    chart.destroy();
+    assert.equal(popup.destroy.mock.calls.length, 1);
 });
 
 test('canvas resources are viewport-sized and reused, with cancellable destruction', () => {
@@ -1281,6 +1588,398 @@ test('scrolling reveals existing rows immediately even during zoom or metric mot
     }
 });
 
+test('scrolling paints only viewport rows without losing retained transition geometry', () => {
+    const { chart, canvas, scroll, flush } = createChart(1000, 51, 1, false);
+    const count = 22;
+    const tree = new CallTree(
+        Array.from({ length: count }, (_, index) => ({ name: `Frame ${index}` })),
+        Uint32Array.from({ length: count }, (_, index) => index),
+        Uint32Array.from({ length: count }, (_, index) => index === count - 1 ? 0 : Math.max(0, index - 1)),
+        Uint32Array.from({ length: count }, (_, index) => index === 0 ? count - 1 : Math.max(0, count - index - 2))
+    );
+    const fills = [];
+
+    canvas.context.fillRect.mockImplementation((left, top, width, height) => {
+        fills.push([left, top, width, height, canvas.context.globalAlpha]);
+    });
+    chart.setData(tree, { value: index => index === 0 ? 100 : index === count - 1 ? 60 : 40 });
+    flush(0);
+    chart.zoomFrame(1);
+    fills.length = 0;
+    flush(65);
+
+    const before = fills.map(frame => frame.slice());
+
+    for (const offset of [5 * 17, 10 * 17 + 16.5]) {
+        scroll.scrollTop = offset;
+        scroll.dispatchEvent(new Event('scroll'));
+        fills.length = 0;
+        canvas.context.fillText.mockClear();
+        flush(0);
+
+        assert.equal(fills.length, 3);
+        assert.ok(fills.every(([, top, , height]) => top + height > 0 && top < 51));
+        assert.equal(canvas.context.fillText.mock.calls.length, 3);
+        assert.ok(canvas.context.fillText.mock.calls.every(([, , top]) => top >= 0 && top < 51));
+    }
+
+    scroll.scrollTop = 0;
+    scroll.dispatchEvent(new Event('scroll'));
+    fills.length = 0;
+    flush(0);
+
+    assert.deepEqual(fills, before);
+    chart.destroy();
+});
+
+test('transition convergence includes offscreen motion without measuring every node each frame', () => {
+    const { chart, scroll, flush, scheduled } = createChart(1000, 51, 1, false);
+    const count = 22;
+    const tree = new CallTree(
+        Array.from({ length: count }, (_, index) => ({ name: `Frame ${index}` })),
+        Uint32Array.from({ length: count }, (_, index) => index),
+        Uint32Array.from({ length: count }, (_, index) => index === count - 1 ? 0 : Math.max(0, index - 1)),
+        Uint32Array.from({ length: count }, (_, index) => index === 0 ? count - 1 : Math.max(0, count - index - 2))
+    );
+
+    chart.setData(tree, { value: index => index === 0 ? 100 : index === count - 1 ? 60 : 40 });
+    flush(0);
+    chart.zoomFrame(1);
+    flush(20);
+    scroll.scrollTop = 10 * 17;
+    scroll.dispatchEvent(new Event('scroll'));
+    flush(0);
+
+    const absSpy = vi.spyOn(Math, 'abs');
+
+    try {
+        flush(20);
+
+        assert.equal(absSpy.mock.calls.length, 0, 'Convergence uses prepared maxima, not per-node differences');
+        assert.equal(scheduled.size, 1, 'Invisible motion still contributes to convergence');
+        assert.equal(chart.findFrameAt(100, 5), 10);
+
+        for (let frame = 0; scheduled.size > 0 && frame < 120; frame++) {
+            flush();
+        }
+
+        assert.equal(scheduled.size, 0);
+    } finally {
+        absSpy.mockRestore();
+        chart.destroy();
+    }
+});
+
+test('offscreen transition rows are restored on demand after elapsed motion', () => {
+    const snapshots = [];
+
+    for (const scrollDuringMotion of [false, true]) {
+        const { chart, canvas, scroll, flush } = createChart(1000, 51, 1, false);
+        const count = 22;
+        const tree = new CallTree(
+            Array.from({ length: count }, (_, index) => ({ name: `Frame ${index}` })),
+            Uint32Array.from({ length: count }, (_, index) => index),
+            Uint32Array.from({ length: count }, (_, index) => index === count - 1 ? 0 : Math.max(0, index - 1)),
+            Uint32Array.from({ length: count }, (_, index) => index === 0 ? count - 1 : Math.max(0, count - index - 2))
+        );
+        const fills = [];
+
+        canvas.context.fillRect.mockImplementation((left, top, width, height) => {
+            fills.push([left, top, width, height, canvas.context.globalAlpha]);
+        });
+        chart.setData(tree, { value: index => index === 0 ? 100 : index === count - 1 ? 60 : 40 });
+        flush(0);
+        chart.zoomFrame(1);
+        flush(20);
+
+        if (scrollDuringMotion) {
+            for (const offset of [17, 2 * 17 + 16.5]) {
+                scroll.scrollTop = offset;
+                scroll.dispatchEvent(new Event('scroll'));
+                flush(0);
+            }
+        }
+
+        const originalPush = Array.prototype.push;
+        let boundsWrites = 0;
+
+        Array.prototype.push = function(...values) {
+            if (values.length === 2 && values.every(value => typeof value === 'number')) {
+                boundsWrites++;
+            }
+
+            return originalPush.apply(this, values);
+        };
+
+        try {
+            flush(45);
+
+            assert.ok(boundsWrites <= 4, `Only viewport bounds are interpolated, got ${boundsWrites} writes`);
+        } finally {
+            Array.prototype.push = originalPush;
+        }
+
+        scroll.scrollTop = 0;
+        scroll.dispatchEvent(new Event('scroll'));
+        fills.length = 0;
+        flush(0);
+        snapshots.push({
+            fills: fills.slice(),
+            hits: [5, 22, 39].map(top => [100, 700, 999].map(left => chart.findFrameAt(left, top)))
+        });
+
+        if (scrollDuringMotion) {
+            assert.equal(chart.findFrameAt(100, 3 * 17 + 5), 3);
+            flush(100);
+            assert.equal(chart.findFrameAt(100, 3 * 17 + 5), -1, 'Offscreen picking observes the current departure opacity');
+        }
+
+        chart.destroy();
+    }
+
+    assert.deepEqual(snapshots[1], snapshots[0]);
+});
+
+test('transition preparation reuses row lookups and skips empty-depth work', () => {
+    const { chart, scroll, flush, scheduled } = createChart(1000, 51, 1, false);
+    const count = 102;
+    const tree = new CallTree(
+        Array.from({ length: count }, (_, index) => ({ name: `Frame ${index}` })),
+        Uint32Array.from({ length: count }, (_, index) => index),
+        Uint32Array.from({ length: count }, (_, index) => index === count - 1 ? 0 : Math.max(0, index - 1)),
+        Uint32Array.from({ length: count }, (_, index) => index === 0 ? count - 1 : Math.max(0, count - index - 2))
+    );
+    const OriginalMap = globalThis.Map;
+    let maps = 0;
+    let entryPairs = 0;
+    let sorts = 0;
+    let copies = 0;
+
+    chart.setData(tree, { value: index => index === 0 ? 100 : index === count - 1 ? 60 : 40 });
+    flush(0);
+    scroll.scrollTop = 80 * 17;
+    scroll.dispatchEvent(new Event('scroll'));
+    flush(0);
+
+    vi.stubGlobal('Map', class extends OriginalMap {
+        constructor(...args) {
+            super(...args);
+            maps++;
+            entryPairs += args[0]?.length || 0;
+        }
+    });
+
+    const originalSort = Array.prototype.sort;
+    const sortSpy = vi.spyOn(Array.prototype, 'sort').mockImplementation(function(compare) {
+        sorts++;
+        return originalSort.call(this, compare);
+    });
+    const originalSlice = Array.prototype.slice;
+    const sliceSpy = vi.spyOn(Array.prototype, 'slice').mockImplementation(function(...args) {
+        copies++;
+        return originalSlice.apply(this, args);
+    });
+
+    try {
+        chart.zoomFrame(1);
+        flush(0);
+
+        assert.ok(maps <= 5, `Row lookups are reused across depths, got ${maps} maps`);
+        assert.equal(entryPairs, 0, 'Lookup construction does not materialize entry-pair arrays');
+        assert.equal(sorts, 0, 'Single-node and empty rows need no sorting');
+        assert.equal(chart.findFrameAt(100, 5), 80);
+
+        maps = 0;
+        scroll.scrollTop = 81 * 17;
+        scroll.dispatchEvent(new Event('scroll'));
+        flush(0);
+
+        assert.ok(maps <= 5, `Continuation reuses row lookups, got ${maps} maps`);
+        assert.equal(entryPairs, 0);
+        assert.equal(copies, 0, 'Continuation reads old origins without copying every row');
+        assert.equal(sorts, 0);
+        assert.equal(chart.findFrameAt(100, 5), 81);
+
+        for (let frame = 0; scheduled.size > 0 && frame < 120; frame++) {
+            flush();
+        }
+
+        assert.equal(scheduled.size, 0);
+    } finally {
+        sortSpy.mockRestore();
+        sliceSpy.mockRestore();
+        chart.destroy();
+    }
+});
+
+test('paint-only updates reuse settled projection without reading descendant coordinates', () => {
+    const { chart, canvas, pointer, flush, resize } = createChart();
+    const { tree, values } = fixture();
+    let coordinateReads = 0;
+
+    chart.setData(tree, {
+        value: index => values[index],
+        childrenSort: true
+    });
+    flush(0);
+    chart.nodesX = new Proxy(chart.nodesX, {
+        get(target, property) {
+            if (typeof property === 'string' && property !== '0' && /^\d+$/.test(property)) {
+                coordinateReads++;
+            }
+
+            return Reflect.get(target, property, target);
+        }
+    });
+
+    for (const update of [
+        () => pointer('pointermove', 100, 22),
+        () => chart.selectFrame(1),
+        () => chart.colorMapper = () => '100, 150, 200',
+        () => chart.colorHue = 'blue',
+        () => globalThis.document.fonts.dispatchEvent(new Event('loadingdone')),
+        resize,
+        () => chart.scheduleRender()
+    ]) {
+        coordinateReads = 0;
+        canvas.context.fillRect.mockClear();
+        update();
+        flush();
+
+        assert.ok(canvas.context.fillRect.mock.calls.length > 0, 'The requested repaint still happens');
+        assert.equal(coordinateReads, 0, 'Root metadata refresh does not traverse descendant coordinates');
+        assert.equal(chart.findFrameAt(650, 22), 1);
+    }
+
+    chart.destroy();
+});
+
+test('settled projection is invalidated by layout, LOD, zoom and metric changes', () => {
+    const { chart, canvas, scroll, flush, resize } = createChart(1000, 34);
+    const { tree, values } = fixture();
+    let coordinateReads = 0;
+
+    chart.setData(tree, {
+        value: index => values[index],
+        childrenSort: true
+    });
+    flush(0);
+    chart.nodesX = new Proxy(chart.nodesX, {
+        get(target, property) {
+            if (typeof property === 'string' && /^\d+$/.test(property)) {
+                coordinateReads++;
+            }
+
+            return Reflect.get(target, property, target);
+        }
+    });
+
+    const checkUpdate = (update, verify) => {
+        update();
+        coordinateReads = 0;
+        flush();
+
+        assert.ok(coordinateReads > 0, 'Changed geometry rebuilds the projection');
+        verify();
+        coordinateReads = 0;
+        chart.render();
+        assert.equal(coordinateReads, 0, 'The next unchanged draw reuses the new projection');
+    };
+
+    checkUpdate(() => resize(500), () => {
+        assert.equal(chart.findFrameAt(350, 22), 1);
+        assert.equal(chart.findFrameAt(100, 39), -1);
+        assert.equal(canvas.width, 500);
+    });
+    checkUpdate(() => {
+        scroll.clientHeight = 51;
+        resize();
+    }, () => {
+        assert.equal(chart.findFrameAt(350, 39), 2);
+        assert.equal(canvas.height, 51);
+    });
+    checkUpdate(() => {
+        scroll.scrollTop = 17;
+        scroll.dispatchEvent(new Event('scroll'));
+    }, () => {
+        assert.equal(chart.findFrameAt(100, 5), 3);
+        assert.equal(chart.findFrameAt(350, 22), 2);
+    });
+    checkUpdate(() => {
+        globalThis.window.devicePixelRatio = 2;
+        resize();
+    }, () => {
+        assert.equal(canvas.width, 1000);
+        assert.equal(canvas.height, 102);
+    });
+    checkUpdate(() => chart.minFrameWidth = 200, () => {
+        assert.equal(chart.findFrameAt(475, 22), 2);
+    });
+    checkUpdate(() => {
+        chart.zoomStart = 0.6;
+        chart.zoomEnd = 1;
+        chart.scheduleRender();
+    }, () => {
+        assert.equal(chart.findFrameAt(100, 5), 1);
+    });
+    checkUpdate(() => chart.resetZoom(), () => {
+        assert.equal(chart.findFrameAt(100, 5), 3);
+    });
+    checkUpdate(() => chart.zoomFrame(1), () => {
+        assert.equal(chart.findFrameAt(100, 5), 1);
+    });
+    checkUpdate(() => {
+        values.splice(0, values.length, 100, 70, 35, 30, 15);
+        chart.resetValues();
+        chart.getVisibleFrames();
+    }, () => {
+        assert.equal(chart.zoomStart, 0);
+        assert.equal(chart.zoomEnd, 0.7);
+        assert.equal(chart.findFrameAt(100, 5), 1);
+    });
+
+    const replacement = fixture();
+
+    chart.setData(replacement.tree, { value: index => replacement.values[index] });
+    flush();
+    assert.equal(chart.findFrameAt(250, 5), 3);
+    assert.equal(chart.zoomedNode, 0);
+    chart.destroy();
+});
+
+test('viewport height and LOD changes refresh target rows during an active transition', () => {
+    const { chart, scroll, canvas, flush, resize, scheduled } = createChart(1000, 17, 1, false);
+    const { tree, values } = fixture();
+
+    chart.setData(tree, {
+        value: index => values[index],
+        childrenSort: true
+    });
+    flush(0);
+    chart.zoomFrame(1);
+    flush(20);
+    scroll.clientHeight = 51;
+    resize();
+    flush(0);
+
+    assert.equal(canvas.height, 51);
+    assert.equal(chart.findFrameAt(100, 22), 1);
+    assert.equal(chart.findFrameAt(700, 39), -1);
+
+    chart.minFrameWidth = 600;
+    flush(0);
+
+    assert.equal(chart.findFrameAt(550, 39), 2);
+
+    for (let frame = 0; scheduled.size > 0 && frame < 120; frame++) {
+        flush();
+    }
+
+    assert.equal(scheduled.size, 0);
+    assert.equal(chart.findFrameAt(550, 39), 2);
+    chart.destroy();
+});
+
 test('metric reordering moves stable tree nodes from their displayed geometry', () => {
     const { chart, canvas, flush, scheduled } = createChart(1000, 170, 1, false);
     const tree = new CallTree(
@@ -1340,6 +2039,98 @@ test('metric reordering moves stable tree nodes from their displayed geometry', 
     assert.equal(chart.findFrameAt(100, 22), 1);
     assert.equal(chart.findFrameAt(800, 22), 3);
     chart.destroy();
+});
+
+test('metric targets received every frame do not pause active motion', () => {
+    for (const zoomed of [false, true]) {
+        const { chart, canvas, flush, scheduled } = createChart(1000, 170, 1, false);
+        const { tree, values } = fixture();
+
+        chart.setData(tree, { value: index => values[index] });
+        flush(0);
+
+        if (zoomed) {
+            chart.zoomFrame(1);
+            flush(1000);
+        }
+
+        values[1] = zoomed ? 40 : 70;
+        values[2] = 30;
+        values[3] = 100 - values[1];
+        chart.resetValues();
+        flush(0);
+
+        const top = zoomed ? 34 : 17;
+        let previousWidth = zoomed ? 499 : 399;
+
+        try {
+            for (let frame = 1; frame <= 8; frame++) {
+                values[1] = (zoomed ? 40 : 70) + frame;
+                values[2] = 30 + frame;
+                values[3] = 100 - values[1];
+                chart.resetValues();
+                canvas.context.fillRect.mockClear();
+                flush(16);
+
+                const currentWidth = canvas.context.fillRect.mock.calls.find(([left, frameTop]) => left === 0 && frameTop === top)[2];
+                const targetWidth = zoomed ? values[2] / values[1] * 1000 - 1 : values[1] * 10 - 1;
+
+                assert.ok(currentWidth > previousWidth, `Frame ${frame} must advance despite a new target (zoomed: ${zoomed})`);
+                assert.ok(currentWidth < targetWidth, 'The new target is approached, not snapped to');
+                assert.equal(scheduled.size, 1);
+                previousWidth = currentWidth;
+            }
+
+            for (let frame = 0; scheduled.size > 0 && frame < 120; frame++) {
+                flush(16);
+            }
+
+            assert.equal(scheduled.size, 0);
+            assert.equal(chart.findFrameAt(100, top + 5), zoomed ? 2 : 1);
+        } finally {
+            chart.destroy();
+        }
+    }
+});
+
+test('repeated metric targets do not restart the appearance of an already targeted node', () => {
+    const { chart, canvas, flush } = createChart(1000, 170, 1, false);
+    const { tree, values } = fixture();
+    let opacity = 0;
+
+    values[2] = 0;
+    canvas.context.fillRect.mockImplementation((left, top) => {
+        if (left === 0 && top === 34) {
+            opacity = canvas.context.globalAlpha;
+        }
+    });
+    chart.setData(tree, { value: index => values[index] });
+    flush(0);
+    values[1] = 80;
+    values[2] = 10;
+    values[3] = 20;
+    chart.resetValues();
+    flush(0);
+    assert.equal(opacity, 0);
+
+    try {
+        for (let frame = 1; frame <= 40; frame++) {
+            const previousOpacity = opacity;
+
+            values[1] = frame % 2 === 0 ? 80 : 70;
+            values[3] = 100 - values[1];
+            chart.resetValues();
+            opacity = 0;
+            flush(16);
+
+            assert.ok(opacity > previousOpacity, `Appearance must advance on retargeted frame ${frame}`);
+        }
+
+        assert.ok(opacity > 0.9, 'The arriving node becomes visible while input is still changing');
+        assert.equal(chart.findFrameAt(20, 40), 2);
+    } finally {
+        chart.destroy();
+    }
 });
 
 test('metric animation retargets mid-reorder while keeping parent identity and painted hit order', () => {
