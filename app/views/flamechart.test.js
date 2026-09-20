@@ -288,7 +288,7 @@ test('subpixel siblings retain occupied width and reveal original nodes on zoom'
 
     const row = canvas.context.fillRect.mock.calls.filter(([, top]) => top === 17);
 
-    assert.equal(row.reduce((width, [, , value]) => width + value, 0), 100);
+    assert.equal(row.reduce((width, [, , value]) => width + value, 0), 99);
     assert.equal(row.length, 50);
 
     const node = chart.findFrameAt(50, 20);
@@ -303,7 +303,7 @@ test('subpixel siblings retain occupied width and reveal original nodes on zoom'
     chart.destroy();
 });
 
-test('LOD follows sorted child geometry, leaves self-time gaps and shows narrow parent presence', () => {
+test('LOD preserves self-time gaps and reveals narrow descendants on zoom', () => {
     const { chart, flush } = createChart(100);
     const { tree } = fixture();
     const values = [1000, 1, 1, 999, 1];
@@ -315,12 +315,181 @@ test('LOD follows sorted child geometry, leaves self-time gaps and shows narrow 
     flush();
 
     assert.equal(chart.findFrameAt(50, 20), 3);
-    assert.equal(chart.findFrameAt(99.95, 20), 1);
+    assert.equal(chart.findFrameAt(99.95, 20), -1);
     assert.equal(chart.findFrameAt(50, 40), -1);
 
     chart.zoomFrame(1);
     flush();
     assert.equal(chart.findFrameAt(50, 40), 2);
+
+    chart.destroy();
+});
+
+test('LOD markers do not displace resolvable frames or capture their hit targets', () => {
+    const cases = [
+        {
+            parent: [0, 0, 0],
+            subtreeSize: [2, 0, 0],
+            values: [1000, 1, 999],
+            depth: 1,
+            node: 2,
+            start: 0.1,
+            end: 100
+        },
+        {
+            parent: [0, 0, 1, 1, 0, 4],
+            subtreeSize: [5, 2, 0, 0, 1, 0],
+            values: [1000, 500, 499, 1, 500, 500],
+            childrenSort: true,
+            depth: 2,
+            node: 5,
+            start: 50,
+            end: 100
+        }
+    ];
+
+    for (const dpr of [1, 1.5, 2]) {
+        for (const entry of cases) {
+            const { chart, canvas, flush } = createChart(100, 100, dpr);
+            const nodes = Uint32Array.from(entry.values, (_, index) => index);
+            const tree = new CallTree(
+                Array.from(nodes, index => ({ name: `Frame ${index}` })),
+                nodes,
+                new Uint32Array(entry.parent),
+                new Uint32Array(entry.subtreeSize)
+            );
+
+            chart.setData(tree, {
+                value: index => entry.values[index],
+                childrenSort: entry.childrenSort
+            });
+            flush();
+
+            const row = canvas.context.fillRect.mock.calls.filter(([, top]) => top === entry.depth * 17);
+
+            assert.deepEqual(row.at(-1), [entry.start, entry.depth * 17, entry.end - entry.start - 1, 16]);
+            assert.equal(chart.findFrameAt(entry.start + 0.01, entry.depth * 17 + 5), entry.node);
+
+            for (let index = 1; index < row.length; index++) {
+                assert.ok(row[index - 1][0] + row[index - 1][2] <= row[index][0]);
+            }
+
+            chart.destroy();
+        }
+    }
+});
+
+test('viewport clipping does not move an offscreen frame border into the visible area', () => {
+    const { chart, canvas, flush } = createChart(100, 100);
+    const { tree, values } = fixture();
+
+    chart.setData(tree, { value: index => values[index] });
+    flush();
+    canvas.context.fillRect.mockClear();
+
+    chart.zoomStart = 0.2;
+    chart.zoomEnd = 0.7;
+    chart.render();
+
+    assert.deepEqual(canvas.context.fillRect.mock.calls, [
+        [0, 0, 100, 16],
+        [0, 17, 39, 16],
+        [40, 17, 60, 16],
+        [40, 34, 59, 16]
+    ]);
+    assert.equal(chart.findFrameAt(99.75, 5), 0);
+    assert.equal(chart.findFrameAt(99.75, 20), 3);
+    assert.equal(chart.findFrameAt(99.75, 40), -1);
+
+    chart.destroy();
+});
+
+test('projected children stay inside their painted parents, including fractional and clipped edges', () => {
+    const cases = [
+        {
+            values: [1000, 3, 42, 1, 41, 955],
+            parent: [0, 0, 0, 2, 2, 0],
+            subtreeSize: [5, 0, 2, 0, 0, 0]
+        },
+        {
+            values: [1000, 44, 43, 1, 956],
+            parent: [0, 0, 1, 1, 0],
+            subtreeSize: [4, 2, 0, 0, 0]
+        }
+    ];
+
+    for (const entry of cases) {
+        for (const dpr of [1, 1.5, 2]) {
+            const { chart, canvas, flush } = createChart(100, 100, dpr);
+            const nodes = Uint32Array.from(entry.values, (_, index) => index);
+            const tree = new CallTree(
+                Array.from(nodes, index => ({ name: `Frame ${index}` })),
+                nodes,
+                new Uint32Array(entry.parent),
+                new Uint32Array(entry.subtreeSize)
+            );
+
+            chart.setData(tree, { value: index => entry.values[index] });
+            flush();
+
+            for (const [start, end] of [[0, 1], [0.0435, 0.9]]) {
+                const painted = new Map();
+
+                canvas.context.fillRect.mockClear();
+                chart.zoomStart = start;
+                chart.zoomEnd = end;
+                chart.render();
+
+                for (const [left, top, width] of canvas.context.fillRect.mock.calls) {
+                    if (width <= 0) {
+                        continue;
+                    }
+
+                    const node = chart.findFrameAt(left + width / 2, top + 5);
+
+                    assert.notEqual(node, -1);
+                    painted.set(node, { left, right: left + width });
+
+                    if (node !== 0) {
+                        const parent = painted.get(tree.parent[node]);
+
+                        assert.ok(parent, `Node ${node} is painted without its parent`);
+                        assert.ok(left >= parent.left - 1e-9, `Node ${node} starts before its parent`);
+                        assert.ok(left + width <= parent.right + 1e-9, `Node ${node} ends after its parent`);
+                    }
+                }
+            }
+
+            chart.destroy();
+        }
+    }
+});
+
+test('scrolling keeps ancestor clipping without accumulating border offsets at each depth', () => {
+    const { chart, canvas, scroll, flush } = createChart(100, 17, 1.5);
+    const count = 20;
+    const tree = new CallTree(
+        [{ name: 'Frame' }],
+        new Uint32Array(count),
+        Uint32Array.from({ length: count }, (_, index) => Math.max(0, index - 1)),
+        Uint32Array.from({ length: count }, (_, index) => count - index - 1)
+    );
+
+    chart.setData(tree, { value: () => 1000 });
+    flush();
+    canvas.context.fillRect.mockClear();
+
+    scroll.scrollTop = 4 * 17 + 0.25;
+    scroll.dispatchEvent(new Event('scroll'));
+    flush();
+
+    assert.deepEqual(canvas.context.fillRect.mock.calls, [
+        [0, -0.25, 99, 16],
+        [0, 16.75, 99, 16]
+    ]);
+    assert.equal(chart.findFrameAt(50, 5), 4);
+    assert.equal(chart.findFrameAt(50, 16.9), 5);
+    assert.equal(canvas.height, 26);
 
     chart.destroy();
 });

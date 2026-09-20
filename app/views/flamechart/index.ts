@@ -73,6 +73,7 @@ export class FlameChart<T> extends EventEmitter<Events> {
     #rows: FrameRow[] = [];
     #walkStack: number[] = [];
     #paintedEnds: number[] = [];
+    #ancestorBounds: number[] = [];
     #rootEpoch = -1;
     #rootZoom = -1;
 
@@ -421,10 +422,12 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const markerWidth = Math.max(1 / this.#dpr, this.#minFrameWidth);
         const stack = this.#walkStack;
         const paintedEnds = this.#paintedEnds;
+        const ancestorBounds = this.#ancestorBounds;
         let maxDepth = 0;
 
         stack.length = 0;
         paintedEnds.length = 0;
+        ancestorBounds.length = 0;
 
         for (const row of this.#rows) {
             row.nodes.length = 0;
@@ -450,38 +453,49 @@ export class FlameChart<T> extends EventEmitter<Events> {
             const x0 = (position - start) * scale;
             const x1 = (position + value - start) * scale;
             const small = value * scale < markerWidth;
+            const parentLeft = depth === 0 ? 0 : ancestorBounds[(depth - 1) * 2];
+            const parentRight = depth === 0 ? this.#width : ancestorBounds[(depth - 1) * 2 + 1];
 
-            if (small && x1 <= (paintedEnds[depth] || 0)) {
+            if (x0 >= parentRight || x1 <= parentLeft || small && x1 <= (paintedEnds[depth] || 0)) {
                 continue;
             }
 
             const left = Math.max(
-                0,
-                paintedEnds[depth] || 0,
+                parentLeft,
+                small ? paintedEnds[depth] || 0 : 0,
                 small ? Math.floor(x0 * this.#dpr) / this.#dpr : x0
             );
             const right = Math.min(
-                this.#width,
-                small ? Math.floor(x0 * this.#dpr) / this.#dpr + markerWidth : x1
+                parentRight,
+                small ? Math.floor(x0 * this.#dpr) / this.#dpr + markerWidth : x1 - 1
             );
 
+            if (right <= left) {
+                continue;
+            }
+
             maxDepth = Math.max(maxDepth, depth);
+            paintedEnds[depth] = small ? right : Math.min(parentRight, x1);
+            ancestorBounds[depth * 2] = left;
+            ancestorBounds[depth * 2 + 1] = right;
 
-            if (right > left) {
-                paintedEnds[depth] = right;
+            const top = depth * ROW_HEIGHT - this.#scrollTop;
 
-                const top = depth * ROW_HEIGHT - this.#scrollTop;
-
-                if (top + FRAME_HEIGHT > 0 && top < viewHeight) {
-                    while (this.#rows.length <= depth) {
-                        this.#rows.push({ nodes: [], bounds: [] });
-                    }
-
-                    const row = this.#rows[depth];
-
-                    row.nodes.push(node);
-                    row.bounds.push(left, small ? right : Math.max(left, right - 1));
+            if (top + FRAME_HEIGHT > 0 && top < viewHeight) {
+                while (this.#rows.length <= depth) {
+                    this.#rows.push({ nodes: [], bounds: [] });
                 }
+
+                const row = this.#rows[depth];
+
+                if (!small && row.bounds.length > 0) {
+                    const prevEndIndex = row.bounds.length - 1;
+
+                    row.bounds[prevEndIndex] = Math.min(row.bounds[prevEndIndex], left);
+                }
+
+                row.nodes.push(node);
+                row.bounds.push(left, right);
             }
 
             if (!small) {
