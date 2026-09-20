@@ -555,11 +555,13 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationTypeNames = buildChunkedMap(profile._cpuproAllocationTypes, allocationChunks, 'typesDict');
             profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces', allocationsCount);
             profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
-            profile._cpuproAllocationGc = buildChunkedVector(allocationChunks, 'gc', allocationsCount);
             profile._cpuproAllocationCodeType = buildChunkedVector(allocationChunks, 'codeTypes', allocationsCount);
             profile._cpuproAllocationCodeTypeNames = buildChunkedMap(profile._cpuproAllocationCodeType, allocationChunks, 'codeTypesDict');
-
-            updateAllocationsGc(ids, allocationGcs, profile._cpuproAllocationGc);
+            profile._cpuproAllocationGc = updateAllocationsGc(
+                ids,
+                allocationGcs,
+                buildChunkedVector(allocationChunks, 'gc', allocationsCount)
+            );
         }
 
         profiles.push(profile);
@@ -699,9 +701,13 @@ function updateAllocationsGc(
     allocationIds: number[] | undefined,
     allocationGcChunks: AllocationGc[],
     allocationGcs: number[] | undefined
-) {
-    if (!allocationGcChunks.length || !allocationGcs || !allocationIds) {
-        return;
+): number[] | undefined {
+    if (!allocationGcChunks.length || !allocationIds) {
+        return allocationGcs;
+    }
+
+    if (!allocationGcs) {
+        allocationGcs = new Array(allocationIds.length).fill(0);
     }
 
     // Check if allocation ids are monotonic, which allows to optimize GC mapping
@@ -759,4 +765,6 @@ function updateAllocationsGc(
             }
         }
     }
+
+    return allocationGcs;
 }
