@@ -1,7 +1,7 @@
 import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
-import { utils } from '@discoveryjs/discovery';
+import { isArray } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
 
 export class OriginalScriptsMap {
     #scriptsByUrl: Map<string, CpuProScript[]>;
@@ -358,9 +358,9 @@ export function collectProfileUsedScriptIds(data: V8CpuProfile) {
         }
     }
 
-    // utils.isArray() is used here since it treats both Array and TypedArray as arrays,
+    // isArray() is used here since it treats both Array and TypedArray as arrays,
     // which is useful for _cpuproAllocationScriptIds that can be either
-    if (utils.isArray(_cpuproAllocationScriptIds)) {
+    if (isArray(_cpuproAllocationScriptIds)) {
         for (let i = 0; i < _cpuproAllocationScriptIds.length; i++) {
             usedScriptIds.add(_cpuproAllocationScriptIds[i]);
         }
