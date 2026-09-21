@@ -1,13 +1,13 @@
 import { parse } from '@babel/parser';
 
-export type FunctionRanges = {
+export type FunctionRanges<Type = string> = {
     parsed: boolean;
-    ranges: FunctionRange[];
+    ranges: FunctionRange<Type>[];
     starts: number[];
     indexes: number[];
 };
-export type FunctionRange = {
-    type: string;
+export type FunctionRange<Type = string> = {
+    type: Type;
     name: string;
     defaultConstructor: boolean;
     callFrameStart: number;
@@ -35,6 +35,29 @@ type ASTNode = {
 
 const JSX_REGEX = /\.[mc]?[tj]sx($|[\?\#\|])/;
 const TS_REGEX = /\.[mc]?ts($|[\?\#\|])/;
+
+const functionRangeTypes = [
+    'FunctionDeclaration',
+    'FunctionExpression',
+    'ArrowFunctionExpression',
+    'ClassDeclaration',
+    'ClassExpression',
+    'ClassMethod',
+    'ClassPrivateMethod',
+    'ObjectMethod',
+    'TSDeclareFunction',
+    'TSEnumDeclaration'
+];
+
+export function decodeFunctionRangeTypes(ranges: FunctionRanges<number>, types: string[]): FunctionRanges {
+    const decoded = ranges as FunctionRanges<string | number>;
+
+    for (const range of decoded.ranges) {
+        range.type = types[range.type as number];
+    }
+
+    return decoded as FunctionRanges;
+}
 
 export function parseScriptSourceRanges(code: string, url?: string | null, fromWorker?: boolean): FunctionRanges {
     if (!fromWorker) {
@@ -165,18 +188,7 @@ function isFunctionNode(n: ASTNode | null): n is ASTNode {
         return false;
     }
 
-    return (
-        n.type === 'FunctionDeclaration' ||
-        n.type === 'FunctionExpression' ||
-        n.type === 'ArrowFunctionExpression' ||
-        n.type === 'ClassDeclaration' ||
-        n.type === 'ClassExpression' ||
-        n.type === 'ClassMethod' ||
-        n.type === 'ClassPrivateMethod' ||
-        n.type === 'ObjectMethod' ||
-        n.type === 'TSDeclareFunction' ||
-        n.type === 'TSEnumDeclaration'
-    );
+    return functionRangeTypes.includes(n.type);
 }
 
 function findCallFrameStart(node: ASTNode, code: string, fallbackStart: number): number {

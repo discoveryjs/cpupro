@@ -1,7 +1,7 @@
 import { CpuProCallFrame, CpuProScript } from '../types';
 import { createLineBoundaries } from './line-boundaries.js';
 import { createParseWorker } from '../workers/index.js';
-import { FunctionRange, FunctionRanges, parseScriptSourceRanges } from './parse-script-source-ranges.js';
+import { FunctionRange, FunctionRanges, decodeFunctionRangeTypes, parseScriptSourceRanges } from './parse-script-source-ranges.js';
 
 const scriptLines = new WeakMap<CpuProScript, ReturnType<typeof createLineBoundaries>>();
 const scriptFunctionRanges = new WeakMap<CpuProScript, FunctionRanges>();
@@ -242,10 +242,13 @@ type ParseWorkerPayload = Array<{
     url: string;
     source: string;
 }>;
-type ParseWorkerResult = Array<{
-    id: number;
-    ranges: FunctionRanges;
-}>;
+type ParseWorkerResult = {
+    scripts: Array<{
+        id: number;
+        ranges: FunctionRanges<number>;
+    }>;
+    types: string[];
+};
 type WorkerEntry = {
     worker: Worker;
     ttl: number;
@@ -440,14 +443,14 @@ export async function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProS
         const scriptsForWorker = scriptBuckets[bucketIndex];
 
         try {
-            const scriptParsedResults = await parseWorkerPool.parse(scriptsForWorker.map(script => ({
+            const { scripts: scriptParsedResults, types } = await parseWorkerPool.parse(scriptsForWorker.map(script => ({
                 id: script.id, // for debugging purposes
                 url: script.url,
                 source: script.source!
             })));
 
             for (let i = 0; i < scriptParsedResults.length; i++) {
-                const ranges = scriptParsedResults[i].ranges;
+                const ranges = decodeFunctionRangeTypes(scriptParsedResults[i].ranges, types);
                 const script = scriptsForWorker[i];
 
                 // FIXME: types will be fixed later

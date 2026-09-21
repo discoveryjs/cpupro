@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { Dictionary } from '../dictionary.js';
 import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../preprocessing/scripts.js';
-import { parseScriptSourceRanges } from './parse-script-source-ranges.js';
+import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRanges } from './parse-script-source-ranges.js';
 import { findFunctionAtLineColumn, findFunctionAtPosition, isScriptTopLevelOffset, matchCallFrameIdentity } from './script-function-resolution.js';
 
 test('indexes a function whose source range starts at zero', () => {
@@ -149,6 +149,80 @@ test('distinguishes an empty function list from failed parsing across structured
     } finally {
         error.mockRestore();
     }
+});
+
+test('restores all function range types in place after worker transfer', () => {
+    const source = `
+        function declared() {}
+        const expression = function() {};
+        const arrow = () => 1;
+        class Example { method() {} #private() {} }
+        const Anonymous = class {};
+        const object = { method() {} };
+        declare function external(): void;
+        enum Choice { First }
+    `;
+    const expected = parseScriptSourceRanges(source, 'fixture.ts', true);
+    assert.equal(new Set(expected.ranges.map(range => range.type)).size, 10);
+    const types = [...new Set(expected.ranges.map(range => range.type))].reverse();
+    const typeIndexes = new Map(types.map((type, index) => [type, index]));
+    const input: FunctionRanges<number> = {
+        ...parseScriptSourceRanges(source, 'fixture.ts', true),
+        ranges: expected.ranges.map(range => ({ ...range, type: typeIndexes.get(range.type)! }))
+    };
+    const buffers = [(input.starts as unknown as Uint32Array).buffer, (input.indexes as unknown as Int32Array).buffer];
+    const message = structuredClone({ ranges: input, types }, { transfer: buffers });
+    const received = message.ranges;
+    const rangeObjects = received.ranges.slice();
+    const starts = received.starts;
+    const indexes = received.indexes;
+
+    assert.ok(received.ranges.every(range => Number.isInteger(range.type) && range.type >= 0));
+    assert.ok(buffers.every(buffer => buffer.byteLength === 0));
+
+    const decoded = decodeFunctionRangeTypes(received, message.types);
+
+    assert.equal(decoded, received);
+    assert.equal(decoded.ranges, received.ranges);
+    decoded.ranges.forEach((range, index) => assert.equal(range, rangeObjects[index]));
+    assert.equal(decoded.starts, starts);
+    assert.equal(decoded.indexes, indexes);
+    assert.deepEqual(decoded, expected);
+    for (let offset = 0; offset <= source.length; offset++) {
+        assert.deepEqual(findFunctionAtPosition(decoded, offset), findFunctionAtPosition(expected, offset));
+    }
+});
+
+test.each([true, false])('restores type encoding for an empty result, parsed: %s', parsed => {
+    const input: FunctionRanges<number> = { parsed, ranges: [], starts: [], indexes: [] };
+    assert.equal(decodeFunctionRangeTypes(input, []), input);
+    assert.deepEqual(input, { parsed, ranges: [], starts: [], indexes: [] });
+});
+
+test('decodes multiple scripts against a shared message dictionary without reusing codes across messages', () => {
+    const expected = [
+        parseScriptSourceRanges('() => 1', 'first.js', true),
+        parseScriptSourceRanges('() => 2', 'second.js', true),
+        parseScriptSourceRanges('function third() {}', 'third.js', true)
+    ];
+    const firstMessage = structuredClone({
+        types: ['ArrowFunctionExpression'],
+        scripts: expected.slice(0, 2).map(entry => ({
+            ...entry,
+            ranges: entry.ranges.map(range => ({ ...range, type: 0 }))
+        }))
+    });
+    const secondMessage = structuredClone({
+        types: ['FunctionDeclaration'],
+        scripts: [{ ...expected[2], ranges: expected[2].ranges.map(range => ({ ...range, type: 0 })) }]
+    });
+
+    const first = firstMessage.scripts.map(entry => decodeFunctionRangeTypes(entry, firstMessage.types));
+    const second = decodeFunctionRangeTypes(secondMessage.scripts[0], secondMessage.types);
+
+    assert.deepEqual([...first, second], expected);
+    assert.deepEqual(firstMessage.types, ['ArrowFunctionExpression']);
+    assert.deepEqual(secondMessage.types, ['FunctionDeclaration']);
 });
 
 test.each([null, '', 'function broken('])('keeps the existing fallback when source is %j', source => {
