@@ -1,7 +1,7 @@
 import type { Model } from '@discoveryjs/discovery';
 import type { CpuProCallFrame, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
 import type { ProfileLine } from './lines/types.js';
-import type { Ownership } from './formats/types.js';
+import type { Ownership, UniformTraceEvent } from './formats/types.js';
 import { convertToInt32Array, convertToUint32Array, createInt32Progression } from './misc/utils.js';
 import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis, enumerateLongTimeDeltas, LongTimeDeltas } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
@@ -10,6 +10,7 @@ import { createTimeline, createMemline } from './lines/index.mjs';
 import { extractCallFramesFromNodes } from './preprocessing/call-frames.js';
 import { createNodeIndexById, createNodeScriptOffsets, createNodeParent, GeneratedNodes } from './preprocessing/nodes.js';
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
+import { processCompilationEvents } from './preprocessing/compilation-events.js';
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createSampledTreeSet } from './computations/sampled-tree-set.js';
@@ -32,6 +33,7 @@ export type CreateProfileOptions = {
     originalScripts: OriginalScriptsMap;
     ownership: Ownership | null;
     runtime: RuntimeCode | null;
+    events: UniformTraceEvent[];
     work: WorkHandler;
 };
 export type CreateProfileApi = {
@@ -87,6 +89,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         originalScripts = new OriginalScriptsMap(dictionary),
         runtime = null,
         ownership = null,
+        events = [],
         work = noopWorkHandler
     } = options || {};
     const lines: ProfileLine[] = [];
@@ -378,6 +381,12 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     for (const line of lines) {
         line.profile = profile;
+    }
+
+    if (events.length) {
+        await work('link compilation events', () =>
+            processCompilationEvents(events, dictionary, profileScriptsMap)
+        );
     }
 
     for (const line of lines) {
