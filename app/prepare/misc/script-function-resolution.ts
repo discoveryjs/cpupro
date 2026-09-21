@@ -1,4 +1,4 @@
-import { CpuProScript } from '../types';
+import { CpuProCallFrame, CpuProScript } from '../types';
 import { createLineBoundaries } from './line-boundaries.js';
 import { createParseWorker } from '../workers/index.js';
 import { FunctionRange, FunctionRanges, parseScriptSourceRanges } from './parse-script-source-ranges.js';
@@ -52,7 +52,7 @@ function binarySearchFunctionRangeIndex(starts: number[], position: number) {
         }
     }
 
-    return right === -1 ? 0 : right;
+    return right;
 }
 
 export function findFunctionAtPosition(functionRanges: FunctionRanges, position: number) {
@@ -71,7 +71,7 @@ export function findFunctionAtPosition(functionRanges: FunctionRanges, position:
                 candidate = functionRanges.ranges[rangeIndex2];
             }
 
-            if ((candidate === null || candidate.start !== position) && rangeIndex > 0) {
+            if ((candidate === null || candidate.callFrameStart !== position) && rangeIndex > 0) {
                 const prevIndex = functionRanges.indexes[rangeIndex - 1];
                 if (prevIndex !== -1) {
                     const prevRange = functionRanges.ranges[prevIndex];
@@ -92,8 +92,8 @@ export function findFunctionAtPosition(functionRanges: FunctionRanges, position:
 //     let candidateLength = Infinity;
 
 //     for (const range of ranges) {
-//         if (range.start <= position && position <= range.end) {
-//             const rangeLength = range.end - range.start;
+//         if (range.callFrameStart <= position && position <= range.end) {
+//             const rangeLength = range.end - range.callFrameStart;
 
 //             if (rangeLength < candidateLength) {
 //                 candidate = range;
@@ -111,11 +111,14 @@ export function findFunctionAtLineColumn(functionRanges: FunctionRanges, line: n
 
     for (let i = 0; i < ranges.length; i++) {
         const range = ranges[i];
-        const startsBefore = range.startLine < line || (range.startLine === line && range.startColumn <= column);
+        const startsBefore = range.callFrameStartLine < line || (range.callFrameStartLine === line && range.callFrameStartColumn <= column);
         const endsAfter = range.endLine > line || (range.endLine === line && range.endColumn >= column);
+        const startsAtPosition = range.callFrameStartLine === line && range.callFrameStartColumn === column;
 
         if (startsBefore && endsAfter) {
-            if (candidate === null || range.end - range.start < candidate.end - candidate.start) {
+            if (candidate === null ||
+                (startsAtPosition && candidate.callFrameStart !== range.callFrameStart) ||
+                range.end - range.callFrameStart < candidate.end - candidate.callFrameStart) {
                 candidate = range;
             }
         } else if (!startsBefore) {
@@ -132,6 +135,53 @@ export function getFunctionAtScriptOffset(script: CpuProScript | null, offset: n
     return functionRanges !== null
         ? findFunctionAtPosition(functionRanges, offset)
         : null;
+}
+
+export function matchCallFrameIdentity(
+    callFrame: CpuProCallFrame,
+    identity: Pick<CpuProCallFrame, 'script' | 'start' | 'end' | 'line' | 'column'>
+): 'exact' | 'default-constructor' | null {
+    const { script, start, end, line, column } = identity;
+
+    if (script === null || callFrame.script !== script ||
+        !Number.isInteger(start) || start < 0 || !Number.isInteger(end) || end < start ||
+        !Number.isInteger(line) || line < 0 || !Number.isInteger(column) || column < 0 ||
+        callFrame.start !== start || callFrame.line !== line || callFrame.column !== column) {
+        return null;
+    }
+
+    if (callFrame.end === end) {
+        return 'exact';
+    }
+
+    if (end === start && callFrame.kind === 'function') {
+        const functionRanges = getScriptFunctionRanges(script);
+        const range = functionRanges?.parsed === true
+            ? findFunctionAtPosition(functionRanges, start)
+            : null;
+
+        if (range?.defaultConstructor === true &&
+            range.callFrameStart === start && range.end === callFrame.end &&
+            range.callFrameStartLine - 1 === line && range.callFrameStartColumn === column) {
+            return 'default-constructor';
+        }
+    }
+
+    return null;
+}
+
+export function isScriptTopLevelOffset(script: CpuProScript, offset: number): boolean {
+    if (!Number.isInteger(offset) || offset < 0 || script.source === null || offset > script.source.length) {
+        return false;
+    }
+
+    const functionRanges = getScriptFunctionRanges(script);
+
+    if (functionRanges?.parsed === true) {
+        return findFunctionAtPosition(functionRanges, offset) === null;
+    }
+
+    return false;
 }
 
 export function getScriptOffsetFromLineColumn(script: CpuProScript | null, line: number, column: number) {

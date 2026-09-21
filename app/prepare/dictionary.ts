@@ -30,7 +30,8 @@ import {
     getFunctionAtScriptOffset,
     getFunctionEndFromScriptLineColumn,
     getScriptLineColumnFromOffset,
-    getScriptOffsetFromLineColumn
+    getScriptOffsetFromLineColumn,
+    isScriptTopLevelOffset
 } from './misc/script-function-resolution.js';
 
 const callFrameKindPrefixes: [prefix: string, kind: CpuProCallFrameKind][] = [
@@ -341,6 +342,10 @@ export class Dictionary {
 
             if (candidate !== null) {
                 return candidate;
+            }
+
+            if (isScriptTopLevelOffset(script, scriptOffset)) {
+                return this.callFrames[this.resolveScriptCallFrameIndex(script)];
             }
         }
 

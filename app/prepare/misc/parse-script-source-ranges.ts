@@ -1,6 +1,7 @@
 import { parse } from '@babel/parser';
 
 export type FunctionRanges = {
+    parsed: boolean;
     ranges: FunctionRange[];
     starts: number[];
     indexes: number[];
@@ -8,6 +9,7 @@ export type FunctionRanges = {
 export type FunctionRange = {
     type: string;
     name: string;
+    defaultConstructor: boolean;
     callFrameStart: number;
     callFrameStartLine: number;
     callFrameStartColumn: number;
@@ -41,6 +43,7 @@ export function parseScriptSourceRanges(code: string, url?: string | null, fromW
 
     let ast: ASTNode | null = null;
     const functionRanges: FunctionRanges = {
+        parsed: false,
         ranges: [],
         starts: [],
         indexes: []
@@ -63,12 +66,14 @@ export function parseScriptSourceRanges(code: string, url?: string | null, fromW
     }
 
     functionRanges.ranges = collectFunctionRangesFromAST(ast, code)
-        .sort((a, b) => a.start - b.start || b.end - a.end);
+        .sort((a, b) => a.callFrameStart - b.callFrameStart || b.end - a.end);
 
     // build index for faster search
     if (functionRanges.ranges.length > 0) {
         Object.assign(functionRanges, buildFunctionRangesIndex(functionRanges));
     }
+
+    functionRanges.parsed = true;
 
     return functionRanges;
 }
@@ -92,29 +97,23 @@ function collectFunctionRangesFromAST(ast: ASTNode, code: string): FunctionRange
             let callFrameStartColumn = node.loc.start.column;
             let nodeStartWithComments = nodeStart;
             let locStart = node.loc.start;
+            let hasDefaultConstructor = false;
 
             if (callFrameStart > nodeStart) {
-                let lineDiff = 0;
-                let columnDiff = 0;
+                for (let offset = nodeStart; offset < callFrameStart; offset++) {
+                    const char = code.charCodeAt(offset);
 
-                for (let i = callFrameStart; i > nodeStart; i--) {
-                    const char = code.charCodeAt(i);
-                    if (char === 10) { // '\n'
-                        lineDiff++;
-                    } else if (char === 13) { // '\r'
-                        lineDiff++;
-                        if (i > 0 && code.charCodeAt(i - 1) === 10) { // '\r\n'
-                            i--;
+                    if (char === 10 || char === 13 || char === 0x2028 || char === 0x2029) {
+                        callFrameStartLine++;
+                        callFrameStartColumn = 0;
+
+                        if (char === 13 && code.charCodeAt(offset + 1) === 10) {
+                            offset++;
                         }
-                    } else if (lineDiff === 0) {
-                        columnDiff++;
+                    } else {
+                        callFrameStartColumn++;
                     }
                 }
-
-                callFrameStartLine -= lineDiff;
-                callFrameStartColumn = lineDiff === 0
-                    ? callFrameStartColumn + columnDiff
-                    : columnDiff;
             }
 
             if (node.leadingComments && node.leadingComments.length > 0) {
@@ -122,9 +121,14 @@ function collectFunctionRangesFromAST(ast: ASTNode, code: string): FunctionRange
                 locStart = node.leadingComments[0].loc.start;
             }
 
+            if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') {
+                hasDefaultConstructor = !node.body.body.some((member: ASTNode) => member.kind === 'constructor');
+            }
+
             ranges.push({
                 type: node.type,
                 name: getFunctionName(node, parent),
+                defaultConstructor: hasDefaultConstructor,
                 start: nodeStartWithComments,
                 end: node.end,
                 // slice: code.slice(nodeStartWithComments, node.end),
@@ -232,8 +236,8 @@ function getFunctionName(node: ASTNode, parent: ASTNode | null): string {
 }
 
 function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
-    const rangeStarts: number[] = ranges[0].start !== 0 ? [0] : [];
-    const rangeIndexes: number[] = ranges[0].start !== 0 ? [-1] : [];
+    const rangeStarts: number[] = [0];
+    const rangeIndexes: number[] = [-1];
     const stack: number[] = [-1];
     let lastPos = 0;
 
@@ -244,7 +248,7 @@ function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
             const top = stack[stack.length - 1];
             const end = ranges[top].end;
 
-            if (end > range.start) {
+            if (end > range.callFrameStart) {
                 break;
             }
 
@@ -259,9 +263,9 @@ function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
             }
         }
 
-        if (lastPos < range.start) {
-            lastPos = range.start;
-            rangeStarts.push(range.start);
+        if (lastPos < range.callFrameStart) {
+            lastPos = range.callFrameStart;
+            rangeStarts.push(range.callFrameStart);
             rangeIndexes.push(i);
         } else {
             rangeIndexes[rangeIndexes.length - 1] = i;

@@ -35,6 +35,8 @@ type ScriptCatchupEventData = {
     sourceMapUrl: string;
     lineOffset?: number;
     columnOffset?: number;
+    splitCount?: number;
+    splitIndex?: number;
 }
 type AllocationSamples = {
     ids: number[];
@@ -251,6 +253,11 @@ export function extractFromChromiumPerformanceProfile(
     // Maps pid/tid pairs to thread names
     const processesMap = new Map<number, UniformProcess>();
     const eventChannels = new Map<string, EventChannel>();
+    // FIXME: Diagnose incomplete chunk sets left after extraction instead of silently discarding them.
+    const scriptSourceChunks = new Map<V8CpuProfileScript, {
+        splitCount: number;
+        chunks: Map<number, string>;
+    }>();
 
     // Metadata and source maps
     let metadata: ChromiumTraceEventsMetadata = {};
@@ -391,11 +398,50 @@ export function extractFromChromiumPerformanceProfile(
                             script.sourceMapUrl = props.sourceMapUrl;
                             break;
 
-                        case 'sourceText':
-                            script.source = script.source === null
-                                ? props.sourceText
-                                : script.source + props.sourceText;
+                        case 'sourceText': {
+                            if (typeof props.sourceText !== 'string') {
+                                // FIXME: Report invalid sourceText in trace diagnostics.
+                                break;
+                            }
+
+                            if (event.name === 'ScriptCatchup') {
+                                // FIXME: Diagnose repeated/conflicting snapshots (suspected V8 tracing defect) and discarded pending chunks.
+                                script.source = props.sourceText;
+                                scriptSourceChunks.delete(script);
+                                break;
+                            }
+
+                            const { splitCount = 0, splitIndex = -1 } = props;
+
+                            if (!Number.isInteger(splitCount) || splitCount <= 0 ||
+                                !Number.isInteger(splitIndex) || splitIndex < 0 || splitIndex >= splitCount) {
+                                // FIXME: Report invalid split metadata rather than silently ignoring the chunk.
+                                break;
+                            }
+
+                            let sourceChunks = scriptSourceChunks.get(script);
+
+                            if (!sourceChunks || sourceChunks.splitCount !== splitCount) {
+                                // FIXME: Diagnose changed split counts before abandoning an existing incomplete set.
+                                scriptSourceChunks.set(script, sourceChunks = { splitCount, chunks: new Map() });
+                            }
+
+                            // FIXME: Diagnose duplicate/conflicting indexes; overwriting only prevents repeated text from being appended.
+                            sourceChunks.chunks.set(splitIndex, props.sourceText);
+
+                            if (sourceChunks.chunks.size === splitCount) {
+                                let source = '';
+
+                                for (let index = 0; index < splitCount; index++) {
+                                    source += sourceChunks.chunks.get(index)!;
+                                }
+
+                                // FIXME: Diagnose repeated/conflicting complete deliveries even after their staging state is released.
+                                script.source = source;
+                                scriptSourceChunks.delete(script);
+                            }
                             break;
+                        }
                     }
                 }
                 break;
@@ -485,6 +531,7 @@ export function extractFromChromiumPerformanceProfile(
                         addTraceEventToThread(eventChannels, event, event.args, event.args?.traceId || null);
                     }
                 } else if (event.cat === 'disabled-by-default-v8.compile' ||
+                    event.cat === 'disabled-by-default-v8.compilation_allocations' ||
                     event.ph === 'X' || event.ph === 'b' || event.ph === 'e') {
                     addTraceEventToThread(eventChannels, event, event.args);
                 }
