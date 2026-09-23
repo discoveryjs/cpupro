@@ -53,6 +53,10 @@ export class Population extends Observer {
             total: samplesTotal[this.sinkId]
         };
     }
+
+    aggregateBy(groups: Uint8Array | Uint32Array, groupCount: number) {
+        return aggregatePopulation(this, groups, groupCount);
+    }
 }
 
 export type MaskFunction = (mask: Uint32Array) => void;
@@ -142,6 +146,23 @@ export class PopulationFiltered extends Observer {
 
     destroy() {
         this.#unsubscribe();
+    }
+
+    aggregateBy(groups: Uint8Array | Uint32Array, groupCount: number) {
+        const metrics = aggregatePopulation(this, groups, groupCount);
+
+        for (const { index, value } of this.#boundaryCuts) {
+            if (this.samples[index] !== this.sinkId) {
+                const group = groups[index];
+
+                metrics.samplesTotal[group] -= value;
+                if (value === this.values[index]) {
+                    metrics.samplesCount[group]--;
+                }
+            }
+        }
+
+        return metrics;
     }
 
     get cumulativeEnd(): number {
@@ -447,6 +468,25 @@ export class PopulationFiltered extends Observer {
             }
         }
     }
+}
+
+function aggregatePopulation(population: Population | PopulationFiltered, groups: Uint8Array | Uint32Array, groupCount: number) {
+    const { samples, values, sinkId } = population;
+    const samplesCount = new Uint32Array(groupCount);
+    const samplesTotal = new Uint32Array(groupCount);
+
+    for (let index = 0; index < values.length; index++) {
+        const value = values[index];
+
+        if (samples[index] !== sinkId && value !== 0) {
+            const group = groups[index];
+
+            samplesCount[group]++;
+            samplesTotal[group] += value;
+        }
+    }
+
+    return { samplesCount, samplesTotal };
 }
 
 function createComputeBuffer(

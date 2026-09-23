@@ -5,10 +5,12 @@ import type { FilterComputation } from './filters/types.js';
 import { createCategoryFilter } from './filters/category.js';
 import { createAllocationLivenessFilter } from './filters/allocation-liveness.js';
 import { createAllocationSpaceFilter } from './filters/allocation-space.js';
+import { createAllocationCompilationStageFilter } from './filters/allocation-compilation-stage.js';
 
 const attributeFilterFactories: Partial<Record<ProfileLineAttribute['name'], (attribute: ProfileLineAttribute, eventCount: number) => FilterComputation | null>> = {
     allocationLifespan: createAllocationLivenessFilter,
-    allocationSpace: createAllocationSpaceFilter
+    allocationSpace: createAllocationSpaceFilter,
+    allocationCompilationStage: createAllocationCompilationStageFilter
 };
 const breakdownFilterFactories = {
     categories: createCategoryFilter

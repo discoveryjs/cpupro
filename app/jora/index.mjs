@@ -1,6 +1,6 @@
 import { typeColor, typeColorComponents, typeOrder, vmFunctionStateTierHotness } from '../prepare/const.js';
 import { methods as binMethods } from './bin.js';
-import { methods as callTreeMethods, makeSamplesMask } from './call-tree.js';
+import { methods as callTreeMethods, makeDictMask, makeSamplesMask } from './call-tree.js';
 import { methods as disassembleMethods } from './disassemble.js';
 import { methods as positionTableMethods } from './position-table.js';
 import { methods as profileMethods, assertions as profileAssertions, getProfileOrScopeProfile } from './profile.js';
@@ -162,7 +162,7 @@ export const methods = {
 
         return { up, down };
     },
-    allocationsMatrix(treeMetrics, sampleTimings, test, profile) {
+    allocationsMatrix(source, sampleTimings, test, profile) {
         const memline = getProfileOrScopeProfile(profile, this.context)?.memline;
         const allocationTypeAttribute = memline?.attributes.find(attr => attr.name === 'allocationType') || null;
         const allocationLifespanAttribute = memline?.attributes.find(attr => attr.name === 'allocationLifespan') || null;
@@ -186,14 +186,14 @@ export const methods = {
         const sums = new Uint32Array(timespanCount * typeCount);
         const mins = new Uint32Array(timespanCount * typeCount);
         const maxs = new Uint32Array(timespanCount * typeCount);
-        const samplesMask = makeSamplesMask(treeMetrics, test, 1);
+        const sampleIds = source.dict ? source.values : samples;
+        const samplesMask = source.dict
+            ? makeDictMask({ dictionary: source.dict }, test)
+            : makeSamplesMask(source, test, 1);
         const result = [];
 
-        // FIXME: Cardinality of samplesMask might not match samplesCount.length, review this logic
-        samplesMask.fill(0, samplesCount.length);
-
         for (let i = 0; i < samples.length; i++) {
-            if (samplesMask[samples[i]] !== 0) {
+            if (samples[i] < samplesCount.length && samplesMask[sampleIds[i]] !== 0) {
                 const value = values[i];
 
                 if (value !== 0) {

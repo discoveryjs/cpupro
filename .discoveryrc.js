@@ -38,6 +38,7 @@ module.exports = {
             './pages/call-frame.js',
             './pages/category.js',
             './pages/common.css',
+            './pages/compilations.js',
             './pages/counters.js',
             './pages/default.css',
             './pages/default.js',

@@ -1,4 +1,5 @@
 import { AllocationLifespan, typeColor } from '../const.js';
+import type { PreparedCompilationEvents } from '../preprocessing/compilation-events.js';
 import {
     AllocationSpaceDictEntry,
     GcEpochDictEntry,
@@ -6,8 +7,38 @@ import {
     ProfileLineAllocationGcEpochAttribute,
     ProfileLineAllocationLifespanAttribute,
     ProfileLineAllocationSpaceAttribute,
-    ProfileLineAllocationTypeAttribute
+    ProfileLineAllocationTypeAttribute,
+    ProfileLineAllocationOwnerAttribute,
+    ProfileLineAllocationCompilationStageAttribute
 } from './types.js';
+
+export function createMemlineAllocationOwnerAttribute(
+    compilation: PreparedCompilationEvents | null
+): ProfileLineAllocationOwnerAttribute | null {
+    if (!compilation?.allocationOwners) {
+        return null;
+    }
+
+    return {
+        name: 'allocationOwner',
+        values: compilation.allocationOwners,
+        dict: compilation.callFrames
+    };
+}
+
+export function createMemlineAllocationCompilationStageAttribute(
+    compilation: PreparedCompilationEvents | null
+): ProfileLineAllocationCompilationStageAttribute | null {
+    if (!compilation?.allocationStages) {
+        return null;
+    }
+
+    return {
+        name: 'allocationCompilationStage',
+        values: compilation.allocationStages,
+        dict: compilation.stages
+    };
+}
 
 export function createMemlineAllocationTypeAttribute(
     _cpuproAllocationTypes: number[] | Uint32Array | null,

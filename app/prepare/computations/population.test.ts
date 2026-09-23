@@ -37,6 +37,53 @@ describe('Population', () => {
 });
 
 describe('PopulationFiltered', () => {
+    test('aggregates by row-aligned IDs with the existing filter and boundary semantics', () => {
+        const population = new Population(new Uint32Array([0, 1, 0]), new Uint32Array([16, 32, 48]));
+        const groups = new Uint32Array([1, 1, 2]);
+        const viewport = new PopulationFiltered(population);
+        const filtered = new PopulationFiltered(viewport);
+        const destinations = filtered.samples;
+        const values = filtered.values;
+
+        assert.deepEqual(population.aggregateBy(groups, 3), {
+            samplesCount: new Uint32Array([0, 2, 1]), samplesTotal: new Uint32Array([0, 48, 48])
+        });
+
+        const verify = (counts: number[], totals: number[]) => {
+            const metrics = filtered.aggregateBy(groups, 3);
+            assert.deepEqual([...metrics.samplesCount], counts);
+            assert.deepEqual([...metrics.samplesTotal], totals);
+            assert.equal(filtered.samples, destinations);
+            assert.equal(filtered.values, values);
+            assert.deepEqual(filtered.aggregateBy(filtered.samples, filtered.samplesCount.length), {
+                samplesCount: filtered.samplesCount, samplesTotal: filtered.samplesTotal
+            });
+        };
+
+        filtered.setRanges([{ start: 1, end: 1.4 }, { start: 8, end: 8.4 }]);
+        verify([0, 0, 0], [0, 0, 0]);
+        filtered.setRanges([{ start: 1, end: 1.6 }, { start: 8, end: 8.6 }, { start: 20, end: 24 }]);
+        verify([0, 2, 0], [0, 5, 0]);
+        filtered.updateMask(mask => {
+            mask[1] = 1;
+        });
+        verify([0, 1, 0], [0, 1, 0]);
+        filtered.resetMask();
+        filtered.resetRange();
+        viewport.setRange(5, 40);
+        filtered.setRange(10, 24);
+        verify([0, 2, 0], [0, 14, 0]);
+        filtered.setIndexRange(1, 2);
+        verify([0, 1, 0], [0, 8, 0]);
+        filtered.resetIndexRange();
+        filtered.setValueRange(20, null);
+        verify([0, 1, 0], [0, 8, 0]);
+        filtered.filter.set({ key: 'row', domain: 'event', size: 3, accepts: index => index !== 1 });
+        verify([0, 0, 0], [0, 0, 0]);
+        filtered.destroy();
+        viewport.destroy();
+    });
+
     test.each([
         { name: 'empty', weights: [] },
         { name: 'zero weights', weights: [0, 0, 0] },

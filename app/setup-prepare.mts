@@ -111,7 +111,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             const profile = await work.measure('create profile', () => createProfile(profileData, {
                 dictionary: dict,
                 originalScripts,
-                events: thread.events,
                 runtime: null,
                 ownership: rawSession.ownership ?? null,
                 work: sessionProfiles.length > 1

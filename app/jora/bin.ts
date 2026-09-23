@@ -505,7 +505,7 @@ export const methods = {
             const entry = attributeDict ? attributeDict[index] : null;
             const color: string = typeof entry === 'string'
                 ? typeColor[entry]
-                : entry?.color || 'green';
+                : entry && 'color' in entry ? entry.color : 'green';
 
             return {
                 entry: attribute?.dict[index] ?? valuesLine.type,

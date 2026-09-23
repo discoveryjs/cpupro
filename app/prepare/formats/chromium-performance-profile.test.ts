@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { extractFromChromiumPerformanceProfile } from './chromium-performance-profile.js';
+import { collectProfileUsedScriptIds } from '../preprocessing/scripts.js';
+import { getNumericArrayOrder } from '../computations/misc.js';
 
 test('preserves instant and complete compilation allocation events with their function identity', () => {
     const category = 'disabled-by-default-v8.compilation_allocations';
@@ -21,20 +23,109 @@ test('preserves instant and complete compilation allocation events with their fu
         { ...base, name: 'Profile', ph: 'P', id: '1', args: { data: { startTime: 0 } } },
         { ...base, name: 'CompileFunction', ph: 'I', ts: 20, args: instantArgs },
         { ...base, name: 'CompileCode', ph: 'X', ts: 10, dur: 15, args: completeArgs },
-        { ...base, name: 'Unrelated', cat: 'other', ph: 'I', ts: 30, args: {} }
+        { ...base, name: 'Unrelated', cat: 'other', ph: 'X', ts: 30, dur: 4, args: { data: { scriptId: 99 } } }
     ];
     const session = extractFromChromiumPerformanceProfile(traceEvents);
     const events = session.threads[0].events;
 
     assert.deepEqual(events.map(event => ({ name: event.name, cat: event.cat, tm: event.tm, duration: event.duration })), [
         { name: 'CompileCode', cat: category, tm: 10, duration: 15 },
-        { name: 'CompileFunction', cat: category, tm: 20, duration: 0 }
+        { name: 'CompileFunction', cat: category, tm: 20, duration: 0 },
+        { name: 'Unrelated', cat: 'other', tm: 30, duration: 4 }
     ]);
     assert.equal(events[0].data, completeArgs);
     assert.equal(events[1].data, instantArgs);
     assert.deepEqual(instantArgs.data, { ...data, startAllocationId: 8454 });
     assert.deepEqual(traceEvents.map(event => event.ts), [0, 20, 10, 30]);
     assert.equal(session.threads[0].userTimings.length, 0);
+    assert.equal(session.profiles[0]._events, events);
+    assert.deepEqual([...collectProfileUsedScriptIds(session.profiles[0])], [5]);
+});
+
+test('allocation order is shared by GC mapping and compilation preparation', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+        for (const ids of [[10, 11, 12], [10, 12, 15], [15, 10, 12]]) {
+            warning.mockClear();
+
+            const session = extractFromChromiumPerformanceProfile([
+                { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+                { ...base, name: 'ProfileChunk', args: { data: {
+                    allocationSamples: { ids, sizes: [8, 16, 32] },
+                    allocationGc: { 5: [10, 12, 99] }
+                } } }
+            ]);
+            const profile = session.profiles[0];
+            const order = ids[1] === 11 ? 'consecutive' : ids[0] === 10 ? 'ascending' : 'unordered';
+
+            assert.equal(profile._cpuproAllocationIdsOrder, order);
+            assert.deepEqual(profile._cpuproAllocationIds, ids);
+            assert.deepEqual(profile._cpuproAllocationGc, ids.map(id => id === 10 || id === 12 ? 5 : 0));
+            assert.equal(warning.mock.calls.length, order === 'consecutive' ? 0 : 1);
+        }
+    } finally {
+        warning.mockRestore();
+    }
+});
+
+test('format-local order classification matches the numeric contract', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const cases = [
+        { values: [], order: 'consecutive' },
+        { values: [10], order: 'consecutive' },
+        { values: [-2, -1, 0], order: 'consecutive' },
+        { values: [0.5, 1.5, 2.5], order: 'consecutive' },
+        { values: [10, 12, 15], order: 'ascending' },
+        { values: [10, 10, 11], order: 'ascending' },
+        { values: [10, 12, 11], order: 'unordered' }
+    ];
+
+    for (const { values, order } of cases) {
+        const session = extractFromChromiumPerformanceProfile([
+            { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+            { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: values } } } }
+        ]);
+
+        assert.equal(getNumericArrayOrder(values), order);
+        assert.equal(getNumericArrayOrder(Float64Array.from(values)), order);
+        assert.equal(session.profiles[0]._cpuproAllocationIdsOrder, values.length ? order : undefined);
+    }
+});
+
+test('numeric order reads each element once and stops at the first inversion', () => {
+    for (const values of [[10, 11, 12, 13], [10, 12, 12, 20], [10, 9, 20, 30]]) {
+        const reads: string[] = [];
+        const input = new Proxy(values, {
+            get(target, property) {
+                if (typeof property === 'string' && /^\d+$/.test(property)) {
+                    reads.push(property);
+                }
+
+                return Reflect.get(target, property, target);
+            }
+        });
+
+        getNumericArrayOrder(input);
+
+        assert.deepEqual(reads, values[1] < values[0] ? ['0', '1'] : ['0', '1', '2', '3']);
+    }
+});
+
+test('CPU chunks retain node order and merge trace ids', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const first = { id: 1, callFrame: { scriptId: 0, url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 } };
+    const second = { ...first, id: 2 };
+    const session = extractFromChromiumPerformanceProfile([
+        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+        { ...base, name: 'ProfileChunk', args: { data: { cpuProfile: { nodes: [first], trace_ids: { first: 1 } } } } },
+        { ...base, name: 'ProfileChunk', args: { data: {} } },
+        { ...base, name: 'ProfileChunk', args: { data: { cpuProfile: { nodes: [second], trace_ids: { second: 2 } } } } }
+    ]);
+
+    assert.deepEqual(session.profiles[0].nodes, [first, second]);
+    assert.deepEqual(session.profiles[0].trace_ids, { first: 1, second: 2 });
 });
 
 function extractScriptCatchups(catchups: { name?: string; pid?: number; tid?: number; data: Record<string, unknown> }[]) {
@@ -66,6 +157,7 @@ test('repeated full source catchups replace text without duplicating it or losin
     assert.equal(scripts[0].lineOffset, 6);
     assert.equal(scripts[0].columnOffset, 225);
     assert.equal(session.profiles[0]._scripts![0], scripts[0]);
+    assert.equal('_events' in session.profiles[0], false);
 });
 
 test('assembles indexed source chunks without dropping equal text or appending repeated deliveries', () => {

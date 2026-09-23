@@ -567,16 +567,12 @@ export function extractFromChromiumPerformanceProfile(
             attachSourceMapsToScripts(scripts, sourceMapByUrl, sourceMapBySourceMapUrl);
         }
 
-        for (const chunk of chunks) {
-            if (chunk.cpuProfile) {
-                if (chunk.cpuProfile.nodes) {
-                    (profile.nodes as unknown[]).push(...chunk.cpuProfile.nodes);
-                }
-                if (chunk.cpuProfile.trace_ids) {
-                    Object.assign(profile.trace_ids!, chunk.cpuProfile.trace_ids);
-                }
-            }
+        if (thread.events.length > 0) {
+            // Share the source event array; category-specific derivatives belong to preparation.
+            profile._events = thread.events;
         }
+
+        appendCpuProfileChunks(profile, chunks);
 
         if (profileData.hasLineColumns) {
             profile.lines = buildChunkedArray('lines', chunks, samples);
@@ -592,6 +588,7 @@ export function extractFromChromiumPerformanceProfile(
             const allocationsCount = ids ? ids.length : 0;
 
             profile._cpuproAllocationIds = ids;
+            profile._cpuproAllocationIdsOrder = ids ? getAllocationIdsOrder(ids) : undefined;
             profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes', allocationsCount);
             profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds', allocationsCount);
             profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets', allocationsCount);
@@ -606,6 +603,7 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationCodeTypeNames = buildChunkedMap(profile._cpuproAllocationCodeType, allocationChunks, 'codeTypesDict');
             profile._cpuproAllocationGc = updateAllocationsGc(
                 ids,
+                profile._cpuproAllocationIdsOrder,
                 allocationGcs,
                 buildChunkedVector(allocationChunks, 'gc', allocationsCount)
             );
@@ -634,6 +632,41 @@ export function extractFromChromiumPerformanceProfile(
 
         ownership: metadata.ownership ?? null
     };
+}
+
+function appendCpuProfileChunks(profile: V8CpuProfile, chunks: ChromiumTraceProfileChunkEventData[]) {
+    for (const { cpuProfile } of chunks) {
+        if (cpuProfile?.nodes) {
+            (profile.nodes as unknown[]).push(...cpuProfile.nodes);
+        }
+
+        if (cpuProfile?.trace_ids) {
+            Object.assign(profile.trace_ids!, cpuProfile.trace_ids);
+        }
+    }
+}
+
+// Establish this once for GC and downstream consumers inside the format boundary.
+// Only a step of one permits direct id-to-index mapping; keep one read per element.
+function getAllocationIdsOrder(ids: number[]): NonNullable<V8CpuProfile['_cpuproAllocationIdsOrder']> {
+    let consecutive = true;
+    let previous = ids[0];
+
+    for (let index = 1; index < ids.length; index++) {
+        const current = ids[index];
+
+        if (current < previous) {
+            return 'unordered';
+        }
+
+        if (current !== previous + 1) {
+            consecutive = false;
+        }
+
+        previous = current;
+    }
+
+    return consecutive ? 'consecutive' : 'ascending';
 }
 
 function attachSourceMapsToScripts(
@@ -746,6 +779,7 @@ function buildChunkedArray(
 
 function updateAllocationsGc(
     allocationIds: number[] | undefined,
+    allocationIdsOrder: V8CpuProfile['_cpuproAllocationIdsOrder'],
     allocationGcChunks: AllocationGc[],
     allocationGcs: number[] | undefined
 ): number[] | undefined {
@@ -757,28 +791,9 @@ function updateAllocationsGc(
         allocationGcs = new Array(allocationIds.length).fill(0);
     }
 
-    // Check if allocation ids are monotonic, which allows to optimize GC mapping
-    let monotonicIds = true;
-
-    for (let i = 1; i < allocationIds.length; i++) {
-        if (allocationIds[i] !== allocationIds[i - 1] + 1) {
-            monotonicIds = false;
-            const indexNextExpected = allocationIds.indexOf(allocationIds[i - 1] + 1, i);
-            console.warn('Allocation ids are not monotonic, which will make GC mapping slower', {
-                index: i,
-                id: allocationIds[i - 1],
-                nextId: allocationIds[i],
-                nextIndex: indexNextExpected,
-                length: allocationIds.length,
-                lastId: allocationIds[allocationIds.length - 1]
-            });
-            break;
-        }
-    }
-
-    // If ids are monotonic, we can directly calculate the index in the GC array based on the id,
-    // otherwise we need to build a map (which is 3x times slower)
-    if (monotonicIds) {
+    // Consecutive ids let us calculate the GC array index directly from the id.
+    // Otherwise a map is needed (historically measured to be about 3x slower).
+    if (allocationIdsOrder === 'consecutive') {
         const firstId = allocationIds[0];
         const lastId = allocationIds[allocationIds.length - 1];
 
@@ -796,6 +811,22 @@ function updateAllocationsGc(
             }
         }
     } else {
+        for (let index = 1; index < allocationIds.length; index++) {
+            if (allocationIds[index] !== allocationIds[index - 1] + 1) {
+                const indexNextExpected = allocationIds.indexOf(allocationIds[index - 1] + 1, index);
+
+                console.warn('Allocation ids are not consecutive, which will make GC mapping slower', {
+                    index,
+                    id: allocationIds[index - 1],
+                    nextId: allocationIds[index],
+                    nextIndex: indexNextExpected,
+                    length: allocationIds.length,
+                    lastId: allocationIds[allocationIds.length - 1]
+                });
+                break;
+            }
+        }
+
         const idToIndexMap = new Map<number, number>(allocationIds.map((id, index) => [id, index]) || []);
 
         for (const allocationGc of allocationGcChunks) {

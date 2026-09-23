@@ -72,12 +72,24 @@ export type ProfileLineAllocationCodeTypeAttribute = {
     values: Uint8Array;
     dict: string[];
 };
+export type ProfileLineAllocationOwnerAttribute = {
+    name: 'allocationOwner';
+    values: Uint32Array;
+    dict: (CpuProCallFrame | null)[];
+};
+export type ProfileLineAllocationCompilationStageAttribute = {
+    name: 'allocationCompilationStage';
+    values: Uint8Array | Uint32Array;
+    dict: string[];
+};
 export type ProfileLineAttribute =
     | ProfileLineAllocationTypeAttribute
     | ProfileLineAllocationGcEpochAttribute
     | ProfileLineAllocationLifespanAttribute
     | ProfileLineAllocationSpaceAttribute
-    | ProfileLineAllocationCodeTypeAttribute;
+    | ProfileLineAllocationCodeTypeAttribute
+    | ProfileLineAllocationOwnerAttribute
+    | ProfileLineAllocationCompilationStageAttribute;
 
 export type Axis = {
     start: number;

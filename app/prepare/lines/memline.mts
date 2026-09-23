@@ -10,6 +10,7 @@ import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { sum } from '../misc/utils.js';
+import type { PreparedCompilationEvents } from '../preprocessing/compilation-events.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import {
@@ -17,11 +18,14 @@ import {
     createMemlineAllocationLifespanAttribute,
     createMemlineAllocationSpaceAttribute,
     createMemlineAllocationTypeAttribute,
+    createMemlineAllocationOwnerAttribute,
+    createMemlineAllocationCompilationStageAttribute,
     createMemlineGcEpochAttribute
 } from './memline-attributes.mjs';
 
 export type CreateMemlineOptions = {
     work: WorkHandler;
+    compilation: PreparedCompilationEvents | null;
 };
 
 const metricName: Record<Metric, string> = {
@@ -80,7 +84,8 @@ export async function createMemline(
     options?: Partial<CreateMemlineOptions>
 ): Promise<ProfileMemline | null> {
     const {
-        work = noopWorkHandler
+        work = noopWorkHandler,
+        compilation = null
     } = options || {};
     const {
         _cpuproAllocationMapping,
@@ -162,6 +167,12 @@ export async function createMemline(
             data._cpuproAllocationCodeType || null,
             data._cpuproAllocationCodeTypeNames || null,
             data._cpuproAllocationContextInfo || null
+        ),
+        createMemlineAllocationOwnerAttribute(
+            compilation
+        ),
+        createMemlineAllocationCompilationStageAttribute(
+            compilation
         )
     ].filter(attr => attr !== null));
 

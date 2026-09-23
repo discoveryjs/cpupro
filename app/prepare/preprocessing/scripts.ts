@@ -1,4 +1,4 @@
-import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CompilationEvent, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
 import { isArray } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
@@ -333,11 +333,12 @@ export function scriptOffsetsFromLineColumns(
 }
 
 // Extract all script ids used in the profile, in all known places
-// (nodes, callFrames, allocation events)
+// (nodes, callFrames, allocation locations, compilation events)
 export function collectProfileUsedScriptIds(data: V8CpuProfile) {
     const {
         nodes,
         _callFrames,
+        _events,
         _cpuproAllocationScriptIds
     } = data;
     const usedScriptIds = new Set<number | string>();
@@ -363,6 +364,16 @@ export function collectProfileUsedScriptIds(data: V8CpuProfile) {
     if (isArray(_cpuproAllocationScriptIds)) {
         for (let i = 0; i < _cpuproAllocationScriptIds.length; i++) {
             usedScriptIds.add(_cpuproAllocationScriptIds[i]);
+        }
+    }
+
+    if (Array.isArray(_events)) {
+        for (let index = 0; index < _events.length; index++) {
+            const event = _events[index];
+
+            if (event.cat === 'disabled-by-default-v8.compilation_allocations') {
+                usedScriptIds.add((event as V8CompilationEvent).data.data.scriptId);
+            }
         }
     }
 

@@ -1,22 +1,6 @@
 import { ProfileLine, ProfileLineMapping } from '../lines/types';
 import { normalizeRanges, type RangeSet } from './coordinates.js';
-
-function lowerBound(values: Uint32Array, value: number, upper = false) {
-    let start = 0;
-    let end = values.length;
-
-    while (start < end) {
-        const middle = (start + end) >>> 1;
-
-        if (upper ? values[middle] <= value : values[middle] < value) {
-            start = middle + 1;
-        } else {
-            end = middle;
-        }
-    }
-
-    return start;
-}
+import { lowerBound } from './misc.js';
 
 export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: RangeSet | null): RangeSet | null | undefined {
     const allocations = source.kind === 'memory' ? source : target;

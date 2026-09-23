@@ -1,7 +1,7 @@
-import { ProfileLine, ProfileLineType } from '../prepare/lines/types.js';
+import { ProfileLine, ProfileLineType, ProfileLineAttribute } from '../prepare/lines/types.js';
 import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange } from './viewport.js';
-import { findCumulativeBoundary, type PopulationFiltered } from '../prepare/computations/population.js';
+import { findCumulativeBoundary, type Population, type PopulationFiltered } from '../prepare/computations/population.js';
 
 export function sampleRange(cumulative: Uint32Array, total: number, skip: number, sourceTotal: number) {
     const start = Math.max(0, -skip);
@@ -117,6 +117,12 @@ function countSamples(n: number, viewport: PopulationFiltered, total: number, co
 }
 
 export const methods = {
+    attributeSampleTotals(attribute: ProfileLineAttribute, population: Population | PopulationFiltered) {
+        const { values, dict } = attribute;
+        const { samplesCount, samplesTotal } = population.aggregateBy(values, dict.length);
+
+        return dict.map((entry, index) => ({ entry, count: samplesCount[index], size: samplesTotal[index] }));
+    },
     countSamples(n = 500, line?: ProfileLine | ProfileLineType) {
         const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
         const { total, skip } = binningRange(resolvedLine, resolveScopeViewport(null, this.context), n);

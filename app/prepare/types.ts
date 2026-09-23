@@ -30,6 +30,7 @@ export type V8CpuProfileCpuproExtensions = {
     _memorySpaceNames?: Record<number, string>;
     _callFrames?: V8CpuProfileCallFrame[];
     _callFrameCodes?: V8CpuProfileCallFrameCodes[];
+    _events?: UniformTraceEvent[];
     _scripts?: V8CpuProfileScript[];
     _executionContexts?: V8CpuProfileExecutionContext[];
     _heap?: {
@@ -40,6 +41,7 @@ export type V8CpuProfileCpuproExtensions = {
     // Combined profile extensions (CPU + memory allocation data)
     _cpuproAllocationMapping?: number[]; // maps CPU sample index -> last allocation ID in range
     _cpuproAllocationIds?: number[]; // allocation IDs (ordinal)
+    _cpuproAllocationIdsOrder?: 'consecutive' | 'ascending' | 'unordered';
     _cpuproAllocationSizes?: number[]; // allocation sizes
     _cpuproAllocationScriptIds?: Array<number | string>; // allocation script ids in profile-local domain
     _cpuproAllocationGc?: number[]; // GC state (lower 2 bits) + epoch (upper bits)
@@ -91,6 +93,16 @@ export type V8CpuProfileFunction = {
     end: number;
     line: number;
     column: number;
+}
+export type V8CompilationEvent = UniformTraceEvent & {
+    data: {
+        data: {
+            scriptId: number;
+            start: number;
+            startAllocationId: number;
+            endAllocationId: number;
+        };
+    };
 }
 export type V8CpuProfileCallFrameCodes = {
     callFrame: number;
