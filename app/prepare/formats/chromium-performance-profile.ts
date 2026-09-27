@@ -1,7 +1,8 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
 import type { SourceMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
-import { Ownership, UniformProcess, UniformProfilingSession, UniformThread, UniformTraceEvent } from './types.js';
+import { Ownership, UniformCompilationRecord, UniformProcess, UniformProfilingSession, UniformThread, UniformTraceEvent } from './types.js';
+import { getNumericArrayOrder } from './utils.js';
 
 export type ChromiumTraceEventsMetadata = {
     startTime?: string;
@@ -57,6 +58,16 @@ type AllocationSamples = {
 type AllocationGc = {
     [key in number]: number[];
 };
+type CompilationAllocationEventData = {
+    isolate?: string;
+    scriptId?: number;
+    start?: number;
+    end?: number;
+    line?: number;
+    column?: number;
+    startAllocationId?: number;
+    endAllocationId?: number;
+};
 type ChromiumTraceProfileChunkEventData = {
     cpuProfile: V8CpuProfile;
     timeDeltas: number[];
@@ -73,6 +84,7 @@ type ChromiumTraceProfileChunkEventData = {
 type ChromiumTraceProfileData = {
     pid: number;
     tid: number;
+    capture: NonNullable<V8CpuProfile['_capture']>;
     eventChannel: EventChannel;
     startTime: number;
     endTime: number;
@@ -151,6 +163,7 @@ function getOrCreateEventChannel(event: { pid: number; tid: number }, eventChann
                 pid: event.pid,
                 tid: event.tid,
                 name: null,
+                isolate: null,
                 scripts: [],
                 events,
                 userTimings
@@ -333,6 +346,7 @@ export function extractFromChromiumPerformanceProfile(
                     eventChannel,
                     pid: event.pid,
                     tid: event.tid,
+                    capture: { id: event.id ?? null, isolate: data.isolate ?? null },
                     startTime: data.startTime || 0,
                     endTime: 0,
                     chunks: [],
@@ -347,6 +361,7 @@ export function extractFromChromiumPerformanceProfile(
                 profileDataByTid.set(threadId, profileData);
 
                 if (data.isolate) {
+                    eventChannel.thread.isolate = data.isolate;
                     profileDataByIsolate.set(data.isolate, profileData);
                 }
                 break;
@@ -464,6 +479,8 @@ export function extractFromChromiumPerformanceProfile(
 
             case 'ProfileChunk': {
                 const chunk: ChromiumTraceProfileChunkEventData = event.args.data;
+                // Allocation chunks may be emitted by a different process. Their pid/id
+                // identify the producer; isolate identifies the profile receiving the data.
                 const profileData = chunk.isolate
                     ? profileDataByIsolate.get(chunk.isolate)
                     : profileDataById.get(`${event.pid}:${event.id}`);
@@ -543,6 +560,14 @@ export function extractFromChromiumPerformanceProfile(
         throw new Error('Could not find CPU profile in Timeline');
     }
 
+    for (const { thread } of eventChannels.values()) {
+        const compilations = extractCompilations(thread);
+
+        if (compilations.length > 0) {
+            thread.compilations = compilations;
+        }
+    }
+
     for (const profileData of profileDataById.values()) {
         const { pid, tid, eventChannel, startTime, endTime, chunks, samples, allocationChunks, allocationGcs } = profileData;
         const { thread } = eventChannel;
@@ -550,6 +575,7 @@ export function extractFromChromiumPerformanceProfile(
             _name: thread.name,
             _pid: pid,
             _tid: tid,
+            _capture: profileData.capture,
             startTime,
             endTime,
             nodes: [],
@@ -567,11 +593,6 @@ export function extractFromChromiumPerformanceProfile(
             attachSourceMapsToScripts(scripts, sourceMapByUrl, sourceMapBySourceMapUrl);
         }
 
-        if (thread.events.length > 0) {
-            // Share the source event array; category-specific derivatives belong to preparation.
-            profile._events = thread.events;
-        }
-
         appendCpuProfileChunks(profile, chunks);
 
         if (profileData.hasLineColumns) {
@@ -579,16 +600,24 @@ export function extractFromChromiumPerformanceProfile(
             profile.columns = buildChunkedArray('columns', chunks, samples);
         }
 
-        if (profileData.hasAllocationsMapping) {
-            profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples);
-        }
+        const ids = buildChunkedVector(allocationChunks, 'ids');
+        const idsOrder = ids ? getNumericArrayOrder(ids) : undefined;
 
-        if (allocationChunks.length > 0) {
-            const ids = buildChunkedVector(allocationChunks, 'ids');
+        if (idsOrder === 'unordered') {
+            console.warn('Ignoring allocation data with unsorted IDs', { pid, tid });
+        } else {
+            if (profileData.hasAllocationsMapping) {
+                profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples);
+            }
+
+            if (allocationChunks.length == 0) {
+                continue;
+            }
+
             const allocationsCount = ids ? ids.length : 0;
 
             profile._cpuproAllocationIds = ids;
-            profile._cpuproAllocationIdsOrder = ids ? getAllocationIdsOrder(ids) : undefined;
+            profile._cpuproAllocationIdsOrder = idsOrder;
             profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes', allocationsCount);
             profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds', allocationsCount);
             profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets', allocationsCount);
@@ -634,6 +663,61 @@ export function extractFromChromiumPerformanceProfile(
     };
 }
 
+function extractCompilations(thread: UniformThread): UniformCompilationRecord[] {
+    const source = 'disabled-by-default-v8.compilation_allocations';
+    const records: UniformCompilationRecord[] = [];
+    const { events } = thread;
+    let isolate = thread.isolate ?? null;
+    let conflictingIsolates = false;
+
+    for (let eventIndex = 0; eventIndex < events.length; eventIndex++) {
+        const event = events[eventIndex];
+
+        if (event.cat !== source && !(event.cat.includes(source) && event.cat.split(',').includes(source))) {
+            continue;
+        }
+
+        const data = (event.data as { data?: CompilationAllocationEventData } | null)?.data;
+
+        if (data?.isolate) {
+            if (isolate !== null && isolate !== data.isolate) {
+                conflictingIsolates = true;
+            }
+
+            isolate ??= data.isolate;
+        }
+
+        // The source event has one owner. Persist its index, not a second object path;
+        // runtime links are filled on processing records, never during extraction.
+        records.push({
+            name: event.name,
+            tm: event.tm >= 0 ? event.tm : null,
+            duration: event.duration >= 0 ? event.duration : null,
+            scriptId: data?.scriptId ?? null,
+            start: data?.start ?? null,
+            end: data?.end ?? null,
+            line: data?.line ?? null,
+            column: data?.column ?? null,
+            functionName: null,
+            allocationStart: data?.startAllocationId ?? null,
+            allocationEnd: data?.endAllocationId ?? null,
+            eventIndex,
+            event: null,
+            callFrame: null
+        });
+    }
+
+    // Do not invent a combined identity for inconsistent input. Source isolate values
+    // remain recoverable through eventIndex, but automatic binding must remain unresolved.
+    if (conflictingIsolates) {
+        console.warn('Conflicting compilation isolates for thread', thread.pid, thread.tid);
+    }
+
+    thread.isolate = conflictingIsolates ? null : isolate;
+
+    return records;
+}
+
 function appendCpuProfileChunks(profile: V8CpuProfile, chunks: ChromiumTraceProfileChunkEventData[]) {
     for (const { cpuProfile } of chunks) {
         if (cpuProfile?.nodes) {
@@ -644,29 +728,6 @@ function appendCpuProfileChunks(profile: V8CpuProfile, chunks: ChromiumTraceProf
             Object.assign(profile.trace_ids!, cpuProfile.trace_ids);
         }
     }
-}
-
-// Establish this once for GC and downstream consumers inside the format boundary.
-// Only a step of one permits direct id-to-index mapping; keep one read per element.
-function getAllocationIdsOrder(ids: number[]): NonNullable<V8CpuProfile['_cpuproAllocationIdsOrder']> {
-    let consecutive = true;
-    let previous = ids[0];
-
-    for (let index = 1; index < ids.length; index++) {
-        const current = ids[index];
-
-        if (current < previous) {
-            return 'unordered';
-        }
-
-        if (current !== previous + 1) {
-            consecutive = false;
-        }
-
-        previous = current;
-    }
-
-    return consecutive ? 'consecutive' : 'ascending';
 }
 
 function attachSourceMapsToScripts(

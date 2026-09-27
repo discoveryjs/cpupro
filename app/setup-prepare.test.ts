@@ -102,3 +102,54 @@ test('AC synchronizes independent requests across profile switches and detaches 
     selection.setRange(100, 110);
     assert.equal(data.profiles[1].timeline!.range.selection.ranges, previous);
 });
+
+test.each([
+    { isolate: undefined, ids: ['first'] },
+    { isolate: 'shared', ids: ['first', 'second'] }
+])('setup passes thread compilations without a capture gate: $isolate', async ({ isolate, ids }) => {
+    const base = { pid: 1, tid: 2, ts: 100, ph: 'P', cat: 'profile' };
+    const input = {
+        traceEvents: [
+            ...ids.flatMap((id, index) => [
+                { ...base, id, name: 'Profile', args: { data: { startTime: 100 + index * 100, isolate } } },
+                { ...base, id, name: 'ProfileChunk', args: { data: {
+                    endTime: 140 + index * 100,
+                    cpuProfile: {
+                        nodes: [
+                            { id: 1, callFrame: { scriptId: '0', url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 }, children: [2] },
+                            { id: 2, callFrame: { scriptId: '1', url: '/script.js', functionName: 'work', lineNumber: 0, columnNumber: 0 } }
+                        ],
+                        samples: [2, 2, 2]
+                    },
+                    timeDeltas: [10, 10, 10]
+                } } }
+            ]),
+            { ...base, name: 'Compile', cat: 'disabled-by-default-v8.compilation_allocations', ph: 'X', ts: 110, dur: 5,
+                args: { data: { isolate, scriptId: 1, start: 0, end: 10 } } }
+        ]
+    };
+    const markers = Object.fromEntries([
+        'call-frame-codes', 'call-frame-position', 'call-frame', 'module', 'package', 'category', 'owner', 'script'
+    ].map(name => [name, () => {}]));
+
+    const data = await prepare(input, {
+        rejectData: reason => assert.fail(reason),
+        markers,
+        setWorkTitle: async () => {}
+    } as Parameters<typeof prepare>[1]);
+    const thread = data.profiles[0].thread;
+
+    assert.equal(data.profiles.length, ids.length);
+    assert.equal(thread.compilations!.length, 1);
+    assert.equal(thread.compilations![0].event, thread.events[0]);
+
+    for (const profile of data.profiles) {
+        const attribute = profile.memline?.attributes.find(attribute => attribute.name === 'allocationOwner');
+
+        assert.equal(profile.thread, thread);
+        assert.equal('compilation' in profile, false);
+        assert.equal(attribute, undefined);
+    }
+
+    assert.equal(thread.compilations![0].callFrame!.script!.url, '/script.js');
+});

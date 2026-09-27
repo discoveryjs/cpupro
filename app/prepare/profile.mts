@@ -1,5 +1,5 @@
 import type { Model } from '@discoveryjs/discovery';
-import type { CpuProCallFrame, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
+import type { CpuProCallFrame, CpuProCompilationRecord, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
 import type { ProfileLine } from './lines/types.js';
 import type { Ownership } from './formats/types.js';
 import { convertToInt32Array, convertToUint32Array, createInt32Progression } from './misc/utils.js';
@@ -10,7 +10,7 @@ import { createTimeline, createMemline } from './lines/index.mjs';
 import { extractCallFramesFromNodes } from './preprocessing/call-frames.js';
 import { createNodeIndexById, createNodeScriptOffsets, createNodeParent, GeneratedNodes } from './preprocessing/nodes.js';
 import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
-import { prepareCompilationEvents, resolveCompilationOwners } from './preprocessing/compilation-events.js';
+import { resolveCompilationCallFrames } from './preprocessing/compilation-events.js';
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createSampledTreeSet } from './computations/sampled-tree-set.js';
@@ -29,6 +29,7 @@ const experimentalFeatures = false;
 
 export type Profile = Awaited<ReturnType<typeof createProfile>>;
 export type CreateProfileOptions = {
+    compilations: CpuProCompilationRecord[] | null;
     dictionary: Dictionary;
     originalScripts: OriginalScriptsMap;
     ownership: Ownership | null;
@@ -88,6 +89,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         originalScripts = new OriginalScriptsMap(dictionary),
         runtime = null,
         ownership = null,
+        compilations = null,
         work = noopWorkHandler
     } = options || {};
     const lines: ProfileLine[] = [];
@@ -102,7 +104,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const preparseStart = performance.now();
     const preparseScriptSourcesResult = profileScriptsMap.size > 0
         ? prepareScriptSources(
-            profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data))
+            profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data, compilations))
         ).finally(() => {
             performance.measure('preparseScriptSources', { start: preparseStart });
         })
@@ -309,12 +311,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         lines.push(timeline);
     }
 
-    const compilation = data._events
-        ? await work('prepare compilation attribution', () =>
-            prepareCompilationEvents(data)
-        )
-        : null;
-
     // Create memline from allocation data if present (combined profile)
     const memline = await createMemline(
         data,
@@ -323,7 +319,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         cpuSamplesPopulation,
         callStackSampledTreeSet,
         preparseScriptSourcesResult,
-        { work, compilation }
+        { work, compilations }
     );
 
     if (memline) {
@@ -387,10 +383,10 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         line.profile = profile;
     }
 
-    if (compilation) {
+    if (compilations) {
         await work('link compilation events', async () => {
             await preparseScriptSourcesResult;
-            resolveCompilationOwners(compilation, dictionary, profileScriptsMap);
+            resolveCompilationCallFrames(compilations, dictionary, profileScriptsMap);
         });
     }
 

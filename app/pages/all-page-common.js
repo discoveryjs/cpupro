@@ -9,7 +9,7 @@ export function allPageHeader(content) {
             'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
             'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }',
             'badge{ text: "Locations", className: #.page = "locations" ? "selected", href: #.page != "locations" ? "#locations" }',
-            'badge{ text: "Compilations", when: scopeProfile().thread.events[=>cat = "disabled-by-default-v8.compilation_allocations"], className: #.page = "compilations" ? "selected", href: #.page != "compilations" ? "#compilations" }'
+            'badge{ text: "Compilations", when: scopeProfile().thread.compilations, className: #.page = "compilations" ? "selected", href: #.page != "compilations" ? "#compilations" }'
         ],
         content
     };

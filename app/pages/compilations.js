@@ -3,21 +3,20 @@ import { allPageHeader, allPageTable } from './all-page-common.js';
 const compilationTable = {
     view: 'context',
     data: `
+        $owners: #.allocationLine | $ ? lineAttribute("allocationOwner");
         $stageFilter: #.allocationLine | $ ? filters.attributeFilters()[=>key = "allocationCompilationStage"];
-        $totals: #.allocationLine | $ ? lineAttribute("allocationOwner")
-            | $ and #.allocationPopulation ? attributeSampleTotals(#.allocationPopulation) : []
-            | group(=>entry).({ entry: key, count: value.sum(=>count), size: value.sum(=>size) });
-        scopeProfile().thread.events.[cat = "disabled-by-default-v8.compilation_allocations" and callFrame]
+        $totals: $owners and #.allocationPopulation ? $owners.attributeSampleTotals(#.allocationPopulation) : [];
+        (scopeProfile().thread.compilations or [])
             .[no $stageFilter or $stageFilter.filterOptionEnabled(name)]
-            .group(=>callFrame)
-            .({ callFrame: key, events: value.size(), selfTime: value.sum(=>selfTime) })
-            .zip(=>callFrame, $totals, =>entry)
+            .group(=>scriptId + ":" + start)
+            .({ subject: key, scriptId: value[0].scriptId, start: value[0].start, callFrame: value[0].callFrame, records: value, events: value.size() })
+            .zip(=>subject, $totals.[entry], =>entry.scriptId + ":" + entry.start)
             .({ ...left, count: right.count or 0, size: right.size or 0 })
-            .[callFrame.name ~= #.filter]
+            .[(callFrame.name or records.functionName or "Unresolved") ~= #.filter]
     `,
     content: [
         allPageTable({
-            data: 'sort(size desc, selfTime desc)',
+            data: 'sort(size desc, events desc)',
             emptyText: 'No compilation events',
             cols: [
                 {
@@ -27,10 +26,12 @@ const compilationTable = {
                     detailsWhen: 'size',
                     details: {
                         view: 'allocation-samples-matrix',
+                        context: '{ ...#, scopeLine: #.allocationLine }',
                         data: `
-                            $owner: callFrame;
+                            $scriptId: scriptId;
+                            $start: start;
                             #.allocationLine.lineAttribute("allocationOwner")
-                            .allocationsMatrix(#.allocationPopulation, $owner, scopeProfile())
+                            .allocationsMatrix(#.allocationPopulation, => $ and $.scriptId = $scriptId and $.start = $start, scopeProfile())
                         `
                     }
                 },
@@ -39,33 +40,46 @@ const compilationTable = {
                     colWhen: '#.allocationPopulation', content: 'text-numeric:count'
                 },
                 {
-                    header: 'Event self time (whole profile)', sorting: 'selfTime desc', align: 'right',
-                    content: {
-                        view: 'text-with-unit', data: 'selfTime.valueAndUnit("timeline")',
-                        value: '=value', unit: '=unit'
+                    header: 'Events', sorting: 'events desc', content: 'text-numeric:events',
+                    details: {
+                        view: 'table', data: 'records',
+                        cols: [
+                            { header: 'Stage', content: 'text:name' },
+                            { header: 'Timestamp (us)', content: 'text-numeric:tm' },
+                            { header: 'Duration (us)', content: 'text-numeric:duration' },
+                            { header: 'Line', content: 'text-numeric:line' },
+                            { header: 'Column', content: 'text-numeric:column' },
+                            {
+                                header: 'Source event', content: 'text:eventIndex', detailsWhen: 'event',
+                                details: 'struct:event'
+                            }
+                        ]
                     }
                 },
-                { header: 'Events', sorting: 'events desc', content: 'text-numeric:events' },
-                { header: 'Function', sorting: 'callFrame.name ascN', content: 'badge:callFrame.marker() | { text: title, href }' },
+                { header: 'Function', sorting: 'callFrame.name ascN', content: {
+                    view: 'switch', content: [
+                        { when: 'callFrame', content: 'badge:callFrame.marker() | { text: title, href }' },
+                        { content: 'text:"Unresolved"' }
+                    ]
+                } },
                 {
                     header: 'Source', sorting: 'callFrame.end - callFrame.start desc',
-                    content: 'text-with-unit{ value: callFrame.hasSource() ? (callFrame.end - callFrame.start).bytes() : "", unit: true }',
-                    detailsWhen: 'callFrame.hasSource()',
+                    content: 'text-with-unit{ value: callFrame and callFrame.hasSource() ? (callFrame.end - callFrame.start).bytes() : "", unit: true }',
+                    detailsWhen: 'callFrame and callFrame.hasSource()',
                     details: 'call-frame-source:callFrame'
                 },
-                { header: 'Module', sorting: 'callFrame.module.name ascN', content: 'module-badge:callFrame.module' }
+                { header: 'Module', sorting: 'callFrame.module.name ascN', content: { view: 'module-badge', when: 'callFrame', data: 'callFrame.module' } }
             ]
         }),
         {
             view: 'block',
             className: 'all-page-summary',
             content: [
-                { view: 'block', content: ['text:"Call frames:"', 'text-numeric:size()'] },
+                { view: 'block', content: ['text:"Functions:"', 'text-numeric:size()'] },
                 {
                     view: 'block', when: '#.allocationPopulation',
                     content: ['text:"Allocated:"', 'text-with-unit{ value: (sum(=>size) or 0).bytes(), unit: true }']
-                },
-                { view: 'block', content: ['text:"Event self time:"', 'metric{ line: "timeline", value: sum(=>selfTime) or 0 }'] }
+                }
             ]
         }
     ]
@@ -80,7 +94,7 @@ discovery.page.define('compilations', {
             { view: 'input', name: 'filter', type: 'regexp', placeholder: 'Filter functions' },
             {
                 view: 'expand',
-                when: 'scopeLine("memline")',
+                when: 'scopeLine("memline") | $ ? lineAttribute("allocationCompilationStage")',
                 header: 'text:"Compilation stages"',
                 content: {
                     view: 'update-on-line-metrics-changes',
@@ -111,7 +125,7 @@ discovery.page.define('compilations', {
         context: `{
             ...#,
             allocationLine: scopeLine("memline"),
-            allocationPopulation: scopeLine("memline") | $ ? primaryBreakdown().populationFiltered
+            allocationPopulation: scopeLine("memline") | $ and lineAttribute("allocationOwner") ? primaryBreakdown().populationFiltered
         }`,
         content: {
             view: 'switch',

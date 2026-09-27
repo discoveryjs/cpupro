@@ -1,5 +1,5 @@
 import { Dictionary } from './dictionary.js';
-import { Ownership, UniformTraceEvent } from './formats/types.js';
+import { Ownership, UniformCompilationRecord, UniformTraceEvent } from './formats/types.js';
 import { Profile } from './profile.mjs';
 
 export type V8CpuProfile = {
@@ -17,6 +17,7 @@ export type V8CpuProfileCpuproExtensions = {
     _name?: string | null; // some profiles has a name
     _pid?: number;
     _tid?: number;
+    _capture?: { id: string | number | null; isolate: string | null };
     _type?: 'memory' | 'time';
     _runtime?: RuntimeCode;
     _samplesInterval?: number;
@@ -30,7 +31,6 @@ export type V8CpuProfileCpuproExtensions = {
     _memorySpaceNames?: Record<number, string>;
     _callFrames?: V8CpuProfileCallFrame[];
     _callFrameCodes?: V8CpuProfileCallFrameCodes[];
-    _events?: UniformTraceEvent[];
     _scripts?: V8CpuProfileScript[];
     _executionContexts?: V8CpuProfileExecutionContext[];
     _heap?: {
@@ -40,8 +40,8 @@ export type V8CpuProfileCpuproExtensions = {
     };
     // Combined profile extensions (CPU + memory allocation data)
     _cpuproAllocationMapping?: number[]; // maps CPU sample index -> last allocation ID in range
-    _cpuproAllocationIds?: number[]; // allocation IDs (ordinal)
-    _cpuproAllocationIdsOrder?: 'consecutive' | 'ascending' | 'unordered';
+    _cpuproAllocationIds?: number[]; // sorted allocation IDs; all allocation vectors share this row order
+    _cpuproAllocationIdsOrder?: 'consecutive' | 'ascending';
     _cpuproAllocationSizes?: number[]; // allocation sizes
     _cpuproAllocationScriptIds?: Array<number | string>; // allocation script ids in profile-local domain
     _cpuproAllocationGc?: number[]; // GC state (lower 2 bits) + epoch (upper bits)
@@ -93,16 +93,6 @@ export type V8CpuProfileFunction = {
     end: number;
     line: number;
     column: number;
-}
-export type V8CompilationEvent = UniformTraceEvent & {
-    data: {
-        data: {
-            scriptId: number;
-            start: number;
-            startAllocationId: number;
-            endAllocationId: number;
-        };
-    };
 }
 export type V8CpuProfileCallFrameCodes = {
     callFrame: number;
@@ -235,12 +225,19 @@ export type CpuProThread = {
     pid: number | null;
     tid: number | null;
     name: string | null;
+    isolate?: string | null;
     process: CpuProProcess | null;
     profiles: Profile[];
     events: UniformTraceEvent[];
+    compilations?: CpuProCompilationRecord[];
     counters: CpuProCounterEntry[];
     userTimings: UniformTraceEvent[]; // subset of user defined events, e.g. cat="blink.user_timing" in Chromium traces
 }
+
+export type CpuProCompilationRecord = Omit<UniformCompilationRecord, 'event' | 'callFrame'> & {
+    event: UniformTraceEvent | null;
+    callFrame: CpuProCallFrame | null;
+};
 
 export type CpuProCounterEntry = {
     name: string;

@@ -1,4 +1,5 @@
 import type { V8CpuProfile, V8CpuProfileNode, V8CpuProfileScript, V8CpuProfileCpuproExtensions } from '../types.js';
+import { getNumericArrayOrder } from './utils.js';
 import { ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
 
 type SizeSample = {
@@ -210,9 +211,17 @@ function extractCombinedAllocationData(data: {
         return null;
     }
 
+    const idsOrder = getNumericArrayOrder(ids);
+
+    if (idsOrder === 'unordered') {
+        console.warn('Ignoring allocation data with unsorted IDs');
+        return {};
+    }
+
     return {
         _cpuproAllocationMapping: allocationSampleIds,
         _cpuproAllocationIds: ids,
+        _cpuproAllocationIdsOrder: idsOrder,
         _cpuproAllocationSizes: sizes,
         _cpuproAllocationScriptIds: Array.isArray(scriptIds) ? scriptIds : undefined,
         _cpuproAllocationLocations: Array.isArray(positions) ? positions : undefined,

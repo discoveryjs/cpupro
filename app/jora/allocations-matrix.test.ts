@@ -37,10 +37,8 @@ test('selects compilation owners and stages without losing allocation filters', 
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const line = profile.memline!;
     const population = line.breakdowns.find(entry => entry.kind === 'location')!.populationFiltered;
-    const first = profile.callFrames.find(frame => frame.name === 'first')!;
-    const second = profile.callFrames.find(frame => frame.name === 'second')!;
     const attribute: ProfileLineAllocationOwnerAttribute = {
-        name: 'allocationOwner', dict: [null, first, second], values: new Uint32Array([1, 2, 1, 0])
+        name: 'allocationOwner', dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }], values: new Uint32Array([1, 2, 1, 0])
     };
     const stages: ProfileLineAllocationCompilationStageAttribute = {
         name: 'allocationCompilationStage', dict: ['none', 'Stage1', 'Stage2'], values: new Uint8Array([1, 1, 2, 0])
@@ -51,7 +49,7 @@ test('selects compilation owners and stages without losing allocation filters', 
         { name: 'allocationLifespan', values: new Uint8Array([0, 1, 2, 0]), dict: ['alive', 'short-lived', 'long-lived'] }
     );
     const matrix = () => methods.allocationsMatrix.call(
-        { context: {} }, attribute, population, first, profile
+        { context: {} }, attribute, population, attribute.dict[1], profile
     );
     const stopFilters = prepareLineFilters(line);
     const stageFilter = line.filters.get('allocationCompilationStage') as SetAttributeFilter;
@@ -74,7 +72,7 @@ test('selects compilation owners and stages without losing allocation filters', 
     assert.deepEqual(matrix(), []);
     population.resetMask();
     assert.equal(matrix()[0].total.sum, 64);
-    const all = methods.allocationsMatrix.call({ context: {} }, attribute, population, owner => owner !== null, profile);
+    const all = methods.allocationsMatrix.call({ context: {} }, attribute, population, (owner: unknown) => owner !== null, profile);
     assert.equal(all.reduce((sum, entry) => sum + entry.total.sum, 0), 96);
     stopFilters();
 });
@@ -82,15 +80,13 @@ test('selects compilation owners and stages without losing allocation filters', 
 test('attribute sample totals honor ranges and stage filters without partial-object double counting', async () => {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const population = profile.memline!.breakdowns[0].populationFiltered;
-    const first = profile.callFrames.find(frame => frame.name === 'first')!;
-    const second = profile.callFrames.find(frame => frame.name === 'second')!;
     const owners: ProfileLineAllocationOwnerAttribute = {
-        name: 'allocationOwner', dict: [null, first, second], values: new Uint32Array([1, 2, 1, 0])
+        name: 'allocationOwner', dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }], values: new Uint32Array([1, 2, 1, 0])
     };
     const totals = () => methods.attributeSampleTotals(owners, population);
     assert.deepEqual(totals().map(row => [row.count, row.size]), [[1, 64], [2, 64], [1, 32]]);
     population.setRanges([{ start: 5, end: 10 }]);
-    assert.deepEqual(totals()[1], { entry: first, count: 1, size: 5 });
+    assert.deepEqual(totals()[1], { entry: owners.dict[1], count: 1, size: 5 });
     population.setRanges([{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 20, end: 24 }]);
     assert.deepEqual(totals().map(row => [row.count, row.size]), [[0, 0], [1, 4], [1, 4]]);
     population.updateMask(mask => mask.fill(0x80000000));

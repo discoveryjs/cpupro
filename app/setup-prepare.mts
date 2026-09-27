@@ -112,6 +112,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 dictionary: dict,
                 originalScripts,
                 runtime: null,
+                compilations: thread.compilations,
                 ownership: rawSession.ownership ?? null,
                 work: sessionProfiles.length > 1
                     ? runSessionTask.withPrefix(`Profile ${i + 1}/${sessionProfiles.length}`)

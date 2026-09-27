@@ -1,5 +1,5 @@
 import type { Profile } from '../profile.mjs';
-import type { V8CpuProfile } from '../types.js';
+import type { CpuProCompilationRecord, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineMethods, ProfileMemline } from './types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import type { Population } from '../computations/population.js';
@@ -10,7 +10,6 @@ import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { sum } from '../misc/utils.js';
-import type { PreparedCompilationEvents } from '../preprocessing/compilation-events.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import {
@@ -25,7 +24,7 @@ import {
 
 export type CreateMemlineOptions = {
     work: WorkHandler;
-    compilation: PreparedCompilationEvents | null;
+    compilations: CpuProCompilationRecord[] | null;
 };
 
 const metricName: Record<Metric, string> = {
@@ -85,7 +84,7 @@ export async function createMemline(
 ): Promise<ProfileMemline | null> {
     const {
         work = noopWorkHandler,
-        compilation = null
+        compilations = null
     } = options || {};
     const {
         _cpuproAllocationMapping,
@@ -169,10 +168,14 @@ export async function createMemline(
             data._cpuproAllocationContextInfo || null
         ),
         createMemlineAllocationOwnerAttribute(
-            compilation
+            compilations,
+            _cpuproAllocationIds || null,
+            data._cpuproAllocationIdsOrder || null
         ),
         createMemlineAllocationCompilationStageAttribute(
-            compilation
+            compilations,
+            _cpuproAllocationIds || null,
+            data._cpuproAllocationIdsOrder || null
         )
     ].filter(attr => attr !== null));
 

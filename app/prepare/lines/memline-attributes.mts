@@ -1,7 +1,9 @@
 import { AllocationLifespan, typeColor } from '../const.js';
-import type { PreparedCompilationEvents } from '../preprocessing/compilation-events.js';
+import type { CpuProCompilationRecord, V8CpuProfileCpuproExtensions } from '../types.js';
+import { lowerBound } from '../computations/misc.js';
 import {
     AllocationSpaceDictEntry,
+    CompilationOwner,
     GcEpochDictEntry,
     ProfileLineAllocationCodeTypeAttribute,
     ProfileLineAllocationGcEpochAttribute,
@@ -13,31 +15,94 @@ import {
 } from './types.js';
 
 export function createMemlineAllocationOwnerAttribute(
-    compilation: PreparedCompilationEvents | null
+    compilations: CpuProCompilationRecord[] | null,
+    _cpuproAllocationIds: number[] | null,
+    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
 ): ProfileLineAllocationOwnerAttribute | null {
-    if (!compilation?.allocationOwners) {
+    if (!compilations?.length || !_cpuproAllocationIds) {
         return null;
+    }
+
+    const values = new Uint32Array(_cpuproAllocationIds.length);
+    const firstId = _cpuproAllocationIdsOrder === 'consecutive' ? _cpuproAllocationIds[0] : undefined;
+    const dict: (CompilationOwner | null)[] = [null];
+    const ownerByScript = new Map<number | null, Map<number | null, number>>();
+
+    for (const record of compilations) {
+        const { scriptId, start } = record;
+        let byStart = ownerByScript.get(scriptId);
+
+        if (byStart === undefined) {
+            ownerByScript.set(scriptId, byStart = new Map());
+        }
+
+        let ownerIndex = byStart.get(start);
+
+        if (ownerIndex === undefined) {
+            byStart.set(start, ownerIndex = dict.push({ scriptId, start }) - 1);
+        }
+
+        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, ownerIndex);
     }
 
     return {
         name: 'allocationOwner',
-        values: compilation.allocationOwners,
-        dict: compilation.callFrames
+        values,
+        dict
     };
 }
 
 export function createMemlineAllocationCompilationStageAttribute(
-    compilation: PreparedCompilationEvents | null
+    compilations: CpuProCompilationRecord[] | null,
+    _cpuproAllocationIds: number[] | null,
+    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
 ): ProfileLineAllocationCompilationStageAttribute | null {
-    if (!compilation?.allocationStages) {
+    if (!compilations?.length || !_cpuproAllocationIds) {
         return null;
+    }
+
+    const dict = ['none'];
+    const stageByName = new Map<string, number>();
+
+    for (const { name } of compilations) {
+        if (!stageByName.has(name)) {
+            stageByName.set(name, dict.push(name) - 1);
+        }
+    }
+
+    const values = dict.length <= 256 ? new Uint8Array(_cpuproAllocationIds.length) : new Uint32Array(_cpuproAllocationIds.length);
+    const firstId = _cpuproAllocationIdsOrder === 'consecutive' ? _cpuproAllocationIds[0] : undefined;
+
+    for (const record of compilations) {
+        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, stageByName.get(record.name)!);
     }
 
     return {
         name: 'allocationCompilationStage',
-        values: compilation.allocationStages,
-        dict: compilation.stages
+        values,
+        dict
     };
+}
+
+function fillCompilationAllocationRange(
+    values: Uint8Array | Uint32Array,
+    ids: number[],
+    firstId: number | undefined,
+    { allocationStart, allocationEnd }: CpuProCompilationRecord,
+    value: number
+) {
+    if (allocationStart === null || allocationEnd === null || allocationEnd <= allocationStart) {
+        return;
+    }
+
+    const start = firstId !== undefined
+        ? Math.max(0, Math.min(ids.length, allocationStart - firstId + 1))
+        : lowerBound(ids, allocationStart, true);
+    const end = firstId !== undefined
+        ? Math.max(0, Math.min(ids.length, allocationEnd - firstId + 1))
+        : lowerBound(ids, allocationEnd, true);
+
+    values.fill(value, start, end);
 }
 
 export function createMemlineAllocationTypeAttribute(

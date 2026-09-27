@@ -34,9 +34,28 @@ export type UniformThread = {
     pid: number;
     tid: number;
     name: string | null;
+    isolate?: string | null;
     scripts: V8CpuProfileScript[];
     events: UniformTraceEvent[];
     userTimings: UniformTraceEvent[];
+    compilations?: UniformCompilationRecord[];
+}
+export type UniformCompilationRecord = {
+    name: string;
+    tm: number | null;
+    duration: number | null;
+    scriptId: number | null;
+    start: number | null;
+    end: number | null;
+    line: number | null;
+    column: number | null;
+    functionName: string | null;
+    allocationStart: number | null;
+    allocationEnd: number | null;
+    // Local to the source thread's events; absent when the source is not a trace event.
+    eventIndex: number | null;
+    event: null;
+    callFrame: null;
 }
 export type UniformProfile = V8CpuProfile;
 export type UniformTraceEvent = {

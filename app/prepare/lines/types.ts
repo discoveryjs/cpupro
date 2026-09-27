@@ -72,10 +72,14 @@ export type ProfileLineAllocationCodeTypeAttribute = {
     values: Uint8Array;
     dict: string[];
 };
+export type CompilationOwner = {
+    scriptId: number | null;
+    start: number | null;
+};
 export type ProfileLineAllocationOwnerAttribute = {
     name: 'allocationOwner';
     values: Uint32Array;
-    dict: (CpuProCallFrame | null)[];
+    dict: (CompilationOwner | null)[];
 };
 export type ProfileLineAllocationCompilationStageAttribute = {
     name: 'allocationCompilationStage';

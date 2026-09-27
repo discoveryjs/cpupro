@@ -1,6 +1,7 @@
 import { Dictionary } from './dictionary.js';
 import { UniformProfile, UniformProfilingSession } from './formats/types.js';
 import { CpuProProcess, CpuProSession, CpuProThread } from './types.js';
+import { prepareCompilationRecords } from './preprocessing/compilation-events.js';
 
 export type DatasetProfile = {
     thread: CpuProThread;
@@ -47,7 +48,11 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
 
     // Pre-fill threads
     for (const rawThread of rawSession.threads || []) {
-        Object.assign(createThread(rawThread.pid, rawThread.tid), rawThread);
+        const thread: CpuProThread = Object.assign(createThread(rawThread.pid, rawThread.tid), rawThread);
+
+        if (rawThread.compilations) {
+            thread.compilations = prepareCompilationRecords(rawThread.compilations, thread.events);
+        }
     }
 
     // Produce profile list with resolved thread references, create missing threads if needed
