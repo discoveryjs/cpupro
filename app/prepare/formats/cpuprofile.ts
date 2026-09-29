@@ -199,27 +199,35 @@ function extractCombinedAllocationData(data: {
         spacesDict?: Record<string, string>;
     };
 }): V8CpuProfileCpuproExtensions | null {
-    // Check if this is a combined profile
-    if (!data.allocationSampleIds || !data.allocationSamples) {
+    const { allocationSampleIds, allocationSamples } = data;
+
+    if (!Array.isArray(allocationSampleIds)) {
         return null;
     }
 
-    const { allocationSampleIds, allocationSamples } = data;
+    const allocationData: V8CpuProfileCpuproExtensions = {
+        _cpuproAllocationMapping: allocationSampleIds
+    };
+
+    if (!allocationSamples) {
+        return allocationData;
+    }
+
     const { ids, sizes, scriptIds, positions, gc, types, typesDict, spaces, spacesDict } = allocationSamples;
 
-    if (!Array.isArray(ids) || !Array.isArray(sizes) || !Array.isArray(allocationSampleIds)) {
-        return null;
+    if (!Array.isArray(ids) || !Array.isArray(sizes)) {
+        return allocationData;
     }
 
     const idsOrder = getNumericArrayOrder(ids);
 
     if (idsOrder === 'unordered') {
         console.warn('Ignoring allocation data with unsorted IDs');
-        return {};
+        return allocationData;
     }
 
     return {
-        _cpuproAllocationMapping: allocationSampleIds,
+        ...allocationData,
         _cpuproAllocationIds: ids,
         _cpuproAllocationIdsOrder: idsOrder,
         _cpuproAllocationSizes: sizes,

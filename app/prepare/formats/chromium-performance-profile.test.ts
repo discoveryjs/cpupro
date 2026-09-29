@@ -346,7 +346,7 @@ test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted alloc
     const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const chunks = [ids.slice(0, 2), ids.slice(2)].map((part, index) => ({
         ...base, ts: index + 1, name: 'ProfileChunk', args: { data: {
-            cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSampleIds: [part[part.length - 1]],
+            cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSampleIds: [10 + index * 10],
             allocationSamples: { ids: part, sizes: part.map(() => 8), types: part.map(() => 1), typesDict: { 1: 'OBJECT' } },
             allocationGc: { 5: part }
         } }
@@ -366,13 +366,61 @@ test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted alloc
 
         assert.deepEqual(profile.samples, [1, 1]);
         assert.deepEqual(profile.timeDeltas, [10, 10]);
-        assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), []);
+        assert.deepEqual(profile._cpuproAllocationMapping, [10, 20]);
+        assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
         assert.equal(session.threads[0].compilations!.length, 1);
         assert.deepEqual(warning.mock.calls, [['Ignoring allocation data with unsorted IDs', { pid: 1, tid: 2 }]]);
         assert.deepEqual(input, before);
     } finally {
         warning.mockRestore();
     }
+});
+
+test('tracing preserves CPU-aligned allocation mapping without allocation rows', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const input = [
+        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+        { ...base, name: 'ProfileChunk', ts: 1, args: { data: {
+            cpuProfile: { nodes: [], samples: [1, 2] }, timeDeltas: [10, 10], allocationSampleIds: [10, 15]
+        } } },
+        { ...base, name: 'ProfileChunk', ts: 2, args: { data: {
+            cpuProfile: { nodes: [], samples: [3] }, timeDeltas: [10], allocationSampleIds: [20]
+        } } }
+    ];
+    const before = structuredClone(input);
+
+    const session = extractFromChromiumPerformanceProfile(input);
+
+    assert.equal(session.profiles.length, 1);
+    assert.deepEqual(session.profiles[0].samples, [1, 2, 3]);
+    assert.deepEqual(session.profiles[0].timeDeltas, [10, 10, 10]);
+    assert.deepEqual(session.profiles[0]._cpuproAllocationMapping, [10, 15, 20]);
+    assert.deepEqual(Object.keys(session.profiles[0]).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
+    assert.deepEqual(input, before);
+});
+
+test.each([
+    { allocationSamples: undefined },
+    { allocationSamples: {} },
+    { allocationSamples: { ids: [10, 15] } },
+    { allocationSamples: { sizes: [8, 16] } }
+])('combined cpuprofile preserves mapping without complete allocation rows: %j', ({ allocationSamples }) => {
+    const input = {
+        startTime: 0, endTime: 20, samples: [], timeDeltas: [], nodes: [],
+        cpuProfile: { samples: [1, 2], timeDeltas: [10, 10], nodes: [] },
+        allocationSampleIds: [10, 15],
+        allocationSamples
+    };
+    const before = structuredClone(input);
+
+    const profile = unwrapSamplesIfNeeded(input);
+
+    assert.equal(profile.samples, input.cpuProfile.samples);
+    assert.equal(profile.timeDeltas, input.cpuProfile.timeDeltas);
+    assert.equal(profile.nodes, input.cpuProfile.nodes);
+    assert.equal(profile._cpuproAllocationMapping, input.allocationSampleIds);
+    assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
+    assert.deepEqual(input, before);
 });
 
 test.each([{ ids: [10, 11, 12] }, { ids: [10, 12, 15] }, { ids: [10, 12, 11] }])('combined cpuprofile checks allocation order before publishing vectors: $ids', ({ ids }) => {
@@ -390,8 +438,9 @@ test.each([{ ids: [10, 11, 12] }, { ids: [10, 12, 15] }, { ids: [10, 12, 11] }])
 
         assert.equal(profile.samples, input.cpuProfile.samples);
         assert.equal(profile.timeDeltas, input.cpuProfile.timeDeltas);
+        assert.equal(profile._cpuproAllocationMapping, input.allocationSampleIds);
         if (ids[2] === 11) {
-            assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), []);
+            assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
             assert.deepEqual(warning.mock.calls, [['Ignoring allocation data with unsorted IDs']]);
         } else {
             assert.equal(profile._cpuproAllocationIds, ids);
@@ -447,7 +496,7 @@ test('numeric order reads each element once and stops at the first inversion', (
     }
 });
 
-test('CPU chunks retain node order and merge trace ids', () => {
+test('CPU-only profiles are published without allocation chunks and retain node order and trace ids', () => {
     const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const first = { id: 1, callFrame: { scriptId: 0, url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 } };
     const second = { ...first, id: 2 };
@@ -458,6 +507,8 @@ test('CPU chunks retain node order and merge trace ids', () => {
         { ...base, name: 'ProfileChunk', args: { data: { cpuProfile: { nodes: [second], trace_ids: { second: 2 } } } } }
     ]);
 
+    assert.equal(session.profiles.length, 1);
+    assert.deepEqual(Object.keys(session.profiles[0]).filter(key => key.startsWith('_cpuproAllocation')), []);
     assert.deepEqual(session.profiles[0].nodes, [first, second]);
     assert.deepEqual(session.profiles[0].trace_ids, { first: 1, second: 2 });
 });

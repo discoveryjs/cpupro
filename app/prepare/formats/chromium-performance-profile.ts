@@ -600,20 +600,16 @@ export function extractFromChromiumPerformanceProfile(
             profile.columns = buildChunkedArray('columns', chunks, samples);
         }
 
+        if (profileData.hasAllocationsMapping) {
+            profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples);
+        }
+
         const ids = buildChunkedVector(allocationChunks, 'ids');
         const idsOrder = ids ? getNumericArrayOrder(ids) : undefined;
 
         if (idsOrder === 'unordered') {
             console.warn('Ignoring allocation data with unsorted IDs', { pid, tid });
-        } else {
-            if (profileData.hasAllocationsMapping) {
-                profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples);
-            }
-
-            if (allocationChunks.length == 0) {
-                continue;
-            }
-
+        } else if (allocationChunks.length > 0) {
             const allocationsCount = ids ? ids.length : 0;
 
             profile._cpuproAllocationIds = ids;
