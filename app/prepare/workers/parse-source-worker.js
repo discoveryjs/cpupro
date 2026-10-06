@@ -1,4 +1,5 @@
 import { parseScriptSourceRanges } from '../misc/parse-script-source-ranges.js';
+import { computeScriptSourceMetrics } from '../misc/source-text-metrics.js';
 
 onmessage = async function(event) {
     const { data: scripts } = event;
@@ -8,6 +9,7 @@ onmessage = async function(event) {
 
     for (const { id, url, source } of scripts) {
         const functionRanges = parseScriptSourceRanges(source, url, true);
+        const sourceMetrics = computeScriptSourceMetrics(source, functionRanges.ranges);
 
         for (const range of functionRanges.ranges) {
             const type = range.type;
@@ -23,6 +25,7 @@ onmessage = async function(event) {
 
         result.push({
             id,
+            sourceMetrics,
             ranges: functionRanges
         });
         if (functionRanges.starts.buffer) {
@@ -33,5 +36,8 @@ onmessage = async function(event) {
         }
     }
 
-    postMessage({ scripts: result, types: [...types.keys()] }, transferable);
+    postMessage({
+        scripts: result,
+        types: [...types.keys()]
+    }, transferable);
 };

@@ -63,7 +63,6 @@
     font-family: Helvetica Neue, Helvetica, Tahoma, Arial, sans-serif;
     font-weight: 200;
 }
-.page .view-page-header__prelude .view-badge + .view-badge:not(:last-child),
 .page .view-page-header__prelude .view-badge:not(.type-badge, .call-frame-kind):has(+ .view-badge) {
     margin-right: 1px;
     border-top-right-radius: 0;

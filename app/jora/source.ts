@@ -11,7 +11,57 @@ function performJSBeautify(source: string, options): string {
     });
 }
 
+function unicodeCharCode(conde: number): string {
+    return 'U+' + conde.toString(16).toUpperCase().padStart(4, '0');
+}
+
 export const methods = {
+    sourceUnicodeCharacters(source: string | null) {
+        const result: {
+            character: string;
+            code: string;
+            offset: number;
+            fragment: string;
+            start: number;
+            end: number;
+        }[] = [];
+
+        if (typeof source !== 'string') {
+            return result;
+        }
+
+        for (const match of source.matchAll(/[^\x00-\xff]/gu)) {
+            const character = match[0];
+            const offset = match.index;
+            let start = offset;
+            let end = offset + character.length;
+
+            for (let count = 0; count < 32 && start > 0; count++) {
+                const last = source.charCodeAt(--start);
+                const previous = source.charCodeAt(start - 1);
+
+                if (last >= 0xdc00 && last <= 0xdfff && previous >= 0xd800 && previous <= 0xdbff) {
+                    start--;
+                }
+            }
+
+            for (let count = 0; count < 32 && end < source.length; count++) {
+                end += source.codePointAt(end)! > 0xffff ? 2 : 1;
+            }
+
+            result.push({
+                character,
+                code: unicodeCharCode(character.codePointAt(0)!),
+                offset,
+                fragment: source.slice(start, end),
+                start: offset - start,
+                end: offset - start + character.length
+            });
+        }
+
+        return result;
+    },
+
     hasSource: `
         $sourceDefined: => is string and size() > 0;
         callFrame

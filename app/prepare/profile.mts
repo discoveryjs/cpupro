@@ -31,6 +31,7 @@ export type Profile = Awaited<ReturnType<typeof createProfile>>;
 export type CreateProfileOptions = {
     compilations: CpuProCompilationRecord[] | null;
     dictionary: Dictionary;
+    scriptsMap: ProfileScriptsMap;
     originalScripts: OriginalScriptsMap;
     ownership: Ownership | null;
     runtime: RuntimeCode | null;
@@ -87,6 +88,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const {
         dictionary = new Dictionary(),
         originalScripts = new OriginalScriptsMap(dictionary),
+        scriptsMap: profileScriptsMap = new ProfileScriptsMap(dictionary, originalScripts, data._scripts),
         runtime = null,
         ownership = null,
         compilations = null,
@@ -95,7 +97,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const lines: ProfileLine[] = [];
     const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
     const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
-    const profileScriptsMap = new ProfileScriptsMap(dictionary, originalScripts, data._scripts);
 
     // Prepare script sources in advance (if any), so that they are available for line-column
     // and script-offset mapping to functions (call frames).

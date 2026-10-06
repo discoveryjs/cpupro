@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { test, vi } from 'vitest';
 import { Dictionary } from '../dictionary.js';
 import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRanges } from './parse-script-source-ranges.js';
-import { findFunctionAtLineColumn, findFunctionAtPosition, isScriptTopLevelOffset, matchCallFrameIdentity } from './script-function-resolution.js';
+import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, isScriptTopLevelOffset, matchCallFrameIdentity } from './script-function-resolution.js';
+import { computeScriptSourceMetrics } from './source-text-metrics.js';
+import { ParseSourceWorkerScriptResult } from '../workers/types.js';
 
 test('indexes a function whose source range starts at zero', () => {
     const source = '() => 1';
@@ -15,6 +19,128 @@ test('indexes a function whose source range starts at zero', () => {
     assert.equal(findFunctionAtPosition(ranges, source.length - 1), ranges.ranges[0]);
     assert.equal(findFunctionAtPosition(ranges, source.length), ranges.ranges[0]);
     assert.equal(findFunctionAtPosition(ranges, source.length + 1), null);
+});
+
+test('exclusive runtime sizes subtract nested ranges once and retain declaration prefixes in their parent', () => {
+    const source = '/* script */ function outer() { function inner() { return () => 1; } return 2; }';
+    const result = parseScriptSourceRanges(source, 'fixture.js', true);
+    const sourceMetrics = computeScriptSourceMetrics(source, result.ranges);
+
+    const outer = result.ranges.find(range => range.name === 'outer')!;
+    const inner = result.ranges.find(range => range.name === 'inner')!;
+    const arrow = result.ranges.find(range => range.type === 'ArrowFunctionExpression')!;
+
+    assert.equal(outer.selfSize, outer.end - outer.callFrameStart - (inner.end - inner.callFrameStart));
+    assert.equal(inner.selfSize, inner.end - inner.callFrameStart - (arrow.end - arrow.callFrameStart));
+    assert.equal(arrow.selfSize, arrow.end - arrow.callFrameStart);
+    assert.equal(sourceMetrics!.selfSize, outer.callFrameStart);
+    assert.equal(sourceMetrics!.selfSize! + result.ranges.reduce((sum, range) => sum + range.selfSize, 0), source.length);
+});
+
+test.each([
+    '',
+    'globalThis.value = 1;',
+    'function first(){}function second(){}',
+    'const outer = () => () => 1;',
+    'class Example { constructor() {} method() { return () => 1; } }',
+    'const object = { [(() => "method")()]() { return 1; } };',
+    'function outer(value = () => 1) { return value(); }'
+])('exclusive source sizes partition the script: %s', source => {
+    const result = parseScriptSourceRanges(source, 'fixture.js', true);
+    const sourceMetrics = computeScriptSourceMetrics(source, result.ranges);
+    const expected = new Array(result.ranges.length).fill(0);
+    let scriptSize = 0;
+
+    for (let offset = 0; offset < source.length; offset++) {
+        const owner = result.ranges.filter(range => range.callFrameStart <= offset && offset < range.end)
+            .sort((left, right) => left.end - left.callFrameStart - (right.end - right.callFrameStart))[0];
+
+        if (owner) {
+            expected[result.ranges.indexOf(owner)]++;
+        } else {
+            scriptSize++;
+        }
+    }
+
+    assert.deepEqual(result.ranges.map(range => range.selfSize), expected);
+    assert.equal(sourceMetrics!.selfSize, scriptSize);
+    assert.equal(scriptSize + expected.reduce((sum, size) => sum + size, 0), source.length);
+});
+
+test.each([
+    { source: '', bytesPerChar: 1 },
+    { source: 'const text = "caf\u00e9";', bytesPerChar: 1 },
+    { source: 'const text = "\u0100";', bytesPerChar: 2 },
+    { source: 'const text = "\ud83d\ude00";', bytesPerChar: 2 },
+    { source: 'const text = "\\u0100";', bytesPerChar: 1 }
+])('source storage estimate uses Latin-1 or UTF-16 code units: $source', ({ source, bytesPerChar }) => {
+    const sourceMetrics = computeScriptSourceMetrics(source);
+
+    assert.equal(sourceMetrics!.bytesPerChar, bytesPerChar);
+    assert.equal(sourceMetrics!.byteLength, source.length * bytesPerChar);
+});
+
+test('invalid source retains byte-size metadata without publishing exclusive sizes', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+        const source = 'function broken(\u0100';
+        const result = parseScriptSourceRanges(source, 'fixture.js', true);
+        const sourceMetrics = computeScriptSourceMetrics(source);
+
+        assert.equal(result.parsed, false);
+        assert.deepEqual(sourceMetrics, { bytesPerChar: 2, byteLength: source.length * 2, nonLatin1CodeUnits: 1, surrogatePairs: 0, selfSize: null });
+    } finally {
+        error.mockRestore();
+    }
+});
+
+test.each([
+    { text: '', nonLatin1CodeUnits: 0, surrogatePairs: 0 },
+    { text: 'ASCII\u00e9\u00ff', nonLatin1CodeUnits: 0, surrogatePairs: 0 },
+    { text: '\u0100\u044f\ufeff', nonLatin1CodeUnits: 3, surrogatePairs: 0 },
+    { text: 'a\ud83d\ude00\ud834\udd1e\u044f', nonLatin1CodeUnits: 5, surrogatePairs: 2 },
+    { text: '\ud800x\udfff\ud800\ud800\udc00', nonLatin1CodeUnits: 5, surrogatePairs: 1 },
+    { text: '\\u0100\\ud83d\\ude00', nonLatin1CodeUnits: 0, surrogatePairs: 0 }
+])('counts source code units and surrogate pairs without decoding escapes: $text', ({ text, nonLatin1CodeUnits, surrogatePairs }) => {
+    const source = `/*${text}*/`;
+    const result = structuredClone(parseScriptSourceRanges(source, 'fixture.js', true));
+    const sourceMetrics = computeScriptSourceMetrics(source, result.ranges);
+
+    assert.equal(sourceMetrics!.nonLatin1CodeUnits, nonLatin1CodeUnits);
+    assert.equal(sourceMetrics!.surrogatePairs, surrogatePairs);
+    assert.equal(source.length - surrogatePairs, Array.from(source).length);
+    assert.equal(sourceMetrics!.byteLength, source.length * (nonLatin1CodeUnits ? 2 : 1));
+});
+
+test('script metadata distinguishes unavailable, empty, invalid and parsed source', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+        const unavailable = createScript(1, 'missing.js');
+        const empty = createScript(2, 'empty.js', '');
+        const invalid = createScript(3, 'invalid.js', 'function broken(\u0100');
+        const valid = createScript(4, 'valid.js', 'const run = () => 1;');
+
+        for (const script of [unavailable, empty, invalid, valid]) {
+            getFunctionAtScriptOffset(script, 0);
+            script.sourceMetrics = computeScriptSourceMetrics(script.source!, script.functionRanges);
+        }
+
+        assert.equal(unavailable.sourceMetrics, null);
+        assert.equal(unavailable.functionRanges, null);
+        assert.deepEqual(empty.sourceMetrics, { bytesPerChar: 1, byteLength: 0, nonLatin1CodeUnits: 0, surrogatePairs: 0, selfSize: 0 });
+        assert.deepEqual(empty.functionRanges, []);
+        assert.equal(invalid.sourceMetrics!.bytesPerChar, 2);
+        assert.equal(invalid.sourceMetrics!.selfSize, null);
+        assert.equal(invalid.functionRanges, null);
+        assert.equal(valid.functionRanges!.length, 1);
+        assert.equal(valid.sourceMetrics!.selfSize! + valid.functionRanges![0].selfSize, valid.source!.length);
+    } finally {
+        warn.mockRestore();
+        error.mockRestore();
+    }
 });
 
 test.each(['\n', '\r', '\r\n', '\u2028', '\u2029'])('restores V8 call frame coordinates across %j', newline => {
@@ -193,10 +319,38 @@ test('restores all function range types in place after worker transfer', () => {
     }
 });
 
+test('the parsing worker transfers source metrics with type-encoded function ranges', async () => {
+    const sources = ['function outer() { return () => "\u0100"; }', '', 'const text = "caf\u00e9";'];
+    const messages: { scripts: ParseSourceWorkerScriptResult[]; types: string[] }[] = [];
+    const handler = runInNewContext(
+        readFileSync(new URL('../workers/parse-source-worker.js', import.meta.url), 'utf8')
+            .replace(/^(import .*;\n)+/, '') + '\nonmessage;',
+        {
+            parseScriptSourceRanges,
+            computeScriptSourceMetrics,
+            postMessage(message: typeof messages[number], transfer: ArrayBuffer[]) {
+                messages.push(structuredClone(message, { transfer }));
+            }
+        }
+    );
+
+    await handler({ data: sources.map((source, id) => ({ id, source, url: 'fixture.js' })) });
+    assert.equal(messages.length, 1);
+
+    for (let index = 0; index < sources.length; index++) {
+        const { ranges, sourceMetrics } = messages[0].scripts[index];
+        const result = decodeFunctionRangeTypes(ranges, messages[0].types);
+        assert.deepEqual(result, parseScriptSourceRanges(sources[index], 'fixture.js', true));
+        assert.equal(sourceMetrics.selfSize! + result.ranges.reduce((sum, range) => sum + range.selfSize, 0), sources[index].length);
+    }
+});
+
 test.each([true, false])('restores type encoding for an empty result, parsed: %s', parsed => {
-    const input: FunctionRanges<number> = { parsed, ranges: [], starts: [], indexes: [] };
+    const starts = new Uint32Array([]);
+    const indexes = new Int32Array([]);
+    const input: FunctionRanges<number> = { parsed, ranges: [], starts, indexes };
     assert.equal(decodeFunctionRangeTypes(input, []), input);
-    assert.deepEqual(input, { parsed, ranges: [], starts: [], indexes: [] });
+    assert.deepEqual(input, { parsed, ranges: [], starts, indexes });
 });
 
 test('decodes multiple scripts against a shared message dictionary without reusing codes across messages', () => {
@@ -365,10 +519,16 @@ test.each([null, '', 'class Broken {'])('requires parsed class evidence for a di
 
     try {
         const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 1, url: 'fixture.js', source }]);
+        const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 1, url: 'fixture.js', source: source! }]);
         const script = scripts.get(1)!;
         const frame = dictionary.resolveCallFrame({
-            scriptId: 1, url: script.url, functionName: 'Provided', lineNumber: 0, columnNumber: 0, start: 0, end: 20
+            scriptId: 1,
+            url: script.url,
+            functionName: 'Provided',
+            lineNumber: 0,
+            columnNumber: 0,
+            start: 0,
+            end: 20
         }, scripts);
         const identity = { script, start: 0, end: 0, line: 0, column: 0 };
 

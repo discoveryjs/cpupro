@@ -9,6 +9,8 @@ export function allPageHeader(content) {
             'badge{ text: "Modules", className: #.page = "modules" ? "selected", href: #.page != "modules" ? "#modules" }',
             'badge{ text: "Call frames", className: #.page = "call-frames" ? "selected", href: #.page != "call-frames" ? "#call-frames" }',
             'badge{ text: "Locations", className: #.page = "locations" ? "selected", href: #.page != "locations" ? "#locations" }',
+            { view: 'html', data: '"<span>\xA0</span>"' },
+            'badge{ text: "Scripts", className: #.page = "scripts" ? "selected", href: #.page != "scripts" ? "#scripts" }',
             'badge{ text: "Compilations", when: scopeProfile().thread.compilations, className: #.page = "compilations" ? "selected", href: #.page != "compilations" ? "#compilations" }'
         ],
         content

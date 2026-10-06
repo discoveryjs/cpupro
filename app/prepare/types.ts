@@ -1,6 +1,9 @@
 import { Dictionary } from './dictionary.js';
 import { Ownership, UniformCompilationRecord, UniformTraceEvent } from './formats/types.js';
 import { Profile } from './profile.mjs';
+import { FunctionRange } from './misc/parse-script-source-ranges.js';
+import { ScriptCompilation } from './preprocessing/script-compilation.js';
+import { SourceMetrics } from './misc/source-text-metrics.js';
 
 export type V8CpuProfile = {
     startTime: number;
@@ -228,11 +231,19 @@ export type CpuProThread = {
     isolate?: string | null;
     process: CpuProProcess | null;
     profiles: Profile[];
+    scripts: CpuProThreadScript[];
     events: UniformTraceEvent[];
     compilations?: CpuProCompilationRecord[];
     counters: CpuProCounterEntry[];
     userTimings: UniformTraceEvent[]; // subset of user defined events, e.g. cat="blink.user_timing" in Chromium traces
 }
+
+export type CpuProThreadScript = Omit<V8CpuProfileScript, 'id' | 'source'> & {
+    id: number | string;
+    source: string | null;
+    script: CpuProScript | null;
+    compilation: ScriptCompilation | null;
+};
 
 export type CpuProCompilationRecord = Omit<UniformCompilationRecord, 'event' | 'callFrame'> & {
     event: UniformTraceEvent | null;
@@ -413,7 +424,8 @@ export type CpuProScript = {
     sourceMap: SourceMap | null;
     module: CpuProModule;
     callFrames: CpuProCallFrame[];
-    functionRanges: unknown[] | null;
+    functionRanges: FunctionRange[] | null;
+    sourceMetrics: SourceMetrics | null;
     originalFor: CpuProScript | null;
 }
 export interface IProfileScriptsMap {

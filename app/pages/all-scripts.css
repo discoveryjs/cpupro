@@ -1,0 +1,21 @@
+.page-scripts .all-page-table {
+    --sticky-offset: 25px;
+}
+.page-scripts .all-page-table > tbody > .view-table-row > td:last-child {
+    min-width: 260px;
+    overflow-wrap: anywhere;
+}
+.page-scripts .scripts-summary {
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+.page-scripts .all-page-table .view-table-cell.nowrap {
+    white-space: nowrap;
+}
+.page-scripts .utf-source {
+    margin: 0;
+}
+.page-scripts .utf-source .spotlight.utf-character {
+    background: #d5ac4250;
+    outline: 1px solid #d5ac42;
+}

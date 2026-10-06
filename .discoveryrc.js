@@ -33,6 +33,8 @@ module.exports = {
             './pages/all-modules.js',
             './pages/all-owners.js',
             './pages/all-packages.js',
+            './pages/all-scripts.js',
+            './pages/all-scripts.css',
             './pages/all-page-common.css',
             './pages/call-frame.css',
             './pages/call-frame.js',

@@ -3,8 +3,8 @@ import { parse } from '@babel/parser';
 export type FunctionRanges<Type = string> = {
     parsed: boolean;
     ranges: FunctionRange<Type>[];
-    starts: number[];
-    indexes: number[];
+    starts: Uint32Array<ArrayBuffer>;
+    indexes: Int32Array<ArrayBuffer>;
 };
 export type FunctionRange<Type = string> = {
     type: Type;
@@ -19,6 +19,7 @@ export type FunctionRange<Type = string> = {
     end: number;
     endLine: number;
     endColumn: number;
+    selfSize: number;
 }
 type ASTNode = {
     type: string;
@@ -59,7 +60,28 @@ export function decodeFunctionRangeTypes(ranges: FunctionRanges<number>, types: 
     return decoded as FunctionRanges;
 }
 
-export function parseScriptSourceRanges(code: string, url?: string | null, fromWorker?: boolean): FunctionRanges {
+function computeSelfSize(functionRanges: FunctionRanges, code: string): void {
+    const { starts, indexes, ranges } = functionRanges;
+    const scriptSize = code.length;
+
+    for (let i = 0; i < starts.length; i++) {
+        const rangeIndex = indexes[i];
+
+        if (rangeIndex !== -1) {
+            const size = i < starts.length - 1
+                ? starts[i + 1] - starts[i]
+                : scriptSize - starts[i];
+
+            ranges[rangeIndex].selfSize += size;
+        }
+    }
+}
+
+export function parseScriptSourceRanges(
+    code: string,
+    url?: string | null,
+    fromWorker?: boolean
+): FunctionRanges {
     if (!fromWorker) {
         console.warn('parseScriptSourceRanges should be called from a worker thread for performance reasons', { url, code });
     }
@@ -68,8 +90,8 @@ export function parseScriptSourceRanges(code: string, url?: string | null, fromW
     const functionRanges: FunctionRanges = {
         parsed: false,
         ranges: [],
-        starts: [],
-        indexes: []
+        starts: new Uint32Array(),
+        indexes: new Int32Array()
     };
 
     try {
@@ -94,6 +116,7 @@ export function parseScriptSourceRanges(code: string, url?: string | null, fromW
     // build index for faster search
     if (functionRanges.ranges.length > 0) {
         Object.assign(functionRanges, buildFunctionRangesIndex(functionRanges));
+        computeSelfSize(functionRanges, code);
     }
 
     functionRanges.parsed = true;
@@ -161,7 +184,8 @@ function collectFunctionRangesFromAST(ast: ASTNode, code: string): FunctionRange
                 endColumn: node.loc.end.column,
                 callFrameStart,
                 callFrameStartLine,
-                callFrameStartColumn
+                callFrameStartColumn,
+                selfSize: 0
             });
         }
 

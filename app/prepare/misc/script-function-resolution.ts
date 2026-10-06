@@ -2,6 +2,7 @@ import { CpuProCallFrame, CpuProScript } from '../types';
 import { createLineBoundaries } from './line-boundaries.js';
 import { createParseWorker } from '../workers/index.js';
 import { FunctionRange, FunctionRanges, decodeFunctionRangeTypes, parseScriptSourceRanges } from './parse-script-source-ranges.js';
+import { ParseSourceWorkerScriptResult } from '../workers/types';
 
 const scriptLines = new WeakMap<CpuProScript, ReturnType<typeof createLineBoundaries>>();
 const scriptFunctionRanges = new WeakMap<CpuProScript, FunctionRanges>();
@@ -16,24 +17,30 @@ function getScriptLineBoundaries(script: CpuProScript | null) {
         lines = createLineBoundaries(script.source);
         scriptLines.set(script, lines);
     }
+
     return lines;
 }
 
 function getScriptFunctionRanges(script: CpuProScript | null) {
-    if (!script || !script.source) {
+    if (!script || script.source === null) {
         return null;
     }
 
     let functionRanges = scriptFunctionRanges.get(script);
     if (!functionRanges) {
         functionRanges = parseScriptSourceRanges(script.source, script.url);
-        scriptFunctionRanges.set(script, functionRanges);
+        setScriptFunctionRanges(script, functionRanges);
     }
 
     return functionRanges;
 }
 
-function binarySearchFunctionRangeIndex(starts: number[], position: number) {
+function setScriptFunctionRanges(script: CpuProScript, ranges: FunctionRanges) {
+    script.functionRanges = ranges.parsed ? ranges.ranges : null;
+    scriptFunctionRanges.set(script, ranges);
+}
+
+function binarySearchFunctionRangeIndex(starts: Uint32Array<ArrayBuffer>, position: number) {
     let left = 0;
     let right = starts.length - 1;
 
@@ -59,22 +66,24 @@ export function findFunctionAtPosition(functionRanges: FunctionRanges, position:
     let candidate: FunctionRange | null = null;
 
     if (functionRanges.starts.length > 0) {
+        const { starts, indexes, ranges } = functionRanges;
         const rangeIndex = binarySearchFunctionRangeIndex(
-            functionRanges.starts,
+            starts,
             position
         );
 
         if (rangeIndex !== -1) {
-            const rangeIndex2 = functionRanges.indexes[rangeIndex];
+            const rangeIndex2 = indexes[rangeIndex];
 
             if (rangeIndex2 !== -1) {
-                candidate = functionRanges.ranges[rangeIndex2];
+                candidate = ranges[rangeIndex2];
             }
 
             if ((candidate === null || candidate.callFrameStart !== position) && rangeIndex > 0) {
-                const prevIndex = functionRanges.indexes[rangeIndex - 1];
+                const prevIndex = indexes[rangeIndex - 1];
+
                 if (prevIndex !== -1) {
-                    const prevRange = functionRanges.ranges[prevIndex];
+                    const prevRange = ranges[prevIndex];
 
                     if (prevRange.end === position) {
                         candidate = prevRange;
@@ -243,10 +252,7 @@ type ParseWorkerPayload = Array<{
     source: string;
 }>;
 type ParseWorkerResult = {
-    scripts: Array<{
-        id: number;
-        ranges: FunctionRanges<number>;
-    }>;
+    scripts: ParseSourceWorkerScriptResult[];
     types: string[];
 };
 type WorkerEntry = {
@@ -320,7 +326,7 @@ const parseWorkerPool = (function createParseWorkerPool() {
 
     return {
         MAX_WORKERS,
-        parsingScripts: new WeakSet<CpuProScript>(),
+        parsingScripts: new WeakMap<CpuProScript, Promise<void>>(),
 
         async parse(payload: ParseWorkerPayload) {
             const entry = await getWorkerEntry();
@@ -394,32 +400,45 @@ export function terminateParseWorkerPool(immediately: boolean = false): void {
 export async function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProScript>): Promise<void> {
     const parsingScripts = parseWorkerPool.parsingScripts;
     const scriptsToParse: CpuProScript[] = [];
+    const pending = new Set<Promise<void>>();
     let totalSourceSize = 0;
 
     for (const script of scripts) {
+        const parsing = parsingScripts.get(script);
+
         // Skip scripts that are have no source code
-        if (!script.source || !script.source.length) {
+        if (script.source === null) {
             continue;
         }
 
         // Skip scripts that have already been processed
-        if (scriptFunctionRanges.has(script) || parsingScripts.has(script)) {
+        if (scriptFunctionRanges.has(script)) {
+            continue;
+        }
+
+        if (parsing) {
+            pending.add(parsing);
+            continue;
+        }
+
+        if (script.source.length === 0) {
+            setScriptFunctionRanges(script, parseScriptSourceRanges('', script.url, true));
             continue;
         }
 
         totalSourceSize += script.source.length;
         scriptsToParse.push(script);
-        parsingScripts.add(script);
     }
 
     if (scriptsToParse.length === 0) {
+        await Promise.all(pending);
         return;
     }
 
     const workerCount = Math.min(
         parseWorkerPool.MAX_WORKERS,
         scriptsToParse.length,
-        Math.ceil(totalSourceSize / 4_000_000),
+        Math.max(1, Math.ceil(totalSourceSize / 4_000_000)),
         Math.max(1, Math.floor(navigator.hardwareConcurrency / 2))
     );
 
@@ -439,7 +458,7 @@ export async function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProS
         scriptBucketsSizes[minBucketIndex] += scriptsToParse[i].source!.length;
     }
 
-    await Promise.all(Array.from({ length: workerCount }, async (_, bucketIndex) => {
+    const buckets = Array.from({ length: workerCount }, async (_, bucketIndex) => {
         const scriptsForWorker = scriptBuckets[bucketIndex];
 
         try {
@@ -450,17 +469,28 @@ export async function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProS
             })));
 
             for (let i = 0; i < scriptParsedResults.length; i++) {
-                const ranges = decodeFunctionRangeTypes(scriptParsedResults[i].ranges, types);
+                const { sourceMetrics, ranges: rawRanges } = scriptParsedResults[i];
+                const ranges = decodeFunctionRangeTypes(rawRanges, types);
                 const script = scriptsForWorker[i];
 
-                // FIXME: types will be fixed later
-                script.functionRanges = ranges.ranges;
-                scriptFunctionRanges.set(script, ranges);
+                setScriptFunctionRanges(script, ranges);
+                script.sourceMetrics = sourceMetrics;
             }
         } finally {
             for (const script of scriptsForWorker) {
                 parsingScripts.delete(script);
             }
         }
-    }));
+    });
+
+    // the bucket bodies run synchronously up to the first await, so the registration precedes any cleanup
+    buckets.forEach((bucket, index) => {
+        pending.add(bucket);
+
+        for (const script of scriptBuckets[index]) {
+            parsingScripts.set(script, bucket);
+        }
+    });
+
+    await Promise.all(pending);
 }

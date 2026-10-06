@@ -266,6 +266,7 @@ export function createScript(id: number, url: string, source: string | null = nu
         module: null as unknown as CpuProModule,
         callFrames: [],
         functionRanges: null,
+        sourceMetrics: null,
         originalFor: null
     };
 }

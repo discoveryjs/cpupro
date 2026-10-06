@@ -11,6 +11,7 @@ import { methods as filterMethods, assertions as filterAssertions } from './filt
 import { methods as viewportMethods } from './viewport.js';
 import { methods as eventsMethods } from './events.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
+import { scriptSourceSummary, scriptSourceFunctions, parseScriptSources } from './script-compilation.js';
 
 const sessionColorComponents = new Map();
 const sessionColor = new Map();
@@ -61,6 +62,9 @@ export const methods = {
     ...filterMethods,
     ...viewportMethods,
     ...eventsMethods,
+    scriptSourceSummary,
+    scriptSourceFunctions,
+    parseScriptSources,
 
     order(value) {
         return typeOrder[value] || 100;

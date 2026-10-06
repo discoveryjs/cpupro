@@ -9,7 +9,8 @@ import { ProfileLineType } from './prepare/lines/types.js';
 import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
 import { createWorkHandler } from './prepare/misc/work.js';
-import { OriginalScriptsMap } from './prepare/preprocessing/scripts.js';
+import { OriginalScriptsMap, ProfileScriptsMap } from './prepare/preprocessing/scripts.js';
+import { linkThreadScripts } from './prepare/preprocessing/script-compilation.js';
 import { terminateParseWorkerPool } from './prepare/misc/script-function-resolution.js';
 import { now, perfMeasure } from './prepare/misc/time-utils.js';
 import { extractThreadCounters } from './prepare/preprocessing/counters.js';
@@ -108,9 +109,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 dict.setPackageNameForOrigin(new URL(origin).host, name);
             }
 
+            const scriptsMap = new ProfileScriptsMap(dict, originalScripts, profileData._scripts);
             const profile = await work.measure('create profile', () => createProfile(profileData, {
                 dictionary: dict,
                 originalScripts,
+                scriptsMap,
                 runtime: null,
                 compilations: thread.compilations,
                 ownership: rawSession.ownership ?? null,
@@ -133,6 +136,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             // assign thread to profile
             profile.thread = thread;
             thread.profiles.push(profile);
+            linkThreadScripts(thread, scriptsMap);
 
             // profiles accross all the dataset
             profiles.push(profile);

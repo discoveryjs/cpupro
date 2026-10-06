@@ -23,6 +23,12 @@ model.nav.menu.append({
     }
 });
 
+model.nav.before('discovery-page', {
+    when: '#.data.defaultSession.shared.scripts and #.page != "scripts"',
+    text: 'Scripts',
+    href: '#scripts'
+});
+
 if (FEATURE_MULTI_PROFILES) {
     model.nav.before('discovery-page', {
         when: '#.data.defaultSession.processes.threads.[events] and #.page != "events"',

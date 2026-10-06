@@ -48,7 +48,17 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
 
     // Pre-fill threads
     for (const rawThread of rawSession.threads || []) {
-        const thread: CpuProThread = Object.assign(createThread(rawThread.pid, rawThread.tid), rawThread);
+        const { scripts, ...threadData } = rawThread;
+        const thread: CpuProThread = Object.assign(
+            createThread(rawThread.pid, rawThread.tid),
+            threadData
+        );
+
+        thread.scripts = scripts.map(script => ({
+            ...script,
+            script: null,
+            compilation: null
+        }));
 
         if (rawThread.compilations) {
             thread.compilations = prepareCompilationRecords(rawThread.compilations, thread.events);
@@ -116,6 +126,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
             name: null,
             process: null,
             profiles: [],
+            scripts: [],
             events: [],
             counters: [],
             userTimings: []
