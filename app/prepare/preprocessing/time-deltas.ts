@@ -62,7 +62,12 @@ export function createTimelineAxis(
 // Fixes negative deltas in a `timeDeltas` array and ensures the integrity and chronological order of the associated samples.
 // It adjusts the deltas to ensure all values are non-negative by redistributing negative deltas across adjacent elements.
 // Additionally, it corrects the order of associated samples to match the adjusted timing.
-export function fixTimeDeltasOrderIfNeeded(timeDeltas: number[], samples: number[], sampleScriptOffsets: number[] | null = null) {
+export function fixTimeDeltasOrderIfNeeded(
+    timeDeltas: number[],
+    samples: number[],
+    sampleScriptOffsets: number[] | null = null,
+    allocationMapping: number[] | null = null
+) {
     for (let i = 0; i < timeDeltas.length; i++) {
         const delta = timeDeltas[i];
 
@@ -86,6 +91,11 @@ export function fixTimeDeltasOrderIfNeeded(timeDeltas: number[], samples: number
                 // swap sampleScriptOffsets
                 if (sampleScriptOffsets !== null) {
                     swap(sampleScriptOffsets, i, i - 1);
+                }
+
+                // allocation ids are recorded per sample, so they move with it
+                if (allocationMapping !== null && i < allocationMapping.length) {
+                    swap(allocationMapping, i, i - 1);
                 }
 
                 // move back two indices to re-evaluate the previous delta in case it became negative due to the adjustment

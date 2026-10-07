@@ -134,7 +134,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         fixTimeDeltasOrderIfNeeded(
             data.timeDeltas,
             data.samples,
-            _dataScriptOffsets
+            _dataScriptOffsets,
+            data._cpuproAllocationMapping ?? null
         )
     );
 

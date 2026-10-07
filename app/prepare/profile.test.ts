@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fixtures/profile.js';
 import { createProfile } from './profile.mjs';
+import { noopWorkHandler } from './misc/work.js';
 
 const dimensions = ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners'] as const;
 const cases: { name: string; options: ProfileFixtureOptions; populations: number }[] = [
@@ -47,6 +48,37 @@ describe('profile breakdowns', () => {
         assert.deepEqual(profile.lines.map(line => line.type), ['memline']);
         assert.deepEqual(profile.memline!.breakdowns.map(breakdown => breakdown.kind), ['location']);
         assert.deepEqual([...profile.memline!.breakdowns[0].population.values], [16, 32]);
+    });
+
+    test('binds allocation ranges to samples after fixing out-of-order time deltas', async () => {
+        const createNode = (id: number, functionName: string, children?: number[]) => ({
+            id,
+            children,
+            callFrame: { scriptId: 0, url: '', functionName, lineNumber: -1, columnNumber: -1 }
+        });
+        const profile = await createProfile({
+            startTime: 0,
+            endTime: 40,
+            nodes: [
+                createNode(1, '(root)', [2, 3, 4]),
+                createNode(2, 'a'),
+                createNode(3, 'b'),
+                createNode(4, 'c')
+            ],
+            samples: [2, 3, 4],
+            timeDeltas: [10, 20, -5],
+            _samplePositions: [0, 0, 0],
+            _samplesInterval: 10,
+            // sample "c" was taken before sample "b" despite their order in the input
+            _cpuproAllocationMapping: [1, 4, 2],
+            _cpuproAllocationIds: [1, 2, 3, 4],
+            _cpuproAllocationSizes: [16, 32, 48, 64]
+        }, { work: noopWorkHandler });
+        const sampleToAllocation = profile.timeline!.mappings.memline._mapping;
+        const allocationToSample = profile.memline!.mappings.timeline._mapping;
+
+        assert.deepEqual([...sampleToAllocation], [1, 2, 4]);
+        assert.deepEqual([...allocationToSample], [0, 1, 2, 2]);
     });
 
     test('keeps sink outside breakdown metrics and preserves baseline bounds', async () => {
