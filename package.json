@@ -30,6 +30,9 @@
         "./build/*.html": "./build/*.html",
         "./package.json": "./package.json"
     },
+    "engines": {
+        "node": "^20.16.0 || ^22.3.0 || >=23.0.0"
+    },
     "scripts": {
         "start": "discovery",
         "test": "vitest run",

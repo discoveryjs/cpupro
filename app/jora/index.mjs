@@ -10,6 +10,7 @@ import { methods as ownershipMethods } from './ownership.js';
 import { methods as filterMethods, assertions as filterAssertions } from './filters.js';
 import { methods as viewportMethods } from './viewport.js';
 import { methods as eventsMethods } from './events.js';
+import { methods as signalsMethods } from './signals.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 import { scriptSourceSummary, scriptSourceFunctions, parseScriptSources } from './script-compilation.js';
 
@@ -62,6 +63,7 @@ export const methods = {
     ...filterMethods,
     ...viewportMethods,
     ...eventsMethods,
+    ...signalsMethods,
     scriptSourceSummary,
     scriptSourceFunctions,
     parseScriptSources,
