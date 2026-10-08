@@ -1,6 +1,7 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
 import type { SourceMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { Ownership, UniformCompilationRecord, UniformProcess, UniformProfilingSession, UniformThread, UniformTraceEvent } from './types.js';
 import { getNumericArrayOrder } from './utils.js';
 
@@ -39,6 +40,10 @@ type ScriptCatchupEventData = {
     splitCount?: number;
     splitIndex?: number;
 }
+type ScriptSourceChunks = Map<V8CpuProfileScript, {
+    splitCount: number;
+    chunks: Map<number, string>;
+}>;
 type AllocationSamples = {
     ids: number[];
     sizes?: number[];
@@ -192,7 +197,105 @@ function getEventId(event: ChromiumTraceEvent): string | number | null {
     return null;
 }
 
+// Repeated identical deliveries are normal; differing content is a suspected V8 tracing defect
+function isConflictingSource(script: V8CpuProfileScript, source: string) {
+    return typeof script.source === 'string' && script.source !== source;
+}
+
+function applyScriptSourceText(
+    diagnose: Diagnose,
+    scriptSourceChunks: ScriptSourceChunks,
+    script: V8CpuProfileScript,
+    event: ChromiumTraceEvent,
+    props: ScriptCatchupEventData
+) {
+    const { sourceText } = props;
+    const origin = { scriptId: script.id, pid: event.pid, tid: event.tid };
+
+    if (typeof sourceText !== 'string') {
+        diagnose('warn', 'Ignoring script source of a non-string type', {
+            ...origin,
+            type: typeof sourceText
+        });
+        return;
+    }
+
+    if (event.name === 'ScriptCatchup') {
+        const pending = scriptSourceChunks.get(script);
+
+        if (isConflictingSource(script, sourceText)) {
+            diagnose('warn', 'Script source redelivered with different content', origin);
+        }
+
+        if (pending) {
+            diagnose('warn', 'Script source snapshot discards incomplete chunks', {
+                ...origin,
+                received: pending.chunks.size,
+                splitCount: pending.splitCount
+            });
+        }
+
+        script.source = sourceText;
+        scriptSourceChunks.delete(script);
+        return;
+    }
+
+    const { splitCount = 0, splitIndex = -1 } = props;
+
+    if (!Number.isInteger(splitCount) || splitCount <= 0 ||
+        !Number.isInteger(splitIndex) || splitIndex < 0 || splitIndex >= splitCount) {
+        diagnose('warn', 'Ignoring script source chunk with invalid split metadata', {
+            ...origin,
+            splitCount,
+            splitIndex
+        });
+        return;
+    }
+
+    let sourceChunks = scriptSourceChunks.get(script);
+
+    if (sourceChunks && sourceChunks.splitCount !== splitCount) {
+        diagnose('warn', 'Script source split count changed, dropping incomplete chunks', {
+            ...origin,
+            splitCount: sourceChunks.splitCount,
+            newSplitCount: splitCount,
+            received: sourceChunks.chunks.size
+        });
+    }
+
+    if (!sourceChunks || sourceChunks.splitCount !== splitCount) {
+        scriptSourceChunks.set(script, sourceChunks = { splitCount, chunks: new Map() });
+    }
+
+    const previousChunk = sourceChunks.chunks.get(splitIndex);
+
+    if (previousChunk !== undefined && previousChunk !== sourceText) {
+        diagnose('warn', 'Script source chunk redelivered with different content', {
+            ...origin,
+            splitIndex
+        });
+    }
+
+    sourceChunks.chunks.set(splitIndex, sourceText);
+
+    if (sourceChunks.chunks.size === splitCount) {
+        let source = '';
+
+        for (let index = 0; index < splitCount; index++) {
+            source += sourceChunks.chunks.get(index)!;
+        }
+
+        if (isConflictingSource(script, source)) {
+            diagnose('warn', 'Script source redelivered with different content', origin);
+        }
+
+        script.source = source;
+        scriptSourceChunks.delete(script);
+    }
+}
+
 function addTraceEventToThread(
+    diagnose: Diagnose,
     threadsMap: Map<string, EventChannel>,
     event: ChromiumTraceEvent,
     data: unknown,
@@ -208,7 +311,12 @@ function addTraceEventToThread(
 
     if (event.ph === 'e' || event.ph === 'f') {
         if (eventId === null) {
-            console.warn(`Ignoring ${event.cat}/${event.name} end event without id (pid: ${event.pid}, tid: ${event.tid})`);
+            diagnose('warn', 'Ignoring end event without id', {
+                cat: event.cat,
+                name: event.name,
+                pid: event.pid,
+                tid: event.tid
+            });
             return;
         }
 
@@ -219,7 +327,13 @@ function addTraceEventToThread(
             eventMap.delete(eventId);
             return;
         } else {
-            console.warn(`Could not find start event for end event with id ${eventId}`, event);
+            diagnose('warn', 'Could not find start event for end event', {
+                eventId,
+                cat: event.cat,
+                name: event.name,
+                pid: event.pid,
+                tid: event.tid
+            });
             duration = tm;
             tm = -1;
         }
@@ -238,7 +352,12 @@ function addTraceEventToThread(
 
     if (event.ph === 'b' || event.ph === 's') {
         if (eventId === null) {
-            console.warn(`Ignoring ${event.cat}/${event.name} begin event without id (pid: ${event.pid}, tid: ${event.tid})`);
+            diagnose('warn', 'Ignoring begin event without id', {
+                cat: event.cat,
+                name: event.name,
+                pid: event.pid,
+                tid: event.tid
+            });
             return;
         }
 
@@ -254,7 +373,8 @@ function addTraceEventToThread(
 }
 
 export function extractFromChromiumPerformanceProfile(
-    events: ChromiumTraceEventsSource | ChromiumTraceEventsSource['traceEvents']
+    events: ChromiumTraceEventsSource | ChromiumTraceEventsSource['traceEvents'],
+    diagnose: Diagnose = diagnoseToConsole
 ): UniformProfilingSession {
     // Chrome tracing contain multiple CpuProfile events
     const profileById = new Map<string, V8CpuProfile>();
@@ -266,11 +386,7 @@ export function extractFromChromiumPerformanceProfile(
     // Maps pid/tid pairs to thread names
     const processesMap = new Map<number, UniformProcess>();
     const eventChannels = new Map<string, EventChannel>();
-    // FIXME: Diagnose incomplete chunk sets left after extraction instead of silently discarding them.
-    const scriptSourceChunks = new Map<V8CpuProfileScript, {
-        splitCount: number;
-        chunks: Map<number, string>;
-    }>();
+    const scriptSourceChunks: ScriptSourceChunks = new Map();
 
     // Metadata and source maps
     let metadata: ChromiumTraceEventsMetadata = {};
@@ -413,50 +529,15 @@ export function extractFromChromiumPerformanceProfile(
                             script.sourceMapUrl = props.sourceMapUrl;
                             break;
 
-                        case 'sourceText': {
-                            if (typeof props.sourceText !== 'string') {
-                                // FIXME: Report invalid sourceText in trace diagnostics.
-                                break;
-                            }
-
-                            if (event.name === 'ScriptCatchup') {
-                                // FIXME: Diagnose repeated/conflicting snapshots (suspected V8 tracing defect) and discarded pending chunks.
-                                script.source = props.sourceText;
-                                scriptSourceChunks.delete(script);
-                                break;
-                            }
-
-                            const { splitCount = 0, splitIndex = -1 } = props;
-
-                            if (!Number.isInteger(splitCount) || splitCount <= 0 ||
-                                !Number.isInteger(splitIndex) || splitIndex < 0 || splitIndex >= splitCount) {
-                                // FIXME: Report invalid split metadata rather than silently ignoring the chunk.
-                                break;
-                            }
-
-                            let sourceChunks = scriptSourceChunks.get(script);
-
-                            if (!sourceChunks || sourceChunks.splitCount !== splitCount) {
-                                // FIXME: Diagnose changed split counts before abandoning an existing incomplete set.
-                                scriptSourceChunks.set(script, sourceChunks = { splitCount, chunks: new Map() });
-                            }
-
-                            // FIXME: Diagnose duplicate/conflicting indexes; overwriting only prevents repeated text from being appended.
-                            sourceChunks.chunks.set(splitIndex, props.sourceText);
-
-                            if (sourceChunks.chunks.size === splitCount) {
-                                let source = '';
-
-                                for (let index = 0; index < splitCount; index++) {
-                                    source += sourceChunks.chunks.get(index)!;
-                                }
-
-                                // FIXME: Diagnose repeated/conflicting complete deliveries even after their staging state is released.
-                                script.source = source;
-                                scriptSourceChunks.delete(script);
-                            }
+                        case 'sourceText':
+                            applyScriptSourceText(
+                                diagnose,
+                                scriptSourceChunks,
+                                script,
+                                event,
+                                props
+                            );
                             break;
-                        }
                     }
                 }
                 break;
@@ -486,7 +567,10 @@ export function extractFromChromiumPerformanceProfile(
                     : profileDataById.get(`${event.pid}:${event.id}`);
 
                 if (!profileData) {
-                    console.warn(`Ignoring ProfileChunk for undeclared Profile (pid: ${event.pid}, id: ${event.id})`);
+                    diagnose('warn', 'Ignoring ProfileChunk for undeclared Profile', {
+                        pid: event.pid,
+                        id: event.id
+                    });
                     continue;
                 }
 
@@ -526,7 +610,7 @@ export function extractFromChromiumPerformanceProfile(
 
                 if (event.cat === 'disabled-by-default-devtools.timeline' &&
                     event.name === 'UpdateCounters') {
-                    addTraceEventToThread(eventChannels, event, event.args.data);
+                    addTraceEventToThread(diagnose, eventChannels, event, event.args.data);
                     break;
                 }
 
@@ -542,15 +626,21 @@ export function extractFromChromiumPerformanceProfile(
                 }
 
                 if (sampleTraceId !== null) {
-                    addTraceEventToThread(eventChannels, event, data, sampleTraceId);
+                    addTraceEventToThread(diagnose, eventChannels, event, data, sampleTraceId);
                 } else if (event.cat === 'blink.user_timing') {
                     if (event.ph === 'b' || event.ph === 'e') {
-                        addTraceEventToThread(eventChannels, event, event.args, event.args?.traceId || null);
+                        addTraceEventToThread(
+                            diagnose,
+                            eventChannels,
+                            event,
+                            event.args,
+                            event.args?.traceId || null
+                        );
                     }
                 } else if (event.cat === 'disabled-by-default-v8.compile' ||
                     event.cat === 'disabled-by-default-v8.compilation_allocations' ||
                     event.ph === 'X' || event.ph === 'b' || event.ph === 'e') {
-                    addTraceEventToThread(eventChannels, event, event.args);
+                    addTraceEventToThread(diagnose, eventChannels, event, event.args);
                 }
             }
         }
@@ -560,8 +650,17 @@ export function extractFromChromiumPerformanceProfile(
         throw new Error('Could not find CPU profile in Timeline');
     }
 
+    for (const [script, { splitCount, chunks }] of scriptSourceChunks) {
+        diagnose('warn', 'Incomplete script source chunks left after extraction', {
+            scriptId: script.id,
+            url: script.url,
+            splitCount,
+            received: chunks.size
+        });
+    }
+
     for (const { thread } of eventChannels.values()) {
-        const compilations = extractCompilations(thread);
+        const compilations = extractCompilations(thread, diagnose);
 
         if (compilations.length > 0) {
             thread.compilations = compilations;
@@ -608,7 +707,7 @@ export function extractFromChromiumPerformanceProfile(
         const idsOrder = ids ? getNumericArrayOrder(ids) : undefined;
 
         if (idsOrder === 'unordered') {
-            console.warn('Ignoring allocation data with unsorted IDs', { pid, tid });
+            diagnose('warn', 'Ignoring allocation data with unsorted IDs', { pid, tid });
         } else if (allocationChunks.length > 0) {
             const allocationsCount = ids ? ids.length : 0;
 
@@ -627,6 +726,7 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationCodeType = buildChunkedVector(allocationChunks, 'codeTypes', allocationsCount);
             profile._cpuproAllocationCodeTypeNames = buildChunkedMap(profile._cpuproAllocationCodeType, allocationChunks, 'codeTypesDict');
             profile._cpuproAllocationGc = updateAllocationsGc(
+                diagnose,
                 ids,
                 profile._cpuproAllocationIdsOrder,
                 allocationGcs,
@@ -659,7 +759,10 @@ export function extractFromChromiumPerformanceProfile(
     };
 }
 
-function extractCompilations(thread: UniformThread): UniformCompilationRecord[] {
+function extractCompilations(
+    thread: UniformThread,
+    diagnose: Diagnose
+): UniformCompilationRecord[] {
     const source = 'disabled-by-default-v8.compilation_allocations';
     const records: UniformCompilationRecord[] = [];
     const { events } = thread;
@@ -706,7 +809,10 @@ function extractCompilations(thread: UniformThread): UniformCompilationRecord[] 
     // Do not invent a combined identity for inconsistent input. Source isolate values
     // remain recoverable through eventIndex, but automatic binding must remain unresolved.
     if (conflictingIsolates) {
-        console.warn('Conflicting compilation isolates for thread', thread.pid, thread.tid);
+        diagnose('warn', 'Conflicting compilation isolates for thread', {
+            pid: thread.pid,
+            tid: thread.tid
+        });
     }
 
     thread.isolate = conflictingIsolates ? null : isolate;
@@ -835,6 +941,7 @@ function buildChunkedArray(
 }
 
 function updateAllocationsGc(
+    diagnose: Diagnose,
     allocationIds: number[] | undefined,
     allocationIdsOrder: V8CpuProfile['_cpuproAllocationIdsOrder'],
     allocationGcChunks: AllocationGc[],
@@ -872,7 +979,7 @@ function updateAllocationsGc(
             if (allocationIds[index] !== allocationIds[index - 1] + 1) {
                 const indexNextExpected = allocationIds.indexOf(allocationIds[index - 1] + 1, index);
 
-                console.warn('Allocation ids are not consecutive, which will make GC mapping slower', {
+                diagnose('warn', 'Allocation ids are not consecutive, GC mapping will be slower', {
                     index,
                     id: allocationIds[index - 1],
                     nextId: allocationIds[index],

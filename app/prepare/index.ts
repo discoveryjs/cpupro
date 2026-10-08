@@ -3,6 +3,7 @@ import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './f
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuProfile, isV8LogProfile } from './formats/v8-log-processed.js';
 import type { V8CpuProfile, V8CpuProfileCpuproExtensions } from './types.js';
+import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
 import { FEATURE_MULTI_PROFILES } from './const.js';
 import { UniformProfile, UniformProfilingDataset, UniformProfilingSession } from './formats/types.js';
 import { V8LogProfile } from './formats/v8-log-processed/types.js';
@@ -59,16 +60,17 @@ function createProfilingSession(profiles: UniformProfile[] = []): UniformProfili
 function processProfiles(
     inputProfiles: (V8LogProfile | V8CpuProfile)[],
     extensions: V8CpuProfileCpuproExtensions = {},
-    rejectData: (reason: string, view?: unknown) => void = () => {}
+    rejectData: (reason: string, view?: unknown) => void = () => {},
+    diagnose: Diagnose = diagnoseToConsole
 ): UniformProfile[] {
     const result: V8CpuProfile[] = [];
 
     for (let profile of inputProfiles) {
         if (isV8LogProfile(profile)) {
-            result.push(convertV8LogIntoCpuProfile(profile));
+            result.push(convertV8LogIntoCpuProfile(profile, diagnose.withScope('v8-log')));
         } else if (isCPUProfile(profile)) {
             profile = unrollHeadToNodesIfNeeded(profile);
-            profile = unwrapSamplesIfNeeded(profile);
+            profile = unwrapSamplesIfNeeded(profile, diagnose.withScope('cpuprofile'));
             convertParentIntoChildrenIfNeeded(profile);
             normalizeCpuProfile(profile);
             Object.assign(profile, extensions);
@@ -93,7 +95,11 @@ function processProfiles(
     return result;
 }
 
-export function extractAndValidate(data: unknown, rejectData: (reason: string, view?: unknown) => void) {
+export function extractAndValidate(
+    data: unknown,
+    rejectData: (reason: string, view?: unknown) => void,
+    diagnose: Diagnose = diagnoseToConsole
+) {
     let extensions: V8CpuProfileCpuproExtensions = {};
     let result: UniformProfilingDataset | null = null;
 
@@ -112,8 +118,11 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
 
     // see https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#heading=h.lc5airzennvk
     if (isChromiumPerformanceProfile(data)) {
-        const session = extractFromChromiumPerformanceProfile(data);
-        session.profiles = processProfiles(session.profiles, extensions, rejectData);
+        const session = extractFromChromiumPerformanceProfile(
+            data,
+            diagnose.withScope('chromium-performance-profile')
+        );
+        session.profiles = processProfiles(session.profiles, extensions, rejectData, diagnose);
         result = createProfilingDataset([session]);
     } else if (Array.isArray(data)) {
         const profiles = data.map(entry =>
@@ -123,12 +132,12 @@ export function extractAndValidate(data: unknown, rejectData: (reason: string, v
 
         if (isV8LogProfile(profiles[0]) || isCPUProfile(profiles[0])) {
             result = createProfilingDataset([
-                createProfilingSession(processProfiles(profiles, extensions, rejectData))
+                createProfilingSession(processProfiles(profiles, extensions, rejectData, diagnose))
             ]);
         }
     } else if (isV8LogProfile(data) || isCPUProfile(data)) {
         result = createProfilingDataset([
-            createProfilingSession(processProfiles([{ ...data }], extensions, rejectData))
+            createProfilingSession(processProfiles([{ ...data }], extensions, rejectData, diagnose))
         ]);
     } else {
         rejectData('Unknown format');

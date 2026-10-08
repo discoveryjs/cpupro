@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { extractFromChromiumPerformanceProfile } from './chromium-performance-profile.js';
 import { unwrapSamplesIfNeeded } from './cpuprofile.js';
+import { createDiagnosticsCollector, type Diagnose } from '../diagnostics.js';
 import { collectProfileUsedScriptIds } from '../preprocessing/scripts.js';
 import { getNumericArrayOrder } from './utils.js';
 import { Dictionary } from '../dictionary.js';
@@ -376,6 +377,67 @@ test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted alloc
     }
 });
 
+test('reports extraction problems to the provided diagnose instead of the console', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const userTiming = { pid: 1, tid: 2, cat: 'blink.user_timing', args: { traceId: 1 } };
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+        extractFromChromiumPerformanceProfile([
+            { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+            { ...userTiming, name: 'Mark', ph: 'e', ts: 5, id: 'a' },
+            { ...userTiming, name: 'Mark', ph: 'e', ts: 6 },
+            { ...base, name: 'ProfileChunk', id: 'unknown', args: { data: {} } }
+        ], diagnose);
+
+        assert.deepEqual(warning.mock.calls, []);
+        assert.deepEqual(diagnostics, [
+            {
+                level: 'warn',
+                scope: [],
+                message: 'Ignoring ProfileChunk for undeclared Profile',
+                details: { pid: 1, id: 'unknown' }
+            },
+            {
+                level: 'warn',
+                scope: [],
+                message: 'Could not find start event for end event',
+                details: {
+                    eventId: 'Mark:a',
+                    cat: 'blink.user_timing',
+                    name: 'Mark',
+                    pid: 1,
+                    tid: 2
+                }
+            },
+            {
+                level: 'warn',
+                scope: [],
+                message: 'Ignoring end event without id',
+                details: { cat: 'blink.user_timing', name: 'Mark', pid: 1, tid: 2 }
+            }
+        ]);
+    } finally {
+        warning.mockRestore();
+    }
+});
+
+test('reports ignored unsorted allocations of a combined profile to the provided diagnose', () => {
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+
+    unwrapSamplesIfNeeded({
+        nodes: [],
+        samples: [],
+        allocationSampleIds: [],
+        allocationSamples: { ids: [2, 1], sizes: [8, 8] }
+    } as unknown as Parameters<typeof unwrapSamplesIfNeeded>[0], diagnose);
+
+    assert.deepEqual(diagnostics, [
+        { level: 'warn', scope: [], message: 'Ignoring allocation data with unsorted IDs' }
+    ]);
+});
+
 test('tracing preserves CPU-aligned allocation mapping without allocation rows', () => {
     const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const input = [
@@ -513,7 +575,10 @@ test('CPU-only profiles are published without allocation chunks and retain node 
     assert.deepEqual(session.profiles[0].trace_ids, { first: 1, second: 2 });
 });
 
-function extractScriptCatchups(catchups: { name?: string; pid?: number; tid?: number; data: Record<string, unknown> }[]) {
+function extractScriptCatchups(
+    catchups: { name?: string; pid?: number; tid?: number; data: Record<string, unknown> }[],
+    diagnose?: Diagnose
+) {
     const base = { pid: 1, tid: 2, ts: 0, ph: 'X', cat: 'disabled-by-default-v8.source' };
 
     return extractFromChromiumPerformanceProfile([
@@ -521,7 +586,19 @@ function extractScriptCatchups(catchups: { name?: string; pid?: number; tid?: nu
         ...catchups.map(({ name = 'ScriptCatchup', pid = 1, tid = 2, data }, index) => ({
             ...base, name, pid, tid, ts: index + 1, args: { data }
         })).reverse()
-    ]);
+    ], diagnose);
+}
+
+function largeCatchup(data: Record<string, unknown>) {
+    return { name: 'LargeScriptCatchup', data };
+}
+
+function diagnoseScriptCatchups(catchups: Parameters<typeof extractScriptCatchups>[0]) {
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+
+    extractScriptCatchups(catchups, diagnose);
+
+    return diagnostics.map(({ message, details }) => [message, details]);
 }
 
 test('repeated full source catchups replace text without duplicating it or losing metadata', () => {
@@ -579,6 +656,80 @@ test('a full catchup replaces previous text and discards pending chunks', () => 
     ]);
 
     assert.equal(session.threads[0].scripts![0].source, '');
+});
+
+test('does not report identical redeliveries of script source', () => {
+    const chunk = (splitIndex: number) => largeCatchup({
+        scriptId: 6,
+        splitCount: 2,
+        splitIndex,
+        sourceText: 'part'
+    });
+
+    assert.deepEqual(diagnoseScriptCatchups([
+        { data: { scriptId: 5, sourceText: 'full' } },
+        { data: { scriptId: 5, sourceText: 'full' } },
+        chunk(0), chunk(0), chunk(1)
+    ]), []);
+});
+
+test('reports script source redelivered with different content', () => {
+    const chunk = (sourceText: string) => largeCatchup({
+        scriptId: 5,
+        splitCount: 2,
+        splitIndex: 0,
+        sourceText
+    });
+
+    assert.deepEqual(diagnoseScriptCatchups([
+        { data: { scriptId: 5, sourceText: 'one' } },
+        { data: { scriptId: 5, sourceText: 'two' } },
+        chunk('first'), chunk('other')
+    ]), [
+        ['Script source redelivered with different content', { scriptId: 5, pid: 1, tid: 2 }],
+        ['Script source chunk redelivered with different content', {
+            scriptId: 5, pid: 1, tid: 2, splitIndex: 0
+        }],
+        ['Incomplete script source chunks left after extraction', {
+            scriptId: 5, url: null, splitCount: 2, received: 1
+        }]
+    ]);
+});
+
+test('reports script source of a non-string type and invalid chunk metadata', () => {
+    assert.deepEqual(diagnoseScriptCatchups([
+        { data: { scriptId: 5, sourceText: 42 } },
+        largeCatchup({ scriptId: 5, splitIndex: 2, splitCount: 2, sourceText: 'x' })
+    ]), [
+        ['Ignoring script source of a non-string type', {
+            scriptId: 5, pid: 1, tid: 2, type: 'number'
+        }],
+        ['Ignoring script source chunk with invalid split metadata', {
+            scriptId: 5, pid: 1, tid: 2, splitCount: 2, splitIndex: 2
+        }]
+    ]);
+});
+
+test('reports incomplete chunks dropped by a snapshot or by a changed split count', () => {
+    const chunk = (splitIndex: number, splitCount: number) => largeCatchup({
+        scriptId: 5,
+        splitIndex,
+        splitCount,
+        sourceText: 'part'
+    });
+
+    assert.deepEqual(diagnoseScriptCatchups([
+        chunk(0, 3), { data: { scriptId: 5, sourceText: 'full' } },
+        chunk(0, 2), chunk(0, 3), chunk(1, 3), chunk(2, 3)
+    ]), [
+        ['Script source snapshot discards incomplete chunks', {
+            scriptId: 5, pid: 1, tid: 2, received: 1, splitCount: 3
+        }],
+        ['Script source split count changed, dropping incomplete chunks', {
+            scriptId: 5, pid: 1, tid: 2, splitCount: 2, newSplitCount: 3, received: 1
+        }],
+        ['Script source redelivered with different content', { scriptId: 5, pid: 1, tid: 2 }]
+    ]);
 });
 
 test('keeps chunk sets separate by script, thread and process', () => {

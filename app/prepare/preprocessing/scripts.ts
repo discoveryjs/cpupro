@@ -1,5 +1,6 @@
 import type { CpuProCompilationRecord, CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
+import type { Diagnose } from '../diagnostics.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
 import { isArray } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
 
@@ -33,6 +34,7 @@ export class OriginalScriptsMap {
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
+    diagnose: Diagnose;
     #scriptById: Map<number | string, CpuProScript>;
     #scriptIdFromString: Map<string, number>;
     #scriptIndexByUrl: Map<string, number[]>;
@@ -42,9 +44,11 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     constructor(
         dict: Dictionary,
         originalScripts: OriginalScriptsMap,
-        scripts?: V8CpuProfileScript[] | null
+        scripts: V8CpuProfileScript[] | null = null,
+        diagnose: Diagnose = dict.diagnose
     ) {
         this.dict = dict;
+        this.diagnose = diagnose;
         this.#scriptById = new Map();
         this.#scriptIdFromString = new Map();
         this.#scriptIndexByUrl = new Map();
@@ -72,7 +76,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         return scriptByUrlMap;
     }
 
-    #addScripts(scripts?: V8CpuProfileScript[] | null) {
+    #addScripts(scripts: V8CpuProfileScript[] | null) {
         if (!Array.isArray(scripts)) {
             return;
         }
@@ -123,7 +127,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
             if (script) {
                 scripts.push(script);
             } else if (id !== 0 && id !== '0') {
-                console.warn('Script not found for id', id);
+                this.diagnose('warn', 'Script not found for id', { scriptId: id });
             }
         }
 
@@ -239,12 +243,18 @@ export function scriptFromScriptId(
             return null;
         }
 
+        // resolveScript() registers the script by normScriptId itself, so check before it
+        const normScriptIdExists = scriptsMap.has(normScriptId);
+
         script = scriptsMap.resolveScript(normScriptId, url) as CpuProScript;
         scriptsMap.set(scriptId, script);
 
         if (normScriptId !== scriptId) {
-            if (scriptsMap.has(normScriptId)) {
-                console.warn('Script already exists for normalized scriptId', normScriptId, 'for original scriptId', scriptId);
+            if (normScriptIdExists) {
+                scriptsMap.diagnose('warn', 'Script already exists for normalized script id', {
+                    scriptId: normScriptId,
+                    originalScriptId: scriptId
+                });
             }
 
             scriptsMap.set(normScriptId, script);

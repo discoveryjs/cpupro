@@ -1,6 +1,7 @@
 import type { PrepareContextApi, PrepareFunction } from '@discoveryjs/discovery';
 import { TIMINGS } from './prepare/const.js';
 import { extractAndValidate } from './prepare/index.js';
+import { createDiagnosticsCollector } from './prepare/diagnostics.js';
 import { processPaths } from './prepare/preprocessing/short-paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { Dictionary } from './prepare/dictionary.js';
@@ -49,13 +50,14 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     // Create work handler in a separate function to avoid capturing the context
     // of this function and its arguments
     const work = createContextFreeWorkHandler(setWorkTitle);
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
 
     //
     // Extract & validate profile data
     //
 
     const profilingDataset = await work('extract profiling data', () =>
-        extractAndValidate(input, rejectData)
+        extractAndValidate(input, rejectData, diagnose)
     );
 
     // FIXME: breaks the reference to the original input object, allowing it to be garbage collected;
@@ -72,7 +74,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
     for (let sessionIndex = 0; sessionIndex < profilingDataset.sessions.length; sessionIndex++) {
         const rawSession = profilingDataset.sessions[sessionIndex];
-        const dict = new Dictionary();
+        const sessionDiagnose = profilingDataset.sessions.length > 1
+            ? diagnose.withScope(`Session ${sessionIndex + 1}/${profilingDataset.sessions.length}`)
+            : diagnose;
+        const dict = new Dictionary(sessionDiagnose);
         const originalScripts = new OriginalScriptsMap(dict);
 
         // Seed owners from session ownership metadata (if any) so the dictionary
@@ -84,7 +89,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             }
         }
 
-        const runSessionTask: typeof work = profilingDataset.sessions.length > 1
+        const runSessionTask = profilingDataset.sessions.length > 1
             ? work.withPrefix(`Session ${sessionIndex + 1}/${profilingDataset.sessions.length}`)
             : work;
 
@@ -94,11 +99,13 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
 
         // process session profiles if any
         for (let i = 0; i < sessionProfiles.length; i++) {
-            // if (i === 0) continue;
             const { thread, profile: profileData } = sessionProfiles[i];
 
             if (!profileData.nodes?.length) {
-                console.warn('Ignored a profile with no call tree nodes', profileData);
+                sessionDiagnose('warn', 'Ignored a profile with no call tree nodes', {
+                    pid: thread.pid,
+                    tid: thread.tid
+                });
                 continue;
             }
 
@@ -109,11 +116,18 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 dict.setPackageNameForOrigin(new URL(origin).host, name);
             }
 
-            const scriptsMap = new ProfileScriptsMap(dict, originalScripts, profileData._scripts);
+            const profileDiagnose = sessionDiagnose.withScope(`Thread ${thread.pid}:${thread.tid}`);
+            const scriptsMap = new ProfileScriptsMap(
+                dict,
+                originalScripts,
+                profileData._scripts,
+                profileDiagnose
+            );
             const profile = await work.measure('create profile', () => createProfile(profileData, {
                 dictionary: dict,
                 originalScripts,
                 scriptsMap,
+                diagnose: profileDiagnose,
                 runtime: null,
                 compilations: thread.compilations,
                 ownership: rawSession.ownership ?? null,
@@ -207,7 +221,8 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         sessions,
         defaultSession,
         profiles,
-        defaultProfile
+        defaultProfile,
+        diagnostics
     };
 
     return result;

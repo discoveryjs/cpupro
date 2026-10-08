@@ -28,6 +28,7 @@
 
 import type { CallFrame, CallNode, V8LogProfile } from './v8-log-processed/types.js';
 import type { V8CpuProfile, V8CpuProfileCallFrameCodes, V8CpuProfileScript } from '../types.js';
+import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import jora from 'jora'; // FIXME: temporary? to calc a median only
 import { processFunctions } from './v8-log-processed/functions.js';
 import { createCallFrames } from './v8-log-processed/call-frames.js';
@@ -89,14 +90,21 @@ function collectUsedCallFrames(
     return usedCallFrames;
 }
 
-export function convertV8LogIntoCpuProfile(v8log: V8LogProfile): V8CpuProfile {
+export function convertV8LogIntoCpuProfile(
+    v8log: V8LogProfile,
+    diagnose: Diagnose = diagnoseToConsole
+): V8CpuProfile {
     const { functions, functionIndexMap, scripts } = processFunctions(v8log.functions, v8log.code, v8log.scripts);
     const { callFrames, callFrameIndexByVmState, callFrameIndexByCode, callFrameIndexByV8logFunction } = createCallFrames(
         v8log.code,
         functions,
         functionIndexMap
     );
-    const positionTableByCode = processCodePositionTables(v8log.code, callFrameIndexByV8logFunction);
+    const positionTableByCode = processCodePositionTables(
+        v8log.code,
+        callFrameIndexByV8logFunction,
+        diagnose
+    );
     const callFrameCodes = processCodes(v8log.code, callFrameIndexByCode, positionTableByCode);
     const { nodes, samples, timeDeltas, samplePositions, lastTimestamp } = processTicks(
         v8log.ticks,

@@ -17,6 +17,7 @@ import { createSampledTreeSet } from './computations/sampled-tree-set.js';
 import { collectProfileUsedScriptIds, OriginalScriptsMap, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
+import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
 import { createLineMapping } from './computations/line-mapping.js';
 import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
@@ -36,6 +37,7 @@ export type CreateProfileOptions = {
     ownership: Ownership | null;
     runtime: RuntimeCode | null;
     work: WorkHandler;
+    diagnose: Diagnose;
 };
 export type CreateProfileApi = {
     work<T>(name: string, fn: () => T): Promise<T>;
@@ -86,9 +88,15 @@ export function toggleProfile(model: Model, profile: Profile) {
 
 export async function createProfile(data: V8CpuProfile, options?: Partial<CreateProfileOptions>) {
     const {
-        dictionary = new Dictionary(),
+        diagnose = diagnoseToConsole,
+        dictionary = new Dictionary(diagnose),
         originalScripts = new OriginalScriptsMap(dictionary),
-        scriptsMap: profileScriptsMap = new ProfileScriptsMap(dictionary, originalScripts, data._scripts),
+        scriptsMap: profileScriptsMap = new ProfileScriptsMap(
+            dictionary,
+            originalScripts,
+            data._scripts,
+            diagnose
+        ),
         runtime = null,
         ownership = null,
         compilations = null,
@@ -105,7 +113,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const preparseStart = performance.now();
     const preparseScriptSourcesResult = profileScriptsMap.size > 0
         ? prepareScriptSources(
-            profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data, compilations))
+            profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data, compilations)),
+            diagnose
         ).finally(() => {
             performance.measure('preparseScriptSources', { start: preparseStart });
         })
@@ -354,7 +363,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             callFrameByIndex,
             dictionary.callFrames,
             axis.start,
-            axis.end
+            axis.end,
+            diagnose
         )
     );
 
@@ -401,7 +411,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
                 profileScriptsMap,
                 breakdown,
                 ownership,
-                work
+                work,
+                diagnose
             );
 
             if (sourceMappedBreakdown) {

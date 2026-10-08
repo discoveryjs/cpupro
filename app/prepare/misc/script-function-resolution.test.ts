@@ -265,13 +265,16 @@ test('distinguishes an empty function list from failed parsing across structured
         for (const source of ['', 'globalThis.value = 1;']) {
             const ranges = structuredClone(parseScriptSourceRanges(source, 'fixture.js', true));
             assert.equal(ranges.parsed, true);
+            assert.equal(ranges.error, undefined);
             assert.deepEqual(ranges.ranges, []);
         }
 
         const failed = structuredClone(parseScriptSourceRanges('function broken(', 'fixture.js', true));
         assert.equal(failed.parsed, false);
+        assert.equal(typeof failed.error, 'string');
         assert.deepEqual(failed.ranges, []);
-        assert.equal(error.mock.calls.length, 1);
+        // the parser reports nothing itself; a caller reports the error carried by the result
+        assert.equal(error.mock.calls.length, 0);
     } finally {
         error.mockRestore();
     }

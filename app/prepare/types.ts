@@ -1,4 +1,5 @@
 import { Dictionary } from './dictionary.js';
+import type { Diagnose } from './diagnostics.js';
 import { Ownership, UniformCompilationRecord, UniformTraceEvent } from './formats/types.js';
 import { Profile } from './profile.mjs';
 import { FunctionRange } from './misc/parse-script-source-ranges.js';
@@ -429,6 +430,7 @@ export type CpuProScript = {
     originalFor: CpuProScript | null;
 }
 export interface IProfileScriptsMap {
+    diagnose: Diagnose;
     get(scriptId: number | string): CpuProScript | undefined;
     has(scriptId: number | string): boolean;
     set(scriptId: number | string, script: CpuProScript): void;

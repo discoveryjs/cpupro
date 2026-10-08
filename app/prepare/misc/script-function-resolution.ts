@@ -1,4 +1,5 @@
 import { CpuProCallFrame, CpuProScript } from '../types';
+import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { createLineBoundaries } from './line-boundaries.js';
 import { createParseWorker } from '../workers/index.js';
 import { FunctionRange, FunctionRanges, decodeFunctionRangeTypes, parseScriptSourceRanges } from './parse-script-source-ranges.js';
@@ -35,7 +36,19 @@ function getScriptFunctionRanges(script: CpuProScript | null) {
     return functionRanges;
 }
 
-function setScriptFunctionRanges(script: CpuProScript, ranges: FunctionRanges) {
+function setScriptFunctionRanges(
+    script: CpuProScript,
+    ranges: FunctionRanges,
+    diagnose: Diagnose = diagnoseToConsole
+) {
+    if (ranges.error !== undefined) {
+        diagnose('error', 'Failed to parse script for function ranges', {
+            scriptId: script.id,
+            url: script.url,
+            error: ranges.error
+        });
+    }
+
     script.functionRanges = ranges.parsed ? ranges.ranges : null;
     scriptFunctionRanges.set(script, ranges);
 }
@@ -397,7 +410,10 @@ export function terminateParseWorkerPool(immediately: boolean = false): void {
     parseWorkerPool.terminate(immediately);
 }
 
-export async function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProScript>): Promise<void> {
+export async function prepareScriptSources(
+    scripts: CpuProScript[] | Set<CpuProScript>,
+    diagnose: Diagnose = diagnoseToConsole
+): Promise<void> {
     const parsingScripts = parseWorkerPool.parsingScripts;
     const scriptsToParse: CpuProScript[] = [];
     const pending = new Set<Promise<void>>();
@@ -473,7 +489,7 @@ export async function prepareScriptSources(scripts: CpuProScript[] | Set<CpuProS
                 const ranges = decodeFunctionRangeTypes(rawRanges, types);
                 const script = scriptsForWorker[i];
 
-                setScriptFunctionRanges(script, ranges);
+                setScriptFunctionRanges(script, ranges, diagnose);
                 script.sourceMetrics = sourceMetrics;
             }
         } finally {

@@ -2,6 +2,7 @@ import { parse } from '@babel/parser';
 
 export type FunctionRanges<Type = string> = {
     parsed: boolean;
+    error?: string;
     ranges: FunctionRange<Type>[];
     starts: Uint32Array<ArrayBuffer>;
     indexes: Int32Array<ArrayBuffer>;
@@ -106,7 +107,7 @@ export function parseScriptSourceRanges(
             // errorRecovery: true
         }) as ASTNode;
     } catch (e) {
-        console.error(`Failed to parse ${url ? `"${url}"` : '<no url>'} for function ranges:`, e.message);
+        functionRanges.error = e.message;
         return functionRanges;
     }
 

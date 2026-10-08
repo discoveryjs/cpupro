@@ -41,8 +41,10 @@ export function processInputCallFrames(
         }
 
         // FIXME: callFrames from v8 log shouldn't dedup
-        if (map.length !== callFrames.length) {
-            console.warn('Merged call frames:', callFrames.length - map.length);
+        const merged = callFrames.length - new Set(map).size;
+
+        if (merged > 0) {
+            scriptsMap.diagnose('warn', 'Call frames merged on resolving', { count: merged });
         }
     }
 

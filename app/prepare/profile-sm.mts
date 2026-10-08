@@ -1,6 +1,7 @@
 import { SourceMapConsumer } from 'source-map-js';
 import { SourceMapConsumer as OwnSourceMapConsumer } from './misc/tmp/source-maps/source-map-consumer.js';
 import { Dictionary } from './dictionary.js';
+import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
 import { createSampledTreeSet } from './computations/sampled-tree-set.js';
 import { ProfileScriptsMap } from './preprocessing/scripts.js';
 import { CpuProCallFrame, CpuProScript } from './types.js';
@@ -49,7 +50,8 @@ export async function createSourceMappedBreakdown(
     scriptsMap: ProfileScriptsMap,
     breakdown: ProfileLineBreakdown,
     ownership: Ownership | null,
-    work: WorkHandler
+    work: WorkHandler,
+    diagnose: Diagnose = diagnoseToConsole
 ) {
     if (breakdown.source.dictionary !== dictionary.locations) {
         return;
@@ -121,7 +123,7 @@ export async function createSourceMappedBreakdown(
             }
         }
 
-        await prepareScriptSources(ensureScriptIsParsed);
+        await prepareScriptSources(ensureScriptIsParsed, diagnose);
         for (const { callFrame, originalPos, originalScript } of callFramesToResolve) {
             callFrame.__originalCallFrame = dictionary.resolveCallFrame({
                 functionName: originalPos.name
@@ -175,7 +177,12 @@ export async function createSourceMappedBreakdown(
 
             if (lineNumber < -1) {
                 notResolved++;
-                console.warn('Invalid line number for location', i, lineNumber, columnNumber, script?.url, dictionary.locations[i]);
+                diagnose('warn', 'Invalid line number for location', {
+                    locationId: i,
+                    line: lineNumber,
+                    column: columnNumber,
+                    url: script?.url ?? null
+                });
                 continue;
             }
 
@@ -211,7 +218,7 @@ export async function createSourceMappedBreakdown(
             }
         }
 
-        await prepareScriptSources(ensureScriptIsParsed);
+        await prepareScriptSources(ensureScriptIsParsed, diagnose);
         for (const { i, originalPos, originalScript, origCallFrame } of locationToResolve) {
             const locIndex = dictionary.resolveLocationIndex(
                 origCallFrame,

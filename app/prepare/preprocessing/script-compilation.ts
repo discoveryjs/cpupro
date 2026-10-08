@@ -149,7 +149,10 @@ export function linkThreadScripts(thread: CpuProThread, scripts: ProfileScriptsM
 
     for (const [id, script] of scripts.entries()) {
         if (!linked.has(script) && typeof id === 'number' && compilations.has(id)) {
-            console.warn('Found script missed in thread (id: ' + id + '):', { thread, script });
+            scripts.diagnose('warn', 'Script is missing in thread scripts', {
+                scriptId: id,
+                url: script.url
+            });
             linked.add(script);
             thread.scripts.push({
                 id,

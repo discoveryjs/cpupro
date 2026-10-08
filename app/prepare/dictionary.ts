@@ -26,6 +26,7 @@ import {
     WellKnownType
 } from './types.js';
 import { scriptFromScriptId } from './preprocessing/scripts.js';
+import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
 import {
     getFunctionAtScriptOffset,
     getFunctionEndFromScriptLineColumn,
@@ -66,6 +67,7 @@ type CallFrameMap = Map<
 >;
 
 export class Dictionary {
+    diagnose: Diagnose;
     callFrames: CpuProCallFrame[] & { wellKnownIndex: Record<WellKnownType, number> };
     locations: CpuProLocation[];
     scripts: CpuProScript[];
@@ -91,7 +93,8 @@ export class Dictionary {
     #packageNameByOriginMap: Map<string, string>;
     #unknownOwner: CpuProOwner;
 
-    constructor() {
+    constructor(diagnose: Diagnose = diagnoseToConsole) {
+        this.diagnose = diagnose;
         this.callFrames = Object.assign([], { wellKnownIndex: Object.create(null) });
         this.locations = [];
         this.scripts = [];
@@ -165,7 +168,11 @@ export class Dictionary {
         if (existingPackageName === undefined) {
             this.#packageNameByOriginMap.set(origin, packageName);
         } else if (existingPackageName !== packageName) {
-            console.warn(`Package name for origin "${origin}" already set "${existingPackageName}", new name "${packageName}" ignored`);
+            this.diagnose('warn', 'Package name for origin is already set, new name ignored', {
+                origin,
+                packageName: existingPackageName,
+                newPackageName: packageName
+            });
         }
     }
 

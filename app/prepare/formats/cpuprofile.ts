@@ -1,4 +1,5 @@
 import type { V8CpuProfile, V8CpuProfileNode, V8CpuProfileScript, V8CpuProfileCpuproExtensions } from '../types.js';
+import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { getNumericArrayOrder } from './utils.js';
 import { ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
 
@@ -198,7 +199,7 @@ function extractCombinedAllocationData(data: {
         spaces?: unknown;
         spacesDict?: Record<string, string>;
     };
-}): V8CpuProfileCpuproExtensions | null {
+}, diagnose: Diagnose): V8CpuProfileCpuproExtensions | null {
     const { allocationSampleIds, allocationSamples } = data;
 
     if (!Array.isArray(allocationSampleIds)) {
@@ -222,7 +223,7 @@ function extractCombinedAllocationData(data: {
     const idsOrder = getNumericArrayOrder(ids);
 
     if (idsOrder === 'unordered') {
-        console.warn('Ignoring allocation data with unsorted IDs');
+        diagnose('warn', 'Ignoring allocation data with unsorted IDs');
         return allocationData;
     }
 
@@ -261,9 +262,9 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
         timeDeltas?: number[];
         nodes: V8CpuProfileNode[];
     };
-}): V8CpuProfile {
+}, diagnose: Diagnose = diagnoseToConsole): V8CpuProfile {
     // Handle combined profile format (ProfileChunk with cpuProfile + allocationSamples)
-    const combinedAllocationData = extractCombinedAllocationData(profile);
+    const combinedAllocationData = extractCombinedAllocationData(profile, diagnose);
     if (combinedAllocationData) {
         // Extract CPU profile data
         const cpuProfile = profile.cpuProfile || profile;

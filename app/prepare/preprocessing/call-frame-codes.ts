@@ -1,4 +1,5 @@
 import type { CpuProCallFrame, CpuProCallFrameCode, CpuProCallFrameCodes, CpuProScript, V8CpuProfileCallFrameCodes, V8CallFrameCodeType } from '../types.js';
+import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { vmFunctionStateTierHotness, vmFunctionStateTiers } from '../const.js';
 
 export function processCallFrameCodes(
@@ -6,7 +7,8 @@ export function processCallFrameCodes(
     callFrameByIndex: Uint32Array,
     callFrames: CpuProCallFrame[],
     startTime: number = 0,
-    endTime: number = startTime
+    endTime: number = startTime,
+    diagnose: Diagnose = diagnoseToConsole
 ) {
     const allCodes: CpuProCallFrameCode[] = [];
     const codesByScript = new Map<CpuProScript, {
@@ -52,7 +54,10 @@ export function processCallFrameCodes(
             }
         } else {
             // scriptFunction callFrames always has a script, if not that's probably an error
-            console.warn('Script function has no script', callFrameCodes);
+            diagnose('warn', 'Script function has no script', {
+                callFrameId: callFrame.id,
+                name: callFrame.name
+            });
         }
 
         // process function's states

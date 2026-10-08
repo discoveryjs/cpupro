@@ -1,3 +1,4 @@
+import { type Diagnose, diagnoseToConsole } from '../../diagnostics.js';
 import { functionTier } from './codes.js';
 import type { CodePositionTable, NumericArray, V8LogCode } from './types.js';
 
@@ -74,7 +75,8 @@ export function findPositionsCodeIndex(parsedPositions: number[], target: number
 
 export function processCodePositionTables(
     v8logCodes: V8LogCode[],
-    functionIdMap: NumericArray | null = null
+    functionIdMap: NumericArray | null = null,
+    diagnose: Diagnose = diagnoseToConsole
 ): (CodePositionTable | null)[] {
     return v8logCodes.map(code => {
         const funcIdx = code.func;
@@ -116,7 +118,11 @@ export function processCodePositionTables(
                 // However, this does not always resolve the issue, so for now we output warnings and ignore
                 // positions for such codes to collect more cases.
                 if (functionId === null || functionId < 0) {
-                    console.error('Broken positions', code, { positions, inlined, fns: source.fns });
+                    diagnose('error', 'Ignoring positions: undefined inlined function', {
+                        name: code.name,
+                        func: funcIdx,
+                        fns: source.fns
+                    });
                     return null;
                 }
 
@@ -132,7 +138,11 @@ export function processCodePositionTables(
                 const functionId = fns[inlined[i]] ?? null;
 
                 if (functionId === null || functionId < 0) {
-                    console.error('Broken positions', code, { positions, inlined });
+                    diagnose('error', 'Ignoring positions: unresolved inlined function', {
+                        name: code.name,
+                        func: funcIdx,
+                        fns: source.fns
+                    });
                     return null;
                 }
 
