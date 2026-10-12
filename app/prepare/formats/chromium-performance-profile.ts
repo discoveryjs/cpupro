@@ -646,10 +646,6 @@ export function extractFromChromiumPerformanceProfile(
         }
     }
 
-    if (profileById.size === 0) {
-        throw new Error('Could not find CPU profile in Timeline');
-    }
-
     for (const [script, { splitCount, chunks }] of scriptSourceChunks) {
         diagnose('warn', 'Incomplete script source chunks left after extraction', {
             scriptId: script.id,

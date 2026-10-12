@@ -53,6 +53,8 @@ module.exports = {
             './pages/profiles-matrix.js',
             './pages/samples.css',
             './pages/samples.js',
+            './pages/signals.css',
+            './pages/signals.js',
             './views/misc/mode-regexp.css',
             './views/misc/mode-regexp.js',
             './views/appbar.css',

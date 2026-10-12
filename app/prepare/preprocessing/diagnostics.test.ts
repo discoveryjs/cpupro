@@ -13,7 +13,7 @@ import type { V8LogCode } from '../formats/v8-log-processed/types.js';
 
 function createScriptsMap() {
     const { diagnostics, diagnose } = createDiagnosticsCollector();
-    const dictionary = new Dictionary({ diagnose });
+    const dictionary = new Dictionary(diagnose);
     const scripts = new ProfileScriptsMap(
         dictionary,
         new OriginalScriptsMap(dictionary),

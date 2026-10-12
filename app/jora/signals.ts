@@ -1,43 +1,24 @@
 import type { Profile } from '../prepare/profile.mjs';
-import type {
-    ProfileLineAllocationCompilationStageAttribute,
-    ProfileMemline,
-    TimelineLine
-} from '../prepare/lines/types.js';
+import type { ProfileLine, ProfileLineType, ProfileLineBreakdown, ProfileLineAllocationCompilationStageAttribute } from '../prepare/lines/types.js';
 import type { CpuProCompilationRecord, CpuProThread } from '../prepare/types.js';
 import { getProfileOrScopeProfile } from './profile.js';
 
-export type SignalCheck = {
-    id: string;
-    title: string;
-    status: 'ok' | 'warn' | 'info';
-    count: number | null;
-    total: number | null;
-    detail: string;
-};
-
-type CheckInput = {
-    id: string;
-    title: string;
-    detail: string;
-    count?: number | null;
-    total?: number | null;
-};
-type IntegrityProfile = Pick<Profile, 'timeline' | 'memline'> & {
+type SignalsProfile = Pick<Profile, 'timeline' | 'memline'> & {
     thread: Pick<CpuProThread, 'compilations'> | null;
 };
 type MethodContext = Parameters<typeof getProfileOrScopeProfile>[1];
 type Method = (this: { context: MethodContext }, ...args: unknown[]) => unknown;
 
-type TimedRecord = CpuProCompilationRecord & {
+type PlacedRecord = CpuProCompilationRecord & {
     tm: number;
+};
+type TimedRecord = PlacedRecord & {
     duration: number;
 };
 type AllocatedRecord = CpuProCompilationRecord & {
     allocationStart: number;
     allocationEnd: number;
 };
-type AllocationRange = 'missing' | 'empty' | 'inverted' | 'covering';
 type OpenEvent = {
     name: string;
     end: number;
@@ -50,47 +31,15 @@ type OpenStageEvent = {
     stageIndex: number;
 };
 
-const LONG_DELTA_FACTOR = 2.5;
 const NO_STAGE = 'none';
-const cache = new WeakMap<Profile, SignalCheck[]>();
+const nestingCache = new WeakMap<CpuProCompilationRecord[], EventNesting>();
+const stageMismatchCache = new WeakMap<Profile, number | null>();
 
-function info(input: CheckInput): SignalCheck {
-    return {
-        id: input.id,
-        title: input.title,
-        status: 'info',
-        count: input.count ?? null,
-        total: input.total ?? null,
-        detail: input.detail
-    };
+function isPlaced(record: CpuProCompilationRecord): record is PlacedRecord {
+    return record.tm !== null;
 }
 
-function expectNone(input: CheckInput & { count: number }): SignalCheck {
-    const status = input.count === 0 ? 'ok' : 'warn';
-
-    return {
-        id: input.id,
-        title: input.title,
-        status,
-        count: input.count,
-        total: input.total ?? null,
-        detail: input.detail
-    };
-}
-
-function percent(value: number, total: number) {
-    if (total === 0) {
-        return '-';
-    }
-
-    return (value / total * 100).toFixed(1) + '%';
-}
-
-function milliseconds(value: number) {
-    return (value / 1000).toFixed(1) + ' ms';
-}
-
-function isTimed(record: CpuProCompilationRecord): record is TimedRecord {
+export function isTimed(record: CpuProCompilationRecord): record is TimedRecord {
     if (record.tm === null || record.duration === null) {
         return false;
     }
@@ -98,35 +47,20 @@ function isTimed(record: CpuProCompilationRecord): record is TimedRecord {
     return record.duration > 0;
 }
 
-function classifyAllocationRange(record: CpuProCompilationRecord): AllocationRange {
+function isAllocated(record: CpuProCompilationRecord): record is AllocatedRecord {
     const { allocationStart, allocationEnd } = record;
 
-    if (allocationStart === null || allocationEnd === null) {
-        return 'missing';
-    }
-
-    if (allocationEnd < allocationStart) {
-        return 'inverted';
-    }
-
-    if (allocationEnd === allocationStart) {
-        return 'empty';
-    }
-
-    return 'covering';
-}
-
-function isAllocated(record: CpuProCompilationRecord): record is AllocatedRecord {
-    return classifyAllocationRange(record) === 'covering';
+    return allocationStart !== null && allocationEnd !== null && allocationEnd > allocationStart;
 }
 
 // Outer events go first, so a parent is always met before its children
-function compareByTimeThenLongest(first: TimedRecord, second: TimedRecord) {
-    return first.tm - second.tm || second.duration - first.duration;
+function compareByTimeThenLongest(first: PlacedRecord, second: PlacedRecord) {
+    return first.tm - second.tm || (second.duration ?? 0) - (first.duration ?? 0);
 }
 
-export function sortTimedEvents(compilations: CpuProCompilationRecord[]) {
-    return compilations.filter(isTimed).sort(compareByTimeThenLongest);
+// Events with a known start, instant and unfinished ones included
+export function sortPlacedEvents(compilations: CpuProCompilationRecord[]) {
+    return compilations.filter(isPlaced).sort(compareByTimeThenLongest);
 }
 
 export function countInversions(vector: ArrayLike<number>) {
@@ -203,173 +137,6 @@ export function analyzeEventNesting(events: TimedRecord[]) {
     };
 }
 
-function checkTimeline(timeline: TimelineLine): SignalCheck[] {
-    const { values, axisStartNoSamples, axisEndNoSamples, axisTotal } = timeline;
-    const longDeltaLimit = LONG_DELTA_FACTOR * timeline.sourceInfo.samplesInterval;
-    let longDeltas = 0;
-    let longDeltasTime = 0;
-
-    for (let i = 0; i < values.length; i++) {
-        if (values[i] > longDeltaLimit) {
-            longDeltas++;
-            longDeltasTime += values[i];
-        }
-    }
-
-    return [
-        info({
-            id: 'samples-lead',
-            title: 'Time before the first sample',
-            detail: milliseconds(axisStartNoSamples)
-        }),
-        info({
-            id: 'samples-tail',
-            title: 'Time after the last sample',
-            detail: milliseconds(axisEndNoSamples)
-        }),
-        info({
-            id: 'samples-long-deltas',
-            title: `Long sample deltas (> ${LONG_DELTA_FACTOR} intervals)`,
-            count: longDeltas,
-            total: values.length,
-            detail: `${longDeltas} samples, ${percent(longDeltasTime, axisTotal)} of the time`
-        })
-    ];
-}
-
-function checkMappings(timeline: TimelineLine, memline: ProfileMemline): SignalCheck[] {
-    const toSample = memline.mappings.timeline?._mapping;
-    const toAllocation = timeline.mappings.memline?._mapping;
-
-    if (!toSample || !toAllocation) {
-        return [];
-    }
-
-    const toSampleInversions = countInversions(toSample);
-    const toAllocationInversions = countInversions(toAllocation);
-
-    return [
-        expectNone({
-            id: 'mapping-allocation-to-sample',
-            title: 'Mapping allocation -> sample is monotone',
-            count: toSampleInversions,
-            total: toSample.length,
-            detail: `${toSampleInversions} inversions`
-        }),
-        expectNone({
-            id: 'mapping-sample-to-allocation',
-            title: 'Mapping sample -> allocation is monotone',
-            count: toAllocationInversions,
-            total: toAllocation.length,
-            detail: `${toAllocationInversions} inversions`
-        })
-    ];
-}
-
-function checkEventNesting(timedEvents: TimedRecord[], total: number): SignalCheck[] {
-    const nesting = analyzeEventNesting(timedEvents);
-    const worst = [...nesting.rangeViolations]
-        .sort((first, second) => second[1] - first[1])
-        .slice(0, 3)
-        .map(([pair, count]) => `${pair} ${count}`);
-    const worstDetail = worst.length > 0 ? `; worst: ${worst.join('; ')}` : '';
-    const nested = nesting.nestedWithAllocations;
-    const violations = nesting.rangeViolationsCount;
-
-    return [
-        expectNone({
-            id: 'events-nesting',
-            title: 'Events nest strictly in time',
-            count: nesting.partialOverlaps,
-            total,
-            detail: `${nesting.partialOverlaps} partial overlaps of ${total}`
-        }),
-        expectNone({
-            id: 'events-allocation-nesting',
-            title: 'Allocation range is inside the time parent range',
-            count: violations,
-            total: nested,
-            detail: `${violations} of ${nested} nested events with allocations${worstDetail}`
-        })
-    ];
-}
-
-function checkEventAllocations(compilations: CpuProCompilationRecord[]): SignalCheck[] {
-    let withoutDuration = 0;
-    let withAllocations = 0;
-    let inverted = 0;
-
-    for (const record of compilations) {
-        const range = classifyAllocationRange(record);
-
-        if (!isTimed(record)) {
-            withoutDuration++;
-        }
-
-        if (range === 'covering') {
-            withAllocations++;
-        } else if (range === 'inverted') {
-            inverted++;
-        }
-    }
-
-    const total = compilations.length;
-
-    return [
-        info({
-            id: 'events-without-duration',
-            title: 'Events without duration',
-            count: withoutDuration,
-            total,
-            detail: `${withoutDuration} of ${total}`
-        }),
-        info({
-            id: 'events-with-allocations',
-            title: 'Events covering at least one allocation',
-            count: withAllocations,
-            total,
-            detail: `${withAllocations} of ${total}`
-        }),
-        expectNone({
-            id: 'events-allocation-range-inverted',
-            title: 'Events with an inverted allocation range',
-            count: inverted,
-            total,
-            detail: String(inverted)
-        })
-    ];
-}
-
-function checkEventsAgainstAxis(timedEvents: TimedRecord[], total: number, timeline: TimelineLine) {
-    const { axisStart, axisEnd, sourceInfo } = timeline;
-    let before = 0;
-    let after = 0;
-    let furthest = 0;
-
-    for (const event of timedEvents) {
-        if (event.tm < axisStart) {
-            before++;
-            furthest = Math.max(furthest, axisStart - event.tm);
-        } else if (event.tm > axisEnd) {
-            after++;
-            furthest = Math.max(furthest, event.tm - axisEnd);
-        }
-    }
-
-    const furthestIntervals = (furthest / sourceInfo.samplesInterval).toFixed(2);
-
-    return expectNone({
-        id: 'events-outside-axis',
-        title: 'Events outside the sample time axis',
-        count: before + after,
-        total,
-        detail: [
-            `${before} before, ${after} after, of ${total};`,
-            `furthest ${milliseconds(furthest)} (${furthestIntervals} intervals)`
-        ].join(' ')
-    });
-}
-
 function countStageMismatches(
     values: ArrayLike<number>,
     from: number,
@@ -404,35 +171,29 @@ class StageScanner {
     }
 }
 
-function indexStageNames(dict: string[]) {
-    const indexes = new Map<string, number>();
-
-    for (let i = 0; i < dict.length; i++) {
-        indexes.set(dict[i], i);
-    }
-
-    return indexes;
-}
-
 // Walks events in time order, so every allocation is visited once and checked
-// against the innermost open event; no per-event or per-allocation temporaries
+// against the innermost open event; no per-event or per-allocation temporaries.
+// An instant or unfinished event is a leaf: it owns its range but never a parent.
 function countStageMismatchesByNesting(
-    timedEvents: TimedRecord[],
+    placedEvents: PlacedRecord[],
     stage: ProfileLineAllocationCompilationStageAttribute
 ) {
-    const stageIndexes = indexStageNames(stage.dict);
+    const stageIndexes = new Map(stage.dict.map((name, index) => [name, index]));
     const noStage = stageIndexes.get(NO_STAGE) ?? 0;
     const open: OpenStageEvent[] = [];
     const scanner = new StageScanner(stage.values);
 
-    for (const event of timedEvents) {
+    for (const event of placedEvents) {
         if (!isAllocated(event)) {
             continue;
         }
 
+        const duration = event.duration ?? 0;
+        const leaf = duration <= 0;
         let parent = open.at(-1);
 
-        while (parent !== undefined && parent.end <= event.tm) {
+        // a leaf at the very end of a parent still belongs to it
+        while (parent !== undefined && (leaf ? parent.end < event.tm : parent.end <= event.tm)) {
             scanner.expect(parent.stageIndex, parent.allocationEnd);
             open.pop();
             parent = open.at(-1);
@@ -440,13 +201,19 @@ function countStageMismatchesByNesting(
 
         const gapOwner = parent !== undefined ? parent.stageIndex : noStage;
         const parentEnd = parent !== undefined ? parent.end : Infinity;
+        const stageIndex = stageIndexes.get(event.name) ?? -1;
 
         scanner.expect(gapOwner, event.allocationStart);
-        open.push({
-            end: Math.min(event.tm + event.duration, parentEnd),
-            allocationEnd: event.allocationEnd,
-            stageIndex: stageIndexes.get(event.name) ?? -1
-        });
+
+        if (leaf) {
+            scanner.expect(stageIndex, event.allocationEnd);
+        } else {
+            open.push({
+                end: Math.min(event.tm + duration, parentEnd),
+                allocationEnd: event.allocationEnd,
+                stageIndex
+            });
+        }
     }
 
     for (let parent = open.pop(); parent !== undefined; parent = open.pop()) {
@@ -458,111 +225,319 @@ function countStageMismatchesByNesting(
     return scanner.mismatches;
 }
 
-function looksLikeConsecutiveIds(lastMappedId: number, allocationsCount: number) {
-    const withinCount = lastMappedId <= allocationsCount;
-    const nearCount = lastMappedId > allocationsCount * 0.9;
+export type EventNesting = {
+    partialOverlaps: number;
+    nestedWithAllocations: number;
+    rangeViolations: number;
+};
 
-    return withinCount && nearCount;
+export function measureEventNesting(compilations: CpuProCompilationRecord[]): EventNesting {
+    const nesting = analyzeEventNesting(sortPlacedEvents(compilations).filter(isTimed));
+
+    return {
+        partialOverlaps: nesting.partialOverlaps,
+        nestedWithAllocations: nesting.nestedWithAllocations,
+        rangeViolations: nesting.rangeViolationsCount
+    };
 }
 
-// The model does not keep allocation ids, so they are assumed to be 1..N
-function checkStageAttribute(
-    timedEvents: TimedRecord[],
-    timeline: TimelineLine,
-    memline: ProfileMemline
-): SignalCheck[] {
-    const id = 'allocation-stage-attribute';
-    const title = 'Allocation stage matches the innermost event by time nesting';
-    const stage = memline.attributes.find(
+// Allocations whose stage differs from the innermost event by time nesting;
+// null when it cannot be judged (no signals, or ids do not look like 1..N)
+export function measureStageMismatches(profile: SignalsProfile): number | null {
+    const { timeline, memline, thread } = profile;
+    const compilations = thread?.compilations ?? [];
+    const stage = memline?.attributes.find(
         (attribute): attribute is ProfileLineAllocationCompilationStageAttribute =>
             attribute.name === 'allocationCompilationStage'
     );
-    const mapping = timeline.mappings.memline?._mapping;
+    const mapping = timeline?.mappings.memline?._mapping;
 
-    if (!stage || !mapping || mapping.length === 0) {
-        return [];
+    if (!stage || !mapping || mapping.length === 0 || compilations.length === 0) {
+        return null;
     }
 
-    const count = stage.values.length;
-    const lastMappedId = mapping[mapping.length - 1];
-
-    if (!looksLikeConsecutiveIds(lastMappedId, count)) {
-        return [info({
-            id,
-            title,
-            total: count,
-            detail: `skipped: ids do not look like 1..N (last mapped ${lastMappedId} of ${count})`
-        })];
+    if (allocationSampleWindow(profile) === null) {
+        return null;
     }
 
-    const mismatches = countStageMismatchesByNesting(timedEvents, stage);
-
-    return [expectNone({
-        id,
-        title,
-        count: mismatches,
-        total: count,
-        detail: `${mismatches} of ${count} (${percent(mismatches, count)})`
-    })];
+    return countStageMismatchesByNesting(sortPlacedEvents(compilations), stage);
 }
 
-function checkEvents(
-    compilations: CpuProCompilationRecord[],
-    timeline: TimelineLine | null,
-    memline: ProfileMemline | null
-): SignalCheck[] {
-    const timedEvents = sortTimedEvents(compilations);
-    const checks = [
-        ...checkEventNesting(timedEvents, compilations.length),
-        ...checkEventAllocations(compilations)
-    ];
-
-    if (timeline !== null) {
-        checks.push(checkEventsAgainstAxis(timedEvents, compilations.length, timeline));
-    }
-
-    if (timeline !== null && memline !== null) {
-        checks.push(...checkStageAttribute(timedEvents, timeline, memline));
-    }
-
-    return checks;
+function samplePopulation(line: ProfileLine) {
+    return line.breakdowns.find(breakdown =>
+        breakdown.kind === (line.type === 'timeline' ? 'call-stack' : 'location')
+    ) ?? line.breakdowns[0];
 }
 
-export function checkSignalIntegrity(profile: IntegrityProfile): SignalCheck[] {
-    const { timeline, memline, thread } = profile;
-    const compilations = thread?.compilations ?? [];
-    const checks: SignalCheck[] = [];
-
-    if (timeline !== null) {
-        checks.push(...checkTimeline(timeline));
+function sampleCategoryIndex(breakdown: ProfileLineBreakdown | undefined, index: number) {
+    if (!breakdown?.categories) {
+        return 0;
     }
 
-    if (timeline !== null && memline !== null) {
-        checks.push(...checkMappings(timeline, memline));
+    const { tree, sampleToNode } = breakdown.categories;
+    const sample = breakdown.population.samples[index];
+
+    return tree.nodes[sampleToNode[sample]];
+}
+
+function sampleAxis(line: ProfileLine) {
+    const start = line.type === 'timeline' ? line.axisStart + line.axisStartNoSamples : 0;
+    const length = line.type === 'timeline' ? line.axisTotal : line.values.length;
+
+    return { start, end: start + length };
+}
+
+function binIndex(position: number, start: number, end: number, count: number) {
+    const index = Math.floor((position - start) / (end - start || 1) * count);
+
+    return Math.max(0, Math.min(count - 1, index));
+}
+
+export function sampleDistribution(profile: Profile, type: ProfileLineType, binCount = 500) {
+    const line = profile[type];
+
+    if (!line) {
+        return null;
     }
 
-    if (compilations.length > 0) {
-        checks.push(...checkEvents(compilations, timeline, memline));
+    binCount = Math.max(1, Math.min(1000, Math.floor(binCount) || 500));
+
+    const { start, end } = sampleAxis(line);
+    const breakdown = samplePopulation(line);
+    const bins = new Uint32Array(binCount);
+    const valueBins = new Float64Array(binCount);
+    const categories = (breakdown?.categories?.tree.dictionary ?? [null]).map(category => ({
+        category,
+        total: 0,
+        value: 0,
+        bins: new Uint32Array(binCount),
+        valueBins: new Float64Array(binCount)
+    }));
+    const sizes = Array.from({ length: 33 }, (_, exponent) => ({
+        min: exponent === 0 ? 0 : 2 ** (exponent - 1),
+        max: exponent === 0 ? 1 : 2 ** exponent,
+        count: 0,
+        value: 0
+    }));
+    let position = start;
+    let value = 0;
+
+    for (let index = 0; index < line.values.length; index++) {
+        const sampleValue = line.values[index];
+        const category = categories[sampleCategoryIndex(breakdown, index)];
+        const bin = binIndex(position, start, end, binCount);
+        const size = sizes[sampleValue === 0 ? 0 : Math.floor(Math.log2(sampleValue)) + 1];
+
+        category.total++;
+        category.value += sampleValue;
+        category.bins[bin]++;
+        category.valueBins[bin] += sampleValue;
+        bins[bin]++;
+        valueBins[bin] += sampleValue;
+        size.count++;
+        size.value += sampleValue;
+        value += sampleValue;
+        position += line.type === 'timeline' ? sampleValue : 1;
     }
 
-    return checks;
+    return { start, end, count: line.values.length, value, categories, bins, valueBins, sizes };
+}
+
+type SampleEvents = {
+    names: (string | null)[];
+    values: ArrayLike<number>;
+};
+
+export function allocationSampleWindow(profile: SignalsProfile) {
+    const mapping = profile.timeline?.mappings.memline?._mapping;
+    const first = mapping?.[0];
+    const last = mapping?.[mapping.length - 1];
+    const count = profile.memline?.values.length;
+
+    if (!mapping || first === undefined || last === undefined || count === undefined ||
+        first < 0 || first > last || last > count || countInversions(mapping) > 0) {
+        return null;
+    }
+
+    return { start: first, end: last };
+}
+
+function cpuSampleEvents(line: ProfileLine, compilations: CpuProCompilationRecord[]): SampleEvents | null {
+    const timed = sortPlacedEvents(compilations).filter(isTimed);
+
+    if (compilations.length === 0 || analyzeEventNesting(timed).partialOverlaps > 0) {
+        return null;
+    }
+
+    const names = [null, ...new Set(timed.map(event => event.name))];
+    const nameIds = new Map(names.map((name, index) => [name, index]));
+    const values = new Uint32Array(line.values.length);
+    const open: { end: number; id: number }[] = [];
+    let time = line.axisStart + line.axisStartNoSamples;
+    let eventIndex = 0;
+
+    for (let index = 0; index < values.length; index++) {
+        while (eventIndex < timed.length && timed[eventIndex].tm <= time) {
+            const event = timed[eventIndex++];
+
+            while (open.length > 0 && open[open.length - 1].end <= event.tm) {
+                open.pop();
+            }
+
+            open.push({ end: event.tm + event.duration, id: nameIds.get(event.name)! });
+        }
+
+        while (open.length > 0 && open[open.length - 1].end <= time) {
+            open.pop();
+        }
+
+        values[index] = open[open.length - 1]?.id ?? 0;
+        time += line.values[index];
+    }
+
+    return { names, values };
+}
+
+function allocationSampleEvents(line: ProfileLine): SampleEvents | null {
+    const stage = line.attributes.find(attribute => attribute.name === 'allocationCompilationStage');
+
+    if (!stage || stage.values.length !== line.values.length) {
+        return null;
+    }
+
+    return { names: stage.dict.map(name => name === NO_STAGE ? null : name), values: stage.values };
+}
+
+function countCompilationSamples(
+    line: ProfileLine,
+    ownership: SampleEvents,
+    binCount: number,
+    window: ReturnType<typeof allocationSampleWindow>
+) {
+    const { start, end } = sampleAxis(line);
+    const breakdown = samplePopulation(line);
+    const categories = (breakdown?.categories?.tree.dictionary ?? [null]).map(category => ({
+        category,
+        total: 0,
+        covered: 0,
+        outside: 0,
+        before: 0,
+        after: 0,
+        bins: new Uint32Array(binCount),
+        outsideBins: new Uint32Array(binCount)
+    }));
+    const events = ownership.names.map(name => ({
+        name,
+        count: 0,
+        counts: new Uint32Array(categories.length)
+    }));
+    const bins = new Uint32Array(binCount);
+    const outsideBins = new Uint32Array(binCount);
+    let position = start;
+
+    for (let index = 0; index < line.values.length; index++) {
+        const categoryIndex = sampleCategoryIndex(breakdown, index);
+        const category = categories[categoryIndex];
+        const event = events[ownership.values[index]];
+        const bin = binIndex(position, start, end, binCount);
+
+        category.total++;
+        category.bins[bin]++;
+        bins[bin]++;
+        event.count++;
+        event.counts[categoryIndex]++;
+
+        if (event.name === null) {
+            category.outside++;
+            category.outsideBins[bin]++;
+            outsideBins[bin]++;
+            category.before += Number(window !== null && index < window.start);
+            category.after += Number(window !== null && index >= window.end);
+        } else {
+            category.covered++;
+        }
+
+        position += line.type === 'timeline' ? line.values[index] : 1;
+    }
+
+    return { start, end, window, categories, events, bins, outsideBins };
+}
+
+export function samplesByCompilation(profile: Profile, type: ProfileLineType = 'timeline', binCount = 500) {
+    const line = profile[type];
+
+    if (!line) {
+        return null;
+    }
+
+    const ownership = type === 'timeline'
+        ? cpuSampleEvents(line, profile.thread?.compilations ?? [])
+        : allocationSampleEvents(line);
+
+    if (ownership === null) {
+        return null;
+    }
+
+    const count = Math.max(1, Math.min(1000, Math.floor(binCount) || 500));
+    const window = type === 'memline' ? allocationSampleWindow(profile) : null;
+
+    return countCompilationSamples(line, ownership, count, window);
 }
 
 export const methods: Record<string, Method> = {
-    signalIntegrity(profile: unknown) {
+    allocationSampleWindow(profile: unknown) {
+        const target = getProfileOrScopeProfile(profile, this.context);
+
+        return target ? allocationSampleWindow(target) : null;
+    },
+    sampleDistribution(profile: unknown, type = 'timeline', binCount = 500) {
+        const target = getProfileOrScopeProfile(profile, this.context);
+
+        return target && (type === 'timeline' || type === 'memline')
+            ? sampleDistribution(target, type, Number(binCount))
+            : null;
+    },
+    samplesByCompilation(profile: unknown, type = 'timeline', binCount = 500) {
+        const target = getProfileOrScopeProfile(profile, this.context);
+
+        return target && (type === 'timeline' || type === 'memline')
+            ? samplesByCompilation(target, type, Number(binCount))
+            : null;
+    },
+    eventNesting(events: unknown) {
+        if (!Array.isArray(events)) {
+            return null;
+        }
+
+        let nesting = nestingCache.get(events);
+
+        if (nesting === undefined) {
+            nesting = measureEventNesting(events);
+            nestingCache.set(events, nesting);
+        }
+
+        return nesting;
+    },
+    // The number of neighbours going backwards in a vector of numbers
+    inversions(vector: unknown) {
+        const isVector = Array.isArray(vector) || ArrayBuffer.isView(vector);
+
+        return isVector ? countInversions(vector as ArrayLike<number>) : null;
+    },
+    allocationStageMismatches(profile: unknown) {
         const targetProfile = getProfileOrScopeProfile(profile, this.context);
 
         if (targetProfile === null) {
-            return [];
+            return null;
         }
 
-        let checks = cache.get(targetProfile);
+        let mismatches = stageMismatchCache.get(targetProfile);
 
-        if (checks === undefined) {
-            checks = checkSignalIntegrity(targetProfile);
-            cache.set(targetProfile, checks);
+        if (mismatches === undefined) {
+            mismatches = measureStageMismatches(targetProfile);
+            stageMismatchCache.set(targetProfile, mismatches);
         }
 
-        return checks;
+        return mismatches;
     }
 };

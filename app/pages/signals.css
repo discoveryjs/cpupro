@@ -1,0 +1,68 @@
+.page-signals .all-page-header {
+    margin-bottom: 12px;
+}
+.page-signals .all-page-header .view-page-header__content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+}
+.page-signals .signal-thread {
+    min-width: 0;
+    max-width: 100%;
+}
+.page-signals .signal-thread .view-select {
+    max-width: 100%;
+}
+.page-signals .view-tabs-buttons {
+    flex-wrap: wrap;
+}
+.page-signals .view-table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+}
+.page-signals .signal-density {
+    position: relative;
+    isolation: isolate;
+    padding-top: 16px;
+    margin-top: 8px;
+}
+.page-signals .signal-density > .view-ruler {
+    bottom: 26px;
+    z-index: 1;
+}
+.page-signals .view-select + .view-toggle-group {
+    margin-left: 12px;
+}
+.page-signals .signal-density-layers {
+    display: grid;
+}
+.page-signals .signal-density-layers > * {
+    grid-area: 1 / 1;
+}
+.page-signals .view-fractions-bar {
+    min-width: 120px;
+    width: 100%;
+}
+.page-signals .signal-matrix {
+    font-variant-numeric: tabular-nums;
+}
+.page-signals .signal-measurement {
+    display: grid;
+    grid-template-columns: minmax(200px, 1fr) minmax(100px, auto) minmax(80px, auto);
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid #8882;
+}
+.page-signals .signal-measurement > :not(:first-child) {
+    text-align: right;
+}
+@media (max-width: 600px) {
+    .page-signals .signal-measurement {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .page-signals .signal-measurement > :first-child {
+        grid-column: 1 / -1;
+    }
+}

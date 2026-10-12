@@ -9,6 +9,19 @@ import { Dictionary } from '../dictionary.js';
 import { createProfileSession } from '../profile-session.mjs';
 import type { UniformProfilingSession } from './types.js';
 
+test('accepts event-only and empty traces without requiring a CPU capture', () => {
+    const session = extractFromChromiumPerformanceProfile([{
+        pid: 1, tid: 2, ts: 100, dur: 20, ph: 'X',
+        cat: 'disabled-by-default-v8.compilation_allocations',
+        name: 'Compile', args: { data: {} }
+    }]);
+
+    assert.equal(session.profiles.length, 0);
+    assert.equal(session.threads[0].compilations?.length, 1);
+    assert.equal(session.threads[0].compilations?.[0].name, 'Compile');
+    assert.equal(extractFromChromiumPerformanceProfile([]).profiles.length, 0);
+});
+
 test('preserves instant and complete compilation allocation events with their function identity', () => {
     const category = 'disabled-by-default-v8.compilation_allocations';
     const base = { pid: 1, tid: 2, ts: 0, cat: category };
