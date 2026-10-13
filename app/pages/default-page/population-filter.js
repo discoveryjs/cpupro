@@ -3,8 +3,9 @@ export const populationFilter = {
     data: 'scopeBreakdown()',
     metrics: '=line.filters',
     content: {
-        view: 'block',
+        view: 'expand',
         className: 'population-filter',
+        header: 'text:"Population Filters"',
         content: [
             {
                 view: 'list',
