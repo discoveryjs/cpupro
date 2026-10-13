@@ -20,6 +20,7 @@ module.exports = {
     script: {
         modules: [
             './init-core.mjs',
+            './init-script.mjs',
             './text-views/index.js'
         ]
     },
