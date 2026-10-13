@@ -5,7 +5,7 @@ import { test, vi } from 'vitest';
 import { Dictionary } from '../dictionary.js';
 import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRanges } from './parse-script-source-ranges.js';
-import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, isScriptTopLevelOffset, matchCallFrameIdentity } from './script-function-resolution.js';
+import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, isScriptTopLevelOffset, matchCallFrameIdentity, prepareScriptSources } from './script-function-resolution.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
 import { ParseSourceWorkerScriptResult } from '../workers/types.js';
 
@@ -125,7 +125,6 @@ test('script metadata distinguishes unavailable, empty, invalid and parsed sourc
 
         for (const script of [unavailable, empty, invalid, valid]) {
             getFunctionAtScriptOffset(script, 0);
-            script.sourceMetrics = computeScriptSourceMetrics(script.source!, script.functionRanges);
         }
 
         assert.equal(unavailable.sourceMetrics, null);
@@ -140,6 +139,30 @@ test('script metadata distinguishes unavailable, empty, invalid and parsed sourc
     } finally {
         warn.mockRestore();
         error.mockRestore();
+    }
+});
+
+test.each([false, true])('empty source publishes zero metrics with cached ranges=%s', async cached => {
+    const script = createScript(1, 'empty.js', '');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+        if (cached) {
+            getFunctionAtScriptOffset(script, 0);
+        }
+
+        await prepareScriptSources([script]);
+
+        assert.deepEqual(script.functionRanges, []);
+        assert.deepEqual(script.sourceMetrics, {
+            bytesPerChar: 1,
+            byteLength: 0,
+            nonLatin1CodeUnits: 0,
+            surrogatePairs: 0,
+            selfSize: 0
+        });
+    } finally {
+        warn.mockRestore();
     }
 });
 
@@ -323,7 +346,7 @@ test('restores all function range types in place after worker transfer', () => {
 });
 
 test('the parsing worker transfers source metrics with type-encoded function ranges', async () => {
-    const sources = ['function outer() { return () => "\u0100"; }', '', 'const text = "caf\u00e9";'];
+    const sources = ['function outer() { return () => "\u0100"; }', '', 'const text = "caf\u00e9";', 'function broken(\u0100'];
     const messages: { scripts: ParseSourceWorkerScriptResult[]; types: string[] }[] = [];
     const handler = runInNewContext(
         readFileSync(new URL('../workers/parse-source-worker.js', import.meta.url), 'utf8')
@@ -344,7 +367,13 @@ test('the parsing worker transfers source metrics with type-encoded function ran
         const { ranges, sourceMetrics } = messages[0].scripts[index];
         const result = decodeFunctionRangeTypes(ranges, messages[0].types);
         assert.deepEqual(result, parseScriptSourceRanges(sources[index], 'fixture.js', true));
-        assert.equal(sourceMetrics.selfSize! + result.ranges.reduce((sum, range) => sum + range.selfSize, 0), sources[index].length);
+        assert.equal(sourceMetrics.byteLength, sources[index].length * sourceMetrics.bytesPerChar);
+
+        if (result.parsed) {
+            assert.equal(sourceMetrics.selfSize! + result.ranges.reduce((sum, range) => sum + range.selfSize, 0), sources[index].length);
+        } else {
+            assert.equal(sourceMetrics.selfSize, null);
+        }
     }
 });
 

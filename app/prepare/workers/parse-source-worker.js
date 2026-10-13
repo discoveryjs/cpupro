@@ -9,7 +9,7 @@ onmessage = async function(event) {
 
     for (const { id, url, source } of scripts) {
         const functionRanges = parseScriptSourceRanges(source, url, true);
-        const sourceMetrics = computeScriptSourceMetrics(source, functionRanges.ranges);
+        const sourceMetrics = computeScriptSourceMetrics(source, functionRanges.parsed ? functionRanges.ranges : null);
 
         for (const range of functionRanges.ranges) {
             const type = range.type;

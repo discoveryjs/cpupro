@@ -1,6 +1,7 @@
 import { CpuProCallFrame, CpuProScript } from '../types';
 import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { createLineBoundaries } from './line-boundaries.js';
+import { computeScriptSourceMetrics } from './source-text-metrics.js';
 import { createParseWorker } from '../workers/index.js';
 import { FunctionRange, FunctionRanges, decodeFunctionRangeTypes, parseScriptSourceRanges } from './parse-script-source-ranges.js';
 import { ParseSourceWorkerScriptResult } from '../workers/types';
@@ -39,7 +40,8 @@ function getScriptFunctionRanges(script: CpuProScript | null) {
 function setScriptFunctionRanges(
     script: CpuProScript,
     ranges: FunctionRanges,
-    diagnose: Diagnose = diagnoseToConsole
+    diagnose: Diagnose = diagnoseToConsole,
+    sourceMetrics = computeScriptSourceMetrics(script.source, ranges.parsed ? ranges.ranges : null)
 ) {
     if (ranges.error !== undefined) {
         diagnose('error', 'Failed to parse script for function ranges', {
@@ -50,6 +52,7 @@ function setScriptFunctionRanges(
     }
 
     script.functionRanges = ranges.parsed ? ranges.ranges : null;
+    script.sourceMetrics = sourceMetrics;
     scriptFunctionRanges.set(script, ranges);
 }
 
@@ -489,8 +492,7 @@ export async function prepareScriptSources(
                 const ranges = decodeFunctionRangeTypes(rawRanges, types);
                 const script = scriptsForWorker[i];
 
-                setScriptFunctionRanges(script, ranges, diagnose);
-                script.sourceMetrics = sourceMetrics;
+                setScriptFunctionRanges(script, ranges, diagnose, sourceMetrics);
             }
         } finally {
             for (const script of scriptsForWorker) {
