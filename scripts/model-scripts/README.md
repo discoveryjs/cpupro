@@ -4,6 +4,23 @@ Scripts that analyze traces through the cpupro model. They are run by [`run-mode
 
 Requires `npm run build-app` (the runner uses `build/cpupro-model-script.js`) and Node 22.3+ (or 20.16+).
 
+## Quick start
+
+Script mode loads and queries the same prepared model as the web application,
+without opening a browser. The following commands run from the repository root;
+Node.js 24 LTS is recommended. This is a source-checkout workflow, not a
+`cpupro script` CLI subcommand.
+
+```sh
+npm ci
+npm run build-app
+node scripts/run-model.mjs scripts/model-scripts/audit-scripts.mjs app/demo/chromium.jsonxl
+```
+
+Replace the demo path with your profile or trace, including `.json.gz` files.
+Rebuild after changing preparation, Jora methods or text views; editing an analysis
+script does not require rebuilding the model. No web server is needed.
+
 ## Running
 
 ```
@@ -13,17 +30,70 @@ node scripts/run-model.mjs [--jobs <n>] [--option <name[=value]>] <script> <trac
 - `--jobs` – number of traces processed in parallel; it is limited by an estimated memory budget (about 40 bytes of peak memory per byte of a `.gz` trace), at least one runs always
 - `--option` – a string option passed to the script, can be repeated
 - the output of every trace is printed in the order of the arguments; a failed trace does not stop the others but makes the exit code 1
+- each result has a `# <file>` heading, so redirected stdout is a report, not a single JSON document
 
 ## Writing a script
 
-A script is an ES module with a default export:
+A script is an ES module with a default export. For example, `summary.mjs`:
 
 ```js
-export default async function (model, { file, options }) {
-    // `model` has the trace loaded, e.g. `model.data.profiles`
-    return 'text'; // a string is printed as is, any other value as JSON
+export default function(model, { file }) {
+    return {
+        file,
+        profiles: model.query(`
+            profiles.({ thread: thread.name, tid: thread.tid, scripts: thread.scripts.size() })
+        `, model.data, model.getContext())
+    };
 }
 ```
+
+```sh
+node scripts/run-model.mjs ./summary.mjs /path/to/trace.json.gz
+```
+
+The runner calls `default(model, { file, options })` after loading the trace and
+awaits its result. Return a string for text output or a serializable value for JSON;
+the complete model contains cycles, so project only the fields you need.
+`options` contains strings supplied with `--option`, for example `--option thread=7420`.
+
+## Interactive session
+
+Use the standard Node REPL to load a trace once and run repeated queries:
+
+```sh
+node --max-old-space-size=16384
+```
+
+Enter commands one at a time, waiting for the next `>` prompt after each command:
+
+```js
+const { model } = await import('./build/cpupro-model-script.js');
+void await model.loadDataFromFile('./app/demo/chromium.jsonxl');
+await model.queryChain('profiles.({ thread: thread.name, tid: thread.tid })');
+model.query('thread.scripts.size()', model.data.profiles[0]);
+void await model.queryChain('profiles').renderToConsole({ view: 'struct', expanded: 1, limit: 5 });
+```
+
+Replace the demo path before loading. `model.data` is also available to ordinary
+JavaScript. `model.query(query, data, context)` evaluates Jora on explicitly supplied
+data; pass `model.data` and `model.getContext()` for model-wide queries. In contrast,
+`model.queryChain(query)` starts with the model data and context. `void await` avoids
+printing the load/render return value again in the REPL. The trace stays in memory
+until you leave with `.exit`.
+
+To write a standalone JSON result from the same session:
+
+```js
+const summary = await model.queryChain('profiles.({ thread: thread.name, tid: thread.tid })');
+const { writeFile } = await import('node:fs/promises');
+await writeFile('./summary.json', JSON.stringify(summary, null, 2));
+```
+
+The optional `--max-old-space-size=16384` sets a 16 GiB V8 old-space limit, not a
+total process memory limit. Use `--jobs 1` with the runner for large traces and
+allow for memory beyond the compressed file size. Avoid `--input-type=module`:
+parse workers inherit it, which can break their CommonJS bootstrap. Use `.mjs`
+files or the REPL with dynamic `import()` instead.
 
 ## Inspecting values
 
@@ -125,6 +195,43 @@ node --test scripts/model-script.test.mjs
 | Script | Options | Description |
 | --- | --- | --- |
 | [`analyze-signals.mjs`](analyze-signals.mjs) | `thread=<name\|tid>`, `json` | Independent scopes, windows and event statistics from [`app/signals.js`](../../app/signals.js); population distributions from `sampleDistribution()` and optional coverage from `samplesByCompilation()` |
+| [`audit-scripts.mjs`](audit-scripts.mjs) | None | Scripts page queries, exclusive source-size checks, compilation identities, and allocation count/byte distributions by type, stage, script and owner |
+
+## Scripts audit
+
+```sh
+npm run build-app
+node --max-old-space-size=16384 scripts/run-model.mjs scripts/model-scripts/audit-scripts.mjs /path/to/trace.json.gz
+```
+
+The audit executes the Scripts page's default selection and summary queries for
+each distinct thread represented by a CPU profile. It excludes source-map originals
+and does not test interactive filters or event-only threads. For repeated profiles
+on one thread, only the first profile's allocation population is inspected.
+
+Source bytes estimate flat string storage, not allocations. Compiled bytes sum
+exclusive source ranges with observed compiled/optimized states; missing compilation
+data is not evidence of zero compilation. `compiledUnavailable` records unavailable
+rows separately from the numeric sum. Source partition checks compare the page's
+own sizes against independently subtracted nested intervals.
+
+Allocation distributions contain both counts and allocated bytes. `byType` includes
+all allocations, while `eventScriptType` provides the full stage/script/type matrix;
+filter out stage `none` for compilation-only totals. `allocationOwner` is the owner
+of the innermost compilation event, not the allocating JavaScript function for all
+runtime allocations. Unresolved and ambiguous identities remain separate buckets.
+
+`ownerMismatchesAssumingIds1ToN` independently scans event intervals `(start, end]`,
+assuming allocation IDs are consecutive and begin at 1. It is unavailable when an
+event range exceeds that population or the owner attribute is absent. Interpret it
+only with zero nesting/range violations; the prepared model does not retain the
+original allocation ID vector for this check. Stage comparison also depends on the
+existing model diagnostic's coordinate assumptions.
+
+Event-to-function matching uses exact script-relative start/end coordinates, with
+the existing default-constructor convention. It also reports disagreements with
+cached `event.callFrame`, which is not used by the page's compilation state matcher.
+Synthetic runtime functions absent from the source parser can remain unmatched.
 
 ## Analysis questions
 

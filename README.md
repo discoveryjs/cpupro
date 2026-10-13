@@ -136,6 +136,13 @@ Use Node.js 24 LTS or a newer supported version. Run `npm ci`, then `npm test` f
 
 See [Testing](test/README.md) for focused runs, JS/WASM modes, fixtures and environment boundaries.
 
+### Script mode
+
+Analyze traces from Node.js without a browser using the application's prepared
+model and Jora queries. See the [script-mode quick start](scripts/model-scripts/README.md#quick-start)
+for running analysis scripts, writing your own, and keeping a loaded trace in a
+Node REPL for repeated queries.
+
 ## License
 
 MIT
