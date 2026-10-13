@@ -25,6 +25,101 @@ export default async function (model, { file, options }) {
 }
 ```
 
+## Inspecting values
+
+The script model includes a text `struct` view. It follows Discovery's structure view,
+not Node's object inspector: collapsed previews by default, configurable expansion
+depth, bounded collection previews, and model object-marker annotations.
+
+For direct use of the built model:
+
+```js
+import { model } from './build/cpupro-model-script.js';
+
+await model.loadDataFromFile('./app/demo/chromium.jsonxl');
+await model.queryChain('scopeBreakdown().callFrames.all.dict.entries[:2]')
+        .renderToConsole({ view: 'struct', expanded: 2, limit: 10 });
+```
+
+Within a runner module, return rendered text instead of printing it directly to
+preserve the runner's output ordering:
+
+```js
+export default async function(model) {
+        const { text } = await model.textView.renderString(
+                null, { view: 'struct', expanded: 1 }, model.data, model.getContext()
+        );
+
+        return text;
+}
+```
+
+Supported settings:
+
+- `expanded`: `false` (default), `true` (one level), or a depth. Numeric arrays and
+    typed arrays retain compact previews, as in the DOM view.
+- `limit` (50), `limitCollapsed` (4), `limitCompactObjectEntries` (0): per-container
+    limits for expanded content, collapsed content and objects inside compact previews.
+    Omitted entries are counted; `false` disables a limit.
+- `maxStringLength` (150), `maxCompactStringLength` (40), `allowedExcessStringLength`
+    (10), `maxPropertyLength` (unlimited), `maxCompactPropertyLength` (35): string and
+    property-name limits. Strings and ambiguous keys are escaped. `false` disables a limit.
+    Truncated strings include the remainder count inside the quotes: `"abc ... N more"`.
+- `maxDepth` (64): a text-only safeguard for nested previews, including arrays that
+    are still nested when `expanded` is false. The boundary is printed as `[Depth limit]`.
+    `false` disables this safeguard.
+- `annotations`: Discovery annotation queries/functions, including `{ query, debug }`.
+    They receive the same `key`, `index`, `host`, `parent`, and outer `context` as the DOM
+    view. Default annotations come from Discovery, including the model's object markers.
+    As in HTML struct, entries inside compact previews do not evaluate or display annotations.
+    Text, placement and badge/plain style are retained; icons, tooltips, highlighting
+    and interactive controls are not rendered.
+
+Objects expose own enumerable string-keyed properties. Arrays, typed arrays and
+sets use sequence previews. References have no special labels. Recursive compact
+previews stop at an object or sequence ellipsis; shared objects in sibling entries
+can appear more than once. Limits apply per container, not
+to the total output size. There is no Node-only dependency in the view.
+
+Expansion of an ordinary array checks whether the entire array is numeric,
+including entries beyond the preview limit. Collapsed arrays and typed arrays
+do not need this scan.
+
+## Diagnostic console output
+
+Script queries provide `consoleLog()` independently of the text views. It calls
+Node's `console.log(value, ...args)` and returns the original receiver unchanged:
+
+```js
+await model.queryChain('scopeProfile().consoleLog().name');
+await model.queryChain('scopeBreakdown().callFrames.all.dict.entries[:2].consoleLog("top entries")');
+```
+
+Additional arguments follow the receiver in the console call. Values are passed
+directly to the console, without JSON serialization or struct formatting, so cyclic
+objects, typed arrays and other Node-inspectable values remain supported. This
+method is registered only by the script build, not the browser application.
+
+Diagnostic messages are printed immediately to stdout. Under `run-model.mjs --jobs`,
+they can interleave between workers; return final report text from the script to
+retain input-file output ordering.
+
+## Checking the script build
+
+```sh
+npm run test:script
+```
+
+This rebuilds the application and runs native Node tests against the generated ESM
+module. The checks cover import without browser globals, query-chain rendering,
+`consoleLog()`, and loading/querying a local demo profile. The Build CI workflow
+runs these tests after its full build and Vitest tests, without rebuilding.
+To check an existing build without rebuilding:
+
+```sh
+node --test scripts/model-script.test.mjs
+```
+
 ## Scripts
 
 | Script | Options | Description |

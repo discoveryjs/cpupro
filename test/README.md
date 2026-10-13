@@ -128,6 +128,15 @@ Both typechecks currently report existing production errors; they are not hidden
 
 Discovery's browser assets are explicitly listed in its config, and npm's published file list excludes tests. Adding a colocated test must not require registering it in the app.
 
+### Built script model
+
+`npm run test:script` rebuilds the application and runs `scripts/model-script.test.mjs`
+with Node's native test runner, outside Vitest/Vite. It checks the generated ESM
+module, script-only console logging, text rendering and local profile loading.
+The Build CI workflow runs these tests after its full build and Vitest tests,
+without rebuilding. It also checks lint and production types.
+These integration checks need a build and are intentionally separate from `npm test`.
+
 ## Migration comparisons
 
 `scripts/test-population-breakdowns.cjs --baseline=<revision>` is a separate, optional comparison tool retained from the migration. It is not part of `npm test`. Ordinary regression tests must remain independent of repository history and must define expected behavior themselves.

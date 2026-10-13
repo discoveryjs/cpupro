@@ -37,6 +37,7 @@
         "start": "discovery",
         "test": "vitest run",
         "test:watch": "vitest",
+        "test:script": "npm run build-app && node --test scripts/model-script.test.mjs",
         "test:lint": "eslint --ext .js,.ts,.mts test vitest.config.mts \"app/**/*.test.{js,ts,mts}\"",
         "lint": "eslint lib app",
         "typecheck": "tsc --noEmit",
