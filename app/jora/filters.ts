@@ -10,6 +10,9 @@ export const methods = {
     attributeFilters(filter: { filters: AttributeFilterSettings[] }) {
         return filter.filters;
     },
+    filterActive(filter: AttributeFilterSettings) {
+        return filter.active;
+    },
     filterOptionEnabled(filter: SetAttributeFilter, key: string) {
         return filter.isEnabled(key);
     },

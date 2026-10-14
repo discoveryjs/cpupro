@@ -80,6 +80,22 @@ test('streamed script lookup is recognized without claiming compilation', () => 
     assert.deepEqual(compilation.unknownStages, []);
 });
 
+test('whole-script stages take precedence while ambiguous function ranges remain unresolved', () => {
+    const { script, scripts } = fixture('() => 1');
+    const range = script.functionRanges![0];
+    const records = [
+        record('CompileCode', 0, script.source!.length),
+        record('PreParse', range.callFrameStart, range.end)
+    ];
+
+    assert.deepEqual([...processScriptCompilation(records, scripts).get(7)!.states], [3, 1]);
+    script.functionRanges!.push({ ...range });
+    const ambiguous = processScriptCompilation(records, scripts).get(7)!;
+
+    assert.deepEqual([...ambiguous.states], [3, 0, 0]);
+    assert.deepEqual(ambiguous.unmatchedStarts, [0]);
+});
+
 test('thread script links retain local IDs and isolate events even when Dictionary shares source objects', () => {
     const source = 'function shared() {}';
     const base = { pid: 1, ts: 0, ph: 'P', cat: 'profile' };

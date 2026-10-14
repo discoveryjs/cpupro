@@ -9,6 +9,7 @@ const computeMetricsJavaScriptApi = createJavaScriptApi();
 
 export class Population extends Observer {
     readonly ranges: RangeSet | null = null;
+    readonly boundaryCuts: readonly Readonly<{ index: number; value: number }>[] = [];
     readonly sinkId: number;
     readonly sink: { count: number; total: number };
     readonly samplesRevision = 0;
@@ -91,9 +92,14 @@ export class PopulationFiltered extends Observer {
         super();
 
         const sampleCount = source.samplesCount.length;
+        const buffer = createComputeBuffer(source, USE_WASM);
+        const api = USE_WASM && buffer.memory
+            ? createWasmApi(buffer.memory)
+            : computeMetricsJavaScriptApi;
+
         this.source = source;
         this.population = source instanceof PopulationFiltered ? source.population : source;
-        this.buffer = createComputeBuffer(source, USE_WASM);
+        this.buffer = buffer;
         this.samples = this.buffer.samples;
         this.values = this.buffer.values;
         this.cumulative = source.cumulative;
@@ -101,19 +107,20 @@ export class PopulationFiltered extends Observer {
         this.samplesTotal = this.buffer.samplesTotal.subarray(0, sampleCount);
         this.samplesMask = new Uint32Array(sampleCount);
 
-        const api = USE_WASM && this.buffer.memory
-            ? createWasmApi(this.buffer.memory)
-            : computeMetricsJavaScriptApi;
         this.#recompute = (clear = true) => {
             api.computeMetrics(this.buffer, clear);
+
             for (const { index, value } of this.#boundaryCuts) {
                 const sampleId = this.samples[index];
+
                 this.buffer.samplesTotal[sampleId] -= value;
+
                 if (value === this.values[index]) {
                     this.buffer.samplesCount[sampleId]--;
                 }
             }
         };
+
         this.filter = new PopulationFilter(
             sampleCount,
             source.samples.length,
@@ -122,10 +129,6 @@ export class PopulationFiltered extends Observer {
                 this.updateMask(updateMask);
             }
         );
-
-        Object.defineProperty(this, 'sink', {
-            get: () => this.#sink
-        });
 
         this.#effectiveRanges = source.ranges;
         this.#compileValues();
@@ -141,6 +144,10 @@ export class PopulationFiltered extends Observer {
             this.#compileValues();
             this.#recompute();
             this.notify();
+        });
+
+        Object.defineProperty(this, 'sink', {
+            get: () => this.#sink
         });
     }
 
@@ -163,6 +170,10 @@ export class PopulationFiltered extends Observer {
         }
 
         return metrics;
+    }
+
+    get boundaryCuts(): readonly Readonly<{ index: number; value: number }>[] {
+        return this.#boundaryCuts;
     }
 
     get cumulativeEnd(): number {

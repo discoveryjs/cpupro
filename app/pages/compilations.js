@@ -4,12 +4,12 @@ const compilationTable = {
     view: 'context',
     data: `
         $owners: #.allocationLine | $ ? lineAttribute("allocationOwner");
-        $stageFilter: #.allocationLine | $ ? filters.attributeFilters()[=>key = "allocationCompilationStage"];
+        $stageFilter: #.allocationLine | $ ? filters.attributeFilters()[=>key = "allocationCompilationStage" and filterActive()];
         $totals: $owners and #.allocationPopulation ? $owners.attributeSampleTotals(#.allocationPopulation) : [];
-        (scopeProfile().thread.compilations or [])
-            .[no $stageFilter or $stageFilter.filterOptionEnabled(name)]
-            .group(=>scriptId + ":" + start)
-            .({ subject: key, scriptId: value[0].scriptId, start: value[0].start, callFrame: value[0].callFrame, records: value, events: value.size() })
+        $subjects: scopeProfile().thread.compilationSubjects or [];
+        ($stageFilter
+            ? $subjects.($records: records.[$stageFilter.filterOptionEnabled(name)]; { ...$, records: $records, events: $records.size() }).[events]
+            : $subjects)
             .zip(=>subject, $totals.[entry], =>entry.scriptId + ":" + entry.start)
             .({ ...left, count: right.count or 0, size: right.size or 0 })
             .[(callFrame.name or records.functionName or "Unresolved") ~= #.filter]
@@ -56,6 +56,7 @@ const compilationTable = {
                         ]
                     }
                 },
+                { header: 'State', sorting: 'state ascN', content: 'text:state' },
                 { header: 'Function', sorting: 'callFrame.name ascN', content: {
                     view: 'switch', content: [
                         { when: 'callFrame', content: 'badge:callFrame.marker() | { text: title, href }' },
@@ -63,8 +64,8 @@ const compilationTable = {
                     ]
                 } },
                 {
-                    header: 'Source', sorting: 'callFrame.end - callFrame.start desc',
-                    content: 'text-with-unit{ value: callFrame and callFrame.hasSource() ? (callFrame.end - callFrame.start).bytes() : "", unit: true }',
+                    header: 'Source', sorting: 'sourceSize desc',
+                    content: 'text-with-unit{ value: sourceSize != null ? sourceSize.bytes() : "", unit: true }',
                     detailsWhen: 'callFrame and callFrame.hasSource()',
                     details: 'call-frame-source:callFrame'
                 },
@@ -75,7 +76,9 @@ const compilationTable = {
             view: 'block',
             className: 'all-page-summary',
             content: [
-                { view: 'block', content: ['text:"Functions:"', 'text-numeric:size()'] },
+                { view: 'block', content: ['text:"Subjects:"', 'text-numeric:size()'] },
+                { view: 'block', content: ['text:"Functions:"', 'text-numeric:.[callFrame.kind = "function"].size()'] },
+                { view: 'block', content: ['text:"Activated functions:"', 'text-numeric:.[activated].size()'] },
                 {
                     view: 'block', when: '#.allocationPopulation',
                     content: ['text:"Allocated:"', 'text-with-unit{ value: (sum(=>size) or 0).bytes(), unit: true }']

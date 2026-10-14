@@ -1,5 +1,7 @@
-import type { CpuProCompilationRecord, CpuProScript, CpuProThread, IProfileScriptsMap } from '../types.js';
+import type { CpuProCompilationRecord, CpuProCompilationSubject, CpuProScript, CpuProThread, IProfileScriptsMap } from '../types.js';
+import type { FunctionRange } from '../misc/parse-script-source-ranges.js';
 import type { ProfileScriptsMap } from './scripts.js';
+import { isScriptCompilationRecord } from './compilation-events.js';
 
 export const scriptCompilationStates = ['unobserved', 'pre-parsed', 'parsed', 'compiled', 'optimized'] as const;
 
@@ -37,6 +39,102 @@ const stageStates = new Map<string, number | null>([
     ['Turbofan.OptimizeCode', 4],
     ['Turbofan.OptimizeConcurrentFinalize', 4]
 ]);
+
+export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): CpuProCompilationSubject[] {
+    const subjects: CpuProCompilationSubject[] = [];
+    const subjectIndexes = new Map<string, number>();
+    const states: number[] = [];
+
+    for (const record of records) {
+        const key = record.scriptId + ':' + record.start;
+        let index = subjectIndexes.get(key);
+
+        if (index === undefined) {
+            index = subjects.length;
+            subjectIndexes.set(key, index);
+            states.push(0);
+            subjects.push({
+                subject: key,
+                scriptId: record.scriptId,
+                start: record.start,
+                callFrame: null,
+                state: scriptCompilationStates[0],
+                activated: false,
+                sourceSize: null,
+                records: [],
+                events: 0
+            });
+        }
+
+        const subject = subjects[index];
+
+        subject.records.push(record);
+        subject.events++;
+        subject.callFrame ??= record.callFrame;
+
+        if (record.duration !== null) {
+            states[index] = Math.max(states[index], stageStates.get(record.name) ?? 0);
+        }
+    }
+
+    for (let index = 0; index < subjects.length; index++) {
+        const subject = subjects[index];
+        const frame = subject.callFrame;
+        const state = states[index];
+
+        subject.state = scriptCompilationStates[state];
+
+        if (frame === null) {
+            continue;
+        }
+
+        subject.activated = frame.kind === 'function' && state >= 3;
+
+        const metrics = frame.script?.sourceMetrics;
+
+        if (metrics && frame.start >= 0 && frame.end > frame.start) {
+            subject.sourceSize = (frame.end - frame.start) * metrics.bytesPerChar;
+        }
+    }
+
+    return subjects;
+}
+
+function resolveCompilationStateIndex(
+    record: CpuProCompilationRecord,
+    script: CpuProScript,
+    ranges: FunctionRange[],
+    byStart: Map<number, number[]>
+) {
+    const wholeScript = record.start === 0 && record.end === script.source?.length;
+
+    if (wholeScript && isScriptCompilationRecord(record)) {
+        return 0;
+    }
+
+    const candidates = record.start === null ? undefined : byStart.get(record.start);
+    let matchedIndex = -1;
+
+    if (candidates) {
+        for (const index of candidates) {
+            const range = ranges[index];
+            const matchingEnd = range.end === record.end;
+            const defaultConstructor = range.defaultConstructor && record.end === record.start;
+
+            if (!matchingEnd && !defaultConstructor) {
+                continue;
+            }
+
+            if (matchedIndex !== -1) {
+                return -1;
+            }
+
+            matchedIndex = index + 1;
+        }
+    }
+
+    return matchedIndex === -1 && wholeScript ? 0 : matchedIndex;
+}
 
 export function processScriptCompilation(records: CpuProCompilationRecord[], scripts: IProfileScriptsMap) {
     const recordsByScript = new Map<number, CpuProCompilationRecord[]>();
@@ -98,20 +196,7 @@ export function processScriptCompilation(records: CpuProCompilationRecord[], scr
                 continue;
             }
 
-            const matches = record.start !== null ? (byStart.get(record.start) ?? []).filter(index => {
-                const range = ranges[index];
-
-                return range.end === record.end || (range.defaultConstructor && record.end === record.start);
-            }) : [];
-            const wholeScript = record.start === 0 && record.end === script.source?.length;
-            const scriptEvent =
-                record.name === 'ParseProgram' ||
-                record.name === 'CompileCode' ||
-                record.name === 'FinishOffThreadDeserialize' ||
-                record.name === 'FinalizeDeserialization';
-            const index = wholeScript && (scriptEvent || matches.length === 0)
-                ? 0
-                : matches.length === 1 ? matches[0] + 1 : -1;
+            const index = resolveCompilationStateIndex(record, script, ranges, byStart);
 
             if (index === -1) {
                 unmatchedStarts.add(record.start);
@@ -131,6 +216,8 @@ export function processScriptCompilation(records: CpuProCompilationRecord[], scr
 export function linkThreadScripts(thread: CpuProThread, scripts: ProfileScriptsMap) {
     const compilations = processScriptCompilation(thread.compilations ?? [], scripts);
     const linked = new Set<CpuProScript>();
+
+    thread.compilationSubjects = prepareCompilationSubjects(thread.compilations ?? []);
 
     for (const entry of thread.scripts) {
         const script = scripts.get(entry.id);

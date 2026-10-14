@@ -50,7 +50,7 @@ function sourceFixture(cpuOnly = false) {
     data._samplePositions = [15, 15, 15];
     session.threads[0].compilations = [
         record({ allocationStart: 10, allocationEnd: 20 }),
-        record({ scriptId: 8, start: 18, end: 24 })
+        record({ scriptId: 8, start: 18, end: data._scripts[1].source!.length })
     ];
 
     if (!cpuOnly) {
@@ -157,8 +157,8 @@ test('known consecutive ids avoid rescanning and ordered intervals avoid sorting
     }
 });
 
-test('call frames resolve late by script and start without changing owner identities', () => {
-    const records = [record({ start: 20 }), record({ start: 21 }), record({ scriptId: null, start: null }), record({ scriptId: 99 })];
+test('call frames resolve exact compilation bounds without changing owner identities', () => {
+    const records: CpuProCompilationRecord[] = [record({ start: 20, end: 24 }), record({ start: 21, end: 24 }), record({ scriptId: null, start: null }), record({ scriptId: 99 })];
     const dictionary = new Dictionary();
     const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source: 'const run = function() {};' }]);
     const named = dictionary.resolveCallFrame({
@@ -170,10 +170,62 @@ test('call frames resolve late by script and start without changing owner identi
 
     resolveCompilationCallFrames(records, dictionary, scripts);
 
-    assert.deepEqual(records.map(record => record.callFrame), [named, named, null, null]);
+    assert.equal(records[0].callFrame, named);
+    assert.notEqual(records[1].callFrame, named);
+    assert.equal(records[1].callFrame?.start, 21);
+    assert.equal(records[1].callFrame?.end, 24);
+    assert.deepEqual(records.slice(2).map(record => record.callFrame), [null, null]);
     assert.deepEqual(owner.dict, dict);
     assert.equal(owner.dict.length, 5);
-    assert.equal(dictionary.callFrames.length, frameCount);
+    assert.equal(dictionary.callFrames.length, frameCount + 1);
+});
+
+test('compilation identity bypasses sampled location frames and preserves default constructors', () => {
+    const source = 'function outer() { const inner = () => 1; } class Empty {}';
+    const dictionary = new Dictionary();
+    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source }]);
+    const script = scripts.get(7)!;
+    const start = source.indexOf('() =>');
+    const end = source.indexOf(';');
+    const enclosing = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+    const location = dictionary.resolveLocation(enclosing, script, start);
+    const constructorStart = source.indexOf('class');
+    const records: CpuProCompilationRecord[] = [
+        record({ name: 'CompileIgnition', start, end }),
+        record({ name: 'CompileIgnition', start: constructorStart, end: constructorStart }),
+        record({ name: 'ParseProgram', start: 0, end: source.length }),
+        record({ start, end: null })
+    ];
+
+    resolveCompilationCallFrames(records, dictionary, scripts);
+
+    assert.equal(records[0].callFrame?.name, 'inner');
+    assert.equal(records[0].callFrame?.start, start);
+    assert.equal(records[0].callFrame?.end, end);
+    assert.equal(location.callFrame, enclosing);
+    assert.equal(records[1].callFrame?.name, 'Empty');
+    assert.equal(records[1].callFrame?.end, source.length);
+    assert.equal(records[2].callFrame, enclosing);
+    assert.equal(records[3].callFrame, null);
+});
+
+test('repeated compilation stages resolve source coordinates once per identity', () => {
+    const source = 'function run() {}';
+    const dictionary = new Dictionary();
+    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source }]);
+    const records: CpuProCompilationRecord[] = Array.from({ length: 10000 }, (_, index) => record({
+        name: index % 2 ? 'CompileIgnition' : 'PreParse', start: source.indexOf('('), end: source.length
+    }));
+    const positions = vi.spyOn(scriptFunctions, 'getScriptLineColumnFromOffset');
+
+    try {
+        resolveCompilationCallFrames(records, dictionary, scripts);
+        assert.equal(positions.mock.calls.length, 1);
+        assert.ok(records[0].callFrame);
+        assert.ok(records.every(record => record.callFrame === records[0].callFrame));
+    } finally {
+        positions.mockRestore();
+    }
 });
 
 test('session links events once per thread without mutating raw records', () => {

@@ -235,6 +235,7 @@ export type CpuProThread = {
     scripts: CpuProThreadScript[];
     events: UniformTraceEvent[];
     compilations?: CpuProCompilationRecord[];
+    compilationSubjects?: CpuProCompilationSubject[];
     counters: CpuProCounterEntry[];
     userTimings: UniformTraceEvent[]; // subset of user defined events, e.g. cat="blink.user_timing" in Chromium traces
 }
@@ -249,6 +250,18 @@ export type CpuProThreadScript = Omit<V8CpuProfileScript, 'id' | 'source'> & {
 export type CpuProCompilationRecord = Omit<UniformCompilationRecord, 'event' | 'callFrame'> & {
     event: UniformTraceEvent | null;
     callFrame: CpuProCallFrame | null;
+};
+
+export type CpuProCompilationSubject = {
+    subject: string;
+    scriptId: number | null;
+    start: number | null;
+    callFrame: CpuProCallFrame | null;
+    state: string;
+    activated: boolean;
+    sourceSize: number | null;
+    records: CpuProCompilationRecord[];
+    events: number;
 };
 
 export type CpuProCounterEntry = {

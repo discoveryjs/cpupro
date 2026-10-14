@@ -185,7 +185,7 @@ export const methods = {
             values: valueTypes,
             dict: valueTypesDict
         } = allocationTypeAttribute;
-        const { samples, values, samplesCount } = sampleTimings;
+        const { samples, values, sinkId, boundaryCuts } = sampleTimings;
         const timespanCount = valueLifespansDict.length;
         const typeCount = valueTypesDict.length;
         const counts = new Uint32Array(timespanCount * typeCount);
@@ -198,12 +198,32 @@ export const methods = {
             : makeSamplesMask(source, test, 1);
         const result = [];
 
-        for (let i = 0; i < samples.length; i++) {
-            if (samples[i] < samplesCount.length && samplesMask[sampleIds[i]] !== 0) {
-                const value = values[i];
+        let start = 0;
 
-                if (value !== 0) {
-                    const index = valueTypes[i] * timespanCount + valueLifespans[i];
+        for (let cutIndex = 0; cutIndex <= boundaryCuts.length; cutIndex++) {
+            const cut = boundaryCuts[cutIndex];
+            const end = cut ? cut.index : values.length;
+
+            for (let eventIndex = start; eventIndex < end; eventIndex++) {
+                if (samples[eventIndex] !== sinkId && samplesMask[sampleIds[eventIndex]] !== 0) {
+                    const value = values[eventIndex];
+
+                    if (value !== 0) {
+                        const index = valueTypes[eventIndex] * timespanCount + valueLifespans[eventIndex];
+
+                        counts[index]++;
+                        sums[index] += value;
+                        mins[index] = mins[index] ? Math.min(mins[index], value) : value;
+                        maxs[index] = Math.max(maxs[index], value);
+                    }
+                }
+            }
+
+            if (cut) {
+                const value = values[end] - cut.value;
+
+                if (value !== 0 && samples[end] !== sinkId && samplesMask[sampleIds[end]] !== 0) {
+                    const index = valueTypes[end] * timespanCount + valueLifespans[end];
 
                     counts[index]++;
                     sums[index] += value;
@@ -211,6 +231,8 @@ export const methods = {
                     maxs[index] = Math.max(maxs[index], value);
                 }
             }
+
+            start = end + 1;
         }
 
         for (let i = 0; i < valueTypesDict.length; i++) {

@@ -4,6 +4,7 @@ import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
+import { prepareCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
 import {
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute
@@ -38,12 +39,107 @@ function compilationAttributes(records, ids) {
     ];
 }
 
+function setCompilations(profile, records) {
+    profile.thread = { compilations: records, compilationSubjects: prepareCompilationSubjects(records), events: [] };
+}
+
+test('source size uses script payload bytes and preserves unavailable metrics', async () => {
+    const { profile } = await createProfileFixture({ noSourceMap: true });
+    const frame = { ...profile.callFrames.find(frame => frame.name === 'first') };
+    frame.script.source = 'function first() { return "\u0100"; }';
+    frame.start = 0;
+    frame.end = frame.script.source.length;
+    frame.script.sourceMetrics = { ...frame.script.sourceMetrics, bytesPerChar: 2 };
+    const records = [record('CompileIgnition', frame.start, null, null, frame)];
+    setCompilations(profile, records);
+
+    assert.equal(rows(null, contextFor(profile))[0].sourceSize, (frame.end - frame.start) * 2);
+    frame.script.sourceMetrics = null;
+    setCompilations(profile, records);
+    assert.equal(rows(null, contextFor(profile))[0].sourceSize, null);
+});
+
+test('activation counts compiled function identities, not preparsing, scripts or repeated stages', async () => {
+    const { profile } = await createProfileFixture({ noSourceMap: true });
+    const line = profile.memline;
+    const first = profile.callFrames.find(frame => frame.name === 'first');
+    const second = profile.callFrames.find(frame => frame.name === 'second');
+    const script = { ...first, kind: 'script' };
+    const records = [
+        record('PreParse', 10, 0, 1, first),
+        record('CompileIgnition', 10, 1, 2, first),
+        record('FinalizeUnoptimizedCompilationJob', 10, 2, 2, first),
+        record('CompileIgnition', 10, 2, 2, first),
+        record('PreParseCached', 20, 2, 2, second),
+        record('ParseFunction', 30, 2, 2, second),
+        record('CompileIgnition', 0, 2, 3, script),
+        { ...record('CompileIgnition', 40, 3, 3, second), duration: null },
+        record('HandleInterrupts', null)
+    ];
+    setCompilations(profile, records);
+    line.attributes.push(...compilationAttributes(records, [1, 2, 3, 4]));
+    const stop = prepareLineFilters(line);
+
+    try {
+        const context = contextFor(profile);
+        const result = rows(null, context);
+        const activatedCount = table.content[1].content[2].content[1].slice('text-numeric:'.length);
+
+        assert.deepEqual(result.map(row => [row.state, row.activated]), [
+            ['compiled', true], ['pre-parsed', false], ['parsed', false],
+            ['compiled', false], ['unobserved', false], ['unobserved', false]
+        ]);
+        assert.equal(query(activatedCount)(result, context), 1);
+        assert.equal(result[0].events, 4);
+        line.filters.get('allocationCompilationStage').setSelection('include', ['PreParse']);
+        const filtered = rows(null, context);
+        assert.equal(filtered.length, 1);
+        assert.equal(filtered[0].events, 1);
+        assert.equal(filtered[0].state, 'compiled');
+        assert.equal(query(activatedCount)(filtered, context), 1);
+        context.allocationPopulation.setRanges([{ start: 1, end: 2 }]);
+        assert.equal(query(activatedCount)(rows(null, context), context), 1);
+    } finally {
+        stop();
+    }
+});
+
+test('range updates reuse prepared subjects without rereading compilation events', async () => {
+    const { profile } = await createProfileFixture({ noSourceMap: true });
+    const frame = profile.callFrames.find(frame => frame.name === 'first');
+    let reads = 0;
+    const records = Array.from({ length: 1000 }, () => new Proxy(record('CompileIgnition', 10, 0, 1, frame), {
+        get(target, key) {
+            if (key === 'name' || key === 'duration' || key === 'start' || key === 'scriptId') {
+                reads++;
+            }
+            return Reflect.get(target, key);
+        }
+    }));
+    setCompilations(profile, records);
+    profile.memline.attributes.push(...compilationAttributes(records, [1, 2, 3, 4]));
+    const subjects = profile.thread.compilationSubjects;
+    const context = contextFor(profile);
+    reads = 0;
+
+    const initial = rows(null, context);
+    context.allocationPopulation.setRanges([{ start: 1, end: 2 }]);
+    const selected = rows(null, context);
+
+    assert.equal(reads, 0);
+    assert.equal(profile.thread.compilationSubjects, subjects);
+    assert.equal(initial[0].records, subjects[0].records);
+    assert.equal(selected[0].records, subjects[0].records);
+    assert.equal(selected[0].events, 1000);
+    assert.equal(selected[0].activated, true);
+});
+
 test.each(['call-stack', 'location'])('shows original intervals without memory data with %s selected', async kind => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
     const frame = profile.callFrames.find(frame => frame.name === 'first');
     const event = { name: 'Parse', tm: 100, duration: 20 };
     const records = [{ ...record('Parse', 0, null, null, frame), eventIndex: 0, event }];
-    profile.thread = { compilations: records, events: [] };
+    setCompilations(profile, records);
 
     const context = contextFor(profile, kind);
     const result = rows(null, context);
@@ -69,7 +165,7 @@ test('uses selected memory population and compiled-function identities without l
         record('Compile', 0, 0, 1, first), record('Parse', 0, 1, 1, first),
         record('Compile', 20, 1, 2, second), record('Compile', 0, 2, 3, first)
     ];
-    profile.thread = { compilations: records, events: [] };
+    setCompilations(profile, records);
     line.attributes.push(...compilationAttributes(records, [1, 2, 3, 4]));
     const stop = prepareLineFilters(line);
 
@@ -111,7 +207,7 @@ test('different compiled functions resolved to one frame stay separate rows and 
     const line = profile.memline;
     const enclosing = profile.callFrames.find(frame => frame.name === 'first');
     const records = [record('Compile', 10, 0, 1, enclosing), record('Compile', 15, 1, 2, enclosing), record('Compile', null, 2, 3)];
-    profile.thread = { compilations: records, events: [] };
+    setCompilations(profile, records);
     line.attributes.push(
         ...compilationAttributes(records, [1, 2, 3, 4]),
         { name: 'allocationType', values: new Uint32Array(4), dict: ['BYTECODE_ARRAY'] },
@@ -131,6 +227,11 @@ test('different compiled functions resolved to one frame stay separate rows and 
     for (const row of result) {
         assert.equal(query(details.data)(row, matrixContext)[0].total.sum, row.size);
     }
+
+    context.allocationPopulation.setRanges([{ start: 1, end: 2 }]);
+    const partial = rows(null, context)[0];
+    assert.equal(partial.size, 1);
+    assert.deepEqual(query(details.data)(partial, matrixContext)[0].total, { count: 1, sum: 1, min: 1, max: 1 });
 
     line.attributes.splice(line.attributes.findIndex(attribute => attribute.name === 'allocationOwner'), 1);
     const unbound = contextFor(profile);

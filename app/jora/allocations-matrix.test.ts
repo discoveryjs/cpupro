@@ -65,6 +65,20 @@ test('selects compilation owners and stages without losing allocation filters', 
     assert.equal(matrix()[0].total.sum, 48);
     stageFilter.allowAll();
 
+    population.setRanges([{ start: 5, end: 6 }]);
+    assert.deepEqual(matrix()[0].total, { count: 1, sum: 1, min: 1, max: 1 });
+    population.setRanges([{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 50, end: 55 }]);
+    assert.deepEqual(matrix()[0].total, { count: 2, sum: 9, min: 4, max: 5 });
+    assert.equal(matrix()[0].total.sum, methods.attributeSampleTotals(attribute, population)[1].size);
+    stageFilter.setSelection('include', ['Stage2']);
+    assert.deepEqual(matrix()[0].total, { count: 1, sum: 5, min: 5, max: 5 });
+    stageFilter.allowAll();
+    population.setRanges([{ start: 0.1, end: 0.7 }, { start: 1.1, end: 1.7 }]);
+    assert.deepEqual(matrix()[0].total, { count: 1, sum: 1, min: 1, max: 1 });
+    population.setRanges([{ start: 0.1, end: 0.7 }]);
+    assert.deepEqual(matrix(), []);
+    population.resetRange();
+
     population.setIndexRange(1, 3);
     assert.deepEqual(matrix()[0].total, { count: 1, sum: 48, min: 48, max: 48 });
     population.resetIndexRange();
