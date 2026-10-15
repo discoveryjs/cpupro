@@ -196,6 +196,48 @@ node --test scripts/model-script.test.mjs
 | --- | --- | --- |
 | [`analyze-signals.mjs`](analyze-signals.mjs) | `thread=<name\|tid>`, `json` | Independent scopes, windows and event statistics from [`app/signals.js`](../../app/signals.js); population distributions from `sampleDistribution()` and optional coverage from `samplesByCompilation()` |
 | [`audit-scripts.mjs`](audit-scripts.mjs) | None | Scripts page queries, exclusive source-size checks, compilation identities, and allocation count/byte distributions by type, stage, script and owner |
+| [`alive-allocations.mjs`](alive-allocations.mjs) | `thread=<name\|tid>` (required), `limit=<n>` (default 50) | Alive allocations by type and space, plus location-based function metrics with and without compilation allocations |
+
+## Alive allocations example
+
+After building the script model, run:
+
+```sh
+node --max-old-space-size=16384 scripts/run-model.mjs \
+    --option thread=7420 --option limit=50 \
+    scripts/model-scripts/alive-allocations.mjs /path/to/trace.json.gz
+```
+
+An exact thread name also works, for example `--option "thread=CrRendererMain"`.
+The selection must identify one captured profile. Missing allocation, liveness,
+type, space, location or compilation-stage data produces an explicit error.
+
+The example composes Jora queries with `.render()` to return four text tables:
+
+1. All alive allocations by allocation type: count and bytes.
+2. All alive allocations by recorded allocation space: count and bytes.
+3. Alive allocations by function, using `kind: "location"` and its
+     `callFrames.filtered.dict.entries`, exactly as computed by cpupro.
+4. The same function metrics after retaining only compilation stage `none`.
+
+`alive` means the recording has no reported GC collection for the allocation;
+it is not a reachability analysis. Space is the recorded allocation space, not
+a reconstructed space after object promotion. Function self/total bytes come
+from the existing location-based trees, including special frames such as compiler
+or builtin entries. Total bytes include descendants and must not be summed across
+function rows as if they were disjoint allocations.
+
+Compilation exclusion uses the recorded `allocationCompilationStage` attribute,
+not inclusive event-size subtraction, frame categories or `compilation.callFrame`.
+Thus nested events do not subtract an allocation more than once. Both attribute
+tables use `attributeSampleTotals()` on the same filtered population; no new
+Jora method or independent aggregation pipeline is needed.
+
+All alive allocations contribute to the metrics and summary totals. `limit` only
+limits displayed function rows, sorted by self bytes; type and space tables are
+complete. The script temporarily clears line filters, range and viewport, then
+restores them in `finally`, including when rendering fails. This also permits
+running the example on an already loaded model without leaving its filters changed.
 
 ## Scripts audit
 
