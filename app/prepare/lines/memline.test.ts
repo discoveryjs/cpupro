@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { Dictionary } from '../dictionary.js';
 import { OriginalScriptsMap, ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { noopWorkHandler } from '../misc/work.js';
 import { createMemline } from './memline.mjs';
+import { createVectorLocations } from '../preprocessing/locations.js';
 import {
     createMemlineAllocationOwnerAttribute,
-    createMemlineAllocationCompilationStageAttribute
+    createMemlineAllocationCompilationStageAttribute,
+    createMemlineAllocationLifespanAttribute,
+    createMemlineGcEpochAttribute
 } from './memline-attributes.mjs';
 import type { UniformCompilationRecord } from '../formats/types.js';
 import { prepareCompilationRecords } from '../preprocessing/compilation-events.js';
@@ -64,4 +67,60 @@ test('compilation owner and stage use independent attribute dictionaries', () =>
     const emptyStage = createMemlineAllocationCompilationStageAttribute([events[3]], [14])!;
     assert.deepEqual(emptyStage.dict, ['none', 'Empty']);
     assert.deepEqual([...emptyStage.values], [0]);
+});
+
+test('reuses allocation buffers and reads lifespan before remapping GC epochs', async () => {
+    const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
+    const sizes = new Uint32Array([16, 32, 48]);
+    const gc = new Uint32Array([0, 5, 10]);
+    const types = new Uint32Array([7, 7, 9]);
+    const spaces = new Uint32Array([2, 4, 2]);
+    const line = await createMemline({
+        startTime: 0, endTime: 0, nodes: [], samples: [], timeDeltas: [],
+        _cpuproAllocationSizes: sizes, _cpuproAllocationGc: gc,
+        _cpuproAllocationTypes: types, _cpuproAllocationTypeNames: { 7: 'FIRST_TYPE', 9: 'SECOND_TYPE' },
+        _cpuproAllocationSpaces: spaces, _cpuproAllocationSpaceNames: { 2: 'new_space', 4: 'old_space' }
+    }, dictionary, scriptsMap, null, null, Promise.resolve());
+
+    assert.ok(line);
+    assert.equal(line.values.buffer, sizes.buffer);
+    assert.equal(line.attributes.find(attribute => attribute.name === 'allocationType')!.values.buffer, types.buffer);
+    assert.equal(line.attributes.find(attribute => attribute.name === 'allocationSpace')!.values.buffer, spaces.buffer);
+    assert.equal(line.attributes.find(attribute => attribute.name === 'allocationGcEpoch')!.values.buffer, gc.buffer);
+    assert.deepEqual([...types], [0, 0, 1]);
+    assert.deepEqual([...spaces], [0, 1, 0]);
+    assert.deepEqual([...gc], [0, 1, 2]);
+    assert.deepEqual([...line.attributes.find(attribute => attribute.name === 'allocationType')!.values], [0, 0, 1]);
+    assert.deepEqual([...line.attributes.find(attribute => attribute.name === 'allocationSpace')!.values], [0, 1, 0]);
+    assert.deepEqual([...line.attributes.find(attribute => attribute.name === 'allocationLifespan')!.values], [0, 1, 2]);
+});
+
+test('decodes unsigned GC epochs without losing the high bit', () => {
+    const gc = new Uint32Array([0x80000001]);
+    const lifespan = createMemlineAllocationLifespanAttribute(gc)!;
+    const epochs = createMemlineGcEpochAttribute(gc)!;
+
+    assert.deepEqual([...lifespan.values], [1]);
+    assert.equal(epochs.values, gc);
+    assert.deepEqual([...epochs.values], [0]);
+    assert.equal(epochs.dict[0].epoch, 0x20000000);
+    assert.equal(epochs.dict[0].type, 'minor');
+});
+
+test('decodes unsigned builtin IDs from allocation context info', async () => {
+    const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
+    const resolve = vi.spyOn(dictionary, 'resolveCallFrame');
+
+    try {
+        const locations = createVectorLocations(
+            dictionary, scriptsMap, new Int32Array([0]), new Int32Array([-1]),
+            new Uint32Array([0x80000000]), null, null
+        );
+        const names = resolve.mock.calls.map(([frame]) => frame.functionName);
+
+        assert.ok(locations);
+        assert.ok(names.includes('(builtin) unknown-builtin[134217728]'));
+    } finally {
+        resolve.mockRestore();
+    }
 });

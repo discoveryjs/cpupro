@@ -145,7 +145,7 @@ test('CPU sample bounds do not discard compilation with captured allocation ids'
 
     assert.ok(record.tm! + record.duration! < profile.startTime);
     assert.deepEqual([record.allocationStart, record.allocationEnd], [1, 3]);
-    assert.deepEqual(profile._cpuproAllocationIds, [1, 2, 3]);
+    assert.deepEqual(profile._cpuproAllocationIds, new Uint32Array([1, 2, 3]));
     assert.equal(record.eventIndex, 0);
 });
 
@@ -174,12 +174,12 @@ test('isolate routes CPU and allocation chunks regardless of producer pid and co
         capture: profile._capture,
         start: profile.startTime,
         end: profile.endTime,
-        samples: profile.samples
+        samples: Array.from(profile.samples)
     })), [
         { pid: 1, tid: 2, capture: { id: 'target', isolate: 'target-isolate' }, start: 100, end: 180, samples: [11] },
         { pid: 3, tid: 2, capture: { id: 'producer', isolate: 'producer-isolate' }, start: 200, end: 280, samples: [22] }
     ]);
-    assert.deepEqual(session.profiles[0]._cpuproAllocationIds, [1, 2]);
+    assert.deepEqual(session.profiles[0]._cpuproAllocationIds, new Uint32Array([1, 2]));
     assert.deepEqual([...session.profiles[0]._cpuproAllocationSizes!], [16, 32]);
     assert.equal(session.profiles[1]._cpuproAllocationIds, undefined);
     assert.equal(session.threads.find(thread => thread.pid === 1)!.isolate, 'target-isolate');
@@ -198,7 +198,7 @@ test('an undeclared isolate does not fall back to a producer profile id', () => 
             } } }
         ]);
 
-        assert.deepEqual(session.profiles[0].samples, []);
+        assert.deepEqual(session.profiles[0].samples, new Uint32Array());
         assert.equal(warning.mock.calls.length, 1);
     } finally {
         warning.mockRestore();
@@ -326,8 +326,8 @@ test('allocation order is shared by GC mapping and compilation preparation', () 
             const order = ids[1] === 11 ? 'consecutive' : 'ascending';
 
             assert.equal(profile._cpuproAllocationIdsOrder, order);
-            assert.deepEqual(profile._cpuproAllocationIds, ids);
-            assert.deepEqual(profile._cpuproAllocationGc, ids.map(id => id === 10 || id === 12 ? 5 : 0));
+            assert.deepEqual(Array.from(profile._cpuproAllocationIds!), ids);
+            assert.deepEqual(profile._cpuproAllocationGc, Uint32Array.from(ids, id => id === 10 || id === 12 ? 5 : 0));
             assert.equal(warning.mock.calls.length, order === 'consecutive' ? 0 : 1);
         }
     } finally {
@@ -340,8 +340,9 @@ test('tracing publishes numeric order metadata', () => {
     const cases = [
         { values: [], order: 'consecutive' },
         { values: [10], order: 'consecutive' },
-        { values: [-2, -1, 0], order: 'consecutive' },
-        { values: [0.5, 1.5, 2.5], order: 'consecutive' },
+        { values: [0, 1, 2], order: 'consecutive' },
+        { values: [0x7fffffff, 0x80000000, 0x80000001], order: 'consecutive' },
+        { values: [0xfffffffe, 0xffffffff], order: 'consecutive' },
         { values: [10, 12, 15], order: 'ascending' },
         { values: [10, 10, 11], order: 'ascending' }
     ];
@@ -354,6 +355,103 @@ test('tracing publishes numeric order metadata', () => {
 
         assert.equal(session.profiles[0]._cpuproAllocationIdsOrder, values.length ? order : undefined);
     }
+});
+
+test('allocation vectors parse JSON chunks once and preserve unsigned 32-bit IDs', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const parse = vi.spyOn(JSON, 'parse');
+
+    try {
+        const session = extractFromChromiumPerformanceProfile([
+            { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+            ...[' [ ] ', '[0]', '[2147483648,4294967295]'].map(ids => ({
+                ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids } } }
+            }))
+        ]);
+        assert.deepEqual(session.profiles[0]._cpuproAllocationIds, new Uint32Array([0, 2147483648, 4294967295]));
+        assert.equal(parse.mock.calls.length, 3);
+    } finally {
+        parse.mockRestore();
+    }
+});
+
+test('tracing vector representations preserve unsigned 32-bit values and signed offsets', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const allocationSamples = {
+        ids: '[4294967295]', sizes: '[4294967295]', scriptIds: '[-1]', scriptOffsets: '[-1]',
+        contextInfo: '[2147483648]', types: '[4294967295]', spaces: '[2147483648]',
+        codeTypes: '[2147483648]', gc: '[2147483649]'
+    };
+    const chunk = {
+        cpuProfile: { nodes: [], samples: [0xffffffff] }, timeDeltas: [10],
+        lines: [-1], columns: [-1], allocationSampleIds: [0xffffffff], allocationSamples
+    };
+    const events = [
+        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+        { ...base, name: 'ProfileChunk', args: { data: chunk } }
+    ];
+    const profile = extractFromChromiumPerformanceProfile(events).profiles[0];
+
+    assert.deepEqual(profile.samples, new Uint32Array([0xffffffff]));
+    assert.deepEqual(profile.timeDeltas, new Uint32Array([10]));
+    assert.deepEqual(profile.lines, new Int32Array([-1]));
+    assert.deepEqual(profile.columns, new Int32Array([-1]));
+    assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([0xffffffff]));
+    assert.deepEqual(profile._cpuproAllocationIds, new Uint32Array([0xffffffff]));
+    assert.deepEqual(profile._cpuproAllocationSizes, new Uint32Array([0xffffffff]));
+    assert.deepEqual(profile._cpuproAllocationScriptIds, new Int32Array([-1]));
+    assert.deepEqual(profile._cpuproAllocationLocations, new Int32Array([-1]));
+    assert.deepEqual(profile._cpuproAllocationContextInfo, new Uint32Array([0x80000000]));
+    assert.deepEqual(profile._cpuproAllocationTypes, new Uint32Array([0xffffffff]));
+    assert.deepEqual(profile._cpuproAllocationSpaces, new Uint32Array([0x80000000]));
+    assert.deepEqual(profile._cpuproAllocationCodeType, new Uint32Array([0x80000000]));
+    assert.deepEqual(profile._cpuproAllocationGc, new Uint32Array([0x80000001]));
+    assert.deepEqual(allocationSamples.sizes, profile._cpuproAllocationSizes);
+    assert.deepEqual(allocationSamples.scriptOffsets, profile._cpuproAllocationLocations);
+    assert.deepEqual(allocationSamples.ids, profile._cpuproAllocationIds);
+    assert.deepEqual(extractFromChromiumPerformanceProfile(events).profiles[0], profile);
+});
+
+test('allocation dictionaries without vectors do not require an IDs field', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const allocationSamples = { typesDict: { 1: 'OBJECT' } };
+    const session = extractFromChromiumPerformanceProfile([
+        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+        { ...base, name: 'ProfileChunk', args: { data: {
+            cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSamples
+        } } }
+    ]);
+
+    assert.deepEqual(session.profiles[0].samples, new Uint32Array([1]));
+    assert.equal(session.profiles[0]._cpuproAllocationIds, undefined);
+    assert.deepEqual(allocationSamples, { typesDict: { 1: 'OBJECT' } });
+});
+
+test('missing later allocation vectors do not shift rows silently', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    assert.throws(() => extractFromChromiumPerformanceProfile([
+        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: [1], sizes: [8] } } } },
+        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: [2] } } } },
+        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: [3], sizes: [16] } } } }
+    ]), /Missing allocation vector sizes/);
+});
+
+test('combined typed numeric vectors survive unwrapping without copies', () => {
+    const input = {
+        startTime: 0, endTime: 20, nodes: [], samples: new Uint32Array([1, 1]), timeDeltas: new Uint32Array([10, 10]),
+        allocationSampleIds: new Uint32Array([10, 12]),
+        allocationSamples: {
+            ids: new Uint32Array([10, 12]), sizes: new Uint32Array([8, 16]),
+            gc: new Uint32Array([0, 5]), types: new Uint32Array([1, 1])
+        }
+    };
+    const profile = unwrapSamplesIfNeeded(input);
+    assert.equal(profile.samples, input.samples);
+    assert.equal(profile.timeDeltas, input.timeDeltas);
+    assert.equal(profile._cpuproAllocationIds, input.allocationSamples.ids);
+    assert.equal(profile._cpuproAllocationGc, input.allocationSamples.gc);
+    assert.equal(profile._cpuproAllocationTypes, input.allocationSamples.types);
 });
 
 test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted allocation rows including inversions across chunks: $ids', ({ ids }) => {
@@ -378,16 +476,37 @@ test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted alloc
         const session = extractFromChromiumPerformanceProfile(input);
         const profile = session.profiles[0];
 
-        assert.deepEqual(profile.samples, [1, 1]);
-        assert.deepEqual(profile.timeDeltas, [10, 10]);
-        assert.deepEqual(profile._cpuproAllocationMapping, [10, 20]);
+        assert.deepEqual(profile.samples, new Uint32Array([1, 1]));
+        assert.deepEqual(profile.timeDeltas, new Uint32Array([10, 10]));
+        assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([10, 20]));
         assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
         assert.equal(session.threads[0].compilations!.length, 1);
         assert.deepEqual(warning.mock.calls, [['Ignoring allocation data with unsorted IDs', { pid: 1, tid: 2 }]]);
-        assert.deepEqual(input, before);
+        assert.deepEqual(JSON.parse(JSON.stringify(input, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as Int32Array) : value)), before);
     } finally {
         warning.mockRestore();
     }
+});
+
+test('ProfileChunk releases numeric source arrays without mutating metadata and can be extracted again', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const typesDict = { 1: 'OBJECT' };
+    const allocationSamples = { ids: '[10,12]', sizes: [8, 16], types: [1, 1], typesDict };
+    const allocationGc = { '005': '[12]' };
+    const input = [
+        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples, allocationGc } } }
+    ];
+    const { diagnose } = createDiagnosticsCollector();
+    const first = extractFromChromiumPerformanceProfile(input, diagnose);
+
+    assert.deepEqual(allocationSamples.ids, new Uint32Array([10, 12]));
+    assert.deepEqual(allocationGc['005'], new Uint32Array([12]));
+    assert.deepEqual(Object.keys(allocationGc), ['005']);
+    assert.equal(allocationSamples.typesDict, typesDict);
+    assert.notEqual((first.profiles[0]._cpuproAllocationTypes as Uint32Array).buffer, (allocationSamples.types as unknown as Uint32Array).buffer);
+    const second = extractFromChromiumPerformanceProfile(input, diagnose);
+    assert.deepEqual(second, first);
 });
 
 test('reports extraction problems to the provided diagnose instead of the console', () => {
@@ -467,11 +586,11 @@ test('tracing preserves CPU-aligned allocation mapping without allocation rows',
     const session = extractFromChromiumPerformanceProfile(input);
 
     assert.equal(session.profiles.length, 1);
-    assert.deepEqual(session.profiles[0].samples, [1, 2, 3]);
-    assert.deepEqual(session.profiles[0].timeDeltas, [10, 10, 10]);
-    assert.deepEqual(session.profiles[0]._cpuproAllocationMapping, [10, 15, 20]);
+    assert.deepEqual(session.profiles[0].samples, new Uint32Array([1, 2, 3]));
+    assert.deepEqual(session.profiles[0].timeDeltas, new Uint32Array([10, 10, 10]));
+    assert.deepEqual(session.profiles[0]._cpuproAllocationMapping, new Uint32Array([10, 15, 20]));
     assert.deepEqual(Object.keys(session.profiles[0]).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
-    assert.deepEqual(input, before);
+    assert.deepEqual(JSON.parse(JSON.stringify(input, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as Int32Array) : value)), before);
 });
 
 test.each([

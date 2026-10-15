@@ -1,6 +1,26 @@
 import type { PackageProviderEndpoint, PackageRegistry, V8CpuProfileNode } from '../types.js';
 
-export function sum(array: Uint32Array | number[]) {
+export function isInt32Vector(value: unknown): value is number[] | Int32Array {
+    return Array.isArray(value) || value instanceof Int32Array;
+}
+
+export function isUint32Vector(value: unknown): value is number[] | Uint32Array {
+    return Array.isArray(value) || value instanceof Uint32Array;
+}
+
+export function isFloat64Vector(value: unknown): value is number[] | Float64Array {
+    return Array.isArray(value) || value instanceof Float64Array;
+}
+
+export function isNumberVector(value: unknown): value is number[] | Uint32Array | Float64Array {
+    return isUint32Vector(value) || value instanceof Float64Array;
+}
+
+export function asUint32Array(source: number[] | Uint32Array): Uint32Array {
+    return Array.isArray(source) ? new Uint32Array(source) : source;
+}
+
+export function sum(array: number[] | Int32Array | Uint32Array | Float64Array) {
     let sum = 0;
 
     for (let i = 0; i < array.length; i++) {
@@ -10,7 +30,7 @@ export function sum(array: Uint32Array | number[]) {
     return sum;
 }
 
-export function min(array: Uint32Array | number[]) {
+export function min(array: number[] | Int32Array | Uint32Array | Float64Array) {
     let min = array[0];
 
     for (let i = 1; i < array.length; i++) {
@@ -22,14 +42,14 @@ export function min(array: Uint32Array | number[]) {
     return min;
 }
 
-export function convertToUint32Array(source: number[], extraLength: number = 0) {
+export function convertToUint32Array(source: number[] | Int32Array | Uint32Array | Float64Array, extraLength: number = 0) {
     const result = new Uint32Array(source.length + extraLength);
 
     result.set(source);
 
     return result;
 }
-export function convertToInt32Array(source: number[], extraLength: number = 0) {
+export function convertToInt32Array(source: number[] | Int32Array | Uint32Array, extraLength: number = 0) {
     const result = new Int32Array(source.length + extraLength);
 
     result.set(source);

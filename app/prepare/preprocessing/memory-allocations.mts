@@ -1,10 +1,11 @@
 import { createTreeSourceFromParent } from '../computations/build-trees.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Profile } from '../profile.mjs';
+import type { MemorySampleSizeVector } from '../types.js';
 import { createInt32Progression, min, sum } from '../misc/utils.js';
 
 export function processMemoryAllocations(
-    allocations: number[],
+    allocations: MemorySampleSizeVector,
     samplesInterval?: number
 ) {
     const deltasSum = sum(allocations);

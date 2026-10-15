@@ -1,8 +1,15 @@
-import type { CpuProCallFrame, CpuProScript, IProfileScriptsMap } from '../types.js';
-import type { Dictionary } from '../dictionary.js';
 import { CallTree } from '../computations/call-tree.js';
 import { scriptFromScriptId } from './scripts.js';
 import { GeneratedNodes } from './nodes.js';
+import type { Dictionary } from '../dictionary.js';
+import type {
+    AllocationContextInfoVector,
+    AllocationScriptIdVector,
+    CpuProCallFrame,
+    CpuProScript,
+    IProfileScriptsMap,
+    ScriptOffsetVector
+} from '../types.js';
 
 function locationRef(callFrameIndex: number, scriptOffset: number) {
     return (scriptOffset + 1) * 0x0100_0000 + callFrameIndex;
@@ -166,9 +173,6 @@ export function createLocationsFromScriptOffsets(
     };
 }
 
-type RawScriptIds = ArrayLike<number | string>;
-type NumericVector = ArrayLike<number>;
-
 function callFramesMapFromDict(dict: Record<number, string>): (CpuProCallFrame | null)[] {
     const maxId = Object.keys(dict).reduce((max, key) => Math.max(max, Number(key)), 0);
     return Array.from({ length: maxId + 1 }, () => null);
@@ -223,12 +227,14 @@ function resolveCallFrameFromContextInfo(
             vmStateCallFrames[contextInfoValue] = callFrame;
         }
     } else {
-        callFrame = builtinsCallFrames[contextInfoValue >> 4];
+        const builtinId = contextInfoValue >>> 4;
+
+        callFrame = builtinsCallFrames[builtinId];
 
         if (!callFrame) {
             // TODO: add a diagnostic here to indicate that an unknown builtin code was encountered
-            callFrame = resolveBuiltinCallFrame(dictionary, `unknown-builtin[${contextInfoValue >> 4}]`);
-            builtinsCallFrames[contextInfoValue >> 4] = callFrame;
+            callFrame = resolveBuiltinCallFrame(dictionary, `unknown-builtin[${builtinId}]`);
+            builtinsCallFrames[builtinId] = callFrame;
         }
     }
 
@@ -265,9 +271,9 @@ const emptyDict = Object.freeze({});
 export function createVectorLocations(
     dictionary: Dictionary,
     scriptsMap: IProfileScriptsMap,
-    scriptIds: RawScriptIds | null,
-    scriptOffsets: NumericVector | null,
-    contextInfo: NumericVector | null,
+    scriptIds: AllocationScriptIdVector | null,
+    scriptOffsets: ScriptOffsetVector | null,
+    contextInfo: AllocationContextInfoVector | null,
     vmStateNames: Record<number, string> | null,
     builtinsNames: Record<number, string> | null
 ): {

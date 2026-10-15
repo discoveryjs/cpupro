@@ -6,15 +6,31 @@ import { FunctionRange } from './misc/parse-script-source-ranges.js';
 import { ScriptCompilation } from './preprocessing/script-compilation.js';
 import { SourceMetrics } from './misc/source-text-metrics.js';
 
+export type TimeDeltaVector = number[] | Uint32Array | Float64Array;
+export type SampleIdVector = number[] | Uint32Array;
+export type MemorySampleSizeVector = number[] | Uint32Array | Float64Array;
+export type LineNumberVector = number[] | Int32Array;
+export type ColumnNumberVector = number[] | Int32Array;
+export type ScriptOffsetVector = number[] | Int32Array;
+
+export type AllocationIdVector = number[] | Uint32Array | Float64Array;
+export type AllocationSizeVector = number[] | Uint32Array;
+export type AllocationScriptIdVector = Array<number | string> | Int32Array;
+export type AllocationGcVector = number[] | Uint32Array;
+export type AllocationTypeVector = number[] | Uint32Array;
+export type AllocationSpaceVector = number[] | Uint32Array;
+export type AllocationCodeTypeVector = number[] | Uint32Array;
+export type AllocationContextInfoVector = number[] | Uint32Array;
+
 export type V8CpuProfile = {
     startTime: number;
     endTime: number;
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[];
-    timeDeltas: number[];
-    samples: number[];
+    timeDeltas: TimeDeltaVector;
+    samples: SampleIdVector;
     trace_ids?: Record<string, number>;
-    lines?: number[];
-    columns?: number[];
+    lines?: LineNumberVector;
+    columns?: ColumnNumberVector;
 } & V8CpuProfileCpuproExtensions;
 // FIXME: cpupro extensions (temporary)
 export type V8CpuProfileCpuproExtensions = {
@@ -43,20 +59,20 @@ export type V8CpuProfileCpuproExtensions = {
         events: V8HeapEvent[];
     };
     // Combined profile extensions (CPU + memory allocation data)
-    _cpuproAllocationMapping?: number[]; // maps CPU sample index -> last allocation ID in range
-    _cpuproAllocationIds?: number[]; // sorted allocation IDs; all allocation vectors share this row order
+    _cpuproAllocationMapping?: AllocationIdVector; // maps CPU sample index -> last allocation ID in range
+    _cpuproAllocationIds?: AllocationIdVector; // sorted allocation IDs; all allocation vectors share this row order
     _cpuproAllocationIdsOrder?: 'consecutive' | 'ascending';
-    _cpuproAllocationSizes?: number[]; // allocation sizes
-    _cpuproAllocationScriptIds?: Array<number | string>; // allocation script ids in profile-local domain
-    _cpuproAllocationGc?: number[]; // GC state (lower 2 bits) + epoch (upper bits)
-    _cpuproAllocationTypes?: number[]; // V8 map type IDs
+    _cpuproAllocationSizes?: AllocationSizeVector; // allocation sizes
+    _cpuproAllocationScriptIds?: AllocationScriptIdVector; // allocation script ids in profile-local domain
+    _cpuproAllocationGc?: AllocationGcVector; // GC state (lower 2 bits) + epoch (upper bits)
+    _cpuproAllocationTypes?: AllocationTypeVector; // V8 map type IDs
     _cpuproAllocationTypeNames?: Record<number, string>; // human-readable type names
-    _cpuproAllocationSpaces?: number[]; // V8 map space IDs
+    _cpuproAllocationSpaces?: AllocationSpaceVector; // V8 map space IDs
     _cpuproAllocationSpaceNames?: Record<number, string>; // human-readable space names
-    _cpuproAllocationCodeType?: number[]; // V8 map code type IDs
+    _cpuproAllocationCodeType?: AllocationCodeTypeVector; // V8 map code type IDs
     _cpuproAllocationCodeTypeNames?: Record<number, string>; // human-readable code type names
-    _cpuproAllocationLocations?: number[]; // allocation script offsets
-    _cpuproAllocationContextInfo?: number[]; // vm state + builtin id
+    _cpuproAllocationLocations?: ScriptOffsetVector; // allocation script offsets
+    _cpuproAllocationContextInfo?: AllocationContextInfoVector; // vm state + builtin id
     _cpuproAllocationBuiltinNames?: Record<number, string>; // human-readable builtin names
     _cpuproAllocationVmStateNames?: Record<number, string>; // human-readable vm state names
 }

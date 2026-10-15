@@ -1,4 +1,5 @@
 import { ProfileLine, ProfileLineMapping } from '../lines/types';
+import type { AllocationIdVector } from '../types.js';
 import { normalizeRanges, type RangeSet } from './coordinates.js';
 import { lowerBound } from './misc.js';
 
@@ -51,9 +52,9 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
 
 export function createLineMapping(
     sourceLine: ProfileLine,
-    sourceIds: number[],
+    sourceIds: AllocationIdVector,
     destLine: ProfileLine,
-    destIds: number[]
+    destIds: AllocationIdVector
 ): {
     left: ProfileLineMapping,
     right: ProfileLineMapping

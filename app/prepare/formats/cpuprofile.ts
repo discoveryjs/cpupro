@@ -1,7 +1,16 @@
-import type { V8CpuProfile, V8CpuProfileNode, V8CpuProfileScript, V8CpuProfileCpuproExtensions } from '../types.js';
-import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { getNumericArrayOrder } from './utils.js';
 import { ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
+import { isFloat64Vector, isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
+import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
+import type {
+    AllocationIdVector,
+    SampleIdVector,
+    TimeDeltaVector,
+    V8CpuProfile,
+    V8CpuProfileNode,
+    V8CpuProfileScript,
+    V8CpuProfileCpuproExtensions
+} from '../types.js';
 
 type SizeSample = {
     size: number;
@@ -43,8 +52,8 @@ function isNode(value: unknown): value is V8CpuProfileNode {
     return true;
 }
 
-function isArrayOfIntegers(value: unknown): value is number[] {
-    if (!Array.isArray(value) || ArrayBuffer.isView(value)) {
+function isArrayOfIntegers(value: unknown): value is SampleIdVector | TimeDeltaVector {
+    if (!isNumberVector(value)) {
         return false;
     }
 
@@ -85,11 +94,15 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
     }
 
     if (!isSizeSamples(maybe.samples)) {
-        if (!isArrayOfIntegers(maybe.samples)) {
+        if (!isUint32Vector(maybe.samples) ||
+            !isArrayOfIntegers(maybe.samples)
+        ) {
             return false;
         }
 
-        if (!isArrayOfIntegers(maybe.timeDeltas)) {
+        if ((!isFloat64Vector(maybe.timeDeltas) && !isUint32Vector(maybe.timeDeltas)) ||
+            !isArrayOfIntegers(maybe.timeDeltas)
+        ) {
             return false;
         }
     }
@@ -101,8 +114,8 @@ export function normalizeCpuProfile(data: V8CpuProfile) {
     return {
         ...data,
         trace_ids: data.trace_ids || {},
-        lines: Array.isArray(data.lines) && data.lines.length > 0 ? data.lines : undefined,
-        columns: Array.isArray(data.columns) && data.columns.length > 0 ? data.columns : undefined
+        lines: isInt32Vector(data.lines) && data.lines.length > 0 ? data.lines : undefined,
+        columns: isInt32Vector(data.columns) && data.columns.length > 0 ? data.columns : undefined
     };
 }
 
@@ -202,7 +215,7 @@ function extractCombinedAllocationData(data: {
 }, diagnose: Diagnose): V8CpuProfileCpuproExtensions | null {
     const { allocationSampleIds, allocationSamples } = data;
 
-    if (!Array.isArray(allocationSampleIds)) {
+    if (!isNumberVector(allocationSampleIds)) {
         return null;
     }
 
@@ -216,7 +229,7 @@ function extractCombinedAllocationData(data: {
 
     const { ids, sizes, scriptIds, positions, gc, types, typesDict, spaces, spacesDict } = allocationSamples;
 
-    if (!Array.isArray(ids) || !Array.isArray(sizes)) {
+    if (!isNumberVector(ids) || !isUint32Vector(sizes)) {
         return allocationData;
     }
 
@@ -232,22 +245,22 @@ function extractCombinedAllocationData(data: {
         _cpuproAllocationIds: ids,
         _cpuproAllocationIdsOrder: idsOrder,
         _cpuproAllocationSizes: sizes,
-        _cpuproAllocationScriptIds: Array.isArray(scriptIds) ? scriptIds : undefined,
-        _cpuproAllocationLocations: Array.isArray(positions) ? positions : undefined,
-        _cpuproAllocationGc: Array.isArray(gc) ? gc : undefined,
-        _cpuproAllocationTypes: Array.isArray(types) ? types : undefined,
+        _cpuproAllocationScriptIds: isInt32Vector(scriptIds) ? scriptIds : undefined,
+        _cpuproAllocationLocations: isInt32Vector(positions) ? positions : undefined,
+        _cpuproAllocationGc: isUint32Vector(gc) ? gc : undefined,
+        _cpuproAllocationTypes: isUint32Vector(types) ? types : undefined,
         _cpuproAllocationTypeNames: typesDict,
-        _cpuproAllocationSpaces: Array.isArray(spaces) ? spaces : undefined,
+        _cpuproAllocationSpaces: isUint32Vector(spaces) ? spaces : undefined,
         _cpuproAllocationSpaceNames: spacesDict
     };
 }
 
 
 export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
-    samples: number[] | SizeSample[];
+    samples: SampleIdVector | SizeSample[];
     sizes?: number[];
     scripts?: V8CpuProfileScript[];
-    allocationSampleIds?: number[];
+    allocationSampleIds?: AllocationIdVector;
     allocationSamples?: {
         ids?: unknown;
         sizes?: unknown;
@@ -258,8 +271,8 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
         typesDict?: Record<string, string>;
     };
     cpuProfile?: {
-        samples: number[];
-        timeDeltas?: number[];
+        samples: SampleIdVector;
+        timeDeltas?: TimeDeltaVector;
         nodes: V8CpuProfileNode[];
     };
 }, diagnose: Diagnose = diagnoseToConsole): V8CpuProfile {

@@ -1,20 +1,20 @@
-import { WellKnownType } from '../types.js';
 import { sum } from '../misc/utils.js';
 import { GeneratedNodes } from './nodes.js';
+import type { AllocationIdVector, SampleIdVector, TimeDeltaVector, WellKnownType } from '../types.js';
 
 const NoSamplesType: WellKnownType = 'no-samples';
 
 export function createTimelineAxis(
     startTime: number,
     endTime: number,
-    timeDeltas: number[],
+    timeDeltas: TimeDeltaVector,
     samplesInterval?: number
 ) {
     let deltasSum = sum(timeDeltas);
 
     // compute samples interval as a median of deltas if needed (it might be computed on steps before time deltas processing)
     if (typeof samplesInterval !== 'number') {
-        samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1]; // TODO: speedup?
+        samplesInterval = timeDeltas.slice().sort()[timeDeltas.length >> 1];
     }
 
     if (!startTime) {
@@ -63,10 +63,10 @@ export function createTimelineAxis(
 // It adjusts the deltas to ensure all values are non-negative by redistributing negative deltas across adjacent elements.
 // Additionally, it corrects the order of associated samples to match the adjusted timing.
 export function fixTimeDeltasOrderIfNeeded(
-    timeDeltas: number[],
-    samples: number[],
+    timeDeltas: TimeDeltaVector,
+    samples: SampleIdVector,
     sampleScriptOffsets: number[] | null = null,
-    allocationMapping: number[] | null = null
+    allocationMapping: AllocationIdVector | null = null
 ) {
     for (let i = 0; i < timeDeltas.length; i++) {
         const delta = timeDeltas[i];
@@ -105,7 +105,7 @@ export function fixTimeDeltasOrderIfNeeded(
     }
 }
 
-function swap(array: number[], i: number, j: number) {
+function swap(array: SampleIdVector | AllocationIdVector, i: number, j: number) {
     const sample = array[i];
     array[i] = array[j];
     array[j] = sample;
@@ -131,7 +131,7 @@ export type LongTimeDeltas = {
 }
 export function enumerateLongTimeDeltas(
     samplesInterval: number,
-    timeDeltas: number[]
+    timeDeltas: TimeDeltaVector
 ): LongTimeDeltas | null {
     // CPUpro uses two factors to truncate long samples.
     // The first factor, `longSampleFactor` (currently 1.5), is used to check if a sample has overshot

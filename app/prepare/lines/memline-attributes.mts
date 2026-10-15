@@ -1,7 +1,7 @@
 import { AllocationLifespan, typeColor } from '../const.js';
-import type { CpuProCompilationRecord, V8CpuProfileCpuproExtensions } from '../types.js';
 import { lowerBound } from '../computations/misc.js';
-import {
+import { asUint32Array } from '../misc/utils.js';
+import type {
     AllocationSpaceDictEntry,
     CompilationOwner,
     GcEpochDictEntry,
@@ -13,10 +13,20 @@ import {
     ProfileLineAllocationOwnerAttribute,
     ProfileLineAllocationCompilationStageAttribute
 } from './types.js';
+import type {
+    AllocationCodeTypeVector,
+    AllocationContextInfoVector,
+    AllocationGcVector,
+    AllocationIdVector,
+    AllocationSpaceVector,
+    AllocationTypeVector,
+    CpuProCompilationRecord,
+    V8CpuProfileCpuproExtensions
+} from '../types.js';
 
 export function createMemlineAllocationOwnerAttribute(
     compilations: CpuProCompilationRecord[] | null,
-    _cpuproAllocationIds: number[] | null,
+    _cpuproAllocationIds: AllocationIdVector | null,
     _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
 ): ProfileLineAllocationOwnerAttribute | null {
     if (!compilations?.length || !_cpuproAllocationIds) {
@@ -54,7 +64,7 @@ export function createMemlineAllocationOwnerAttribute(
 
 export function createMemlineAllocationCompilationStageAttribute(
     compilations: CpuProCompilationRecord[] | null,
-    _cpuproAllocationIds: number[] | null,
+    _cpuproAllocationIds: AllocationIdVector | null,
     _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
 ): ProfileLineAllocationCompilationStageAttribute | null {
     if (!compilations?.length || !_cpuproAllocationIds) {
@@ -86,7 +96,7 @@ export function createMemlineAllocationCompilationStageAttribute(
 
 function fillCompilationAllocationRange(
     values: Uint8Array | Uint32Array,
-    ids: number[],
+    ids: AllocationIdVector,
     firstId: number | undefined,
     { allocationStart, allocationEnd }: CpuProCompilationRecord,
     value: number
@@ -106,7 +116,7 @@ function fillCompilationAllocationRange(
 }
 
 export function createMemlineAllocationTypeAttribute(
-    _cpuproAllocationTypes: number[] | Uint32Array | null,
+    _cpuproAllocationTypes: AllocationTypeVector | null,
     _cpuproAllocationTypeNames: Record<number, string> | null
 ): ProfileLineAllocationTypeAttribute | null {
     if (!_cpuproAllocationTypes) {
@@ -115,7 +125,7 @@ export function createMemlineAllocationTypeAttribute(
 
     const map = new Map<number, number>();
 
-    const allocationTypeVector = new Uint32Array(_cpuproAllocationTypes);
+    const allocationTypeVector = asUint32Array(_cpuproAllocationTypes);
     const allocationTypeNames = Object.entries(_cpuproAllocationTypeNames || {})
         .sort((a, b) => Number(a[0]) - Number(b[0]))
         .map(([id, name]) => {
@@ -135,7 +145,7 @@ export function createMemlineAllocationTypeAttribute(
 }
 
 export function createMemlineGcEpochAttribute(
-    _cpuproAllocationGc: number[] | Uint32Array | null
+    _cpuproAllocationGc: AllocationGcVector | null
 ): ProfileLineAllocationGcEpochAttribute | null {
     if (!_cpuproAllocationGc) {
         return null;
@@ -145,12 +155,12 @@ export function createMemlineGcEpochAttribute(
     const sortedEpochs = [...epochs].sort((a, b) => a - b);
     const epochToIndex = new Map<number, number>();
 
-    const allocationGcEpochs = new Uint32Array(_cpuproAllocationGc);;
+    const allocationGcEpochs = asUint32Array(_cpuproAllocationGc);
     const allocationGcEpochDict: GcEpochDictEntry[] = [];
     let prevEpochId = -1;
 
     for (const epoch of sortedEpochs) {
-        const currentEpochId = epoch >> 2;
+        const currentEpochId = epoch >>> 2;
 
         // Fill in any missing epochs with "unknown" entries
         while (prevEpochId !== -1 && ++prevEpochId < currentEpochId) {
@@ -164,7 +174,7 @@ export function createMemlineGcEpochAttribute(
         epochToIndex.set(epoch, allocationGcEpochDict.length);
         allocationGcEpochDict.push({
             type: epoch === 0 ? 'none' : epoch & 1 ? 'minor' : 'major',
-            epoch: epoch >> 2,
+            epoch: currentEpochId,
             color: typeColor[epoch === 0 ? 'alive' : epoch & 1 ? 'short-lived' : 'long-lived']
         });
 
@@ -183,7 +193,7 @@ export function createMemlineGcEpochAttribute(
 }
 
 export function createMemlineAllocationLifespanAttribute(
-    _cpuproAllocationGc: number[] | Uint32Array | null
+    _cpuproAllocationGc: AllocationGcVector | null
 ): ProfileLineAllocationLifespanAttribute | null {
     if (!_cpuproAllocationGc) {
         return null;
@@ -204,7 +214,7 @@ export function createMemlineAllocationLifespanAttribute(
 }
 
 export function createMemlineAllocationSpaceAttribute(
-    _cpuproAllocationSpaces: number[] | Uint32Array | null,
+    _cpuproAllocationSpaces: AllocationSpaceVector | null,
     _cpuproAllocationSpaceNames: Record<number, string> | null
 ): ProfileLineAllocationSpaceAttribute | null {
     if (!_cpuproAllocationSpaces) {
@@ -212,7 +222,7 @@ export function createMemlineAllocationSpaceAttribute(
     }
 
     const map = new Map<number, number>();
-    const allocationSpaces = new Uint32Array(_cpuproAllocationSpaces);
+    const allocationSpaces = asUint32Array(_cpuproAllocationSpaces);
     const allocationSpaceNames: AllocationSpaceDictEntry[] = Object.entries(_cpuproAllocationSpaceNames || {})
         .sort((a, b) => Number(a[0]) - Number(b[0]))
         .map(([id, name]) => {
@@ -247,9 +257,9 @@ const normCodeTypeNames = {
     'turbofan': 'Turbofan'
 };
 export function createMemlineAllocationCodeTypeAttribute(
-    _cpuproAllocationCodeType: number[] | Uint32Array | null,
+    _cpuproAllocationCodeType: AllocationCodeTypeVector | null,
     _cpuproAllocationCodeTypeNames: Record<number, string> | null,
-    _cpuproAllocationContextInfo: number[] | Uint32Array | null
+    _cpuproAllocationContextInfo: AllocationContextInfoVector | null
 ): ProfileLineAllocationCodeTypeAttribute | null {
     if (!_cpuproAllocationCodeType) {
         return null;

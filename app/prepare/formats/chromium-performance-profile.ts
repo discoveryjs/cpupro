@@ -1,9 +1,32 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
-import type { SourceMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
-import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
-import { Ownership, UniformCompilationRecord, UniformProcess, UniformProfilingSession, UniformThread, UniformTraceEvent } from './types.js';
 import { getNumericArrayOrder } from './utils.js';
+import { isFloat64Vector, isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
+import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
+import type {
+    Ownership,
+    UniformCompilationRecord,
+    UniformProcess,
+    UniformProfilingSession,
+    UniformThread,
+    UniformTraceEvent
+} from './types.js';
+import type {
+    AllocationCodeTypeVector,
+    AllocationContextInfoVector,
+    AllocationGcVector,
+    AllocationIdVector,
+    AllocationSizeVector,
+    AllocationSpaceVector,
+    AllocationTypeVector,
+    ColumnNumberVector,
+    LineNumberVector,
+    ScriptOffsetVector,
+    SourceMap,
+    TimeDeltaVector,
+    V8CpuProfile,
+    V8CpuProfileScript
+} from '../types.js';
 
 export type ChromiumTraceEventsMetadata = {
     startTime?: string;
@@ -44,25 +67,29 @@ type ScriptSourceChunks = Map<V8CpuProfileScript, {
     splitCount: number;
     chunks: Map<number, string>;
 }>;
+type TraceAllocationIdVector = AllocationIdVector; // Exclude<AllocationIdVector, Uint32Array>;
+type TraceScriptIdVector = number[] | Int32Array;
 type AllocationSamples = {
-    ids: number[];
-    sizes?: number[];
-    scriptIds?: number[];
-    scriptOffsets?: number[];
-    contextInfo?: number[]; // vm state + builtin id
+    ids?: TraceAllocationIdVector | string;
+    sizes?: AllocationSizeVector | string;
+    scriptIds?: TraceScriptIdVector | string;
+    scriptOffsets?: ScriptOffsetVector | string;
+    contextInfo?: AllocationContextInfoVector | string; // vm state + builtin id
     builtinsDict?: Record<number, string>;
     vmStatesDict?: Record<number, string>;
-    types?: number[];
+    types?: AllocationTypeVector | string;
     typesDict?: Record<string, string>;
-    spaces?: number[];
+    spaces?: AllocationSpaceVector | string;
     spacesDict?: Record<string, string>;
-    codeTypes?: number[];
+    codeTypes?: AllocationCodeTypeVector | string;
     codeTypesDict?: Record<string, string>;
-    gc?: number[];
+    gc?: AllocationGcVector | string;
 };
 type AllocationGc = {
-    [key in number]: number[];
+    [key: string]: TraceAllocationIdVector | string;
 };
+const signedAllocationKeys = ['scriptIds', 'scriptOffsets'] as const;
+const unsignedAllocationKeys = ['sizes', 'contextInfo', 'types', 'spaces', 'codeTypes', 'gc'] as const;
 type CompilationAllocationEventData = {
     isolate?: string;
     scriptId?: number;
@@ -75,14 +102,14 @@ type CompilationAllocationEventData = {
 };
 type ChromiumTraceProfileChunkEventData = {
     cpuProfile: V8CpuProfile;
-    timeDeltas: number[];
-    lines: number[];
-    columns: number[];
+    timeDeltas: TimeDeltaVector;
+    lines: LineNumberVector;
+    columns: ColumnNumberVector;
     startTime: number;
     endTime: number;
     isolate?: string;
     // Combined profile allocation data
-    allocationSampleIds?: number[];
+    allocationSampleIds?: TraceAllocationIdVector;
     allocationSamples?: AllocationSamples;
     allocationGc?: AllocationGc;
 };
@@ -574,9 +601,10 @@ export function extractFromChromiumPerformanceProfile(
                     continue;
                 }
 
+                prepareChunkVectors(chunk);
                 profileData.chunks.push(chunk);
-                profileData.hasLineColumns ||= Array.isArray(chunk.lines) && Array.isArray(chunk.columns);
-                profileData.hasAllocationsMapping ||= Array.isArray(chunk.allocationSampleIds) && chunk.allocationSampleIds.length > 0;
+                profileData.hasLineColumns ||= isInt32Vector(chunk.lines) && isInt32Vector(chunk.columns);
+                profileData.hasAllocationsMapping ||= isNumberVector(chunk.allocationSampleIds) && chunk.allocationSampleIds.length > 0;
 
                 const { cpuProfile, allocationSamples, allocationGc, endTime } = chunk;
 
@@ -674,8 +702,8 @@ export function extractFromChromiumPerformanceProfile(
             startTime,
             endTime,
             nodes: [],
-            samples: buildChunkedArray('samples', chunks, samples),
-            timeDeltas: buildChunkedArray('timeDeltas', chunks, samples),
+            samples: buildChunkedArray('samples', chunks, samples, Uint32Array),
+            timeDeltas: buildChunkedArray('timeDeltas', chunks, samples, Uint32Array),
             trace_ids: {},
             lines: undefined,
             columns: undefined
@@ -691,15 +719,15 @@ export function extractFromChromiumPerformanceProfile(
         appendCpuProfileChunks(profile, chunks);
 
         if (profileData.hasLineColumns) {
-            profile.lines = buildChunkedArray('lines', chunks, samples);
-            profile.columns = buildChunkedArray('columns', chunks, samples);
+            profile.lines = buildChunkedArray('lines', chunks, samples, Int32Array);
+            profile.columns = buildChunkedArray('columns', chunks, samples, Int32Array);
         }
 
         if (profileData.hasAllocationsMapping) {
-            profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples);
+            profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples, Uint32Array);
         }
 
-        const ids = buildChunkedVector(allocationChunks, 'ids');
+        const ids = buildChunkedVector(allocationChunks, 'ids', Uint32Array);
         const idsOrder = ids ? getNumericArrayOrder(ids) : undefined;
 
         if (idsOrder === 'unordered') {
@@ -709,24 +737,24 @@ export function extractFromChromiumPerformanceProfile(
 
             profile._cpuproAllocationIds = ids;
             profile._cpuproAllocationIdsOrder = idsOrder;
-            profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes', allocationsCount);
-            profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds', allocationsCount);
-            profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets', allocationsCount);
-            profile._cpuproAllocationContextInfo = buildChunkedVector(allocationChunks, 'contextInfo', allocationsCount);
+            profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes', Uint32Array, allocationsCount);
+            profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds', Int32Array, allocationsCount);
+            profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets', Int32Array, allocationsCount);
+            profile._cpuproAllocationContextInfo = buildChunkedVector(allocationChunks, 'contextInfo', Uint32Array, allocationsCount);
             profile._cpuproAllocationBuiltinNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'builtinsDict');
             profile._cpuproAllocationVmStateNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'vmStatesDict');
-            profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types', allocationsCount);
+            profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types', Uint32Array, allocationsCount);
             profile._cpuproAllocationTypeNames = buildChunkedMap(profile._cpuproAllocationTypes, allocationChunks, 'typesDict');
-            profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces', allocationsCount);
+            profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces', Uint32Array, allocationsCount);
             profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
-            profile._cpuproAllocationCodeType = buildChunkedVector(allocationChunks, 'codeTypes', allocationsCount);
+            profile._cpuproAllocationCodeType = buildChunkedVector(allocationChunks, 'codeTypes', Uint32Array, allocationsCount);
             profile._cpuproAllocationCodeTypeNames = buildChunkedMap(profile._cpuproAllocationCodeType, allocationChunks, 'codeTypesDict');
             profile._cpuproAllocationGc = updateAllocationsGc(
                 diagnose,
                 ids,
                 profile._cpuproAllocationIdsOrder,
                 allocationGcs,
-                buildChunkedVector(allocationChunks, 'gc', allocationsCount)
+                buildChunkedVector(allocationChunks, 'gc', Uint32Array, allocationsCount)
             );
         }
 
@@ -768,8 +796,15 @@ function extractCompilations(
     for (let eventIndex = 0; eventIndex < events.length; eventIndex++) {
         const event = events[eventIndex];
 
-        if (event.cat !== source && !(event.cat.includes(source) && event.cat.split(',').includes(source))) {
-            continue;
+        if (event.cat !== source) {
+            if (!event.cat.includes(source)) {
+                continue;
+            }
+
+            const categories = event.cat.split(',');
+            if (!categories.includes(source)) {
+                continue;
+            }
         }
 
         const data = (event.data as { data?: CompilationAllocationEventData } | null)?.data;
@@ -857,36 +892,130 @@ function attachSourceMapsToScripts(
     }
 }
 
-function buildChunkedVector(
+function prepareChunkVectors(chunk: ChromiumTraceProfileChunkEventData) {
+    if (chunk.cpuProfile && isUint32Vector(chunk.cpuProfile.samples)) {
+        chunk.cpuProfile.samples = decodeChunkVector(chunk.cpuProfile.samples, Uint32Array);
+    }
+
+    for (const key of ['timeDeltas', 'allocationSampleIds'] as const) {
+        const value = chunk[key];
+
+        if (isFloat64Vector(value) || isUint32Vector(value)) {
+            chunk[key] = decodeChunkVector(value, Uint32Array);
+        }
+    }
+
+    for (const key of ['lines', 'columns'] as const) {
+        const value = chunk[key];
+
+        if (isInt32Vector(value)) {
+            chunk[key] = decodeChunkVector(value, Int32Array);
+        }
+    }
+
+    const { allocationSamples, allocationGc } = chunk;
+
+    if (allocationSamples) {
+        if (allocationSamples.ids !== undefined) {
+            allocationSamples.ids = decodeChunkVector(allocationSamples.ids, Uint32Array);
+        }
+
+        for (const key of signedAllocationKeys) {
+            const value = allocationSamples[key];
+
+            if (value !== undefined) {
+                allocationSamples[key] = decodeChunkVector(value, Int32Array);
+            }
+        }
+
+        for (const key of unsignedAllocationKeys) {
+            const value = allocationSamples[key];
+
+            if (value !== undefined) {
+                allocationSamples[key] = decodeChunkVector(value, Uint32Array);
+            }
+        }
+    }
+
+    if (allocationGc) {
+        for (const key of Object.keys(allocationGc)) {
+            allocationGc[key] = decodeChunkVector(allocationGc[key], Uint32Array);
+        }
+    }
+}
+
+function decodeChunkVector<Vector extends Int32Array | Uint32Array | Float64Array>(
+    source: number[] | Vector | string,
+    VectorType: { new(values: number[] | Vector): Vector }
+): Vector {
+    if (typeof source === 'string') {
+        return new VectorType(JSON.parse(source));
+    }
+
+    return source instanceof VectorType
+        ? source
+        : new VectorType(source);
+}
+
+function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Array>(
     chunks: AllocationSamples[],
-    key: Exclude<keyof AllocationSamples, 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict' | 'codeTypeDict'>,
+    key: 'ids' | typeof signedAllocationKeys[number] | typeof unsignedAllocationKeys[number],
+    VectorType: { new(length: number): Vector },
     totalLength: number = 0
-): number[] | undefined {
+): Vector | undefined {
     if (!chunks.length || chunks[0][key] === undefined) {
         return undefined;
     }
 
-    const vector: number[] = totalLength > 0
-        ? new Int32Array(totalLength) as unknown as number[]
-        : chunks.map(chunk =>
-            typeof chunk[key] === 'string' ? JSON.parse(chunk[key]) : chunk[key] || []
-        ).flat(1);
-
-    if (totalLength > 0) {
-        let offset = 0;
+    if (totalLength === 0) {
         for (const chunk of chunks) {
-            const array = typeof chunk[key] === 'string' ? JSON.parse(chunk[key]) : chunk[key];
+            const values = chunk[key];
 
-            (vector as unknown as Int32Array).set(array, offset);
-            offset += array.length;
+            if (typeof values === 'string') {
+                totalLength += countNumericArrayValues(values);
+            } else if (values !== undefined) {
+                totalLength += values.length;
+            }
         }
     }
 
-    return vector.length ? vector as number[] : undefined;
+    const vector = new VectorType(totalLength);
+    let offset = 0;
+
+    for (const chunk of chunks) {
+        const source = chunk[key];
+        const values = typeof source === 'string' ? JSON.parse(source) as number[] : source;
+
+        if (values === undefined) {
+            throw new TypeError(`Missing allocation vector ${key} in ProfileChunk`);
+        }
+
+        vector.set(values, offset);
+        offset += values.length;
+    }
+
+    return vector.length ? vector : undefined;
+}
+
+function countNumericArrayValues(source: string): number {
+    let count = 0;
+    let hasValue = false;
+
+    for (let index = 0; index < source.length; index++) {
+        const code = source.charCodeAt(index);
+
+        if (code === 44) {
+            count++;
+        } else if (code > 32 && code !== 91 && code !== 93) {
+            hasValue = true;
+        }
+    }
+
+    return hasValue ? count + 1 : 0;
 }
 
 function buildChunkedMap(
-    vector: number[] | undefined,
+    vector: Uint32Array | undefined,
     chunks: AllocationSamples[],
     key: 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict' | 'codeTypesDict'
 ): Record<string, string> | undefined {
@@ -907,12 +1036,13 @@ function buildChunkedMap(
     return result;
 }
 
-function buildChunkedArray(
+function buildChunkedArray<Vector extends Int32Array | Uint32Array | Float64Array>(
     key: 'samples' | 'timeDeltas' | 'lines' | 'columns' | 'allocationSampleIds',
     chunks: ChromiumTraceProfileChunkEventData[],
-    totalLength: number
-): number[] {
-    const result: number[] = new Array(totalLength);
+    totalLength: number,
+    VectorType: { new(length: number): Vector }
+): Vector {
+    const result = new VectorType(totalLength);
     let offset = 0;
 
     for (const chunk of chunks) {
@@ -920,16 +1050,11 @@ function buildChunkedArray(
             ? chunk.cpuProfile?.[key]
             : chunk[key];
 
-        if (Array.isArray(array)) {
-            for (let i = 0; i < array.length; i++) {
-                result[offset++] = array[i];
-            }
-        } else {
-            if (chunk.timeDeltas) {
-                for (let i = 0; i < chunk.timeDeltas.length; i++) {
-                    result[offset++] = 0;
-                }
-            }
+        if (isNumberVector(array) || array instanceof Int32Array) {
+            result.set(array, offset);
+            offset += array.length;
+        } else if (chunk.timeDeltas) {
+            offset += chunk.timeDeltas.length;
         }
     }
 
@@ -938,17 +1063,17 @@ function buildChunkedArray(
 
 function updateAllocationsGc(
     diagnose: Diagnose,
-    allocationIds: number[] | undefined,
+    allocationIds: Float64Array | Uint32Array | undefined,
     allocationIdsOrder: V8CpuProfile['_cpuproAllocationIdsOrder'],
     allocationGcChunks: AllocationGc[],
-    allocationGcs: number[] | undefined
-): number[] | undefined {
+    allocationGcs: Uint32Array | undefined
+): Uint32Array | undefined {
     if (!allocationGcChunks.length || !allocationIds) {
         return allocationGcs;
     }
 
     if (!allocationGcs) {
-        allocationGcs = new Array(allocationIds.length).fill(0);
+        allocationGcs = new Uint32Array(allocationIds.length);
     }
 
     // Consecutive ids let us calculate the GC array index directly from the id.
@@ -987,7 +1112,11 @@ function updateAllocationsGc(
             }
         }
 
-        const idToIndexMap = new Map<number, number>(allocationIds.map((id, index) => [id, index]) || []);
+        const idToIndexMap = new Map<number, number>();
+
+        for (let index = 0; index < allocationIds.length; index++) {
+            idToIndexMap.set(allocationIds[index], index);
+        }
 
         for (const allocationGc of allocationGcChunks) {
             for (const [key, value] of Object.entries(allocationGc)) {

@@ -9,7 +9,7 @@ import { Dictionary } from '../dictionary.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
-import { sum } from '../misc/utils.js';
+import { asUint32Array, sum } from '../misc/utils.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import {
@@ -125,7 +125,7 @@ export async function createMemline(
     // }
 
     // Convert allocation sizes to typed array for faster processing
-    const allocationSizes = new Uint32Array(_cpuproAllocationSizes);
+    const allocationSizes = asUint32Array(_cpuproAllocationSizes);
 
     let samplesInterval = allocationSizes[0];
     for (let i = 1; i < allocationSizes.length; i++) {
@@ -156,10 +156,11 @@ export async function createMemline(
             data._cpuproAllocationSpaces || null,
             data._cpuproAllocationSpaceNames || null
         ),
-        createMemlineGcEpochAttribute(
+        // Read lifespan bits before GC epoch remapping overwrites the shared vector.
+        createMemlineAllocationLifespanAttribute(
             data._cpuproAllocationGc || null
         ),
-        createMemlineAllocationLifespanAttribute(
+        createMemlineGcEpochAttribute(
             data._cpuproAllocationGc || null
         ),
         createMemlineAllocationCodeTypeAttribute(

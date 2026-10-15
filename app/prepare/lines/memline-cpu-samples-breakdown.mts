@@ -1,5 +1,6 @@
 import type { WorkHandler } from '../misc/work.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
+import type { AllocationIdVector } from '../types.js';
 import { createLineBreakdown } from './breakdown.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
 import { ProfileLine } from './types.js';
@@ -7,9 +8,9 @@ import { ProfileLine } from './types.js';
 export async function createMemlineCpuSamplesBreakdown(
     kind: string,
     line: ProfileLine,
-    _cpuproAllocationMapping: Uint32Array | number[],
-    _cpuproAllocationIds: Uint32Array | number[],
-    _cpuproAllocationSizes: Uint32Array | number[],
+    _cpuproAllocationMapping: AllocationIdVector,
+    _cpuproAllocationIds: AllocationIdVector,
+    allocationSizes: Uint32Array,
     cpuPopulation: Population,
     cpuSampledTreeSet: SampledTreeSet,
     work: WorkHandler
@@ -19,9 +20,6 @@ export async function createMemlineCpuSamplesBreakdown(
     // We need reverse: for each allocation, which CPU sample was it captured in?
     const allocationCount = _cpuproAllocationIds.length;
     const allocationCpuSamples = new Uint32Array(allocationCount);
-    const allocationSizes = _cpuproAllocationSizes instanceof Uint32Array
-        ? _cpuproAllocationSizes
-        : new Uint32Array(_cpuproAllocationSizes);
     const cpuSamples = cpuPopulation.samples;
 
     await work('map allocations to CPU samples', () => {
