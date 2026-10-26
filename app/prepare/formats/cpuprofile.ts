@@ -1,6 +1,6 @@
 import { getNumericArrayOrder } from './utils.js';
 import { ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
-import { isFloat64Vector, isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
+import { isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
 import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import type {
     AllocationIdVector,
@@ -53,7 +53,7 @@ function isNode(value: unknown): value is V8CpuProfileNode {
 }
 
 function isArrayOfIntegers(value: unknown): value is SampleIdVector | TimeDeltaVector {
-    if (!isNumberVector(value)) {
+    if (!isNumberVector(value) && !isInt32Vector(value)) {
         return false;
     }
 
@@ -100,9 +100,7 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
             return false;
         }
 
-        if ((!isFloat64Vector(maybe.timeDeltas) && !isUint32Vector(maybe.timeDeltas)) ||
-            !isArrayOfIntegers(maybe.timeDeltas)
-        ) {
+        if (!isArrayOfIntegers(maybe.timeDeltas)) {
             return false;
         }
     }

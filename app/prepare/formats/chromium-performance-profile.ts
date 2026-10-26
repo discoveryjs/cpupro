@@ -1,7 +1,7 @@
 // See: https://github.com/v8/v8/blob/master/src/inspector/js_protocol.json
 
 import { getNumericArrayOrder } from './utils.js';
-import { isFloat64Vector, isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
+import { isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
 import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import type {
     Ownership,
@@ -703,7 +703,7 @@ export function extractFromChromiumPerformanceProfile(
             endTime,
             nodes: [],
             samples: buildChunkedArray('samples', chunks, samples, Uint32Array),
-            timeDeltas: buildChunkedArray('timeDeltas', chunks, samples, Uint32Array),
+            timeDeltas: buildChunkedArray('timeDeltas', chunks, samples, Int32Array),
             trace_ids: {},
             lines: undefined,
             columns: undefined
@@ -897,12 +897,12 @@ function prepareChunkVectors(chunk: ChromiumTraceProfileChunkEventData) {
         chunk.cpuProfile.samples = decodeChunkVector(chunk.cpuProfile.samples, Uint32Array);
     }
 
-    for (const key of ['timeDeltas', 'allocationSampleIds'] as const) {
-        const value = chunk[key];
+    if (isNumberVector(chunk.timeDeltas) || isInt32Vector(chunk.timeDeltas)) {
+        chunk.timeDeltas = decodeChunkVector(chunk.timeDeltas, Int32Array);
+    }
 
-        if (isFloat64Vector(value) || isUint32Vector(value)) {
-            chunk[key] = decodeChunkVector(value, Uint32Array);
-        }
+    if (isNumberVector(chunk.allocationSampleIds)) {
+        chunk.allocationSampleIds = decodeChunkVector(chunk.allocationSampleIds, Uint32Array);
     }
 
     for (const key of ['lines', 'columns'] as const) {

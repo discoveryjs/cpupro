@@ -6,9 +6,9 @@ import { FunctionRange } from './misc/parse-script-source-ranges.js';
 import { ScriptCompilation } from './preprocessing/script-compilation.js';
 import { SourceMetrics } from './misc/source-text-metrics.js';
 
-export type TimeDeltaVector = number[] | Uint32Array | Float64Array;
+export type TimeDeltaVector = number[] | Int32Array | Uint32Array | Float64Array;
 export type SampleIdVector = number[] | Uint32Array;
-export type MemorySampleSizeVector = number[] | Uint32Array | Float64Array;
+export type MemorySampleSizeVector = number[] | Int32Array | Uint32Array | Float64Array;
 export type LineNumberVector = number[] | Int32Array;
 export type ColumnNumberVector = number[] | Int32Array;
 export type ScriptOffsetVector = number[] | Int32Array;

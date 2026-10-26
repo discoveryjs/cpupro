@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { extractFromChromiumPerformanceProfile } from './chromium-performance-profile.js';
-import { unwrapSamplesIfNeeded } from './cpuprofile.js';
+import { isCPUProfile, unwrapSamplesIfNeeded } from './cpuprofile.js';
 import { createDiagnosticsCollector, type Diagnose } from '../diagnostics.js';
 import { collectProfileUsedScriptIds } from '../preprocessing/scripts.js';
 import { getNumericArrayOrder } from './utils.js';
 import { Dictionary } from '../dictionary.js';
 import { createProfileSession } from '../profile-session.mjs';
+import { createProfile } from '../profile.mjs';
 import type { UniformProfilingSession } from './types.js';
 
 test('accepts event-only and empty traces without requiring a CPU capture', () => {
@@ -375,6 +376,45 @@ test('allocation vectors parse JSON chunks once and preserve unsigned 32-bit IDs
     }
 });
 
+test('tracing preserves signed CPU time deltas across chunks and repeated extraction', async () => {
+    const nodes = [
+        { id: 1, callFrame: { functionName: '(root)', scriptId: 0, url: '', lineNumber: -1, columnNumber: -1 }, children: [11, 22, 33, 44] },
+        ...[11, 22, 33, 44].map(id => ({
+            id, callFrame: { functionName: `sample${id}`, scriptId: 1, url: '/sample.js', lineNumber: 0, columnNumber: 0 }
+        }))
+    ];
+    const chunks = [
+        { cpuProfile: { nodes, samples: [11, 22] }, timeDeltas: [100, 120], allocationSampleIds: [10, 20] },
+        { cpuProfile: { nodes: [], samples: [33, 44] }, timeDeltas: [-20, 110], allocationSampleIds: [30, 40], endTime: 1400 }
+    ];
+    const events = [
+        { name: 'Profile', pid: 1, tid: 1, id: 'cpu', ts: 1000, ph: 'P', cat: '', args: { data: { startTime: 1000 } } },
+        ...chunks.map(data => ({ name: 'ProfileChunk', pid: 1, tid: 1, id: 'cpu', ts: 1000, ph: 'P', cat: '', args: { data } }))
+    ];
+
+    for (let extraction = 0; extraction < 2; extraction++) {
+        const profile = extractFromChromiumPerformanceProfile(events).profiles[0];
+
+        assert.deepEqual(profile.timeDeltas, new Int32Array([100, 120, -20, 110]));
+        assert.deepEqual(profile.samples, new Uint32Array([11, 22, 33, 44]));
+        assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([10, 20, 30, 40]));
+        assert.deepEqual(chunks[1].timeDeltas, new Int32Array([-20, 110]));
+        assert.equal(isCPUProfile(profile), true);
+
+        const prepared = await createProfile(profile);
+        const timeline = prepared.timeline!;
+
+        assert.deepEqual(profile.samples, new Uint32Array([11, 33, 22, 44]));
+        assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([10, 30, 20, 40]));
+        assert.deepEqual(timeline.values, new Uint32Array([100, 20, 90, 90]));
+        assert.equal(timeline.axisTotal, 300);
+        assert.equal(timeline.axisStartNoSamples, 100);
+        assert.equal(timeline.axisEndNoSamples, 0);
+        assert.deepEqual(timeline.breakdowns[0].population.cumulative, new Uint32Array([0, 100, 120, 210]));
+        assert.deepEqual(chunks[1].timeDeltas, new Int32Array([-20, 110]));
+    }
+});
+
 test('tracing vector representations preserve unsigned 32-bit values and signed offsets', () => {
     const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const allocationSamples = {
@@ -393,7 +433,7 @@ test('tracing vector representations preserve unsigned 32-bit values and signed 
     const profile = extractFromChromiumPerformanceProfile(events).profiles[0];
 
     assert.deepEqual(profile.samples, new Uint32Array([0xffffffff]));
-    assert.deepEqual(profile.timeDeltas, new Uint32Array([10]));
+    assert.deepEqual(profile.timeDeltas, new Int32Array([10]));
     assert.deepEqual(profile.lines, new Int32Array([-1]));
     assert.deepEqual(profile.columns, new Int32Array([-1]));
     assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([0xffffffff]));
@@ -477,7 +517,7 @@ test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted alloc
         const profile = session.profiles[0];
 
         assert.deepEqual(profile.samples, new Uint32Array([1, 1]));
-        assert.deepEqual(profile.timeDeltas, new Uint32Array([10, 10]));
+        assert.deepEqual(profile.timeDeltas, new Int32Array([10, 10]));
         assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([10, 20]));
         assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
         assert.equal(session.threads[0].compilations!.length, 1);
@@ -587,7 +627,7 @@ test('tracing preserves CPU-aligned allocation mapping without allocation rows',
 
     assert.equal(session.profiles.length, 1);
     assert.deepEqual(session.profiles[0].samples, new Uint32Array([1, 2, 3]));
-    assert.deepEqual(session.profiles[0].timeDeltas, new Uint32Array([10, 10, 10]));
+    assert.deepEqual(session.profiles[0].timeDeltas, new Int32Array([10, 10, 10]));
     assert.deepEqual(session.profiles[0]._cpuproAllocationMapping, new Uint32Array([10, 15, 20]));
     assert.deepEqual(Object.keys(session.profiles[0]).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
     assert.deepEqual(JSON.parse(JSON.stringify(input, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as Int32Array) : value)), before);
