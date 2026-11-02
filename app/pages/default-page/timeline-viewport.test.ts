@@ -13,29 +13,146 @@ import { histHeapTotal } from './hist-heap-total.js';
 
 const timeline = runInNewContext(readFileSync(new URL('../default.js', import.meta.url), 'utf8') + '\ncategoriesTimeline;', {
     require: () => ({ supportedFormats: [], sessionExpandState: () => ({}), chartUsedHeap, userTimingsTimeline }),
-    discovery: { nav: { primary: { append() {} } }, page: { define() {} } }
+    discovery: {
+        nav: { primary: { append() {} } },
+        page: { define() {} },
+        view: { getViewStackTrace: target => target?.views ?? null }
+    }
 });
 const query = jora.setup({ methods: { ...methods, marker: () => ({ href: '#' }) } });
 
-test('evaluates the full panel query with heap timestamps beyond sample coverage', async () => {
+test('tooltip dispatch selects one section and uses its current local data and scope', () => {
+    const renderDetails = timeline.content[0].details.content[1].content.at(-1);
+    const calls = [];
+    const renderer = { render: (...args) => calls.push(args) };
+    const heap = {
+        config: histHeapTotal,
+        data: { revision: 1 },
+        context: { scopeProfile: 'heap-profile', scopeLine: 'heap-line', scopeBreakdown: 'heap-breakdown' }
+    };
+    const codes = { config: histCodes, data: { revision: 2 }, context: { scopeLine: 'code-line' } };
+    const target = { views: [heap, { config: {}, data: null, context: {} }] };
+    const detail = { start: 20, end: 30 };
+    const context = {
+        detailTarget: target,
+        detail,
+        ruler: { selection: null },
+        binStart: 2,
+        binEnd: 3,
+        scopeProfile: 'parent-profile',
+        scopeLine: 'parent-line',
+        scopeBreakdown: 'parent-breakdown'
+    };
+
+    renderDetails.call(renderer, null, {}, context);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][1], histHeapTotal.rulerDetails);
+    assert.equal(calls[0][2], heap.data);
+    assert.equal(calls[0][3].detail, detail);
+    assert.equal(calls[0][3].scopeProfile, 'heap-profile');
+    assert.equal(calls[0][3].scopeLine, 'heap-line');
+    assert.equal(calls[0][3].scopeBreakdown, 'heap-breakdown');
+
+    target.views = [heap, codes];
+    renderDetails.call(renderer, null, {}, context);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1][1], histCodes.rulerDetails);
+    assert.equal(calls[1][2], codes.data);
+    assert.equal(calls[1][3].scopeLine, 'code-line');
+
+    codes.data = { revision: 3 };
+    codes.context = { scopeLine: 'changed-breakdown' };
+    renderDetails.call(renderer, null, {}, context);
+    assert.equal(calls[2][2], codes.data);
+    assert.equal(calls[2][3].scopeLine, 'changed-breakdown');
+
+    target.views = [];
+    renderDetails.call(renderer, null, {}, context);
+    renderDetails.call(renderer, null, {}, { ...context, detailTarget: null });
+    assert.equal(calls.length, 3);
+});
+
+test('mapping bins belong to expanded content rather than the parent panel query', async () => {
+    const { profile } = await createProfileFixture();
+    let mappings = 0;
+    const tracked = jora.setup({
+        methods: {
+            ...methods,
+            marker: () => ({ href: '#' }),
+            binLineToAxisLine(...args) {
+                mappings += args[1] === null ? 1 : 0;
+                return methods.binLineToAxisLine.apply(this, args);
+            }
+        }
+    });
+    const context = tracked(timeline.context)(profile, { primaryProfile: profile, primaryLineType: 'timeline' });
+    const panel = tracked(timeline.data)(profile, context);
+
+    assert.equal(mappings, 0);
+
+    const mapping = timeline.content.find(view => view?.view === 'expand');
+    const data = tracked(mapping.data)(panel, context);
+    const rows = tracked(mapping.content.data)(data, context);
+
+    assert.equal(mappings, profile.lines.length);
+    assert.equal(rows.length, profile.lines.length);
+});
+
+test('sections own their queries without eager parent calls and retain source coverage', async () => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
     const other = await createLineFixture({ values: new Uint32Array([100]) });
+    const calls = [];
+    const tracked = jora.setup({
+        methods: {
+            ...methods,
+            marker: () => ({ href: '#' }),
+            binHeapTotal(...args) {
+                calls.push('heap');
+                return methods.binHeapTotal.apply(this, args);
+            },
+            binScriptFunctionCodesTotal(...args) {
+                calls.push('codes');
+                return methods.binScriptFunctionCodesTotal.apply(this, args);
+            }
+        }
+    });
+    const callFrameCodes = { topTier: 'Sparkplug', callFrame: {} };
+    Object.assign(profile, {
+        codes: [
+            { tm: 5, tier: 'Ignition', callFrameCodes },
+            { tm: 25, tier: 'Sparkplug', callFrameCodes }
+        ],
+        codesByCallFrame: [callFrameCodes]
+    });
     profile.heap = { available: 200, capacity: 100, events: [{ tm: 60, event: 'new', size: 10, address: '0x1' }] };
-    const context = query(timeline.context)(profile, {
+    const context = tracked(timeline.context)(profile, {
         primaryProfile: profile, primaryLineType: 'timeline',
         data: { profiles: [profile, other.profile] }
     });
-    const panel = query(timeline.data)(profile, context);
+    const panel = tracked(timeline.data)(profile, context);
+
+    assert.deepEqual(calls, []);
+
+    const heap = tracked(histHeapTotal.data)(panel, context);
+
+    assert.deepEqual(calls, ['heap']);
+
+    const codes = tracked(histCodes.data)(panel, context);
+
+    assert.deepEqual(calls, ['heap', 'codes']);
+    assert.equal(codes.compilations.length, 2);
+    assert.equal(codes.byTier.find(tier => tier.name === 'Sparkplug').maxTier, 1);
+    assert.deepEqual(codes.extent, { start: 0, end: 40 });
 
     assert.equal(panel.line, profile.timeline);
-    assert.deepEqual(panel.heap.extent, { start: 0, end: 60 });
-    assert.equal(panel.heap.newTotal, 10);
+    assert.deepEqual(heap.extent, { start: 0, end: 60 });
+    assert.equal(heap.newTotal, 10);
     const heapRows = histHeapTotal.content.content[0].content;
     assert.ok(Array.isArray(heapRows));
     for (const row of heapRows) {
         const histogram = row.content.at(-1)!;
         assert.ok(histogram.extent);
-        assert.equal(query(histogram.extent.slice(1))(panel.heap, context), panel.heap.extent);
+        assert.equal(query(histogram.extent.slice(1))(heap, context), heap.extent);
     }
 });
 

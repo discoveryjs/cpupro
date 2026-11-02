@@ -64,6 +64,7 @@ export function createRulerHarness(render = () => {}) {
     let pointerMove;
     let renderRuler;
     let activeElement = null;
+    let hitElements = [];
     let tooltip = null;
     const utils = {
         equal,
@@ -104,8 +105,8 @@ export function createRulerHarness(render = () => {}) {
             }
         },
         dom: { root: {
-            elementsFromPoint: () => activeElement ? [activeElement] : [],
-            elementFromPoint: () => activeElement
+            elementsFromPoint: () => activeElement ? [...hitElements, activeElement] : [],
+            elementFromPoint: () => hitElements[0]
         } },
         addHostElEventListener(name, callback) {
             hostEvents.set(name, callback);
@@ -140,8 +141,9 @@ export function createRulerHarness(render = () => {}) {
         render: (...args) => renderRuler.call({ render }, ...args),
         showTooltip: () => tooltip?.(new Element('tooltip')),
         move: position => pointerMove(position),
-        setActive(element) {
+        setActive(element, ...targets) {
             activeElement = element;
+            hitElements = targets.length ? targets : [element];
         }
     };
 }

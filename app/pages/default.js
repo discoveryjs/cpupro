@@ -80,53 +80,6 @@ const categoriesTimeline = {
                 color: $category.name.color(),
                 href: $category.marker("category").href
             }),
-            functionCodes: codes |? {
-                $countByTopTier: @.codesByCallFrame.group(=> topTier).({ tier: key, count: value.size() });
-                $codes: sort(tm asc);
-                $totalBins: $codes.binScriptFunctionCodesTotal($binCount);
-                $maxTotal: $totalBins.fnCount.max();
-                $byTierBins: $totalBins.byTier.({
-                    $tier: $[0];
-                    $bins: $[1];
-
-                    name: $tier,
-                    color: $tier.color(),
-                    $bins,
-                    max: $bins.max(),
-                    $maxTotal,
-                    maxTier: $countByTopTier[=> tier = $tier].count or 0
-                }).[max];
-                
-                $countByTopTier,
-                extent: $profile.timeline.timestampExtent($codes[-1].tm),
-                compilations: $codes,
-                compilationBins: $codes.binScriptFunctionCodes($binCount),
-                totalBins: $totalBins.fnCount,
-                totalColor: '#7fb2f7a0',
-                codesTotalColor: "compilation".color(),
-                byTier: $byTierBins,
-                byTierMax: $maxTotal
-            },
-            heap: heap | events ? {
-                $totalHeapSize: events.binHeapTotal($binCount, capacity);
-                $new: events.binHeapEvents("new", $binCount);
-                $delete: events.binHeapEvents("delete", $binCount);
-
-                available,
-                extent: $profile.timeline.timestampExtent(events[-1].tm, 0),
-                $totalHeapSize,
-                minTotal: $totalHeapSize.min(),
-                maxTotal: $totalHeapSize.max(),
-                $new,
-                newTotal: $new.sum(),
-                $delete,
-                deleteTotal: $delete.sum(),
-                maxNewDelete: [$new.max(), $delete.max()].max()
-            },
-            lineMappingControl: $profile.lines.({
-                ...binLineToAxisLine(null, $scopeLine, $binCount)[0],
-                color: "#65b4fda0"
-            }),
             memline: $profile | $memline; $memline ? [
                 { key: "byType",     value: 'allocationType' },
                 { key: "bySpace",    value: 'allocationSpace' },
@@ -240,92 +193,19 @@ const categoriesTimeline = {
                                     }
                                 ]
                             },
-                            {
-                                view: 'block',
-                                className: 'details-section',
-                                when: 'functionCodes or heap',
-                                content: [
-                                    {
-                                        view: 'context',
-                                        data: 'functionCodes',
-                                        whenData: true,
-                                        content: [
-                                            {
-                                                view: 'block',
-                                                className: 'details-section-title',
-                                                content: 'text:"Code states"'
-                                            },
-                                            {
-                                                view: 'list',
-                                                className: 'category-timings-list with-from',
-                                                data: `
-                                                $maxTotal: totalBins[#.binStart:#.binEnd].max();
+                            function(el, data, context) {
+                                const views = discovery.view.getViewStackTrace(context.detailTarget);
+                                const section = views?.findLast(view => view.config.rulerDetails);
 
-                                                byTier.({ $bins: bins[#.binStart:#.binEnd]; ..., value: $bins.max(), from: $bins.min(), $maxTotal }) + {
-                                                    $bins: totalBins[#.binStart:#.binEnd];
-
-                                                    name: "Total",
-                                                    value: $bins.max(),
-                                                    from: $bins.min(),
-                                                    $maxTotal,
-                                                    color: totalColor
-                                                }
-                                            `,
-                                                itemConfig: {
-                                                    className: '=value = 0 ? "no-value"',
-                                                    postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                                                    content: [
-                                                        'block{ className: "category-name", content: "text:name" }',
-                                                        {
-                                                            view: 'block',
-                                                            className: 'value-with-from',
-                                                            content: [
-                                                                { view: 'text-numeric', when: 'from != value and from is number', text: '=`${from} → `' },
-                                                                'value-fraction{ value, total: maxTotal }'
-                                                            ]
-                                                        }
-                                                    ]
-                                                }
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        view: 'context',
-                                        data: 'heap',
-                                        whenData: true,
-                                        content: [
-                                            {
-                                                view: 'block',
-                                                className: 'details-section-title',
-                                                content: 'text:"Heap size"'
-                                            },
-                                            {
-                                                view: 'list',
-                                                className: 'category-timings-list with-from',
-                                                data: `[
-                                                { $selection: totalHeapSize[#.binStart:#.binEnd]; name: 'Total size', value: $selection.max(), from: $selection.min(), total: maxTotal },
-                                                { name: 'Allocated', value: new[#.binStart:#.binEnd].sum(), total: newTotal },
-                                                { name: 'Released', value: delete[#.binStart:#.binEnd].sum(), total: deleteTotal }
-                                            ]`,
-                                                itemConfig: {
-                                                    className: '=value = 0 ? "no-value"',
-                                                    postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                                                    content: [
-                                                        'block{ content: "text:name" }',
-                                                        {
-                                                            view: 'block',
-                                                            className: 'value-with-from',
-                                                            content: [
-                                                                { view: 'text-numeric', when: 'from is number', text: '=`${from.bytes(false)} … `' },
-                                                                'value-fraction{ value: value.bytes(false), fraction: value / total  }'
-                                                            ]
-                                                        }
-                                                    ]
-                                                }
-                                            }
-                                        ]
-                                    }
-                                ]
+                                if (section) {
+                                    return this.render(el, section.config.rulerDetails, section.data, {
+                                        ...section.context,
+                                        ruler: context.ruler,
+                                        detail: context.detail,
+                                        binStart: context.binStart,
+                                        binEnd: context.binEnd
+                                    });
+                                }
                             }
                         ]
                     }
@@ -392,9 +272,9 @@ const categoriesTimeline = {
 
         {
             view: 'expand',
-            when: 'lineMappingControl | size() > 1',
+            when: 'scopeProfile().lines.size() > 1',
             ...sessionExpandState('default-timelines-line-mapping-control', false, '$'),
-            data: 'lineMappingControl',
+            data: 'scopeProfile().lines',
             className: 'unavailable',
             header: [
                 {
@@ -406,6 +286,10 @@ const categoriesTimeline = {
             ],
             content: {
                 view: 'switch',
+                data: `$.({
+                    ...binLineToAxisLine(null, scopeLine(), #.binCount)[0],
+                    color: "#65b4fda0"
+                })`,
                 content: [
                     { when: '$', content: [{
                         view: 'list',

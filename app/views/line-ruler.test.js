@@ -102,6 +102,7 @@ test.each([false, true])('owns manager lifecycle, calls user onInit and adapts d
     harness.setActive(element);
     harness.move({ x: element.width * 0.4, y: 5 });
     harness.showTooltip();
+    assert.ok(resolveScopeProfileLine(null, detailsContext) === profile.timeline, 'Details use the existing line scope');
     assert.equal(detailsContext.timeStart, 10);
     assert.equal(detailsContext.timeEnd, 15);
     assert.equal(detailsContext.segmentStart, 2);

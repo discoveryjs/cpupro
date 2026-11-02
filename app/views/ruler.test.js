@@ -140,6 +140,39 @@ test('keeps hover and selected-interval details separate from selection and hide
     view.destroy();
 });
 
+test('delivers the latest hovered target with its interval and respects competing tooltips', () => {
+    const renders = [];
+    const view = setup({ segments: 10, details: 'struct' }, (el, details, data, context) => {
+        renders.push(context);
+    });
+    const first = view.element.parentNode.appendChild(view.harness.createElement('first'));
+    const second = view.element.parentNode.appendChild(view.harness.createElement('second'));
+
+    view.harness.setActive(view.element, first);
+    view.move(25);
+    view.harness.setActive(view.element, second);
+    view.move(25);
+    view.harness.showTooltip();
+
+    assert.equal(renders.length, 1);
+    assert.ok(renders[0].detailTarget === second, 'Latest hovered section is retained');
+    assert.deepEqual(renders[0].detail, { start: 120, end: 130 });
+
+    view.api.setSelection({ start: 120, end: 130 });
+    const overlay = view.element.querySelector('.view-ruler__selection-overlay-mover');
+    view.harness.setActive(view.element, overlay, second);
+    view.move(25);
+    view.harness.showTooltip();
+    assert.ok(renders[1].detailTarget === second, 'Selection overlay retains the underlying section');
+
+    second.closest = () => second;
+    view.harness.setActive(view.element, second);
+    view.move(25);
+    view.harness.showTooltip();
+    assert.equal(renders.length, 2);
+    view.destroy();
+});
+
 test.each([null, 10])('moves and resizes without rebuilding segments, segments=%s', segments => {
     const view = setup({ segments, selection: { start: 123, end: 167 } });
     const boundaries = view.api.state.segments;

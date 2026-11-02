@@ -4,7 +4,37 @@ export const histCodes = {
     view: 'expand',
     when: '#.primaryLineType != "memline"',
     ...sessionExpandState('default-code-tiers', false, '$'),
-    data: 'functionCodes',
+    data: `
+        $profile: scopeProfile();
+        $binCount: #.binCount;
+        $profile | codes |? {
+            $countByTopTier: $profile.codesByCallFrame.group(=> topTier).({ tier: key, count: value.size() });
+            $codes: sort(tm asc);
+            $totalBins: $codes.binScriptFunctionCodesTotal($binCount);
+            $maxTotal: $totalBins.fnCount.max();
+            $byTierBins: $totalBins.byTier.({
+                $tier: $[0];
+                $bins: $[1];
+
+                name: $tier,
+                color: $tier.color(),
+                $bins,
+                max: $bins.max(),
+                $maxTotal,
+                maxTier: $countByTopTier[=> tier = $tier].count or 0
+            }).[max];
+
+            $countByTopTier,
+            extent: $profile.timeline.timestampExtent($codes[-1].tm),
+            compilations: $codes,
+            compilationBins: $codes.binScriptFunctionCodes($binCount),
+            totalBins: $totalBins.fnCount,
+            totalColor: '#7fb2f7a0',
+            codesTotalColor: "compilation".color(),
+            byTier: $byTierBins,
+            byTierMax: $maxTotal
+        }
+    `,
     className: '=no $ ? "unavailable"',
     header: [
         {
@@ -14,6 +44,50 @@ export const histCodes = {
         },
         histFunctionCodesHeader()
     ],
+    rulerDetails: {
+        view: 'block',
+        className: 'details-section',
+        whenData: true,
+        content: [
+            {
+                view: 'block',
+                className: 'details-section-title',
+                content: 'text:"Code states"'
+            },
+            {
+                view: 'list',
+                className: 'category-timings-list with-from',
+                data: `
+                    $maxTotal: totalBins[#.binStart:#.binEnd].max();
+
+                    byTier.({ $bins: bins[#.binStart:#.binEnd]; ..., value: $bins.max(), from: $bins.min(), $maxTotal }) + {
+                        $bins: totalBins[#.binStart:#.binEnd];
+
+                        name: "Total",
+                        value: $bins.max(),
+                        from: $bins.min(),
+                        $maxTotal,
+                        color: totalColor
+                    }
+                `,
+                itemConfig: {
+                    className: '=value = 0 ? "no-value"',
+                    postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                    content: [
+                        'block{ className: "category-name", content: "text:name" }',
+                        {
+                            view: 'block',
+                            className: 'value-with-from',
+                            content: [
+                                { view: 'text-numeric', when: 'from != value and from is number', text: '=`${from} → `' },
+                                'value-fraction{ value, total: maxTotal }'
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    },
     content: {
         view: 'switch',
         content: [

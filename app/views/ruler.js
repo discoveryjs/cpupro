@@ -147,12 +147,16 @@ function showDetails(el, detail, x, y) {
         return;
     }
 
-    const target = discovery.dom.root.elementFromPoint(x, y)
-        ?.closest('.discovery-view-has-tooltip, .no-view-ruler-tooltip');
+    const elements = discovery.dom.root.elementsFromPoint(x, y);
+    const suppress = elements[0]?.closest('.discovery-view-has-tooltip, .no-view-ruler-tooltip');
+    const target = elements.find(target => !el.contains(target) && el.parentNode?.contains(target));
 
-    if (view.details && detail && !(target && el.parentNode?.contains(target))) {
+    if (view.details && detail && !(suppress && el.parentNode?.contains(suppress))) {
         detailsTooltip.show(el, tooltipEl => view.render(tooltipEl, view.details, view.data, {
-            ...view.context, ruler: view.state, detail
+            ...view.context,
+            ruler: view.state,
+            detail,
+            detailTarget: target
         }));
     } else {
         detailsTooltip.hide();

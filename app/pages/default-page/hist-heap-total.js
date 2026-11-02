@@ -4,7 +4,26 @@ export const histHeapTotal = {
     view: 'expand',
     when: '#.primaryLineType != "memline"',
     ...sessionExpandState('default-timelines-heap', false, '$'),
-    data: 'heap',
+    data: `
+        $profile: scopeProfile();
+        $binCount: #.binCount;
+        $profile.heap | events ? {
+            $totalHeapSize: events.binHeapTotal($binCount, capacity);
+            $new: events.binHeapEvents("new", $binCount);
+            $delete: events.binHeapEvents("delete", $binCount);
+
+            available,
+            extent: $profile.timeline.timestampExtent(events[-1].tm, 0),
+            $totalHeapSize,
+            minTotal: $totalHeapSize.min(),
+            maxTotal: $totalHeapSize.max(),
+            $new,
+            newTotal: $new.sum(),
+            $delete,
+            deleteTotal: $delete.sum(),
+            maxNewDelete: [$new.max(), $delete.max()].max()
+        }
+    `,
     className: '=no $ ? "unavailable"',
     header: [
         {
@@ -14,6 +33,42 @@ export const histHeapTotal = {
         },
         histHeapTotalHeader()
     ],
+    rulerDetails: {
+        view: 'block',
+        className: 'details-section',
+        whenData: true,
+        content: [
+            {
+                view: 'block',
+                className: 'details-section-title',
+                content: 'text:"Heap size"'
+            },
+            {
+                view: 'list',
+                className: 'category-timings-list with-from',
+                data: `[
+                    { $selection: totalHeapSize[#.binStart:#.binEnd]; name: 'Total size', value: $selection.max(), from: $selection.min(), total: maxTotal },
+                    { name: 'Allocated', value: new[#.binStart:#.binEnd].sum(), total: newTotal },
+                    { name: 'Released', value: delete[#.binStart:#.binEnd].sum(), total: deleteTotal }
+                ]`,
+                itemConfig: {
+                    className: '=value = 0 ? "no-value"',
+                    postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                    content: [
+                        'block{ content: "text:name" }',
+                        {
+                            view: 'block',
+                            className: 'value-with-from',
+                            content: [
+                                { view: 'text-numeric', when: 'from is number', text: '=`${from.bytes(false)} … `' },
+                                'value-fraction{ value: value.bytes(false), fraction: value / total  }'
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    },
     content: {
         view: 'switch',
         content: [
