@@ -99,6 +99,88 @@ test('category bins and presence use the same grid and retain the total contribu
     assert.deepEqual(Array.from(local), [2.5, 2.5, 2.5, 2.5, 0, 0, 0, 0, 2.5, 2.5]);
 });
 
+test.each(['timeline', 'memline'] as const)('category bins ignore a sink overlapping unused tree samples on %s', async type => {
+    const context = await createContext({ type });
+    const category = { name: 'script' };
+    const treeMetrics = {
+        tree: { dictionary: [category, { name: 'idle' }], nodes: new Uint32Array([0, 1]) },
+        sampleToNode: new Uint32Array([0, 1, 0, 1])
+    };
+    const mask = new Uint8Array([1, 0, 1, 0]);
+    const viewport = context.scopeBreakdown.populationViewport;
+    const bins = () => methods.binCalls.call({ context }, treeMetrics, category, 10);
+    const presence = () => methods.binCallsFromMask.call({ context }, mask, 10);
+    const signals = () => methods.binSignals.call({ context }, treeMetrics, {
+        test: category, n: 10, total: 100, skip: 25
+    });
+
+    assert.equal(mask[viewport.sinkId], 1);
+
+    for (const ranges of [null, [{ start: 1, end: 8 }, { start: 12, end: 14 }, { start: 21, end: 24 }]]) {
+        viewport.setRanges(ranges);
+        const before = Array.from(bins());
+        assert.ok(before.some(value => value > 0));
+
+        for (const domain of ['sample', 'event'] as const) {
+            const filter = { key: 'category', domain, size: domain === 'sample' ? 2 : viewport.samples.length };
+            viewport.filter.set({
+                ...filter,
+                accepts: index => (domain === 'sample' ? index : viewport.population.samples[index]) === 0
+            });
+            assert.deepEqual(Array.from(bins()), before);
+            assert.deepEqual(Array.from(presence()), before);
+            assert.deepEqual(Array.from(signals()), before);
+
+            viewport.filter.set({ ...filter, accepts: () => false });
+            assert.deepEqual(Array.from(bins()), new Array(10).fill(0));
+            assert.deepEqual(Array.from(presence()), new Array(10).fill(0));
+            assert.deepEqual(Array.from(signals()), new Array(10).fill(0));
+
+            viewport.filter.remove('category');
+            assert.deepEqual(Array.from(bins()), before);
+            assert.deepEqual(Array.from(presence()), before);
+            assert.deepEqual(Array.from(signals()), before);
+        }
+    }
+
+    assert.deepEqual([...mask], [1, 0, 1, 0]);
+});
+
+test.each([0, 1, 7, 0xffffffff])('binning excludes sink ID %i without excluding other sample IDs', async sinkId => {
+    for (const ranges of [null, [{ start: 2, end: 17 }, { start: 23, end: 38 }]]) {
+        const context = {
+            ...await createContext({
+                type: 'memline',
+                origin: 0,
+                values: new Uint32Array([10, 10, 10, 10]),
+                samples: new Uint32Array([2, 2, 3, 3])
+            }),
+            scopeViewport: { start: 0, end: 40 }
+        };
+        const viewport = context.scopeBreakdown.populationViewport;
+        viewport.setRanges(ranges);
+        Object.defineProperty(viewport, 'sinkId', { value: sinkId });
+        viewport.samples.set([sinkId, 2, 3, sinkId]);
+
+        const category = { name: 'script' };
+        const treeMetrics = {
+            tree: { dictionary: [category], nodes: new Uint32Array([0]) },
+            sampleToNode: new Uint32Array(8)
+        };
+        const mask = new Uint8Array(8).fill(1);
+        const expected = ranges === null
+            ? [0, 0, 5, 5, 5, 5, 0, 0]
+            : [0, 0, 5, 2, 2, 5, 0, 0];
+
+        assert.deepEqual(methods.binCallsFromMask.call({ context }, mask, 8), expected);
+        assert.deepEqual(Array.from(methods.binCalls.call({ context }, treeMetrics, category, 8)), expected);
+        assert.deepEqual(Array.from(methods.binSignals.call({ context }, treeMetrics, {
+            test: category, n: 8, total: 40
+        })), expected);
+        assert.deepEqual([...mask], new Array(8).fill(1));
+    }
+});
+
 test('sample counters follow viewport boundaries without counting the starting bin twice', async () => {
     const context = await createContext();
     assert.deepEqual(Array.from(samplesMethods.countSamples.call({ context }, 10)), [0, 0, 1, 2, 2, 0, 0, 0, 0, 0]);

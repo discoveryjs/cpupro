@@ -44,25 +44,25 @@ function sampleBinStep(total: number, n: number) {
 function makeSampleBins(
     n: number,
     mask: Uint8Array,
-    samples: number[] | Uint32Array,
-    values: number[] | Uint32Array,
-    cumulative: Uint32Array,
-    acceptedValues: Uint32Array,
+    viewport: PopulationFiltered,
     total: number,
     skip = 0,
-    sourceTotal = total,
     range: Range = { start: 0, end: total }
 ) {
+    const { samples, values: acceptedValues, population, sinkId } = viewport;
+    const { values, cumulative, cumulativeEnd } = population;
     const bins = new Float64Array(n);
     const rems = new Float64Array(n);
     const step = sampleBinStep(total, n);
-    const { first, last, offset: localStart, startCut, endCut } = sampleRange(cumulative, range.end - range.start, skip - range.start, sourceTotal);
+    const { first, last, offset: localStart, startCut, endCut } = sampleRange(cumulative, range.end - range.start, skip - range.start, cumulativeEnd);
     const start = localStart + range.start;
     const lastBin = Math.min(n - 1, Math.ceil(range.end / step) - 1);
+    const firstSampleId = samples[first];
+    const lastSampleId = samples[last];
     let binIdx = Math.floor(start / step) | 0;
     let end = (binIdx + 1) * step;
     let offset = start - startCut;
-    let acc = startCut > 0 && mask[samples[first]] && acceptedValues[first] > 0
+    let acc = startCut > 0 && firstSampleId !== sinkId && mask[firstSampleId] && acceptedValues[first] > 0
         ? -startCut
         : 0;
 
@@ -70,7 +70,8 @@ function makeSampleBins(
     // allow to keep the main loop simpler (without inner loops) and faster,
     // while still keeping the same time complexity of O(n).
     for (let i = first; i <= last; i++) {
-        const accept = mask[samples[i]] && acceptedValues[i] > 0;
+        const sampleId = samples[i];
+        const accept = sampleId !== sinkId && mask[sampleId] && acceptedValues[i] > 0;
         const delta = values[i];
 
         offset += delta;
@@ -105,7 +106,7 @@ function makeSampleBins(
         }
     }
 
-    if (endCut > 0 && mask[samples[last]] && acceptedValues[last] > 0) {
+    if (endCut > 0 && lastSampleId !== sinkId && mask[lastSampleId] && acceptedValues[last] > 0) {
         bins[lastBin] -= Math.min(endCut, Math.max(0, (lastBin + 1) * step - range.end));
     }
 
@@ -113,10 +114,10 @@ function makeSampleBins(
 }
 
 function makeViewportBins(n: number, mask: Uint8Array, viewport: PopulationFiltered, total: number, skip: number) {
-    const { samples, values, population, ranges } = viewport;
+    const { ranges } = viewport;
 
     if (ranges === null) {
-        return makeSampleBins(n, mask, samples, population.values, population.cumulative, values, total, skip, population.cumulativeEnd);
+        return makeSampleBins(n, mask, viewport, total, skip);
     }
 
     const bins = new Float64Array(n);
@@ -126,7 +127,7 @@ function makeViewportBins(n: number, mask: Uint8Array, viewport: PopulationFilte
         const end = Math.min(total, range.end + skip);
 
         if (start < end) {
-            const part = makeSampleBins(n, mask, samples, population.values, population.cumulative, values, total, skip, population.cumulativeEnd, { start, end });
+            const part = makeSampleBins(n, mask, viewport, total, skip, { start, end });
 
             for (let index = 0; index < n; index++) {
                 bins[index] += part[index];
