@@ -1,27 +1,98 @@
 .view-appbar {
+    --appbar-control-height: 24px;
+    --appbar-control-font-size: 12px;
     display: flex;
     align-items: stretch;
     height: 30.2px;
 }
 .view-appbar > .appbar__logo {
-    display: block;
+    display: flex;
+    align-items: center;
     font-size: 14px;
-    padding: 8px 12px 0;
+    padding: 0 12px;
     line-height: 1;
     background-color: color-mix(in srgb, #000 25%, var(--discovery-background-color));
 }
 .view-appbar > .appbar__content {
     flex: 1;
-    padding: 0 10px;
-    gap: 12px;
+    min-width: 0;
+    padding: 4px 8px;
+    gap: 8px;
     display: flex;
     align-items: center;
-    border-top: .1px solid black;
     background: color-mix(in srgb, #ffffff 8%, var(--discovery-background-color));
 }
 .view-appbar > .appbar__content > .appbar__profile-name {
     flex: 1;
+    min-width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.view-appbar .appbar__switch {
+    box-sizing: border-box;
+    height: var(--appbar-control-height);
+    flex: none;
+    flex-wrap: nowrap;
+    align-items: center;
+    padding: 0;
+    gap: 0;
+    border-radius: 4px;
+    background: color-mix(in srgb, currentColor 4%, var(--discovery-background-color));
+}
+.view-appbar .appbar__switch .view-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 100%;
+    margin: 0;
+    padding: 0 8px;
+    border-radius: 4px;
+    background: none;
+    color: color-mix(in srgb, currentColor 70%, transparent);
+    font-size: var(--appbar-control-font-size);
+    line-height: 1;
+}
+.view-appbar .appbar__switch .view-toggle:hover {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.view-appbar .appbar__switch .view-toggle.checked {
+    background: color-mix(in srgb, #78b5e2 22%, var(--discovery-background-color));
+    color: var(--discovery-color);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #78b5e2 30%, transparent);
+}
+.view-appbar .appbar__filters {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    box-sizing: border-box;
+    height: var(--appbar-control-height);
+    padding: 0 8px;
+    margin: 0;
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--appbar-control-font-size);
+    line-height: 1;
+    cursor: pointer;
+}
+.view-appbar .appbar__filters:is(:hover, .discovery-view-popup-active) {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.view-appbar .appbar__filters:focus-visible {
+    outline: 2px solid #78b5e2;
+    outline-offset: 2px;
+}
+.appbar__filter-count {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    opacity: .65;
+}
+.appbar__filter-count.active {
+    color: #78b5e2;
+    opacity: 1;
 }

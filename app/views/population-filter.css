@@ -1,0 +1,236 @@
+.population-filter-popup {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.population-filter-popup .view-population-filter {
+    border: 0;
+    border-radius: 0;
+}
+.view-population-filter {
+    --filter-border: color-mix(in srgb, currentColor 14%, transparent);
+    --filter-muted: color-mix(in srgb, currentColor 55%, var(--discovery-background-color));
+    --filter-accent: #78b5e2;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 400px;
+    max-width: 100%;
+    min-height: 0;
+    margin: 0;
+    border: 1px solid var(--filter-border);
+    border-radius: 6px;
+    background: var(--discovery-background-color);
+    font-size: 12px;
+    line-height: 1.4;
+    letter-spacing: 0;
+}
+.population-filter__attributes {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.view-population-filter .population-filter__attributes > .population-filter__attribute {
+    border-bottom: 1px solid var(--filter-border);
+    margin: 0;
+}
+.view-population-filter .population-filter__attributes > .population-filter__attribute:last-child {
+    border-bottom: 0;
+}
+.population-filter__attribute > .header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    margin: 0;
+    background: none;
+    cursor: pointer;
+    user-select: none;
+}
+.population-filter__attribute > .header > .header-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+}
+.population-filter__attribute > .header > .trigger {
+    display: flex;
+    align-items: center;
+    flex: none;
+    width: 10px;
+    margin: 0;
+    background: none;
+}
+.population-filter__attribute > .header > .trigger::before {
+    height: 12px;
+}
+.population-filter__label {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 500;
+}
+.population-filter__selected {
+    color: var(--filter-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.population-filter__selected.active {
+    color: var(--filter-accent);
+}
+.population-filter__tools {
+    display: flex;
+    gap: 12px;
+    padding: 0 14px 6px 32px;
+}
+.view-population-filter button {
+    appearance: none;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: var(--filter-accent);
+    font: inherit;
+    padding: 3px 0;
+    margin: 0;
+    cursor: pointer;
+}
+.view-population-filter button:disabled {
+    color: var(--filter-muted);
+    opacity: .6;
+    cursor: default;
+}
+.view-population-filter button:hover:not(:disabled) {
+    text-decoration: underline;
+}
+.view-population-filter :is(button, input, [role="button"]):focus-visible {
+    outline: 2px solid var(--filter-accent);
+    outline-offset: 2px;
+}
+.population-filter__search {
+    width: calc(100% - 28px);
+    margin: 2px 14px 8px;
+}
+.population-filter__search input {
+    padding: 7px 8px;
+    border: 1px solid var(--filter-border);
+    border-radius: 4px;
+    background: color-mix(in srgb, currentColor 4%, var(--discovery-background-color));
+    color: inherit;
+    font: inherit;
+}
+.population-filter__options {
+    padding: 0 8px 10px;
+    margin: 0;
+    list-style: none;
+}
+.population-filter__options > .view-list-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 30px;
+    border-radius: 3px;
+    padding: 0 6px;
+    margin: 0;
+}
+.population-filter__options > .view-list-item[hidden] {
+    display: none;
+}
+.population-filter__attribute > .header:hover,
+.population-filter__options > .view-list-item:hover {
+    background: color-mix(in srgb, currentColor 5%, transparent);
+}
+.population-filter__options .view-checkbox {
+    --discovery-checkbox-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    flex: 1;
+    min-width: 0;
+    padding: 5px 0;
+    line-height: 18px;
+}
+.population-filter__options .view-checkbox__label {
+    overflow-wrap: anywhere;
+    min-width: 0;
+    margin: 0;
+    padding-left: 7px;
+}
+.population-filter__options .view-checkbox > input {
+    flex: none;
+    margin: 0;
+}
+.population-filter__options .has-color .view-checkbox__label::before {
+    content: '';
+    display: inline-block;
+    width: .75em;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: var(--option-color);
+}
+.view-population-filter .population-filter__only {
+    flex: none;
+    opacity: 0;
+    font-size: 11px;
+}
+.population-filter__options > .view-list-item:hover .population-filter__only,
+.view-population-filter .population-filter__only:focus-visible {
+    opacity: 1;
+}
+.population-filter__metrics {
+    display: grid;
+    grid-template-columns: minmax(9ch, max-content) 5ch;
+    column-gap: 6px;
+    flex: none;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    line-height: 18px;
+    text-align: right;
+    white-space: nowrap;
+}
+.population-filter__metrics > :last-child {
+    color: var(--filter-muted);
+}
+.population-filter__empty {
+    padding: 8px 14px 16px;
+    color: var(--filter-muted);
+}
+.population-filter__footer {
+    flex: none;
+    border-top: 1px solid var(--filter-border);
+    background: color-mix(in srgb, currentColor 3%, var(--discovery-background-color));
+}
+.view-population-filter .population-filter__reset {
+    flex: none;
+    margin-left: 2px;
+    padding: 0;
+}
+.population-filter__summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 10px 14px;
+    gap: 12px;
+    font-variant-numeric: tabular-nums;
+}
+.population-filter__summary > .view-block {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    white-space: nowrap;
+}
+.population-filter__summary > .view-block > :first-child {
+    color: var(--filter-muted);
+}
+@media (hover: none) {
+    .view-population-filter .population-filter__only {
+        opacity: 1;
+    }
+}
+@media (max-width: 480px) {
+    .population-filter__metrics {
+        grid-template-columns: minmax(9ch, max-content);
+    }
+}

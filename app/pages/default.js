@@ -11,7 +11,6 @@ const { histAllocationTypes } = require('./default-page/hist-allocation-types.js
 const { histCodes } = require('./default-page/hist-codes.js');
 const { histHeapTotal } = require('./default-page/hist-heap-total.js');
 const { pageIndicators } = require('./default-page/page-indicators.js');
-const { populationFilter } = require('./default-page/population-filter.js');
 const { hierarchicalComponentsTables } = require('./default-page/tables.js');
 const { userTimingsTimeline } = require('./default-page/user-timings-timeline.js');
 
@@ -615,7 +614,6 @@ const pageContent = [
     },
 
     pageIndicators,
-    populationFilter,
 
     {
         view: 'expand',

@@ -101,6 +101,8 @@ module.exports = {
             './views/page-indicator.js',
             './views/page-indicator-metrics.css',
             './views/page-indicator-metrics.js',
+            './views/population-filter.css',
+            './views/population-filter.js',
             './views/bins-histogram.css',
             './views/bins-histogram.js',
             './views/sampled-count-total.css',
