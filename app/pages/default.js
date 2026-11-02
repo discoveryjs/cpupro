@@ -53,7 +53,6 @@ const categoriesTimeline = {
     data: `
         $scopeBreakdown: scopeBreakdown();
         $scopeLine: $scopeBreakdown.line;
-        $profile: $scopeLine.profile;
         $binCount: #.binCount;
         $totalValue: $scopeLine.axisTotal;
         $binSamples: $binCount.countSamples();
@@ -79,17 +78,7 @@ const categoriesTimeline = {
                 $totalValueBins,
                 color: $category.name.color(),
                 href: $category.marker("category").href
-            }),
-            memline: $profile | $memline; $memline ? [
-                { key: "byType",     value: 'allocationType' },
-                { key: "bySpace",    value: 'allocationSpace' },
-                { key: "byLifespan", value: 'allocationLifespan' },
-                { key: "byGcEpoch",  value: 'allocationGcEpoch' },
-                { key: "byCodeType", value: 'allocationCodeType' }
-            ].($attribute: $memline.lineAttribute(value);
-                { key, value: $attribute
-                    ? $memline.binLineToAxisLine($attribute, $scopeLine, $binCount) }
-            ).fromEntries()
+            })
         }
     `,
     content: [

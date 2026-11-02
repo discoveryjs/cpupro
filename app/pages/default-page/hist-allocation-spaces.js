@@ -2,7 +2,11 @@ import { sessionExpandState } from '../common.js';
 
 export const histAllocationSpaces = {
     view: 'expand',
-    data: 'memline.bySpace.[value].sort(name.order() asc)',
+    data: `
+        $memline: scopeProfile().memline;
+        $attribute: $memline ? $memline.lineAttribute("allocationSpace");
+        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).[value].sort(name.order() asc) : []
+    `,
     whenData: true,
     ...sessionExpandState('default-allocation-spaces', false, '$'),
     header: [

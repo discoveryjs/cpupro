@@ -2,7 +2,11 @@ import { sessionExpandState } from '../common.js';
 
 export const histAllocationLifespan = {
     view: 'expand',
-    data: 'memline.byLifespan.[value].sort(name.order() asc)',
+    data: `
+        $memline: scopeProfile().memline;
+        $attribute: $memline ? $memline.lineAttribute("allocationLifespan");
+        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).[value].sort(name.order() asc) : []
+    `,
     whenData: true,
     ...sessionExpandState('default-allocation-lifespans', false, '$'),
     header: [

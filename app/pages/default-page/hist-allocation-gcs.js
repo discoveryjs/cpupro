@@ -2,7 +2,11 @@ import { sessionExpandState } from '../common.js';
 
 export const histAllocationGcs = {
     view: 'expand',
-    data: 'memline.byGcEpoch.sort(name.order() asc)',
+    data: `
+        $memline: scopeProfile().memline;
+        $attribute: $memline ? $memline.lineAttribute("allocationGcEpoch");
+        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).sort(name.order() asc) : []
+    `,
     whenData: true,
     ...sessionExpandState('default-allocation-gcs', false, '$'),
     header: [

@@ -2,7 +2,11 @@ import { sessionExpandState } from '../common.js';
 
 export const histAllocationTypes = {
     view: 'expand',
-    data: 'memline.byType.[value].sort(value desc)', // .sort(name.order() asc)
+    data: `
+        $memline: scopeProfile().memline;
+        $attribute: $memline ? $memline.lineAttribute("allocationType");
+        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).[value].sort(value desc) : []
+    `,
     whenData: true,
     ...sessionExpandState('default-allocation-types', false, '$'),
     header: [

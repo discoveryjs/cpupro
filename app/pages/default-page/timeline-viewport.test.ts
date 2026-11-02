@@ -10,6 +10,11 @@ import { createState, selectRange, rangeToSegments } from '../../views/ruler-ran
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
 import { histCodes } from './hist-codes.js';
 import { histHeapTotal } from './hist-heap-total.js';
+import { histAllocationTypes } from './hist-allocation-types.js';
+import { histAllocationSpaces } from './hist-allocation-spaces.js';
+import { histAllocationLifespan } from './hist-allocation-lifespan.js';
+import { histAllocationGcs } from './hist-allocation-gcs.js';
+import { histAllocationCodeType } from './hist-allocation-code-type.js';
 
 const timeline = runInNewContext(readFileSync(new URL('../default.js', import.meta.url), 'utf8') + '\ncategoriesTimeline;', {
     require: () => ({ supportedFormats: [], sessionExpandState: () => ({}), chartUsedHeap, userTimingsTimeline }),
@@ -70,6 +75,95 @@ test('tooltip dispatch selects one section and uses its current local data and s
     renderDetails.call(renderer, null, {}, context);
     renderDetails.call(renderer, null, {}, { ...context, detailTarget: null });
     assert.equal(calls.length, 3);
+});
+
+test.each([
+    [histAllocationTypes, 'allocationType', '[value].sort(value desc)'],
+    [histAllocationSpaces, 'allocationSpace', '[value].sort(name.order() asc)'],
+    [histAllocationLifespan, 'allocationLifespan', '[value].sort(name.order() asc)'],
+    [histAllocationGcs, 'allocationGcEpoch', 'sort(name.order() asc)'],
+    [histAllocationCodeType, 'allocationCodeType', '[value].sort(name.order() asc)']
+] as const)('allocation section %# owns only its attribute query', async (section, name, order) => {
+    const { profile } = await createProfileFixture();
+    const source = profile.memline!;
+    const values = new Uint32Array([0, 1, 0, 1]);
+    source.attributes = [
+        { name: 'allocationType', values, dict: ['small', 'large', 'unused'] },
+        { name: 'allocationSpace', values, dict: [{ code: 'new', name: 'New', color: 'red' }, { code: 'old', name: 'Old', color: 'blue' }] },
+        { name: 'allocationLifespan', values: new Uint8Array(values), dict: ['alive', 'short-lived'] },
+        { name: 'allocationGcEpoch', values, dict: [{ type: 'none', epoch: 0, color: 'red' }, { type: 'minor', epoch: 1, color: 'blue' }] },
+        { name: 'allocationCodeType', values: new Uint8Array(values), dict: ['Ignition', 'Sparkplug'] }
+    ];
+    const attribute = source.attributes.find(attribute => attribute.name === name)!;
+    const calls = [];
+    const tracked = jora.setup({
+        methods: {
+            ...methods,
+            marker: () => ({ href: '#' }),
+            binLineToAxisLine(...args) {
+                calls.push(args[1]?.name);
+                return methods.binLineToAxisLine.apply(this, args);
+            }
+        }
+    });
+    const reference = query(`$.binLineToAxisLine(#.attribute, scopeLine(), #.binCount).${order}`);
+
+    for (const line of profile.lines) {
+        for (const breakdown of line.breakdowns) {
+            const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown, binCount: 7, attribute };
+            for (const ranges of [null, [], [{ start: 5, end: 15 }, { start: 25, end: 35 }]]) {
+                breakdown.populationViewport.filter.set({
+                    key: 'test',
+                    domain: 'event',
+                    size: line.values.length,
+                    accepts: index => ranges === null || index % 2 === 0
+                });
+                breakdown.populationViewport.setRanges(ranges);
+                calls.length = 0;
+                const panel = tracked(timeline.data)(profile, context);
+
+                assert.deepEqual(calls, []);
+
+                const actual = tracked(section.data)(panel, context);
+
+                assert.deepEqual(calls, [name]);
+                assert.deepEqual(actual, reference(source, context));
+            }
+        }
+    }
+
+    source.attributes = [];
+    calls.length = 0;
+    const context = { scopeProfile: profile, scopeLine: source, binCount: 7 };
+    assert.deepEqual(tracked(section.data)({}, context), []);
+    const { profile: cpuProfile } = await createProfileFixture({ cpuOnly: true });
+    assert.deepEqual(tracked(section.data)({}, { scopeProfile: cpuProfile }), []);
+    assert.deepEqual(calls, []);
+});
+
+test('allocation headers cannot substitute source totals for selected-axis participation', async () => {
+    const { profile } = await createProfileFixture();
+    const source = profile.memline!;
+    const axis = profile.timeline!;
+    const context = { scopeProfile: profile, scopeLine: axis, scopeBreakdown: axis.breakdowns[0] };
+    const attribute = { name: 'allocationType' as const, values: new Uint32Array([0, 1, 0, 1]), dict: ['first', 'second'] };
+    const sourceTotals = () => methods.attributeSampleTotals(attribute, source.breakdowns[0].populationViewport);
+    const axisTotals = () => methods.binLineToAxisLine.call({ context }, source, attribute, axis, 1);
+
+    assert.ok(axisTotals().some(row => row.value > 0));
+    assert.equal(sourceTotals().reduce((total, row) => total + row.size, 0), 160);
+
+    context.scopeBreakdown.populationViewport.setRanges([]);
+
+    assert.ok(axisTotals().every(row => row.value === 0));
+    assert.equal(sourceTotals().reduce((total, row) => total + row.size, 0), 160);
+
+    const ownContext = { ...context, scopeLine: source, scopeBreakdown: source.breakdowns[0] };
+    const graph = methods.binLineToAxisLine.call({ context: ownContext }, source, attribute, source, 7);
+    const singleBin = methods.binLineToAxisLine.call({ context: ownContext }, source, attribute, source, 1);
+
+    assert.equal(singleBin.reduce((total, row) => total + row.value, 0), 160);
+    assert.ok(graph.reduce((total, row) => total + row.value, 0) < 160);
 });
 
 test('mapping bins belong to expanded content rather than the parent panel query', async () => {
