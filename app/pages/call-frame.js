@@ -314,17 +314,19 @@ const pageContent = [
                 content: {
                     view: 'update-on-line-metrics-changes',
                     metrics: '=scopeBreakdown().callFrames.filtered.dict',
-                    debounce: 150,
-                    beforeContent(data, context) {
-                        if (context.consolidateCallFrames) {
-                            context.subsetTreeValues.recompute();
-                            context.ancestorSubsetTreeValues.recompute();
-                            context.secondaryAncestorSubsetTreeValues?.recompute();
-                        }
-                    },
+                    debounce: 50,
                     content: {
                         view: 'hstack',
                         className: 'trees',
+                        context(data, context) {
+                            if (context.consolidateCallFrames) {
+                                context.subsetTreeValues.recompute();
+                                context.ancestorSubsetTreeValues.recompute();
+                                context.secondaryAncestorSubsetTreeValues?.recompute();
+                            }
+
+                            return context;
+                        },
                         content: [
                             descendantTree,
                             ancestorsTree
