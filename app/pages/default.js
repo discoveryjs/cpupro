@@ -55,7 +55,7 @@ const categoriesTimeline = {
         $scopeLine: $scopeBreakdown.line;
         $binCount: #.binCount;
         $totalValue: $scopeLine.axisTotal;
-        $binSamples: $binCount.countSamples();
+        $categoryBins: $scopeBreakdown.categories.all.nodes.binTreeSamples($binCount);
 
         {
             line: $scopeLine,
@@ -64,18 +64,15 @@ const categoriesTimeline = {
                 .[totalValue and (entry.name != 'root' or selfValue)]
                 .sort(entry.name.order() asc).({
                 $category: entry;
-                $treeMetrics: $scopeBreakdown.categories.all.nodes;
-                $subtree: $treeMetrics.subtreeSamples($category);
-                $totalValueBins: $subtree.mask.binCallsFromMask($binCount, $scopeBreakdown);
+                $bins: $categoryBins[=>entry = $category];
 
                 $category,
                 timings: $,
                 $totalValue,
                 $binCount,
                 binSize: (scopeViewport().end - scopeViewport().start) / $binCount,
-                $binSamples,
-                bins: $treeMetrics.binCalls($category, $binCount),
-                $totalValueBins,
+                bins: $bins.bins,
+                totalValueBins: $bins.nestedBins,
                 color: $category.name.color(),
                 href: $category.marker("category").href
             })
@@ -100,11 +97,12 @@ const categoriesTimeline = {
                     {
                         view: 'block',
                         className: 'timeline-segment-info',
+                        context: '{ ...#, scopeViewport: #.detail }',
                         data: 'samples',
                         content: [
                             { view: 'block', content: 'text:`Range: ${#.timeStart.formatValue()} – ${#.timeEnd.formatValue()}`' },
                             { view: 'block', content: ['text:`${"interval".metricName()}: `', 'duration:{ time: #.timeEnd - #.timeStart, total: line.axisTotal }'] },
-                            { view: 'block', content: 'text-numeric:`Samples: ${$[].binSamples[#.binStart:#.binEnd].sum() or 0}`' },
+                            { view: 'block', content: 'text-numeric:`Samples: ${1.countSamples().sum()}`' },
                             { view: 'block', when: '#.noCoverage', content: 'text:"No population coverage"' }
                         ]
                     },
@@ -115,6 +113,7 @@ const categoriesTimeline = {
                             {
                                 view: 'block',
                                 className: 'details-section',
+                                context: '{ ...#, scopeViewport: #.detail }',
                                 content: [
                                     {
                                         view: 'block',
@@ -124,13 +123,20 @@ const categoriesTimeline = {
                                     {
                                         view: 'list',
                                         className: 'category-timings-list',
-                                        data: 'samples',
+                                        data: `
+                                            $totals: scopeBreakdown().categories.all.nodes.binTreeSamples(1);
+                                            samples.({
+                                                $category: category;
+                                                ...,
+                                                selfValue: $totals[=>entry = $category].value or 0
+                                            })
+                                        `,
                                         itemConfig: {
-                                            className: '=(bins[#.binStart:#.binEnd].sum() or 0) = 0 ? "no-time"',
+                                            className: '=selfValue = 0 ? "no-time"',
                                             postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                                             content: [
                                                 'block{ className: "category-name", content: "text:category.name" }',
-                                                'metric:{ value: bins[#.binStart:#.binEnd].sum() or 0, total: #.timeEnd - #.timeStart }'
+                                                'metric:{ value: selfValue, total: #.timeEnd - #.timeStart }'
                                             ]
                                         }
                                     }
@@ -182,12 +188,12 @@ const categoriesTimeline = {
                                     }
                                 ]
                             },
-                            function(el, data, context) {
+                            function(el, props, data, context) {
                                 const views = discovery.view.getViewStackTrace(context.detailTarget);
                                 const section = views?.findLast(view => view.config.rulerDetails);
 
                                 if (section) {
-                                    return this.render(el, section.config.rulerDetails, section.data, {
+                                    return discovery.view.render(el, section.config.rulerDetails, section.data, {
                                         ...section.context,
                                         ruler: context.ruler,
                                         detail: context.detail,

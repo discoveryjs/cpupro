@@ -3,9 +3,9 @@ import { sessionExpandState } from '../common.js';
 export const histAllocationTypes = {
     view: 'expand',
     data: `
-        $memline: scopeProfile().memline;
-        $attribute: $memline ? $memline.lineAttribute("allocationType");
-        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).[value].sort(value desc) : []
+        $expanded: "getSessionSetting".callAction("cpupro-default-allocation-types", false);
+        $binCount: $expanded ? #.binCount : 1;
+        "allocationType".binAllocationAttribute($binCount).[value].sort(value desc)
     `,
     whenData: true,
     ...sessionExpandState('default-allocation-types', false, '$'),
@@ -40,6 +40,10 @@ export const histAllocationTypes = {
     content: {
         view: 'list',
         className: 'category-timelines-list',
+        data: `
+            $[].bins.size() = #.binCount ? $
+                : "allocationType".binAllocationAttribute(#.binCount).[value].sort(value desc)
+        `,
         limit: 10,
         item: {
             view: 'link',

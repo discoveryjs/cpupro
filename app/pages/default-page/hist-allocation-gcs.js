@@ -3,9 +3,9 @@ import { sessionExpandState } from '../common.js';
 export const histAllocationGcs = {
     view: 'expand',
     data: `
-        $memline: scopeProfile().memline;
-        $attribute: $memline ? $memline.lineAttribute("allocationGcEpoch");
-        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).sort(name.order() asc) : []
+        $expanded: "getSessionSetting".callAction("cpupro-default-allocation-gcs", false);
+        $binCount: $expanded ? #.binCount : 1;
+        "allocationGcEpoch".binAllocationAttribute($binCount).sort(name.order() asc)
     `,
     whenData: true,
     ...sessionExpandState('default-allocation-gcs', false, '$'),
@@ -40,6 +40,10 @@ export const histAllocationGcs = {
     content: {
         view: 'list',
         className: 'category-timelines-list',
+        data: `
+            $[].bins.size() = #.binCount ? $
+                : "allocationGcEpoch".binAllocationAttribute(#.binCount).sort(name.order() asc)
+        `,
         item: {
             view: 'link',
             className: 'category-timelines-item',

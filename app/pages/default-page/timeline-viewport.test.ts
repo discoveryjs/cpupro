@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import jora from 'jora';
-import { methods } from '../../jora/index.mjs';
+import { methods as appMethods } from '../../jora/index.mjs';
 import { chartUsedHeap } from './chart-used-heap.js';
 import { userTimingsTimeline } from './user-timings-timeline.js';
 import { createState, selectRange, rangeToSegments } from '../../views/ruler-range.js';
@@ -16,20 +16,32 @@ import { histAllocationLifespan } from './hist-allocation-lifespan.js';
 import { histAllocationGcs } from './hist-allocation-gcs.js';
 import { histAllocationCodeType } from './hist-allocation-code-type.js';
 
+const methods = {
+    ...appMethods,
+    callAction(name, ...args) {
+        return this.context.actions?.[name]?.(...args);
+    }
+};
+
+const detailRenders = [];
 const timeline = runInNewContext(readFileSync(new URL('../default.js', import.meta.url), 'utf8') + '\ncategoriesTimeline;', {
     require: () => ({ supportedFormats: [], sessionExpandState: () => ({}), chartUsedHeap, userTimingsTimeline }),
     discovery: {
         nav: { primary: { append() {} } },
         page: { define() {} },
-        view: { getViewStackTrace: target => target?.views ?? null }
+        view: {
+            getViewStackTrace: target => target?.views ?? null,
+            render: (...args) => detailRenders.push(args)
+        }
     }
 });
 const query = jora.setup({ methods: { ...methods, marker: () => ({ href: '#' }) } });
 
 test('tooltip dispatch selects one section and uses its current local data and scope', () => {
     const renderDetails = timeline.content[0].details.content[1].content.at(-1);
-    const calls = [];
-    const renderer = { render: (...args) => calls.push(args) };
+    const calls = detailRenders;
+    const renderer = { render: renderDetails };
+    calls.length = 0;
     const heap = {
         config: histHeapTotal,
         data: { revision: 1 },
@@ -49,7 +61,7 @@ test('tooltip dispatch selects one section and uses its current local data and s
         scopeBreakdown: 'parent-breakdown'
     };
 
-    renderDetails.call(renderer, null, {}, context);
+    renderDetails.call(renderer, null, {}, {}, context);
     assert.equal(calls.length, 1);
     assert.equal(calls[0][1], histHeapTotal.rulerDetails);
     assert.equal(calls[0][2], heap.data);
@@ -59,7 +71,7 @@ test('tooltip dispatch selects one section and uses its current local data and s
     assert.equal(calls[0][3].scopeBreakdown, 'heap-breakdown');
 
     target.views = [heap, codes];
-    renderDetails.call(renderer, null, {}, context);
+    renderDetails.call(renderer, null, {}, {}, context);
     assert.equal(calls.length, 2);
     assert.equal(calls[1][1], histCodes.rulerDetails);
     assert.equal(calls[1][2], codes.data);
@@ -67,23 +79,23 @@ test('tooltip dispatch selects one section and uses its current local data and s
 
     codes.data = { revision: 3 };
     codes.context = { scopeLine: 'changed-breakdown' };
-    renderDetails.call(renderer, null, {}, context);
+    renderDetails.call(renderer, null, {}, {}, context);
     assert.equal(calls[2][2], codes.data);
     assert.equal(calls[2][3].scopeLine, 'changed-breakdown');
 
     target.views = [];
-    renderDetails.call(renderer, null, {}, context);
-    renderDetails.call(renderer, null, {}, { ...context, detailTarget: null });
+    renderDetails.call(renderer, null, {}, {}, context);
+    renderDetails.call(renderer, null, {}, {}, { ...context, detailTarget: null });
     assert.equal(calls.length, 3);
 });
 
 test.each([
-    [histAllocationTypes, 'allocationType', '[value].sort(value desc)'],
-    [histAllocationSpaces, 'allocationSpace', '[value].sort(name.order() asc)'],
-    [histAllocationLifespan, 'allocationLifespan', '[value].sort(name.order() asc)'],
-    [histAllocationGcs, 'allocationGcEpoch', 'sort(name.order() asc)'],
-    [histAllocationCodeType, 'allocationCodeType', '[value].sort(name.order() asc)']
-] as const)('allocation section %# owns only its attribute query', async (section, name, order) => {
+    [histAllocationTypes, 'allocationType', '$.[value].sort(value desc)', 'cpupro-default-allocation-types'],
+    [histAllocationSpaces, 'allocationSpace', '$.[value].sort(name.order() asc)', 'cpupro-default-allocation-spaces'],
+    [histAllocationLifespan, 'allocationLifespan', '$.[value].sort(name.order() asc)', 'cpupro-default-allocation-lifespans'],
+    [histAllocationGcs, 'allocationGcEpoch', '$.sort(name.order() asc)', 'cpupro-default-allocation-gcs'],
+    [histAllocationCodeType, 'allocationCodeType', '$.[value].sort(name.order() asc)', 'cpupro-default-allocation-code-types']
+] as const)('allocation section %# owns only its attribute query', async (section, name, order, stateKey) => {
     const { profile } = await createProfileFixture();
     const source = profile.memline!;
     const values = new Uint32Array([0, 1, 0, 1]);
@@ -100,17 +112,27 @@ test.each([
         methods: {
             ...methods,
             marker: () => ({ href: '#' }),
-            binLineToAxisLine(...args) {
-                calls.push(args[1]?.name);
-                return methods.binLineToAxisLine.apply(this, args);
+            binAllocationAttribute(...args) {
+                calls.push(args[0]);
+                return methods.binAllocationAttribute.apply(this, args);
             }
         }
     });
-    const reference = query(`$.binLineToAxisLine(#.attribute, scopeLine(), #.binCount).${order}`);
+    const orderRows = query(order);
 
     for (const line of profile.lines) {
         for (const breakdown of line.breakdowns) {
-            const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown, binCount: 7, attribute };
+            let expanded = false;
+            const context = {
+                scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown, binCount: 7, attribute,
+                actions: {
+                    getSessionSetting(key, fallback) {
+                        assert.equal(key, stateKey);
+                        assert.equal(fallback, false);
+                        return expanded;
+                    }
+                }
+            };
             for (const ranges of [null, [], [{ start: 5, end: 15 }, { start: 25, end: 35 }]]) {
                 breakdown.populationViewport.filter.set({
                     key: 'test',
@@ -120,14 +142,29 @@ test.each([
                 });
                 breakdown.populationViewport.setRanges(ranges);
                 calls.length = 0;
+                expanded = false;
                 const panel = tracked(timeline.data)(profile, context);
 
                 assert.deepEqual(calls, []);
 
-                const actual = tracked(section.data)(panel, context);
+                const data = tracked(section.data)(panel, context);
+                const contentData = 'data' in section.content ? section.content.data : null;
+                const expected = methods.binLineToAxisLine.call({ context }, source, attribute, line, context.binCount);
 
                 assert.deepEqual(calls, [name]);
-                assert.deepEqual(actual, reference(source, context));
+
+                const actual = contentData && data.length ? tracked(contentData)(data, context) : data;
+                assert.deepEqual(actual, orderRows(expected));
+                assert.ok(data.every(row => row.bins.length === 1));
+
+                calls.length = 0;
+                expanded = true;
+                const open = tracked(section.data)(panel, context);
+                const content = open.length ? tracked(contentData)(open, context) : open;
+
+                assert.deepEqual(calls, [name]);
+                assert.equal(content, open);
+                assert.deepEqual(open, actual);
             }
         }
     }
@@ -138,7 +175,116 @@ test.each([
     assert.deepEqual(tracked(section.data)({}, context), []);
     const { profile: cpuProfile } = await createProfileFixture({ cpuOnly: true });
     assert.deepEqual(tracked(section.data)({}, { scopeProfile: cpuProfile }), []);
-    assert.deepEqual(calls, []);
+    assert.deepEqual(calls, [name, name]);
+});
+
+test('GC uses a static state query and expands before the persisted state is updated', async () => {
+    const { profile } = await createProfileFixture();
+    const source = profile.memline!;
+    source.attributes = [{
+        name: 'allocationGcEpoch',
+        values: new Uint32Array([0, 1, 1, 0]),
+        dict: [{ type: 'none', epoch: 0, color: 'red' }, { type: 'minor', epoch: 1, color: 'blue' }]
+    }];
+    const calls = [];
+    let expanded = false;
+    const tracked = jora.setup({
+        methods: {
+            ...methods,
+            binAllocationAttribute(...args) {
+                calls.push(args[1]);
+                return appMethods.binAllocationAttribute.apply(this, args);
+            }
+        }
+    });
+    const context = {
+        scopeProfile: profile, scopeLine: source, scopeBreakdown: source.breakdowns[0], binCount: 7,
+        actions: {
+            getSessionSetting(name, fallback) {
+                assert.equal(name, 'cpupro-default-allocation-gcs');
+                assert.equal(fallback, false);
+                return expanded;
+            }
+        }
+    };
+    const summary = tracked(histAllocationGcs.data)({}, context);
+
+    assert.deepEqual(calls, [1]);
+    const graph = tracked(histAllocationGcs.content.data)(summary, context);
+    assert.deepEqual(calls, [1, 7]);
+    assert.deepEqual(graph.map(row => row.value), summary.map(row => row.value));
+
+    expanded = true;
+    calls.length = 0;
+    const open = tracked(histAllocationGcs.data)({}, context);
+    assert.equal(tracked(histAllocationGcs.content.data)(open, context), open);
+    assert.deepEqual(calls, [7]);
+});
+
+test('lifespan details use the scope interval instead of display bins', async () => {
+    const { profile } = await createProfileFixture();
+    const source = profile.memline!;
+    source.attributes = [{
+        name: 'allocationLifespan',
+        values: new Uint8Array([0, 1, 1, 2]),
+        dict: ['alive', 'short-lived', 'long-lived']
+    }];
+    const calls = [];
+    const tracked = jora.setup({
+        methods: {
+            ...methods,
+            binAllocationAttribute(...args) {
+                calls.push(args[1]);
+                return methods.binAllocationAttribute.apply(this, args);
+            }
+        }
+    });
+    const context = { scopeProfile: profile, scopeLine: source, scopeBreakdown: source.breakdowns[0], binCount: 7 };
+    const selection = source.range.selection.ranges;
+    const details = histAllocationLifespan.rulerDetails;
+    const detailContext = tracked(details.context)(null, { ...context, detail: { start: 8, end: 64 } });
+    const rows = tracked(details.data)(null, detailContext);
+
+    assert.deepEqual(calls, [1]);
+    assert.deepEqual(rows.map(row => [row.entry, row.value, row.total]), [['alive', 8, 56], ['short-lived', 48, 56]]);
+    assert.deepEqual(tracked(details.data)([], { ...detailContext, binCount: 50 }), rows);
+    assert.ok(rows.every(row => !('bins' in row)));
+
+    source.breakdowns[0].populationViewport.setRanges([{ start: 1, end: 4 }, { start: 8, end: 12 }, { start: 20, end: 25 }]);
+    const clipped = tracked(details.data)([], detailContext);
+    assert.deepEqual(clipped.map(row => [row.entry, row.value, row.total]), [['alive', 4, 9], ['short-lived', 5, 9]]);
+    assert.equal(source.range.selection.ranges, selection);
+    assert.equal('scopeViewport' in context, false);
+
+    source.breakdowns[0].populationViewport.setRanges([]);
+    assert.deepEqual(tracked(details.data)(null, detailContext), []);
+
+    source.breakdowns[0].populationViewport.setRanges(null);
+    const axis = profile.timeline!;
+    const target = source.mappings.timeline._mapping[1];
+    const timestamp = axis.range.frame.resolveValue(axis.breakdowns[0].population.cumulative[target]);
+    const projectedContext = tracked(details.context)(null, {
+        ...context,
+        scopeLine: axis,
+        scopeBreakdown: axis.breakdowns[0],
+        detail: { start: timestamp, end: timestamp + 1 }
+    });
+    const expected = [0, 0, 0];
+    for (let index = 0; index < source.values.length; index++) {
+        if (source.mappings.timeline._mapping[index] === target) {
+            expected[source.attributes[0].values[index]] += source.values[index];
+        }
+    }
+    const projected = tracked(details.data)([], projectedContext);
+
+    assert.deepEqual(projected.map(row => row.value), expected.filter(value => value > 0));
+    assert.ok(projected.every(row => row.total === expected.reduce((sum, value) => sum + value, 0)));
+
+    axis.breakdowns[0].populationViewport.filter.set({
+        key: 'test', domain: 'event', size: axis.values.length, accepts: index => index !== target
+    });
+    assert.deepEqual(tracked(details.data)([], projectedContext), []);
+    assert.equal(source.range.selection.ranges, selection);
 });
 
 test('allocation headers cannot substitute source totals for selected-axis participation', async () => {
@@ -163,7 +309,8 @@ test('allocation headers cannot substitute source totals for selected-axis parti
     const singleBin = methods.binLineToAxisLine.call({ context: ownContext }, source, attribute, source, 1);
 
     assert.equal(singleBin.reduce((total, row) => total + row.value, 0), 160);
-    assert.ok(graph.reduce((total, row) => total + row.value, 0) < 160);
+    assert.equal(graph.reduce((total, row) => total + row.value, 0), 160);
+    assert.ok(graph.reduce((total, row) => total + row.bins.reduce((sum, value) => sum + value, 0), 0) < 160);
 });
 
 test('mapping bins belong to expanded content rather than the parent panel query', async () => {
@@ -268,7 +415,7 @@ test('passes code coverage explicitly to each histogram without a context overri
     assert.equal(data.byTier[0].bins, rows[0].bins);
 });
 
-test.each([100, 1000])('shares the viewport bin grid with rendering, ruler and details for duration=%i', async duration => {
+test.each([100, 1000])('shares viewport coordinates while details count actual events for duration=%i', async duration => {
     const origin = 1000;
     const { profile, line } = await createLineFixture({ origin: origin + duration * 0.2, values: new Uint32Array([duration * 0.6]) });
     const other = await createLineFixture({ origin, values: new Uint32Array([duration]) });
@@ -287,20 +434,25 @@ test.each([100, 1000])('shares the viewport bin grid with rendering, ruler and d
     range.setRange(origin + duration * 0.1, origin + duration * 0.4);
     assert.deepEqual(range.ranges, [{ start: origin + duration * 0.1, end: origin + duration * 0.4 }]);
     assert.deepEqual(line.range.ranges, [{ start: -duration * 0.1, end: duration * 0.2 }]);
-    const bins = new Uint32Array(binCount).fill(1, binCount * 0.2, binCount * 0.8);
-    for (const [start, end, count, noCoverage] of [[0, 0.1, 0, true], [0.2, 0.5, binCount * 0.3, false], [0.9, 1, 0, true]]) {
+    const panel = query(timeline.data)(profile, context);
+    for (const [start, end, count, noCoverage] of [[0, 0.1, 0, true], [0.2, 0.5, 1, false], [0.9, 1, 0, true]]) {
         const state = createState(viewport, binCount);
         const selected = selectRange(state, start, end);
         const indices = rangeToSegments(selected, state.segments)!;
         const details = query(ruler.details.context)({}, {
-            ...context, timeStart: selected.start - viewport.start, timeEnd: selected.end - viewport.start,
+            ...context, detail: selected, timeStart: selected.start - viewport.start, timeEnd: selected.end - viewport.start,
             segmentStart: indices.start, segmentEnd: indices.end - 1
         });
         assert.equal(details.binStart, indices.start);
         assert.equal(details.binEnd, indices.end);
         assert.equal(details.noCoverage, noCoverage);
         const countQuery = ruler.details.content[0].content[2].content.slice('text-numeric:'.length);
-        assert.equal(query(countQuery)([{ binSamples: bins }], details), `Samples: ${count}`);
+        const infoContext = query(ruler.details.content[0].context)(panel, details);
+        assert.equal(query(countQuery)(panel, infoContext), `Samples: ${count}`);
+        const categorySection = ruler.details.content[1].content[0];
+        const categoryContext = query(categorySection.context)(panel, details);
+        const rows = query(categorySection.content[1].data)(panel, categoryContext);
+        assert.equal(rows.reduce((total, row) => total + row.selfValue, 0), noCoverage ? 0 : duration * 0.3);
     }
 });
 

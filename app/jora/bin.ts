@@ -9,6 +9,7 @@ import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileL
 import { binningRange, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
 import type { PopulationFiltered } from '../prepare/computations/population.js';
+import type { SampledTree } from '../prepare/computations/metrics.js';
 
 function getCallStackPopulation(line: ProfileLine) {
     return line.breakdowns.find(tree => tree.kind === 'call-stack')!.population;
@@ -138,6 +139,304 @@ function makeViewportBins(n: number, mask: Uint8Array, viewport: PopulationFilte
     return bins;
 }
 
+type BinTrack = {
+    bins: Uint32Array | Float64Array;
+    value: number;
+};
+
+type BinGrid = {
+    total: number;
+    step: number;
+    skip: number;
+};
+
+function binPopulation(
+    viewport: PopulationFiltered,
+    tracks: BinTrack[],
+    groups: Uint8Array | Uint32Array | null,
+    { total, step, skip }: BinGrid
+) {
+    const { samples, values: acceptedValues, sinkId, ranges, population } = viewport;
+    const { values, cumulative, cumulativeEnd } = population;
+
+    const addBoundary = (index: number, startCut: number, endCut: number) => {
+        if (samples[index] === sinkId || acceptedValues[index] === 0) {
+            return;
+        }
+
+        const groupIndex = groups ? groups[index] : 0;
+        const track = tracks[groupIndex];
+        const offset = cumulative[index] + skip + startCut;
+        let binIndex = Math.floor(offset / step);
+        let binValue = offset - binIndex * step;
+        let value = values[index] - startCut - endCut;
+
+        track.value += value;
+
+        while (binValue + value >= step) {
+            const delta = step - binValue;
+
+            track.bins[binIndex++] += delta;
+            value -= delta;
+            binValue = 0;
+        }
+
+        if (value > 0) {
+            track.bins[binIndex] += value;
+        }
+    };
+
+    for (const range of ranges ?? [{ start: 0, end: cumulativeEnd }]) {
+        const start = Math.max(0, range.start + skip);
+        const end = Math.min(total, range.end + skip);
+
+        if (start >= end) {
+            continue;
+        }
+
+        const { first, last, startCut, endCut } = sampleRange(cumulative, end - start, skip - start, cumulativeEnd);
+
+        if (first > last) {
+            continue;
+        }
+
+        addBoundary(first, startCut, first === last ? endCut : 0);
+
+        const offset = cumulative[first] + values[first] + skip;
+        let binIndex = Math.floor(offset / step);
+        let binValue = offset - binIndex * step;
+
+        for (let index = first + 1; index < last; index++) {
+            const groupIndex = groups ? groups[index] : 0;
+            const track = tracks[groupIndex];
+            const accept = samples[index] !== sinkId && acceptedValues[index] > 0;
+            let value = values[index];
+
+            if (accept) {
+                track.value += value;
+            }
+
+            while (binValue + value >= step) {
+                const delta = step - binValue;
+
+                if (accept) {
+                    track.bins[binIndex] += delta;
+                }
+
+                value -= delta;
+                binValue = 0;
+                binIndex++;
+            }
+
+            if (accept) {
+                track.bins[binIndex] += value;
+            }
+
+            binValue += value;
+        }
+
+        if (last !== first) {
+            addBoundary(last, 0, endCut);
+        }
+    }
+}
+
+function createTargetBinReader(axis: PopulationFiltered, cumulative: Uint32Array, { total, step, skip }: BinGrid) {
+    const { samples, values, sinkId, ranges } = axis;
+    let rangeIndex = 0;
+
+    return (target: number) => {
+        const coordinate = cumulative[target];
+        const position = coordinate + skip;
+        const inViewport = position >= 0 && position < total;
+
+        if (!inViewport) {
+            return -1;
+        }
+
+        if (samples[target] === sinkId || values[target] === 0) {
+            return -1;
+        }
+
+        if (ranges) {
+            while (rangeIndex < ranges.length && ranges[rangeIndex].end <= coordinate) {
+                rangeIndex++;
+            }
+
+            const range = ranges[rangeIndex];
+
+            if (!range || coordinate < range.start) {
+                return -1;
+            }
+        }
+
+        return Math.floor(position / step);
+    };
+}
+
+function binMappedPopulation(
+    line: ProfileLine,
+    viewport: PopulationFiltered,
+    tracks: BinTrack[],
+    groups: Uint8Array | Uint32Array | null,
+    mapping: Uint32Array,
+    targetBin: (target: number) => number
+) {
+    const { values, axisTotal } = line;
+    const { samples, values: acceptedValues, sinkId, ranges, cumulative } = viewport;
+    let previousTarget = -1;
+    let binIndex = -1;
+    let boundaryIndex = -1;
+    let boundaryValue = 0;
+
+    const flushBoundary = () => {
+        if (boundaryIndex !== -1 && samples[boundaryIndex] !== sinkId && acceptedValues[boundaryIndex] > 0) {
+            const target = targetBin(mapping[boundaryIndex]);
+
+            if (target !== -1) {
+                const groupIndex = groups ? groups[boundaryIndex] : 0;
+                const track = tracks[groupIndex];
+
+                track.bins[target] += boundaryValue;
+                track.value += boundaryValue;
+            }
+        }
+
+        boundaryIndex = -1;
+        boundaryValue = 0;
+    };
+
+    for (const range of ranges ?? [{ start: 0, end: viewport.cumulativeEnd }]) {
+        const { first, last, startCut, endCut } = sampleRange(cumulative, range.end - range.start, -range.start, axisTotal);
+
+        if (first > last) {
+            continue;
+        }
+
+        if (boundaryIndex !== first) {
+            flushBoundary();
+            boundaryIndex = first;
+        }
+
+        boundaryValue += values[first] - startCut - (first === last ? endCut : 0);
+
+        if (first === last) {
+            continue;
+        }
+
+        flushBoundary();
+
+        for (let index = first + 1; index < last; index++) {
+            const target = mapping[index];
+
+            if (target !== previousTarget) {
+                previousTarget = target;
+                binIndex = targetBin(target);
+            }
+
+            if (binIndex !== -1 && samples[index] !== sinkId) {
+                const groupIndex = groups ? groups[index] : 0;
+                const track = tracks[groupIndex];
+                const value = acceptedValues[index];
+
+                track.bins[binIndex] += value;
+                track.value += value;
+            }
+        }
+
+        boundaryIndex = last;
+        boundaryValue = values[last] - endCut;
+    }
+
+    flushBoundary();
+}
+
+function binMappedTotals(
+    viewport: PopulationFiltered,
+    tracks: BinTrack[],
+    groups: Uint8Array | Uint32Array | null,
+    mapping: Uint32Array,
+    axisCount: number,
+    targetBin: (target: number) => number
+) {
+    const { samples, values, sinkId } = viewport;
+    const acceptedTargets = new Uint8Array(axisCount);
+    let acceptedCount = 0;
+
+    for (let index = 0; index < axisCount; index++) {
+        acceptedTargets[index] = targetBin(index) === 0 ? 1 : 0;
+        acceptedCount += acceptedTargets[index];
+    }
+
+    if (acceptedCount === 0) {
+        return;
+    }
+
+    const totals = new Float64Array(tracks.length);
+
+    for (let index = 0; index < values.length; index++) {
+        if (samples[index] !== sinkId && acceptedTargets[mapping[index]]) {
+            const groupIndex = groups ? groups[index] : 0;
+
+            totals[groupIndex] += values[index];
+        }
+    }
+
+    for (let index = 0; index < tracks.length; index++) {
+        tracks[index].value = totals[index];
+        tracks[index].bins[0] = totals[index];
+    }
+}
+
+function rollupTreeBins(tree: SampledTree<unknown>['tree'], tracks: BinTrack[], binCount: number) {
+    const { nodes, parent, nested, dictionary } = tree;
+    const result = dictionary.map(entry => ({
+        entry,
+        bins: new Float64Array(binCount),
+        nestedBins: new Float64Array(binCount),
+        value: 0
+    }));
+
+    for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
+        const row = result[nodes[nodeIndex]];
+        const track = tracks[nodeIndex];
+
+        row.value += track.value;
+
+        for (let binIndex = 0; binIndex < binCount; binIndex++) {
+            row.bins[binIndex] += track.bins[binIndex];
+        }
+    }
+
+    for (let nodeIndex = nodes.length - 1; nodeIndex >= 0; nodeIndex--) {
+        const bins = tracks[nodeIndex].bins;
+
+        if (nested[nodeIndex] === 0) {
+            const totalBins = result[nodes[nodeIndex]].nestedBins;
+
+            for (let binIndex = 0; binIndex < binCount; binIndex++) {
+                totalBins[binIndex] += bins[binIndex];
+            }
+        }
+
+        if (nodeIndex !== 0) {
+            const parentBins = tracks[parent[nodeIndex]].bins;
+
+            for (let binIndex = 0; binIndex < binCount; binIndex++) {
+                parentBins[binIndex] += bins[binIndex];
+            }
+        }
+    }
+
+    for (const { bins, nestedBins } of result) {
+        for (let binIndex = 0; binIndex < binCount; binIndex++) {
+            nestedBins[binIndex] -= bins[binIndex];
+        }
+    }
+
+    return result;
+}
+
 type BinOptions = {
     test?: unknown;
     n?: number;
@@ -148,6 +447,36 @@ type BinOptions = {
 }
 
 export const methods = {
+    binAllocationAttribute(name: ProfileLineAttribute['name'], binCount = 500) {
+        const line = resolveScopeProfileLine('memline', this.context);
+
+        if (!line) {
+            return [];
+        }
+
+        const attribute = line.attributes.find(attribute => attribute.name === name);
+
+        return attribute
+            ? methods.binLineToAxisLine.call(this, line, attribute, undefined, binCount)
+            : [];
+    },
+
+    binTreeSamples(treeMetrics: SampledTree<unknown>, n = 500, breakdown?: ProfileLineBreakdown | string) {
+        const resolved = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
+        const { total, skip } = binningRange(resolved.line, resolveScopeViewport(null, this.context), n);
+        const { tree, sampleToNode } = treeMetrics;
+        const tracks = Array.from(tree.nodes, () => ({ bins: new Float64Array(n), value: 0 }));
+        const destinations = Array.from(sampleToNode, nodeIndex => tracks[nodeIndex]);
+
+        binPopulation(resolved.populationViewport, destinations, resolved.populationViewport.samples, {
+            total,
+            skip,
+            step: sampleBinStep(total, n)
+        });
+
+        return rollupTreeBins(tree, tracks, n);
+    },
+
     binCount(maxCount: number, rangeOrLength?: Range | number) {
         const range = rangeOrLength ?? resolveScopeViewport(null, this.context);
         const length = isRange(range) ? range.end - range.start : Number(range);
@@ -310,214 +639,74 @@ export const methods = {
     ) {
         axisLine = resolveScopeProfileLine(axisLine, this.context) || valuesLine;
 
-        const { values, mappings } = valuesLine;
         const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, this.context);
         const populationBreakdown = scopeBreakdown?.line === valuesLine ? scopeBreakdown : valuesLine.breakdowns[0];
         const viewport = populationBreakdown.populationViewport;
-        const { samples, values: acceptedValues, sinkId, ranges: sourceRanges, cumulative: sourceCumulative } = viewport;
+        const { ranges: sourceRanges } = viewport;
         const mappingToLine = valuesLine !== axisLine
-            ? mappings[axisLine.type]._mapping
+            ? valuesLine.mappings[axisLine.type]._mapping
             : null;
-        const { total, step, skip } = binningRange(axisLine, resolveScopeViewport(null, this.context), n);
+        const grid = binningRange(axisLine, resolveScopeViewport(null, this.context), n);
+        const { total, step, skip } = grid;
         const binSumVector = new Uint32Array(n);
         const attributeValues = attribute?.values || null;
-        const attributeDict = attribute?.dict || null;
-        const vectors = attribute
-            ? Array.from({ length: attributeDict?.length || 0 }, () => new Uint32Array(n))
-            : [binSumVector];
+        const tracks = attribute
+            ? attribute.dict.map(() => ({ bins: new Uint32Array(n), value: 0 }))
+            : [{ bins: binSumVector, value: 0 }];
+        const coversSource = skip >= 0 && skip + viewport.cumulativeEnd <= total;
 
         if (mappingToLine !== null) {
             const { cumulative } = getCallStackPopulation(axisLine);
             const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0]).populationViewport;
-            const { samples: axisSamples, values: axisValues, sinkId: axisSinkId, ranges: axisRanges } = axisViewport;
-            let axisRangeIndex = 0;
-            let previousTarget = -1;
-            let binIndex = -1;
-            let boundaryIndex = -1;
-            let boundaryValue = 0;
+            const coversAxis = skip >= 0 && skip + axisViewport.cumulativeEnd <= total;
+            const targetBin = createTargetBinReader(axisViewport, cumulative, grid);
 
-            const targetBin = (target: number) => {
-                const coordinate = cumulative[target];
-                const absValue = coordinate + skip;
-
-                if (!(absValue >= 0 && absValue < total) || axisSamples[target] === axisSinkId || axisValues[target] === 0) {
-                    return -1;
-                }
-
-                if (axisRanges) {
-                    while (axisRangeIndex < axisRanges.length && axisRanges[axisRangeIndex].end <= coordinate) {
-                        axisRangeIndex++;
-                    }
-
-                    if (axisRangeIndex === axisRanges.length || coordinate < axisRanges[axisRangeIndex].start) {
-                        return -1;
-                    }
-                }
-
-                return Math.floor(absValue / step);
-            };
-            const flushBoundary = () => {
-                if (boundaryIndex !== -1 && samples[boundaryIndex] !== sinkId && acceptedValues[boundaryIndex] > 0) {
-                    const target = targetBin(mappingToLine[boundaryIndex]);
-
-                    if (target !== -1) {
-                        const vector = attributeValues
-                            ? vectors[attributeValues[boundaryIndex]]
-                            : binSumVector;
-
-                        vector[target] += boundaryValue;
-                    }
-                }
-
-                boundaryIndex = -1;
-                boundaryValue = 0;
-            };
-
-            for (const range of sourceRanges ?? [{ start: 0, end: viewport.cumulativeEnd }]) {
-                const { first, last, startCut, endCut } = sampleRange(sourceCumulative, range.end - range.start, -range.start, valuesLine.axisTotal);
-
-                if (first > last) {
-                    continue;
-                }
-
-                if (boundaryIndex !== first) {
-                    flushBoundary();
-                    boundaryIndex = first;
-                }
-
-                boundaryValue += values[first] - startCut - (first === last ? endCut : 0);
-
-                if (first === last) {
-                    continue;
-                }
-
-                flushBoundary();
-
-                for (let index = first + 1; index < last; index++) {
-                    const target = mappingToLine[index];
-
-                    if (target !== previousTarget) {
-                        previousTarget = target;
-                        binIndex = targetBin(target);
-                    }
-
-                    if (binIndex !== -1 && samples[index] !== sinkId) {
-                        const vector = attributeValues
-                            ? vectors[attributeValues[index]]
-                            : binSumVector;
-
-                        vector[binIndex] += acceptedValues[index];
-                    }
-                }
-
-                boundaryIndex = last;
-                boundaryValue = values[last] - endCut;
+            if (n === 1 && sourceRanges === null && coversAxis) {
+                binMappedTotals(viewport, tracks, attributeValues, mappingToLine, axisViewport.samples.length, targetBin);
+            } else {
+                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin);
             }
+        } else if (n === 1 && attribute && sourceRanges === null && coversSource) {
+            const { samplesTotal } = viewport.aggregateBy(attribute.values, attribute.dict.length);
 
-            flushBoundary();
+            for (let index = 0; index < tracks.length; index++) {
+                tracks[index].value = samplesTotal[index];
+                tracks[index].bins[0] = samplesTotal[index];
+            }
         } else {
-            for (const range of sourceRanges ?? [{ start: 0, end: viewport.cumulativeEnd }]) {
-                const start = Math.max(0, range.start + skip);
-                const end = Math.min(total, range.end + skip);
-
-                if (start >= end) {
-                    continue;
-                }
-
-                const { first, last, startCut, endCut } = sampleRange(sourceCumulative, end - start, skip - start, valuesLine.axisTotal);
-
-                if (first > last) {
-                    continue;
-                }
-
-                const addBoundary = (index: number, startCut: number, endCut: number) => {
-                    if (samples[index] === sinkId || acceptedValues[index] === 0) {
-                        return;
-                    }
-
-                    const vector = attributeValues
-                        ? vectors[attributeValues[index]]
-                        : binSumVector;
-                    const offset = sourceCumulative[index] + skip + startCut;
-                    let binIndex = Math.floor(offset / step);
-                    let binValue = offset - binIndex * step;
-                    let value = values[index] - startCut - endCut;
-
-                    while (binValue + value >= step) {
-                        const delta = step - binValue;
-                        vector[binIndex] += delta;
-                        value -= delta;
-                        binValue = 0;
-                        binIndex++;
-                    }
-
-                    if (value > 0) {
-                        vector[binIndex] += value;
-                    }
-                };
-
-                addBoundary(first, startCut, first === last ? endCut : 0);
-
-                const offset = sourceCumulative[first] + values[first] + skip;
-                let binIndex = Math.floor(offset / step);
-                let binValue = offset - binIndex * step;
-
-                for (let index = first + 1; index < last; index++) {
-                    const vector = attributeValues ? vectors[attributeValues[index]] : binSumVector;
-                    const accept = samples[index] !== sinkId && acceptedValues[index] > 0;
-                    let value = values[index];
-
-                    while (binValue + value >= step) {
-                        const delta = step - binValue;
-
-                        if (accept) {
-                            vector[binIndex] += delta;
-                        }
-
-                        value -= delta;
-                        binValue = 0;
-                        binIndex++;
-                    }
-
-                    if (accept) {
-                        vector[binIndex] += value;
-                    }
-
-                    binValue += value;
-                }
-
-                if (last !== first) {
-                    addBoundary(last, 0, endCut);
-                }
-            }
+            binPopulation(viewport, tracks, attributeValues, grid);
         }
 
         if (attribute) {
-            for (const vector of vectors) {
+            for (const { bins } of tracks) {
                 for (let index = 0; index < n; index++) {
-                    binSumVector[index] += vector[index];
+                    binSumVector[index] += bins[index];
                 }
             }
         }
 
         const max = Math.max(...binSumVector);
 
-        return vectors.map((vector, index) => {
-            const entry = attributeDict ? attributeDict[index] : null;
-            const color: string = typeof entry === 'string'
-                ? typeColor[entry]
-                : entry && 'color' in entry ? entry.color : 'green';
+        return tracks.map(({ bins, value }, index) => {
+            const entry = attribute ? attribute.dict[index] : null;
+            let color = 'green';
+
+            if (typeof entry === 'string') {
+                color = typeColor[entry];
+            } else if (entry && 'color' in entry) {
+                color = entry.color;
+            }
 
             return {
-                entry: attribute?.dict[index] ?? valuesLine.type,
+                entry: entry ?? valuesLine.type,
                 color,
-                value: sum(vector),
+                value,
                 max,
                 total: valuesLine.axisTotal,
                 step: valuesLine === axisLine
                     ? step
                     : null,
-                bins: vector
+                bins
             };
         });
     },

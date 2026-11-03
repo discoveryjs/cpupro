@@ -481,19 +481,43 @@ export class PopulationFiltered extends Observer {
     }
 }
 
-function aggregatePopulation(population: Population | PopulationFiltered, groups: Uint8Array | Uint32Array, groupCount: number) {
-    const { samples, values, sinkId } = population;
-    const samplesCount = new Uint32Array(groupCount);
-    const samplesTotal = new Uint32Array(groupCount);
+function aggregateRange(
+    samples: Uint32Array,
+    values: Uint32Array,
+    groups: Uint8Array | Uint32Array,
+    sinkId: number,
+    samplesCount: Uint32Array,
+    samplesTotal: Uint32Array,
+    start: number,
+    end: number
+) {
+    for (let i = start; i < end; i++) {
+        const value = values[i];
 
-    for (let index = 0; index < values.length; index++) {
-        const value = values[index];
-
-        if (samples[index] !== sinkId && value !== 0) {
-            const group = groups[index];
+        if (value !== 0 && samples[i] !== sinkId) {
+            const group = groups[i];
 
             samplesCount[group]++;
             samplesTotal[group] += value;
+        }
+    }
+}
+
+function aggregatePopulation(population: Population | PopulationFiltered, groups: Uint8Array | Uint32Array, groupCount: number) {
+    const { samples, values, sinkId, cumulative, ranges } = population;
+    const samplesCount = new Uint32Array(groupCount);
+    const samplesTotal = new Uint32Array(groupCount);
+
+    if (ranges === null) {
+        aggregateRange(samples, values, groups, sinkId, samplesCount, samplesTotal, 0, values.length);
+    } else {
+        let end = 0;
+
+        for (const range of ranges) {
+            const start = Math.max(end, findCumulativeBoundary(cumulative, range.start, true) - 1);
+
+            end = findCumulativeBoundary(cumulative, range.end, false);
+            aggregateRange(samples, values, groups, sinkId, samplesCount, samplesTotal, start, end);
         }
     }
 

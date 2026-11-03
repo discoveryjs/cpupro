@@ -3,9 +3,9 @@ import { sessionExpandState } from '../common.js';
 export const histAllocationSpaces = {
     view: 'expand',
     data: `
-        $memline: scopeProfile().memline;
-        $attribute: $memline ? $memline.lineAttribute("allocationSpace");
-        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).[value].sort(name.order() asc) : []
+        $expanded: "getSessionSetting".callAction("cpupro-default-allocation-spaces", false);
+        $binCount: $expanded ? #.binCount : 1;
+        "allocationSpace".binAllocationAttribute($binCount).[value].sort(name.order() asc)
     `,
     whenData: true,
     ...sessionExpandState('default-allocation-spaces', false, '$'),
@@ -39,6 +39,10 @@ export const histAllocationSpaces = {
     content: {
         view: 'list',
         className: 'category-timelines-list',
+        data: `
+            $[].bins.size() = #.binCount ? $
+                : "allocationSpace".binAllocationAttribute(#.binCount).[value].sort(name.order() asc)
+        `,
         item: {
             view: 'link',
             className: 'category-timelines-item',

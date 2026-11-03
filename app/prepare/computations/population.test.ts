@@ -37,6 +37,30 @@ describe('Population', () => {
 });
 
 describe('PopulationFiltered', () => {
+    test('attribute aggregation skips gaps and counts shared boundary events once', () => {
+        const population = new Population(new Uint32Array(100_000), new Uint32Array(100_000).fill(10));
+        const filtered = new PopulationFiltered(population);
+        filtered.setRanges([{ start: 101, end: 102 }, { start: 105, end: 106 }, { start: 900_001, end: 900_003 }]);
+        let reads = 0;
+        filtered.values = new Proxy(filtered.values, {
+            get(target, property) {
+                if (typeof property === 'string' && /^\d+$/.test(property)) {
+                    const index = Number(property);
+                    assert.ok(index === 10 || index === 90_000, `Unexpected gap event ${index}`);
+                    reads++;
+                }
+                return Reflect.get(target, property, target);
+            }
+        });
+
+        const result = filtered.aggregateBy(new Uint8Array(population.values.length), 1);
+
+        assert.deepEqual([...result.samplesTotal], [4]);
+        assert.deepEqual([...result.samplesCount], [2]);
+        assert.equal(reads, 2 + filtered.boundaryCuts.length);
+        filtered.destroy();
+    });
+
     test('aggregates by row-aligned IDs with the existing filter and boundary semantics', () => {
         const population = new Population(new Uint32Array([0, 1, 0]), new Uint32Array([16, 32, 48]));
         const groups = new Uint32Array([1, 1, 2]);

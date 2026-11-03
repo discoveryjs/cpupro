@@ -3,9 +3,9 @@ import { sessionExpandState } from '../common.js';
 export const histAllocationLifespan = {
     view: 'expand',
     data: `
-        $memline: scopeProfile().memline;
-        $attribute: $memline ? $memline.lineAttribute("allocationLifespan");
-        $attribute ? $memline.binLineToAxisLine($attribute, scopeLine(), #.binCount).[value].sort(name.order() asc) : []
+        $expanded: "getSessionSetting".callAction("cpupro-default-allocation-lifespans", false);
+        $binCount: $expanded ? #.binCount : 1;
+        "allocationLifespan".binAllocationAttribute($binCount).[value].sort(name.order() asc)
     `,
     whenData: true,
     ...sessionExpandState('default-allocation-lifespans', false, '$'),
@@ -36,9 +36,42 @@ export const histAllocationLifespan = {
             ]
         }
     ],
+    rulerDetails: {
+        view: 'block',
+        className: 'details-section',
+        context: '{ ...#, scopeViewport: #.detail }',
+        data: `
+            $rows: "allocationLifespan".binAllocationAttribute(1).[value];
+            $total: $rows.sum(=>value);
+            $rows.({ entry, color, value, total: $total })
+        `,
+        whenData: true,
+        content: [
+            {
+                view: 'block',
+                className: 'details-section-title',
+                content: 'text:"Allocation lifespans"'
+            },
+            {
+                view: 'list',
+                className: 'category-timings-list',
+                itemConfig: {
+                    postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                    content: [
+                        'block{ className: "category-name", content: "text:entry" }',
+                        'value-fraction{ value: value.bytes(), fraction: value / total }'
+                    ]
+                }
+            }
+        ]
+    },
     content: {
         view: 'list',
         className: 'category-timelines-list',
+        data: `
+            $[].bins.size() = #.binCount ? $
+                : "allocationLifespan".binAllocationAttribute(#.binCount).[value].sort(name.order() asc)
+        `,
         item: {
             view: 'link',
             className: 'category-timelines-item',

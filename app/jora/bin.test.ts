@@ -4,6 +4,9 @@ import jora from 'jora';
 import { methods } from './bin.js';
 import { methods as profileMethods } from './profile.js';
 import { methods as samplesMethods } from './samples.js';
+import { methods as treeMethods } from './call-tree.js';
+import { CallTree } from '../prepare/computations/call-tree.js';
+import { subtreeFromParent, nestedFromNodesSubtree } from '../prepare/computations/build-trees.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
 import { createState, selectRange } from '../views/ruler-range.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
@@ -181,6 +184,41 @@ test.each([0, 1, 7, 0xffffffff])('binning excludes sink ID %i without excluding 
     }
 });
 
+test('joint tree bins preserve recursive self and nested masks across viewport constraints', async () => {
+    const context = await createContext({ origin: 0,
+        values: new Uint32Array([0, 10, 270, 5, 400, 315]), samples: new Uint32Array([0, 1, 2, 3, 4, 5]) });
+    const dictionary = ['root', 'A', 'B', 'C'];
+    const nodes = new Uint32Array([0, 1, 2, 1, 3, 2, 3]);
+    const parent = new Uint32Array([0, 0, 1, 2, 3, 0, 5]);
+    const subtree = subtreeFromParent(parent);
+    const tree = new CallTree(dictionary, nodes, parent, subtree, nestedFromNodesSubtree(nodes, subtree, dictionary.length));
+    const metrics = { tree, sampleToNode: new Uint32Array([0, 1, 2, 3, 4, 6]) };
+    const viewport = context.scopeBreakdown.populationViewport;
+
+    for (const ranges of [null, [], [{ start: 2, end: 9 }, { start: 12, end: 20 }, { start: 30, end: 280 }, { start: 700, end: 999 }]]) {
+        viewport.setRanges(ranges);
+        for (const filtered of [false, true]) {
+            viewport.filter.set({ key: 'event', domain: 'event', size: 6, accepts: index => !filtered || index % 2 === 0 });
+            for (const [start, end] of [[0, 1000], [-50, 151], [20, 121], [900, 1100], [1200, 1300]]) {
+                context.scopeViewport = { start, end };
+                for (const count of [1, 3, 10, 500]) {
+                    const actual = methods.binTreeSamples.call({ context }, metrics, count);
+                    for (const [index, entry] of dictionary.entries()) {
+                        const self = methods.binCalls.call({ context }, metrics, entry, count);
+                        const mask = treeMethods.subtreeSamples(metrics, entry).mask;
+                        const nested = methods.binCallsFromMask.call({ context }, mask, count);
+                        for (let binIndex = 0; binIndex < count; binIndex++) {
+                            assert.ok(Math.abs(actual[index].bins[binIndex] - self[binIndex]) < 1e-8);
+                            assert.ok(Math.abs(actual[index].nestedBins[binIndex] - nested[binIndex]) < 1e-8);
+                        }
+                        assert.ok(Math.abs(actual[index].value - self.reduce((sum, value) => sum + value, 0)) < 1e-8);
+                    }
+                }
+            }
+        }
+    }
+});
+
 test('sample counters follow viewport boundaries without counting the starting bin twice', async () => {
     const context = await createContext();
     assert.deepEqual(Array.from(samplesMethods.countSamples.call({ context }, 10)), [0, 0, 1, 2, 2, 0, 0, 0, 0, 0]);
@@ -237,6 +275,28 @@ test.each([
     assert.ok(Math.abs(bins.reduce((sum, value) => sum + value, 0) - total) < 1e-10);
 });
 
+test('allocation row values summarize accepted contributions independently of display bins', async () => {
+    const { line, breakdown } = await createLineFixture({
+        type: 'memline',
+        values: new Uint32Array([16, 32, 48, 64]),
+        samples: new Uint32Array([0, 1, 1, 2])
+    });
+    const attribute = { name: 'allocationType' as const, values: new Uint32Array([0, 1, 1, 2]), dict: ['first', 'second', 'third'] };
+    const context = { scopeLine: line, scopeBreakdown: breakdown };
+
+    for (const count of [1, 7, 50, 160]) {
+        const rows = methods.binLineToAxisLine.call({ context }, line, attribute, line, count);
+        assert.deepEqual(rows.map(row => row.value), [16, 80, 64]);
+        assert.ok(rows.every(row => row.bins.length === count));
+    }
+
+    breakdown.populationViewport.setRanges([{ start: 1, end: 1.5 }, { start: 3, end: 3.5 }, { start: 20, end: 25 }]);
+    for (const count of [1, 7, 50]) {
+        const rows = methods.binLineToAxisLine.call({ context }, line, attribute, line, count);
+        assert.deepEqual(rows.map(row => row.value), [1, 5, 0]);
+    }
+});
+
 test('allocation mapping uses the axis viewport while retaining source totals', async () => {
     const context = await createContext();
     const { source } = await createMappedSource(context.scopeLine);
@@ -261,6 +321,9 @@ test('skips unmapped targets before reading weights in mapped accumulation', asy
     const bins = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10)[0];
     assert.deepEqual([...bins.bins], [0, 0, 3, 6, 7, 0, 0, 0, 0, 0]);
     assert.equal(bins.value, 16);
+    const summary = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 1)[0];
+    assert.deepEqual([...summary.bins], [16]);
+    assert.equal(summary.value, 16);
 });
 
 test('allocation bins apply source and axis viewport participation without affecting their Base coordinates', async () => {
@@ -621,6 +684,7 @@ test.skipIf(!process.env.CPUPRO_BIN_BENCH)('measures viewport binning on seven m
     const ownContext = { scopeLine: source, scopeBreakdown: source.breakdowns[0], scopeViewport: context.scopeViewport };
     const attribute = { name: 'allocationType', values: base.samples, dict: Array.from({ length: 16 }, (_, index) => String(index)) } as const;
     const mask = new Uint8Array(16).fill(1);
+    const categories = source.breakdowns[0].categories!.all.nodes;
     const results: { name: string; constrained: boolean; medianMs: number }[] = [];
     for (const constrained of [false, true]) {
         if (constrained) {
@@ -629,9 +693,20 @@ test.skipIf(!process.env.CPUPRO_BIN_BENCH)('measures viewport binning on seven m
             });
             viewport.setRanges(Array.from({ length: 32 }, (_, index) => ({ start: index * 200_000 + 1000, end: index * 200_000 + 2000 })));
         }
+        assert.deepEqual(
+            Array.from(viewport.aggregateBy(attribute.values, attribute.dict.length).samplesTotal),
+            methods.binLineToAxisLine.call({ context: ownContext }, source, attribute, undefined, 1).map(row => row.value)
+        );
         for (const [name, compute] of [
             ['mapped', () => methods.binLineToAxisLine.call({ context }, source, attribute, axis, 500)],
             ['own', () => methods.binLineToAxisLine.call({ context: ownContext }, source, attribute, undefined, 500)],
+            ['own-summary', () => methods.binLineToAxisLine.call({ context: ownContext }, source, attribute, undefined, 1)],
+            ['totals', () => viewport.aggregateBy(attribute.values, attribute.dict.length)],
+            ['categories', () => methods.binTreeSamples.call({ context: ownContext }, categories, 500)],
+            ['categories-legacy', () => categories.tree.dictionary.map(entry => ({
+                self: methods.binCalls.call({ context: ownContext }, categories, entry, 500),
+                nested: methods.binCallsFromMask.call({ context: ownContext }, treeMethods.subtreeSamples(categories, entry).mask, 500)
+            }))],
             ['samples', () => methods.binCallsFromMask.call({ context: ownContext }, mask, 500)],
             ['counts', () => samplesMethods.countSamples.call({ context: ownContext }, 500)]
         ] as const) {
