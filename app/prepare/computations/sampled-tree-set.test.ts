@@ -1,11 +1,41 @@
 import assert from 'node:assert/strict';
-import { inject, test } from 'vitest';
+import { inject, test, vi } from 'vitest';
+import { SourceMapGenerator } from 'source-map-js';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { createSampledTreeSet } from './sampled-tree-set.js';
 import { Population, PopulationFiltered } from './population.js';
 import { createLineBreakdown } from '../lines/breakdown.js';
 import { createSourceMappedBreakdown } from '../profile-sm.mjs';
 import { noopWorkHandler } from '../misc/work.js';
+import { getFunctionAtScriptOffset } from '../misc/script-function-resolution.js';
+
+test('source-mapped frames retain source declaration ends when mappings point at names', async () => {
+    const { profile, dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true, noSourceMap: true });
+    const compiled = scriptsMap.get(1)!;
+    const source = 'function first() { return 1; }\nfunction second() { return 2; }';
+    const generator = new SourceMapGenerator({ file: 'compiled.js' });
+    generator.setSourceContent('original.js', source);
+    for (const [column, line] of [[0, 1], [20, 2]]) {
+        generator.addMapping({ generated: { line: 1, column }, original: { line, column: 9 }, source: 'original.js' });
+    }
+    compiled.sourceMap = JSON.parse(generator.toString());
+    const original = scriptsMap.resolveOriginalScript('original.js', source, compiled);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+        getFunctionAtScriptOffset(original, 0);
+    } finally {
+        warn.mockRestore();
+    }
+    const line = profile.timeline!;
+    await createSourceMappedBreakdown('call-stack-sm', line, dictionary, scriptsMap, line.breakdowns[0], null, noopWorkHandler);
+    const first = compiled.callFrames.find(frame => frame.name === 'first')!.__originalCallFrame!;
+    const second = compiled.callFrames.find(frame => frame.name === 'second')!.__originalCallFrame!;
+
+    assert.equal(first.script, original);
+    assert.equal(first.start, source.indexOf('first'));
+    assert.equal(first.end, source.indexOf('\n'));
+    assert.equal(second.end, source.length);
+});
 
 test('preserves source identity and sparse sample IDs through source mapping', async () => {
     const { profile, dictionary, scriptsMap } = await createProfileFixture();

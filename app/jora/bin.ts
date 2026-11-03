@@ -8,7 +8,7 @@ import { sampleRange } from './samples.js';
 import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
-import type { PopulationFiltered } from '../prepare/computations/population.js';
+import { findCumulativeBoundary, type PopulationFiltered } from '../prepare/computations/population.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
 
 function getCallStackPopulation(line: ProfileLine) {
@@ -67,7 +67,7 @@ function makeSampleBins(
         ? -startCut
         : 0;
 
-    // Two pass implementation of binning samples into bins, with remainders applied to the next bin
+    // PERF: Two pass implementation of binning samples into bins, with remainders applied to the next bin
     // allow to keep the main loop simpler (without inner loops) and faster,
     // while still keeping the same time complexity of O(n).
     for (let i = first; i <= last; i++) {
@@ -150,6 +150,46 @@ type BinGrid = {
     skip: number;
 };
 
+// PERF: Keeping this loop out of the coordinator removes its repeated OSR exits in Node 26 (V8 14.6).
+function addBins(target: Uint32Array, source: Uint32Array | Float64Array) {
+    for (let index = 0; index < target.length; index++) {
+        target[index] += source[index];
+    }
+}
+
+// PERF: Full events in one bin need no crossing test; retain per-event stores and addition order.
+function binPopulationBin(
+    samples: Uint32Array,
+    values: Uint32Array,
+    acceptedValues: Uint32Array,
+    sinkId: number,
+    tracks: BinTrack[],
+    groups: Uint8Array | Uint32Array | null,
+    first: number,
+    last: number,
+    binIndex: number,
+    binValue: number
+) {
+    for (let index = first; index < last; index++) {
+        const value = values[index];
+
+        if (samples[index] !== sinkId && acceptedValues[index] > 0) {
+            const groupIndex = groups ? groups[index] : 0;
+            const track = tracks[groupIndex];
+
+            track.value += value;
+            track.bins[binIndex] += value;
+        }
+
+        binValue += value;
+    }
+
+    return binValue;
+}
+
+// PERF: Keep coordinate division at range boundaries, not in the occurrence loop.
+// V8 14.6 deoptimizes after monomorphic warmup when bin/group element types change;
+// benchmark mixed-call transitions as well as isolated throughput before changing this shared path.
 function binPopulation(
     viewport: PopulationFiltered,
     tracks: BinTrack[],
@@ -207,6 +247,17 @@ function binPopulation(
         let binValue = offset - binIndex * step;
 
         for (let index = first + 1; index < last; index++) {
+            // IMPORTANT: Round the search down: cumulative coordinates are integers, bin remainders need not be.
+            const boundary = Math.floor(cumulative[index] + (step - binValue));
+            const stop = Math.min(last, Math.max(index, findCumulativeBoundary(cumulative, boundary, false) - 1));
+
+            binValue = binPopulationBin(samples, values, acceptedValues, sinkId, tracks, groups, index, stop, binIndex, binValue);
+            index = stop;
+
+            if (index === last) {
+                break;
+            }
+
             const groupIndex = groups ? groups[index] : 0;
             const track = tracks[groupIndex];
             const accept = samples[index] !== sinkId && acceptedValues[index] > 0;
@@ -243,6 +294,7 @@ function binPopulation(
 
 function createTargetBinReader(axis: PopulationFiltered, cumulative: Uint32Array, { total, step, skip }: BinGrid) {
     const { samples, values, sinkId, ranges } = axis;
+    // IMPORTANT: Targets must be visited in nondecreasing order; this cursor never moves backward.
     let rangeIndex = 0;
 
     return (target: number) => {
@@ -286,6 +338,7 @@ function binMappedPopulation(
     const { samples, values: acceptedValues, sinkId, ranges, cumulative } = viewport;
     let previousTarget = -1;
     let binIndex = -1;
+    // IMPORTANT: Disjoint source ranges can cut the same event. Emit their combined value once.
     let boundaryIndex = -1;
     let boundaryValue = 0;
 
@@ -329,6 +382,7 @@ function binMappedPopulation(
         for (let index = first + 1; index < last; index++) {
             const target = mapping[index];
 
+            // PERF: Many allocations share one CPU event; resolve its bin once per consecutive run.
             if (target !== previousTarget) {
                 previousTarget = target;
                 binIndex = targetBin(target);
@@ -351,15 +405,39 @@ function binMappedPopulation(
     flushBoundary();
 }
 
-function binMappedTotals(
+function sumMappedValues(viewport: PopulationFiltered, mapping: Uint32Array, acceptedTargets: Uint8Array) {
+    const { samples, values, sinkId } = viewport;
+    let total = 0;
+
+    for (let i = 0; i < values.length; i++) {
+        if (samples[i] !== sinkId && acceptedTargets[mapping[i]]) {
+            total += values[i];
+        }
+    }
+
+    return total;
+}
+
+function sumMappedValuesByGroup(
     viewport: PopulationFiltered,
-    tracks: BinTrack[],
-    groups: Uint8Array | Uint32Array | null,
     mapping: Uint32Array,
-    axisCount: number,
-    targetBin: (target: number) => number
+    acceptedTargets: Uint8Array,
+    totals: Float64Array,
+    groups: Uint8Array | Uint32Array
 ) {
     const { samples, values, sinkId } = viewport;
+
+    for (let i = 0; i < values.length; i++) {
+        if (samples[i] !== sinkId && acceptedTargets[mapping[i]]) {
+            const groupIndex = groups[i];
+
+            totals[groupIndex] += values[i];
+        }
+    }
+}
+
+function createAcceptedTargets(axisCount: number, targetBin: (target: number) => number) {
+    // PERF: Acceptance is axis-sized, not allocation-sized. Resolve it once before the larger source scan.
     const acceptedTargets = new Uint8Array(axisCount);
     let acceptedCount = 0;
 
@@ -368,18 +446,29 @@ function binMappedTotals(
         acceptedCount += acceptedTargets[index];
     }
 
-    if (acceptedCount === 0) {
+    return acceptedCount === 0 ? null : acceptedTargets;
+}
+
+function binMappedTotals(
+    viewport: PopulationFiltered,
+    tracks: BinTrack[],
+    groups: Uint8Array | Uint32Array | null,
+    mapping: Uint32Array,
+    axisCount: number,
+    targetBin: (target: number) => number
+) {
+    const acceptedTargets = createAcceptedTargets(axisCount, targetBin);
+
+    if (acceptedTargets === null) {
         return;
     }
 
     const totals = new Float64Array(tracks.length);
 
-    for (let index = 0; index < values.length; index++) {
-        if (samples[index] !== sinkId && acceptedTargets[mapping[index]]) {
-            const groupIndex = groups ? groups[index] : 0;
-
-            totals[groupIndex] += values[index];
-        }
+    if (groups === null) {
+        totals[0] = sumMappedValues(viewport, mapping, acceptedTargets);
+    } else {
+        sumMappedValuesByGroup(viewport, mapping, acceptedTargets, totals, groups);
     }
 
     for (let index = 0; index < tracks.length; index++) {
@@ -388,49 +477,168 @@ function binMappedTotals(
     }
 }
 
-function rollupTreeBins(tree: SampledTree<unknown>['tree'], tracks: BinTrack[], binCount: number) {
-    const { nodes, parent, nested, dictionary } = tree;
+// PERF: Full events already carry filtered weights; do not reread Base weights or test them again.
+function sumTreeEvents(
+    samples: Uint32Array,
+    values: Uint32Array,
+    sampleToNode: Uint32Array,
+    sinkId: number,
+    totals: Float64Array,
+    start: number,
+    end: number
+) {
+    for (let index = start; index < end; index++) {
+        const sample = samples[index];
+
+        if (sample !== sinkId) {
+            totals[sampleToNode[sample]] += values[index];
+        }
+    }
+}
+
+type TreeBin = {
+    bins: Float64Array;
+    nestedPresence: Uint8Array;
+    value: number;
+};
+
+const EMPTY_SUBTREE = -1;
+const MIXED_SUBTREE = -2;
+
+function collectTreeBin(
+    tree: SampledTree<unknown>['tree'],
+    totals: Float64Array,
+    subtreeEntries: Int32Array,
+    result: TreeBin[],
+    bin: number
+) {
+    const { nodes, parent } = tree;
+    subtreeEntries.fill(EMPTY_SUBTREE);
+
+    for (let node = nodes.length - 1; node >= 0; node--) {
+        const entry = nodes[node];
+        let present = subtreeEntries[node];
+
+        if (totals[node] > 0) {
+            result[entry].bins[bin] += totals[node];
+
+            if (present === EMPTY_SUBTREE) {
+                present = entry;
+            } else if (present !== entry) {
+                present = MIXED_SUBTREE;
+            }
+        }
+
+        if (present === EMPTY_SUBTREE) {
+            continue;
+        }
+
+        if (present !== entry) {
+            result[entry].nestedPresence[bin] = 1;
+        }
+
+        if (node === 0) {
+            continue;
+        }
+
+        const parentNode = parent[node];
+        const parentEntry = subtreeEntries[parentNode];
+
+        if (parentEntry === EMPTY_SUBTREE) {
+            subtreeEntries[parentNode] = present;
+        } else if (parentEntry !== present) {
+            subtreeEntries[parentNode] = MIXED_SUBTREE;
+        }
+    }
+}
+
+function sumTreeRange(
+    viewport: PopulationFiltered,
+    sampleToNode: Uint32Array,
+    totals: Float64Array,
+    start: number,
+    end: number
+) {
+    const { samples, values, sinkId, population } = viewport;
+    const { cumulative, cumulativeEnd } = population;
+    const { first, last, startCut, endCut } = sampleRange(cumulative, end - start, -start, cumulativeEnd);
+
+    if (first > last) {
+        return;
+    }
+
+    const firstSample = samples[first];
+
+    if (firstSample !== sinkId && values[first] > 0) {
+        const node = sampleToNode[firstSample];
+        let value = population.values[first] - startCut;
+
+        if (first === last) {
+            value -= endCut;
+        }
+
+        totals[node] += value;
+    }
+
+    if (first === last) {
+        return;
+    }
+
+    sumTreeEvents(samples, values, sampleToNode, sinkId, totals, first + 1, last);
+
+    const lastSample = samples[last];
+
+    if (lastSample !== sinkId && values[last] > 0) {
+        const node = sampleToNode[lastSample];
+
+        totals[node] += population.values[last] - endCut;
+    }
+}
+
+function binTreePopulation(viewport: PopulationFiltered, metrics: SampledTree<unknown>, count: number, grid: BinGrid) {
+    const { tree, sampleToNode } = metrics;
+    const { nodes, dictionary } = tree;
+    const { total, step, skip } = grid;
+    const coverage = viewport.ranges ?? [{ start: 0, end: viewport.cumulativeEnd }];
+    // PERF: Reuse one node vector across bins instead of keeping a node-by-bin matrix.
+    const totals = new Float64Array(nodes.length);
+    const subtreeEntries = new Int32Array(nodes.length);
     const result = dictionary.map(entry => ({
         entry,
-        bins: new Float64Array(binCount),
-        nestedBins: new Float64Array(binCount),
+        bins: new Float64Array(count),
+        nestedPresence: new Uint8Array(count),
         value: 0
     }));
+    let rangeIndex = 0;
 
-    for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
-        const row = result[nodes[nodeIndex]];
-        const track = tracks[nodeIndex];
+    for (let bin = 0; bin < count; bin++) {
+        const start = bin * step - skip;
+        const end = Math.min(total, (bin + 1) * step) - skip;
+        totals.fill(0);
 
-        row.value += track.value;
-
-        for (let binIndex = 0; binIndex < binCount; binIndex++) {
-            row.bins[binIndex] += track.bins[binIndex];
+        while (rangeIndex < coverage.length && coverage[rangeIndex].end <= start) {
+            rangeIndex++;
         }
-    }
 
-    for (let nodeIndex = nodes.length - 1; nodeIndex >= 0; nodeIndex--) {
-        const bins = tracks[nodeIndex].bins;
+        for (let range = rangeIndex; range < coverage.length; range++) {
+            const interval = coverage[range];
 
-        if (nested[nodeIndex] === 0) {
-            const totalBins = result[nodes[nodeIndex]].nestedBins;
+            if (interval.start >= end) {
+                break;
+            }
 
-            for (let binIndex = 0; binIndex < binCount; binIndex++) {
-                totalBins[binIndex] += bins[binIndex];
+            const left = Math.max(start, interval.start);
+            const right = Math.min(end, interval.end);
+
+            if (left < right) {
+                sumTreeRange(viewport, sampleToNode, totals, left, right);
             }
         }
 
-        if (nodeIndex !== 0) {
-            const parentBins = tracks[parent[nodeIndex]].bins;
+        collectTreeBin(tree, totals, subtreeEntries, result, bin);
 
-            for (let binIndex = 0; binIndex < binCount; binIndex++) {
-                parentBins[binIndex] += bins[binIndex];
-            }
-        }
-    }
-
-    for (const { bins, nestedBins } of result) {
-        for (let binIndex = 0; binIndex < binCount; binIndex++) {
-            nestedBins[binIndex] -= bins[binIndex];
+        for (let entry = 0; entry < dictionary.length; entry++) {
+            result[entry].value += result[entry].bins[bin];
         }
     }
 
@@ -464,17 +672,12 @@ export const methods = {
     binTreeSamples(treeMetrics: SampledTree<unknown>, n = 500, breakdown?: ProfileLineBreakdown | string) {
         const resolved = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
         const { total, skip } = binningRange(resolved.line, resolveScopeViewport(null, this.context), n);
-        const { tree, sampleToNode } = treeMetrics;
-        const tracks = Array.from(tree.nodes, () => ({ bins: new Float64Array(n), value: 0 }));
-        const destinations = Array.from(sampleToNode, nodeIndex => tracks[nodeIndex]);
 
-        binPopulation(resolved.populationViewport, destinations, resolved.populationViewport.samples, {
+        return binTreePopulation(resolved.populationViewport, treeMetrics, n, {
             total,
             skip,
             step: sampleBinStep(total, n)
         });
-
-        return rollupTreeBins(tree, tracks, n);
     },
 
     binCount(maxCount: number, rangeOrLength?: Range | number) {
@@ -679,9 +882,7 @@ export const methods = {
 
         if (attribute) {
             for (const { bins } of tracks) {
-                for (let index = 0; index < n; index++) {
-                    binSumVector[index] += bins[index];
-                }
+                addBins(binSumVector, bins);
             }
         }
 

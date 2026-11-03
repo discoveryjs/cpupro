@@ -184,7 +184,7 @@ test.each([0, 1, 7, 0xffffffff])('binning excludes sink ID %i without excluding 
     }
 });
 
-test('joint tree bins preserve recursive self and nested masks across viewport constraints', async () => {
+test('joint tree bins preserve self values and binary nested presence across viewport constraints', async () => {
     const context = await createContext({ origin: 0,
         values: new Uint32Array([0, 10, 270, 5, 400, 315]), samples: new Uint32Array([0, 1, 2, 3, 4, 5]) });
     const dictionary = ['root', 'A', 'B', 'C'];
@@ -207,9 +207,10 @@ test('joint tree bins preserve recursive self and nested masks across viewport c
                         const self = methods.binCalls.call({ context }, metrics, entry, count);
                         const mask = treeMethods.subtreeSamples(metrics, entry).mask;
                         const nested = methods.binCallsFromMask.call({ context }, mask, count);
+                        assert.ok(actual[index].nestedPresence instanceof Uint8Array);
                         for (let binIndex = 0; binIndex < count; binIndex++) {
                             assert.ok(Math.abs(actual[index].bins[binIndex] - self[binIndex]) < 1e-8);
-                            assert.ok(Math.abs(actual[index].nestedBins[binIndex] - nested[binIndex]) < 1e-8);
+                            assert.equal(actual[index].nestedPresence[binIndex], nested[binIndex] > 1e-8 ? 1 : 0);
                         }
                         assert.ok(Math.abs(actual[index].value - self.reduce((sum, value) => sum + value, 0)) < 1e-8);
                     }
@@ -217,6 +218,53 @@ test('joint tree bins preserve recursive self and nested masks across viewport c
             }
         }
     }
+});
+
+test('category workspace does not grow by node count for every additional bin', async () => {
+    const context = await createContext({ origin: 0, values: new Uint32Array([1000]), samples: new Uint32Array([0]) });
+    context.scopeViewport = { start: 0, end: 1000 };
+    const nodes = Uint32Array.from({ length: 64 }, (_, index) => index % 3);
+    const parent = Uint32Array.from(nodes, (_, index) => Math.max(0, index - 1));
+    const subtree = subtreeFromParent(parent);
+    const dictionary = ['a', 'b', 'c'];
+    const tree = new CallTree(dictionary, nodes, parent, subtree, nestedFromNodesSubtree(nodes, subtree, dictionary.length));
+    const metrics = { tree, sampleToNode: new Uint32Array([63]) };
+    const original = globalThis.Float64Array;
+    let cells = 0;
+    globalThis.Float64Array = new Proxy(original, { construct(target, args) {
+        const array = Reflect.construct(target, args);
+        cells += array.length;
+        return array;
+    } });
+    try {
+        methods.binTreeSamples.call({ context }, metrics, 64);
+        const first = cells;
+        cells = 0;
+        methods.binTreeSamples.call({ context }, metrics, 128);
+        assert.equal(cells - first, dictionary.length * 64);
+    } finally {
+        globalThis.Float64Array = original;
+    }
+});
+
+test('nested presence preserves fractional contributions and excludes recursive self', async () => {
+    const context = await createContext({ origin: 0, values: new Uint32Array([1]), samples: new Uint32Array([0]) });
+    context.scopeViewport = { start: 0, end: 1e-9 };
+    const nodes = new Uint32Array([0, 1, 1]);
+    const parent = new Uint32Array([0, 0, 1]);
+    const subtree = subtreeFromParent(parent);
+    const dictionary = ['root', 'leaf'];
+    const tree = new CallTree(dictionary, nodes, parent, subtree, nestedFromNodesSubtree(nodes, subtree, dictionary.length));
+    const rows = methods.binTreeSamples.call({ context }, { tree, sampleToNode: new Uint32Array([2]) }, 1);
+
+    assert.deepEqual(rows.map(row => [...row.nestedPresence]), [[1], [0]]);
+    assert.ok(rows[1].value > 0);
+
+    context.scopeViewport = { start: 0.3, end: 0.6 };
+    const clipped = methods.binTreeSamples.call({ context }, { tree, sampleToNode: new Uint32Array([2]) }, 1);
+    const expected = (1 - 0.3) - (1 - 0.6);
+    assert.equal(clipped[1].bins[0], expected);
+    assert.equal(clipped[1].value, expected);
 });
 
 test('sample counters follow viewport boundaries without counting the starting bin twice', async () => {
@@ -294,6 +342,75 @@ test('allocation row values summarize accepted contributions independently of di
     for (const count of [1, 7, 50]) {
         const rows = methods.binLineToAxisLine.call({ context }, line, attribute, line, count);
         assert.deepEqual(rows.map(row => row.value), [1, 5, 0]);
+    }
+});
+
+test('full-event bin spans match scalar intersections across filters and fractional range cuts', async () => {
+    const values = Uint32Array.from({ length: 512 }, (_, index) => index % 17 === 0 ? 0 : index % 7 + 1);
+    const groups = Uint32Array.from(values, (_, index) => index % 3);
+    values[128] = 1024;
+    values[511] = 0;
+    const { line, breakdown } = await createLineFixture({ type: 'memline', values, samples: groups });
+    const { population: base, populationViewport: viewport } = breakdown;
+    const context = { scopeLine: line, scopeBreakdown: breakdown, scopeViewport: { start: 0, end: 4096 } };
+
+    for (const ranges of [null, [], [{ start: 1.125, end: 480.875 }, { start: 500.125, end: 700.875 }, { start: 900.125, end: 2500.875 }]]) {
+        viewport.setRanges(ranges);
+        for (const filtered of [false, true]) {
+            viewport.filter.set({ key: 'event', domain: 'event', size: values.length, accepts: index => !filtered || index % 5 !== 0 });
+            for (const [start, end] of [[0, 4096], [-32.125, 4063.875], [992.125, 1248.125]]) {
+                context.scopeViewport = { start, end };
+                for (const count of [1, 2, 16, 64]) {
+                    for (const attribute of [null, ...[Uint8Array.from(groups), groups].map(values => ({
+                        name: 'allocationType' as const, values, dict: ['a', 'b', 'c']
+                    }))]) {
+                        const bins = Array.from({ length: attribute ? 3 : 1 }, () => new Uint32Array(count));
+                        const totals = new Array(bins.length).fill(0);
+                        const step = (end - start) / count;
+
+                        for (const range of ranges ?? [{ start: 0, end: base.cumulativeEnd }]) {
+                            for (let index = 0; index < values.length; index++) {
+                                if (values[index] === 0 || filtered && index % 5 === 0) {
+                                    continue;
+                                }
+                                const group = attribute ? groups[index] : 0;
+                                const left = Math.max(base.cumulative[index], range.start, start);
+                                const right = Math.min(base.cumulative[index] + values[index], range.end, end);
+                                totals[group] += Math.max(0, right - left);
+                                for (let binIndex = 0; binIndex < count; binIndex++) {
+                                    bins[group][binIndex] += Math.max(0,
+                                        Math.min(right, start + (binIndex + 1) * step) - Math.max(left, start + binIndex * step));
+                                }
+                            }
+                        }
+
+                        const actual = methods.binLineToAxisLine.call({ context }, line, attribute, line, count);
+                        assert.deepEqual(actual.map(row => row.bins), bins);
+                        assert.deepEqual(actual.map(row => row.value), totals);
+                    }
+                }
+            }
+        }
+    }
+});
+
+test('mapped single-bin totals preserve wide sums with and without groups', async () => {
+    const context = await createContext();
+    const { source } = await createMappedSource(context.scopeLine,
+        new Uint32Array([0xffffffff, 5]), new Uint32Array([0, 1]), new Uint32Array([0, 0]));
+    const attribute = { name: 'allocationType' as const, values: new Uint8Array([0, 0]), dict: ['all'] };
+
+    for (const grouping of [null, attribute]) {
+        const [row] = methods.binLineToAxisLine.call({ context }, source, grouping, context.scopeLine, 1);
+        assert.equal(row.value, 2 ** 32 + 4);
+        assert.deepEqual(row.bins, new Uint32Array([4]));
+    }
+
+    context.scopeBreakdown.populationViewport.filter.set({ key: 'test', domain: 'event', size: 3, accepts: index => index === 1 });
+    for (const grouping of [null, attribute]) {
+        const [row] = methods.binLineToAxisLine.call({ context }, source, grouping, context.scopeLine, 1);
+        assert.equal(row.value, 5);
+        assert.deepEqual(row.bins, new Uint32Array([5]));
     }
 });
 
@@ -586,6 +703,9 @@ test('reads viewport properties outside allocation and counter event loops', asy
     }
     for (const compute of [
         () => methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10),
+        () => methods.binLineToAxisLine.call({ context: {
+            scopeLine: source, scopeBreakdown: source.breakdowns[0], scopeViewport: { start: 0, end: 3000 }
+        } }, source, null, source, 10),
         () => methods.binLineToAxisLine.call({ context }, context.scopeLine, null, context.scopeLine, 10),
         () => methods.binCallsFromMask.call({ context }, new Uint8Array([1, 1]), 10),
         () => samplesMethods.countSamples.call({ context }, 10)

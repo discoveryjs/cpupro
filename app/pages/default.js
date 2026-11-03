@@ -72,7 +72,7 @@ const categoriesTimeline = {
                 $binCount,
                 binSize: (scopeViewport().end - scopeViewport().start) / $binCount,
                 bins: $bins.bins,
-                totalValueBins: $bins.nestedBins,
+                nestedPresence: $bins.nestedPresence,
                 color: $category.name.color(),
                 href: $category.marker("category").href
             })
@@ -258,7 +258,7 @@ const categoriesTimeline = {
                         bins: '=bins',
                         max: '=binSize',
                         binsMax: true,
-                        presence: '=totalValueBins',
+                        presence: '=nestedPresence',
                         color: '=color'
                     }
                 ]

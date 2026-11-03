@@ -8,6 +8,7 @@ import { chartUsedHeap } from './chart-used-heap.js';
 import { userTimingsTimeline } from './user-timings-timeline.js';
 import { createState, selectRange, rangeToSegments } from '../../views/ruler-range.js';
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
+import { PopulationFiltered } from '../../prepare/computations/population.js';
 import { histCodes } from './hist-codes.js';
 import { histHeapTotal } from './hist-heap-total.js';
 import { histAllocationTypes } from './hist-allocation-types.js';
@@ -311,6 +312,50 @@ test('allocation headers cannot substitute source totals for selected-axis parti
     assert.equal(singleBin.reduce((total, row) => total + row.value, 0), 160);
     assert.equal(graph.reduce((total, row) => total + row.value, 0), 160);
     assert.ok(graph.reduce((total, row) => total + row.bins.reduce((sum, value) => sum + value, 0), 0) < 160);
+});
+
+test('mapped allocation summaries follow source constraints and axis participation across breakdowns', async () => {
+    const { profile } = await createProfileFixture();
+    const source = profile.memline!;
+    const axis = profile.timeline!;
+    const attributes = [
+        { name: 'allocationType' as const, values: new Uint32Array([0, 1, 0, 1]), dict: ['first', 'second'] },
+        { name: 'allocationSpace' as const, values: new Uint8Array([0, 0, 1, 1]), dict: ['one', 'two'] }
+    ];
+    source.attributes = attributes;
+    const context = { scopeProfile: profile, scopeLine: axis, scopeBreakdown: axis.breakdowns[0] };
+    const viewport = source.breakdowns[0].populationViewport;
+    const values = viewport.values;
+    const totals = () => attributes.map(attribute => methods.binLineToAxisLine.call({ context }, source, attribute, axis, 1).map(row => row.value));
+    const initial = totals();
+    assert.deepEqual(initial, [[64, 96], [48, 112]]);
+
+    const alternate = new PopulationFiltered(axis.breakdowns[0].population);
+    context.scopeBreakdown = { ...axis.breakdowns[0], populationViewport: alternate };
+    assert.deepEqual(totals(), initial);
+
+    alternate.setRanges([]);
+    assert.deepEqual(totals(), [[0, 0], [0, 0]]);
+    alternate.setRanges(null);
+    assert.deepEqual(totals(), initial);
+
+    viewport.filter.set({ key: 'test', domain: 'event', size: values.length, accepts: () => false });
+    assert.deepEqual(totals(), [[0, 0], [0, 0]]);
+    viewport.filter.remove('test');
+    assert.deepEqual(totals(), initial);
+    viewport.setValueRange(32, null);
+    assert.deepEqual(totals(), [[48, 96], [32, 112]]);
+    viewport.setIndexRange(1, 3);
+    assert.deepEqual(totals(), [[48, 32], [32, 48]]);
+    viewport.resetIndexRange();
+    viewport.resetValueRange();
+    assert.deepEqual(totals(), initial);
+
+    attributes[0].values = new Uint32Array(4);
+    assert.deepEqual(totals(), [[160, 0], [48, 112]]);
+    attributes[0].dict.push('empty');
+    assert.deepEqual(totals(), [[160, 0, 0], [48, 112]]);
+    alternate.destroy();
 });
 
 test('mapping bins belong to expanded content rather than the parent panel query', async () => {

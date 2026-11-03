@@ -33,7 +33,7 @@ test('matches the default page category bins under the computed common viewport'
     assert.equal(data.binCount, 500);
     assert.equal(data.binSize, row.binSize);
     assert.deepEqual(data.bins, row.bins);
-    assert.deepEqual(data.totalValueBins, Array.from(row.totalValueBins));
+    assert.deepEqual(data.totalValueBins.map((value: number) => value > 0 ? 1 : 0), Array.from(row.nestedPresence));
     assert.equal(definition.content[2].content.view, 'line-histogram');
     assert.equal(definition.content[3].content.view, 'line-histogram');
     assert.equal(definition.content[4].item.view, 'line-histogram');
