@@ -8,6 +8,7 @@ import { ParseSourceWorkerScriptResult } from '../workers/types';
 
 const scriptLines = new WeakMap<CpuProScript, ReturnType<typeof createLineBoundaries>>();
 const scriptFunctionRanges = new WeakMap<CpuProScript, FunctionRanges>();
+const scriptMaxFunctionPrelude = new WeakMap<CpuProScript, number>();
 
 function getScriptLineBoundaries(script: CpuProScript | null) {
     if (!script || !script.source) {
@@ -54,6 +55,13 @@ function setScriptFunctionRanges(
     script.functionRanges = ranges.parsed ? ranges.ranges : null;
     script.sourceMetrics = sourceMetrics;
     scriptFunctionRanges.set(script, ranges);
+    let maxPrelude = 0;
+
+    for (const range of ranges.ranges) {
+        maxPrelude = Math.max(maxPrelude, range.callFrameStart - range.start);
+    }
+
+    scriptMaxFunctionPrelude.set(script, maxPrelude);
 }
 
 function binarySearchFunctionRangeIndex(starts: Uint32Array<ArrayBuffer>, position: number) {
@@ -162,6 +170,47 @@ export function getFunctionAtScriptOffset(script: CpuProScript | null, offset: n
         : null;
 }
 
+export function getFunctionAtSourceLineColumn(script: CpuProScript, line: number, column: number) {
+    const position = getScriptOffsetFromLineColumn(script, line, column);
+    const functionRanges = getScriptFunctionRanges(script);
+    let candidate: FunctionRange | null = null;
+
+    if (position !== -1 && functionRanges?.parsed) {
+        const { starts, indexes, ranges } = functionRanges;
+        const rangeIndex = binarySearchFunctionRangeIndex(starts, position);
+        const lastStart = position + scriptMaxFunctionPrelude.get(script)!;
+        let candidateIndex = rangeIndex !== -1
+            ? indexes[rangeIndex]
+            : -1;
+
+        if (candidateIndex !== -1) {
+            candidate = ranges[candidateIndex];
+        }
+
+        for (let i = rangeIndex + 1; i < starts.length && starts[i] <= lastStart; i++) {
+            const index = indexes[i];
+
+            if (index !== -1) {
+                const range = ranges[index];
+
+                if (range.callFrameStart === starts[i] &&
+                    range.start <= position &&
+                    position < range.end
+                ) {
+                    if (candidate === null ||
+                        range.end - range.start < candidate.end - candidate.start
+                    ) {
+                        candidate = range;
+                        candidateIndex = index;
+                    }
+                }
+            }
+        }
+    }
+
+    return candidate;
+}
+
 export function matchCallFrameIdentity(
     callFrame: CpuProCallFrame,
     identity: Pick<CpuProCallFrame, 'script' | 'start' | 'end' | 'line' | 'column'>
@@ -185,9 +234,13 @@ export function matchCallFrameIdentity(
             ? findFunctionAtPosition(functionRanges, start)
             : null;
 
-        if (range?.defaultConstructor === true &&
-            range.callFrameStart === start && range.end === callFrame.end &&
-            range.callFrameStartLine - 1 === line && range.callFrameStartColumn === column) {
+        if (range !== null &&
+            range.defaultConstructor === true &&
+            range.callFrameStart === start &&
+            range.end === callFrame.end &&
+            range.callFrameStartLine - 1 === line &&
+            range.callFrameStartColumn === column
+        ) {
             return 'default-constructor';
         }
     }

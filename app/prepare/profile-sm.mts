@@ -10,7 +10,7 @@ import { ProfileLine, ProfileLineBreakdown } from './lines/types.js';
 import { WorkHandler } from './misc/work.js';
 import { createInt32Progression } from './misc/utils.js';
 import { Ownership } from './formats/types.js';
-import { prepareScriptSources } from './misc/script-function-resolution.js';
+import { getFunctionAtSourceLineColumn, prepareScriptSources } from './misc/script-function-resolution.js';
 
 function getOriginalPositionFor(sourceMap: SourceMapConsumer, line: number, column: number) {
     let consumer = sourceMap.__consumer;
@@ -125,6 +125,13 @@ export async function createSourceMappedBreakdown(
 
         await prepareScriptSources(ensureScriptIsParsed, diagnose);
         for (const { callFrame, originalPos, originalScript } of callFramesToResolve) {
+            const line = originalPos.line !== null ? originalPos.line - 1 : -1;
+            const column = originalPos.column !== null ? originalPos.column : -1;
+            // Source maps may point at a declaration name before its V8 runtime range begins.
+            const range = line !== -1 && column !== -1
+                ? getFunctionAtSourceLineColumn(originalScript, line, column)
+                : null;
+
             callFrame.__originalCallFrame = dictionary.resolveCallFrame({
                 functionName: originalPos.name
                     ? originalPos.name !== callFrame.name
@@ -133,8 +140,9 @@ export async function createSourceMappedBreakdown(
                     : callFrame.name,
                 scriptId: originalScript.id,
                 url: originalScript.url,
-                lineNumber: originalPos.line !== null ? originalPos.line - 1 : -1,
-                columnNumber: originalPos.column !== null ? originalPos.column : -1
+                lineNumber: line,
+                columnNumber: column,
+                end: range?.end
             }, scriptsMap);
         }
 

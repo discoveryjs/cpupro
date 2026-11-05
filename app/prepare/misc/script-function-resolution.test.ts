@@ -5,7 +5,7 @@ import { test, vi } from 'vitest';
 import { Dictionary } from '../dictionary.js';
 import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRanges } from './parse-script-source-ranges.js';
-import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, isScriptTopLevelOffset, matchCallFrameIdentity, prepareScriptSources } from './script-function-resolution.js';
+import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, getFunctionAtSourceLineColumn, isScriptTopLevelOffset, matchCallFrameIdentity, prepareScriptSources } from './script-function-resolution.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
 import { ParseSourceWorkerScriptResult } from '../workers/types.js';
 
@@ -211,6 +211,91 @@ test.each([
         assert.equal(findFunctionAtPosition(ranges, offset), expected, `offset ${offset}`);
         assert.equal(findFunctionAtLineColumn(ranges, line, column), expected, `line/column at ${offset}`);
     }
+});
+
+test('source-map names resolve declaration ranges without changing runtime prefix attribution', () => {
+    const source = 'function outer() {\n  function inner(value: number) { return value; }\n}\nconst after = 1;';
+    const script = createScript(1, 'original.ts', source);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+        getFunctionAtScriptOffset(script, 0);
+    } finally {
+        warn.mockRestore();
+    }
+    const inner = getFunctionAtSourceLineColumn(script, 1, 11)!;
+    const outer = getFunctionAtSourceLineColumn(script, 0, 9)!;
+
+    assert.equal(inner.name, 'inner');
+    assert.equal(inner.end, source.indexOf(' }\n') + 2);
+    assert.equal(outer.name, 'outer');
+    assert.equal(outer.end, source.indexOf('\nconst after'));
+    assert.equal(getFunctionAtScriptOffset(script, source.indexOf('inner')), outer);
+    assert.equal(getFunctionAtSourceLineColumn(script, 3, 6), null);
+    assert.equal(getFunctionAtSourceLineColumn(createScript(2, 'missing.js'), 0, 0), null);
+});
+
+test.each([
+    '',
+    'globalThis.value = 1;',
+    '() => 1',
+    'function first(){}function second(){ return 1; }',
+    'function outer(){ function inner(){} return 1; }',
+    'const outer = () => () => 1;',
+    'class Example { first(){} second(){ return 1; } }',
+    '/* first */ function first(){}\n/* second */ function second(){}',
+    '/* outer */ function outer() { /* inner */ function\ninner() {} }',
+    'const object = { [(() => "method")()]() { return 1; } };',
+    'const object = { [(() => ({ [(() => "nested")()]() {} }))()]() {} };',
+    'class Example { @(() => 1)() method() {} }',
+    'function outer(value = () => 1) { return value(); }'
+])('agrees with an exclusive source-range oracle for %s', source => {
+    const script = createScript(1, 'fixture.ts', source);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+        getFunctionAtScriptOffset(script, 0);
+    } finally {
+        warn.mockRestore();
+    }
+
+    assert.notEqual(script.functionRanges, null);
+
+    for (let offset = 0; offset <= source.length; offset++) {
+        const expected = script.functionRanges!.filter(range => range.start <= offset && offset < range.end)
+            .sort((left, right) => left.end - left.start - (right.end - right.start))[0] || null;
+        const preceding = source.slice(0, offset).split('\n');
+
+        assert.equal(getFunctionAtSourceLineColumn(script, preceding.length - 1, preceding.at(-1)!.length), expected, `offset ${offset}`);
+    }
+});
+
+test('limits source-range refinement to nearby index entries', () => {
+    const source = Array.from({ length: 1_000 }, (_, index) => `function fn${index}() {}`).join('\n');
+    const script = createScript(1, 'fixture.js', source);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+        getFunctionAtScriptOffset(script, 0);
+    } finally {
+        warn.mockRestore();
+    }
+
+    const target = script.functionRanges![500];
+    let startReads = 0;
+
+    for (const range of script.functionRanges!) {
+        const start = range.start;
+
+        Object.defineProperty(range, 'start', {
+            get() {
+                startReads++;
+                return start;
+            }
+        });
+    }
+
+    assert.equal(getFunctionAtSourceLineColumn(script, 500, 'function '.length), target);
+    assert.ok(startReads < 10, `read ${startReads} source starts`);
 });
 
 test('attributes declaration prefixes and leading comments to the outer runtime range', () => {
