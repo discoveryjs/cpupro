@@ -450,7 +450,7 @@ export class Dictionary {
         line: number = -1,
         column: number = -1,
         correctLineColumn = false
-    ) {
+    ): number {
         const resolvedScript = script || callFrame?.script || null;
         let locationIndex = -1;
 
@@ -493,7 +493,8 @@ export class Dictionary {
         } else if (callFrame) {
             locationIndex = this.#locationsByNoScriptCallFrame.get(callFrame) ?? -1;
         } else if (resolvedScript !== null) {
-            return this.resolveScriptCallFrameIndex(resolvedScript);
+            // a script without a position is located the same way as its call frame without a position
+            return this.resolveLocationIndex(this.callFrames[this.resolveScriptCallFrameIndex(resolvedScript)]);
         } else {
             return this.#unknownLocationIndex;
         }

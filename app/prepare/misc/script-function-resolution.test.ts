@@ -741,6 +741,26 @@ test.each([false, true])('resolves a declaration prefix to script and its runtim
     }
 });
 
+test('resolves a script location without a position to the script call frame location', () => {
+    const dictionary = new Dictionary();
+    const script = createScript(1, 'fixture.js', 'function a() {}\nfunction b() {}\n');
+
+    script.module = dictionary.resolveModule(script);
+    dictionary.scripts.push(script);
+
+    // offset locations go first so location and call frame indices diverge
+    for (let offset = 3; offset < 6; offset++) {
+        dictionary.resolveLocationIndex(null, script, offset);
+    }
+
+    const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+    const location = dictionary.locations[dictionary.resolveLocationIndex(null, script)];
+
+    assert.equal(location, dictionary.resolveLocation(scriptFrame));
+    assert.equal(location.callFrame, scriptFrame);
+    assert.equal(location.scriptOffset, -1);
+});
+
 test('keeps static initializer identity unresolved without changing class location lookup', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
