@@ -377,8 +377,14 @@ export function collectProfileUsedScriptIds(data: V8CpuProfile, compilations: re
     // isArray() is used here since it treats both Array and TypedArray as arrays,
     // which is useful for _cpuproAllocationScriptIds that can be either
     if (isArray(_cpuproAllocationScriptIds)) {
+        let prevScriptId: number | string | null = null;
+
+        // Allocation script ids form long runs, so the set is updated only on value changes
         for (let i = 0; i < _cpuproAllocationScriptIds.length; i++) {
-            usedScriptIds.add(_cpuproAllocationScriptIds[i]);
+            if (_cpuproAllocationScriptIds[i] !== prevScriptId) {
+                prevScriptId = _cpuproAllocationScriptIds[i];
+                usedScriptIds.add(prevScriptId);
+            }
         }
     }
 
