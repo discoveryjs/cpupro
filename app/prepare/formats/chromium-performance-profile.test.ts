@@ -543,9 +543,33 @@ test('ProfileChunk releases numeric source arrays without mutating metadata and 
     assert.deepEqual(allocationGc['005'], new Uint32Array([12]));
     assert.deepEqual(Object.keys(allocationGc), ['005']);
     assert.equal(allocationSamples.typesDict, typesDict);
-    assert.notEqual((first.profiles[0]._cpuproAllocationTypes as Uint32Array).buffer, (allocationSamples.types as unknown as Uint32Array).buffer);
     const second = extractFromChromiumPerformanceProfile(input, diagnose);
     assert.deepEqual(second, first);
+});
+
+test('ProfileChunk typed vectors supplied whole are adopted without copies', () => {
+    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+    const ids = new Int32Array([10, 12]);
+    const sizes = new Int32Array([8, 16]);
+    const scriptOffsets = new Int32Array([-1, 4]);
+    const empty = new Int32Array(0);
+    const input = [
+        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+        { ...base, name: 'ProfileChunk', args: { data: {
+            cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSampleIds: new Int32Array([12]),
+            allocationSamples: { ids, sizes, scriptOffsets }
+        } } },
+        { ...base, name: 'ProfileChunk', args: { data: {
+            allocationSamples: { ids: empty, sizes: empty, scriptOffsets: empty }
+        } } }
+    ];
+    const profile = extractFromChromiumPerformanceProfile(input).profiles[0];
+
+    assert.equal((profile._cpuproAllocationIds as Uint32Array).buffer, ids.buffer);
+    assert.equal((profile._cpuproAllocationSizes as Uint32Array).buffer, sizes.buffer);
+    assert.equal(profile._cpuproAllocationLocations, scriptOffsets);
+    assert.deepEqual(profile._cpuproAllocationSizes, new Uint32Array([8, 16]));
+    assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([12]));
 });
 
 test('reports extraction problems to the provided diagnose instead of the console', () => {

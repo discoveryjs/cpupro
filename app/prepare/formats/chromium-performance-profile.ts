@@ -109,7 +109,7 @@ type ChromiumTraceProfileChunkEventData = {
     endTime: number;
     isolate?: string;
     // Combined profile allocation data
-    allocationSampleIds?: TraceAllocationIdVector;
+    allocationSampleIds?: TraceAllocationIdVector | Int32Array;
     allocationSamples?: AllocationSamples;
     allocationGc?: AllocationGc;
 };
@@ -901,7 +901,7 @@ function prepareChunkVectors(chunk: ChromiumTraceProfileChunkEventData) {
         chunk.timeDeltas = decodeChunkVector(chunk.timeDeltas, Int32Array);
     }
 
-    if (isNumberVector(chunk.allocationSampleIds)) {
+    if (isNumberVector(chunk.allocationSampleIds) || chunk.allocationSampleIds instanceof Int32Array) {
         chunk.allocationSampleIds = decodeChunkVector(chunk.allocationSampleIds, Uint32Array);
     }
 
@@ -944,17 +944,28 @@ function prepareChunkVectors(chunk: ChromiumTraceProfileChunkEventData) {
     }
 }
 
-function decodeChunkVector<Vector extends Int32Array | Uint32Array | Float64Array>(
-    source: number[] | Vector | string,
-    VectorType: { new(values: number[] | Vector): Vector }
+function decodeChunkVector<Vector extends Int32Array | Uint32Array>(
+    source: number[] | Int32Array | Uint32Array | Float64Array | string,
+    VectorType: {
+        new(values: number[] | Int32Array | Uint32Array | Float64Array): Vector;
+        new(buffer: ArrayBufferLike, byteOffset: number, length: number): Vector;
+    }
 ): Vector {
     if (typeof source === 'string') {
         return new VectorType(JSON.parse(source));
     }
 
-    return source instanceof VectorType
-        ? source
-        : new VectorType(source);
+    if (source instanceof VectorType) {
+        return source;
+    }
+
+    // Converting Int32 values to Uint32 and back is a reinterpretation of their bits,
+    // so a typed 32-bit integer vector (e.g. decoded by jsonxl) is viewed instead of copied
+    if (source instanceof Int32Array || source instanceof Uint32Array) {
+        return new VectorType(source.buffer, source.byteOffset, source.length);
+    }
+
+    return new VectorType(source);
 }
 
 function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Array>(
@@ -965,6 +976,29 @@ function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Arr
 ): Vector | undefined {
     if (!chunks.length || chunks[0][key] === undefined) {
         return undefined;
+    }
+
+    // A vector supplied whole by a single chunk (e.g. by jsonxl) is adopted instead of copied
+    let wholeVector: AllocationSamples[typeof key] = undefined;
+    let nonEmptyChunks = 0;
+
+    for (const chunk of chunks) {
+        const values = chunk[key];
+
+        if (values === undefined) {
+            throw new TypeError(`Missing allocation vector ${key} in ProfileChunk`);
+        }
+
+        if (values.length > 0) {
+            wholeVector = values;
+            nonEmptyChunks++;
+        }
+    }
+
+    if (nonEmptyChunks === 1 &&
+        wholeVector instanceof VectorType &&
+        (totalLength === 0 || wholeVector.length === totalLength)) {
+        return wholeVector;
     }
 
     if (totalLength === 0) {
