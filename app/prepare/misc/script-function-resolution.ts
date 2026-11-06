@@ -289,7 +289,8 @@ export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, 
     const functionRanges = getScriptFunctionRanges(script);
 
     if (functionRanges) {
-        const func = findFunctionAtLineColumn(functionRanges, line + 1, column + 1);
+        // Function ranges have 1-based lines and 0-based columns, V8 positions are 0-based
+        const func = findFunctionAtLineColumn(functionRanges, line + 1, column);
         // const lines = script._lines ??= createLineBoundaries(script.source);
         // const pos = lines.getOffset(line + 1, column + 1);
         // // const alt = functionRanges.find(fr => fr.start <= pos && pos <= fr.end);
