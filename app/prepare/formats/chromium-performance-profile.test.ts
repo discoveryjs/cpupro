@@ -650,6 +650,49 @@ test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted alloc
     assert.deepEqual(traceContent(input), before);
 });
 
+test.each([
+    // multi-digit ids, since a JSON string indexed by characters may pass for one-digit ids
+    { order: 'consecutive', ids: [[11, 12], [13], [14, 15]] },
+    { order: 'ascending', ids: [[11, 12], [14], [16, 17]] }
+])('allocation vectors encoded as JSON strings, arrays or both give the same result across chunks: $order ids', ({ ids }) => {
+    // Traces encode allocation vectors as JSON.stringify(numbers) or as arrays of numbers
+    const chunkVectors = ids.map((chunkIds, index) => ({
+        allocationSamples: {
+            ids: chunkIds,
+            sizes: chunkIds.map(id => id * 8),
+            scriptIds: chunkIds.map(() => index),
+            scriptOffsets: chunkIds.map(id => id === 11 ? -1 : id),
+            contextInfo: chunkIds.map(id => id % 2),
+            types: chunkIds.map(() => 0xffffffff - index),
+            spaces: chunkIds.map(() => index),
+            codeTypes: chunkIds.map(() => 1),
+            gc: chunkIds.map(() => 0)
+        },
+        allocationGc: { [5 + index * 4]: [chunkIds[0]] }
+    }));
+    const encode = (encodeVector: (vector: number[], index: number) => number[] | string) =>
+        captureEvents(chunkVectors.map(({ allocationSamples, allocationGc }, index) => ({
+            allocationSamples: {
+                ...Object.fromEntries(Object.entries(allocationSamples).map(([key, vector]) => [key, encodeVector(vector, index)])),
+                typesDict: { [0xffffffff - index]: 'TYPE' + index }
+            },
+            allocationGc: Object.fromEntries(Object.entries(allocationGc).map(([key, vector]) => [key, encodeVector(vector, index)]))
+        })));
+    const extract = (events: ReturnType<typeof captureEvents>) => {
+        const { diagnose } = createDiagnosticsCollector();
+
+        return publishedAllocations(extractFromChromiumPerformanceProfile(events, diagnose).profiles[0]);
+    };
+    const fromArrays = extract(encode(vector => vector));
+
+    const gcById = new Map(ids.map((chunkIds, index) => [chunkIds[0], 5 + index * 4]));
+
+    assert.deepEqual(fromArrays._cpuproAllocationIds, new Uint32Array(ids.flat()));
+    assert.deepEqual(fromArrays._cpuproAllocationGc, new Uint32Array(ids.flat().map(id => gcById.get(id) ?? 0)));
+    assert.deepEqual(extract(encode(vector => JSON.stringify(vector))), fromArrays);
+    assert.deepEqual(extract(encode((vector, index) => index === 1 ? vector : JSON.stringify(vector))), fromArrays);
+});
+
 test('ProfileChunk releases numeric source arrays without mutating metadata and can be extracted again', () => {
     const typesDict = { 1: 'OBJECT' };
     const allocationSamples = { ids: '[10,12]', sizes: [8, 16], types: [1, 1], typesDict };

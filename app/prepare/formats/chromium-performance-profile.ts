@@ -98,7 +98,9 @@ type AllocationSamples = {
 type AllocationGc = {
     [key: string]: TraceAllocationIdVector | string;
 };
-// Allocation vectors after prepareChunkVectors() decoded them in place
+// Allocation vectors after prepareChunkVectors() decoded them in place. Traces encode allocation
+// vectors either as arrays of numbers or as JSON.stringify(numbers); both forms are decoded there,
+// once per chunk, so the vector builders below receive decoded vectors only
 type DecodedAllocationSamples = {
     [Key in keyof AllocationSamples]: Exclude<AllocationSamples[Key], string>;
 };
