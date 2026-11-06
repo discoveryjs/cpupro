@@ -1,12 +1,97 @@
 import assert from 'node:assert/strict';
-import { test, vi } from 'vitest';
+import { afterEach, test, vi } from 'vitest';
+import { createDiagnosticsCollector } from '../diagnostics.js';
 import { Dictionary } from '../dictionary.js';
 import { createScript, ProfileScriptsMap } from '../preprocessing/scripts.js';
-import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRanges } from './parse-script-source-ranges.js';
-import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, getFunctionAtSourceLineColumn, isScriptTopLevelOffset, matchCallFrameIdentity, prepareScriptSources } from './script-function-resolution.js';
+import { parseScriptSourceRanges, type FunctionRange } from './parse-script-source-ranges.js';
+import {
+    findFunctionAtLineColumn,
+    findFunctionAtPosition,
+    getFunctionAtScriptOffset,
+    getFunctionAtSourceLineColumn,
+    getFunctionEndFromScriptLineColumn,
+    getScriptLineColumnFromOffset,
+    getScriptOffsetFromLineColumn,
+    isScriptTopLevelOffset,
+    matchCallFrameIdentity,
+    prepareScriptSources,
+    terminateParseWorkerPool
+} from './script-function-resolution.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
-import { ParseSourceWorkerScriptResult } from '../workers/types.js';
+import type { CpuProLocation, CpuProScript } from '../types.js';
+import { createScriptFixture } from '../../../test/fixtures/scripts.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
+
+const parseWorkers = vi.hoisted(() => {
+    // the pool size is fixed on import from the hardware concurrency: 4 workers of 8 threads
+    vi.stubGlobal('navigator', { hardwareConcurrency: 8 });
+
+    return [] as ParseWorker[];
+});
+
+vi.mock('../workers/index.js', () => ({
+    createParseWorker() {
+        const worker = new ParseWorker();
+
+        parseWorkers.push(worker);
+
+        return worker;
+    }
+}));
+
+// Runs the parsing worker module in this thread. As a browser worker, it answers asynchronously,
+// delivers a structured clone and ignores messages after termination.
+class ParseWorker extends EventTarget {
+    // URLs of each request; the order of scripts within a request is not a contract
+    requests: string[][] = [];
+    terminated = false;
+    #onmessage = evaluateModule(new URL('../workers/parse-source-worker.js', import.meta.url), {
+        parseScriptSourceRanges,
+        computeScriptSourceMetrics,
+        postMessage: (message: unknown, transfer: ArrayBuffer[]) => {
+            this.dispatchEvent(new MessageEvent('message', { data: structuredClone(message, { transfer }) }));
+        }
+    }, 'onmessage');
+
+    postMessage(payload: { url: string; source: string }[]) {
+        if (this.terminated) {
+            return;
+        }
+
+        this.requests.push(payload.map(script => script.url).sort());
+        Promise.resolve().then(() => this.#onmessage({ data: structuredClone(payload) }));
+    }
+
+    terminate() {
+        this.terminated = true;
+    }
+}
+
+afterEach(() => {
+    terminateParseWorkerPool(true);
+    parseWorkers.length = 0;
+    vi.useRealTimers();
+});
+
+// A script of the given source length without functions
+function scriptOfLength(id: number, url: string, length: number) {
+    return createScript(id, url, '//'.padEnd(length, 'x'));
+}
+
+// Shortest range with the accepted position, measured from its runtime or source start
+function shortestRange(ranges: FunctionRange[], from: 'callFrameStart' | 'start', accept: (range: FunctionRange) => boolean) {
+    let shortest: FunctionRange | null = null;
+
+    for (const range of ranges) {
+        if (accept(range)) {
+            if (shortest === null || range.end - range[from] < shortest.end - shortest[from]) {
+                shortest = range;
+            }
+        }
+    }
+
+    return shortest;
+}
 
 test('indexes a function whose source range starts at zero', () => {
     const source = '() => 1';
@@ -20,96 +105,42 @@ test('indexes a function whose source range starts at zero', () => {
     assert.equal(findFunctionAtPosition(ranges, source.length + 1), null);
 });
 
-test('exclusive runtime sizes subtract nested ranges once and retain declaration prefixes in their parent', () => {
-    const source = '/* script */ function outer() { function inner() { return () => 1; } return 2; }';
-    const result = parseScriptSourceRanges(source, 'fixture.js', true);
-    const sourceMetrics = computeScriptSourceMetrics(source, result.ranges);
+test('prefers a function starting at a shared boundary to the preceding function end', () => {
+    const source = 'class First{}class Second{ method() {} }';
+    const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
+    const [first, second] = ranges.ranges;
 
-    const outer = result.ranges.find(range => range.name === 'outer')!;
-    const inner = result.ranges.find(range => range.name === 'inner')!;
-    const arrow = result.ranges.find(range => range.type === 'ArrowFunctionExpression')!;
-
-    assert.equal(outer.selfSize, outer.end - outer.callFrameStart - (inner.end - inner.callFrameStart));
-    assert.equal(inner.selfSize, inner.end - inner.callFrameStart - (arrow.end - arrow.callFrameStart));
-    assert.equal(arrow.selfSize, arrow.end - arrow.callFrameStart);
-    assert.equal(sourceMetrics!.selfSize, outer.callFrameStart);
-    assert.equal(sourceMetrics!.selfSize! + result.ranges.reduce((sum, range) => sum + range.selfSize, 0), source.length);
+    assert.equal(first.end, second.callFrameStart);
+    assert.equal(findFunctionAtPosition(ranges, second.callFrameStart), second);
+    assert.equal(findFunctionAtLineColumn(ranges, second.callFrameStartLine, second.callFrameStartColumn), second);
 });
 
 test.each([
-    '',
-    'globalThis.value = 1;',
-    'function first(){}function second(){}',
+    '() => 1',
+    'function first(){}function second(){ return 1; }',
+    'function outer(){ function inner(){} return 1; }',
     'const outer = () => () => 1;',
-    'class Example { constructor() {} method() { return () => 1; } }',
+    'const outer = () => () => 1; function after() {}',
+    'class Example { first(){} second(){ return 1; } }',
+    '/* first */ function first(){}\n/* second */ function second(){}',
+    '/* outer */ function outer() { /* inner */ function inner() {} }',
+    'function outer() { /* inner */ function\ninner() {} }',
     'const object = { [(() => "method")()]() { return 1; } };',
     'function outer(value = () => 1) { return value(); }'
-])('exclusive source sizes partition the script: %s', source => {
-    const result = parseScriptSourceRanges(source, 'fixture.js', true);
-    const sourceMetrics = computeScriptSourceMetrics(source, result.ranges);
-    const expected = new Array(result.ranges.length).fill(0);
-    let scriptSize = 0;
+])('agrees with an inclusive runtime-range oracle for %s', source => {
+    const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
 
-    for (let offset = 0; offset < source.length; offset++) {
-        const owner = result.ranges.filter(range => range.callFrameStart <= offset && offset < range.end)
-            .sort((left, right) => left.end - left.callFrameStart - (right.end - right.callFrameStart))[0];
+    for (let offset = 0; offset <= source.length + 1; offset++) {
+        // a function starting at the offset takes precedence over one ending there
+        const expected = shortestRange(ranges.ranges, 'callFrameStart', range => range.callFrameStart === offset) ??
+            shortestRange(ranges.ranges, 'callFrameStart', range => range.callFrameStart <= offset && offset <= range.end);
+        const preceding = source.slice(0, offset).split('\n');
+        const line = preceding.length;
+        const column = preceding[line - 1].length + Math.max(0, offset - source.length);
 
-        if (owner) {
-            expected[result.ranges.indexOf(owner)]++;
-        } else {
-            scriptSize++;
-        }
+        assert.equal(findFunctionAtPosition(ranges, offset), expected, `offset ${offset}`);
+        assert.equal(findFunctionAtLineColumn(ranges, line, column), expected, `line/column at ${offset}`);
     }
-
-    assert.deepEqual(result.ranges.map(range => range.selfSize), expected);
-    assert.equal(sourceMetrics!.selfSize, scriptSize);
-    assert.equal(scriptSize + expected.reduce((sum, size) => sum + size, 0), source.length);
-});
-
-test.each([
-    { source: '', bytesPerChar: 1 },
-    { source: 'const text = "caf\u00e9";', bytesPerChar: 1 },
-    { source: 'const text = "\u0100";', bytesPerChar: 2 },
-    { source: 'const text = "\ud83d\ude00";', bytesPerChar: 2 },
-    { source: 'const text = "\\u0100";', bytesPerChar: 1 }
-])('source storage estimate uses Latin-1 or UTF-16 code units: $source', ({ source, bytesPerChar }) => {
-    const sourceMetrics = computeScriptSourceMetrics(source);
-
-    assert.equal(sourceMetrics!.bytesPerChar, bytesPerChar);
-    assert.equal(sourceMetrics!.byteLength, source.length * bytesPerChar);
-});
-
-test('invalid source retains byte-size metadata without publishing exclusive sizes', () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    try {
-        const source = 'function broken(\u0100';
-        const result = parseScriptSourceRanges(source, 'fixture.js', true);
-        const sourceMetrics = computeScriptSourceMetrics(source);
-
-        assert.equal(result.parsed, false);
-        assert.deepEqual(sourceMetrics, { bytesPerChar: 2, byteLength: source.length * 2, nonLatin1CodeUnits: 1, surrogatePairs: 0, selfSize: null });
-    } finally {
-        error.mockRestore();
-    }
-});
-
-test.each([
-    { text: '', nonLatin1CodeUnits: 0, surrogatePairs: 0 },
-    { text: 'ASCII\u00e9\u00ff', nonLatin1CodeUnits: 0, surrogatePairs: 0 },
-    { text: '\u0100\u044f\ufeff', nonLatin1CodeUnits: 3, surrogatePairs: 0 },
-    { text: 'a\ud83d\ude00\ud834\udd1e\u044f', nonLatin1CodeUnits: 5, surrogatePairs: 2 },
-    { text: '\ud800x\udfff\ud800\ud800\udc00', nonLatin1CodeUnits: 5, surrogatePairs: 1 },
-    { text: '\\u0100\\ud83d\\ude00', nonLatin1CodeUnits: 0, surrogatePairs: 0 }
-])('counts source code units and surrogate pairs without decoding escapes: $text', ({ text, nonLatin1CodeUnits, surrogatePairs }) => {
-    const source = `/*${text}*/`;
-    const result = structuredClone(parseScriptSourceRanges(source, 'fixture.js', true));
-    const sourceMetrics = computeScriptSourceMetrics(source, result.ranges);
-
-    assert.equal(sourceMetrics!.nonLatin1CodeUnits, nonLatin1CodeUnits);
-    assert.equal(sourceMetrics!.surrogatePairs, surrogatePairs);
-    assert.equal(source.length - surrogatePairs, Array.from(source).length);
-    assert.equal(sourceMetrics!.byteLength, source.length * (nonLatin1CodeUnits ? 2 : 1));
 });
 
 test('script metadata distinguishes unavailable, empty, invalid and parsed source', () => {
@@ -141,86 +172,140 @@ test('script metadata distinguishes unavailable, empty, invalid and parsed sourc
     }
 });
 
-test.each([false, true])('empty source publishes zero metrics with cached ranges=%s', async cached => {
-    const script = createScript(1, 'empty.js', '');
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+test('prepares scripts with source in one worker request, without parsing unavailable, empty or prepared scripts', async () => {
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+    const prepared = createScript(1, 'prepared.js', 'function prepared() {}');
 
-    try {
-        if (cached) {
-            getFunctionAtScriptOffset(script, 0);
-        }
+    await prepareScriptSources([prepared]);
 
-        await prepareScriptSources([script]);
+    const preparedRanges = prepared.functionRanges;
+    const unavailable = createScript(2, 'unavailable.js');
+    const empty = createScript(3, 'empty.js', '');
+    const invalid = createScript(4, 'invalid.js', 'function broken(\u0100');
+    const valid = createScript(5, 'valid.js', 'const run = () => 1;');
 
+    await prepareScriptSources([unavailable, prepared, empty, invalid, valid], diagnose);
+
+    assert.equal(parseWorkers.length, 1);
+    assert.deepEqual(parseWorkers[0].requests, [['prepared.js'], ['invalid.js', 'valid.js']]);
+    assert.equal(prepared.functionRanges, preparedRanges);
+    assert.equal(unavailable.functionRanges, null);
+    assert.equal(unavailable.sourceMetrics, null);
+    assert.deepEqual(empty.functionRanges, []);
+    assert.deepEqual(empty.sourceMetrics, { bytesPerChar: 1, byteLength: 0, nonLatin1CodeUnits: 0, surrogatePairs: 0, selfSize: 0 });
+    assert.equal(invalid.functionRanges, null);
+    assert.deepEqual(invalid.sourceMetrics, { bytesPerChar: 2, byteLength: 34, nonLatin1CodeUnits: 1, surrogatePairs: 0, selfSize: null });
+    assert.deepEqual(valid.functionRanges, parseScriptSourceRanges(valid.source!, valid.url, true).ranges);
+    assert.deepEqual(valid.sourceMetrics, { bytesPerChar: 1, byteLength: 20, nonLatin1CodeUnits: 0, surrogatePairs: 0, selfSize: 13 });
+    assert.deepEqual(diagnostics.map(({ level, message, details }) => [level, message, details?.scriptId, details?.url]), [
+        ['error', 'Failed to parse script for function ranges', 4, 'invalid.js']
+    ]);
+});
+
+test('waits for a script parsed by another call instead of parsing it again', async () => {
+    const shared = createScript(1, 'shared.js', 'function shared() {}');
+    const other = createScript(2, 'other.js', 'function other() {}');
+
+    const first = prepareScriptSources([shared]);
+    await prepareScriptSources([shared, other]);
+
+    assert.equal(shared.functionRanges!.length, 1);
+    assert.equal(other.functionRanges!.length, 1);
+    assert.deepEqual(parseWorkers.map(worker => worker.requests), [[['shared.js']], [['other.js']]]);
+
+    await first;
+});
+
+test('runs at most one worker per two hardware threads and queues further requests', async () => {
+    const scripts = [1, 2, 3, 4, 5].map(id => createScript(id, `${id}.js`, `function f${id}() {}`));
+    const requests: Promise<void>[] = [];
+
+    for (const script of scripts) {
+        requests.push(prepareScriptSources([script]));
+    }
+
+    await Promise.all(requests);
+
+    // the fifth request waits for a released worker
+    assert.equal(parseWorkers.length, 4);
+    assert.deepEqual(parseWorkers.flatMap(worker => worker.requests).flat().sort(), ['1.js', '2.js', '3.js', '4.js', '5.js']);
+
+    for (const script of scripts) {
+        assert.equal(script.functionRanges!.length, 1);
+    }
+});
+
+test('balances a small payload over idle workers, largest scripts first', async () => {
+    await Promise.all([
+        prepareScriptSources([scriptOfLength(1, 'warm-1.js', 10)]),
+        prepareScriptSources([scriptOfLength(2, 'warm-2.js', 10)]),
+        prepareScriptSources([scriptOfLength(3, 'warm-3.js', 10)])
+    ]);
+
+    const scripts = [scriptOfLength(4, '10.js', 10), scriptOfLength(5, '40.js', 40), scriptOfLength(6, '20.js', 20), scriptOfLength(7, '30.js', 30)];
+
+    await prepareScriptSources(scripts);
+
+    // greedy: 40, 30 and 20 take a worker each, then 10 joins the least loaded one
+    const partition = parseWorkers.map(worker => worker.requests[1].join(' ')).sort();
+
+    assert.deepEqual(partition, ['10.js 20.js', '30.js', '40.js']);
+
+    for (const script of scripts) {
         assert.deepEqual(script.functionRanges, []);
-        assert.deepEqual(script.sourceMetrics, {
-            bytesPerChar: 1,
-            byteLength: 0,
-            nonLatin1CodeUnits: 0,
-            surrogatePairs: 0,
-            selfSize: 0
-        });
-    } finally {
-        warn.mockRestore();
     }
 });
 
-test.each(['\n', '\r', '\r\n', '\u2028', '\u2029'])('restores V8 call frame coordinates across %j', newline => {
-    const source = `function${newline}known() { return 1; }`;
-    const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
-    const range = ranges.ranges[0];
+test('terminates an idle worker after 10 seconds and starts a new one for a later request', async () => {
+    vi.useFakeTimers();
 
-    assert.equal(range.callFrameStart, source.indexOf('('));
-    assert.equal(range.callFrameStartLine, 2);
-    assert.equal(range.callFrameStartColumn, 5);
+    await prepareScriptSources([createScript(1, 'first.js', 'function first() {}')]);
+    vi.advanceTimersByTime(9_999);
+
+    assert.equal(parseWorkers[0].terminated, false);
+
+    vi.advanceTimersByTime(1);
+
+    assert.equal(parseWorkers[0].terminated, true);
+
+    const later = createScript(2, 'later.js', 'function later() {}');
+    const preparing = prepareScriptSources([later]);
+
+    assert.equal(parseWorkers.length, 2);
+
+    await preparing;
+
+    assert.deepEqual(parseWorkers[1].requests, [['later.js']]);
+    assert.equal(later.functionRanges!.length, 1);
 });
 
-test('prefers a function starting at a shared boundary to the preceding function end', () => {
-    const source = 'class First{}class Second{ method() {} }';
-    const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
-    const [first, second] = ranges.ranges;
+test('terminating the pool stops idle workers at once and busy workers after their request', async () => {
+    await Promise.all([
+        prepareScriptSources([createScript(1, 'first.js', 'function first() {}')]),
+        prepareScriptSources([createScript(2, 'second.js', 'function second() {}')])
+    ]);
 
-    assert.equal(first.end, second.callFrameStart);
-    assert.equal(findFunctionAtPosition(ranges, second.callFrameStart), second);
-    assert.equal(findFunctionAtLineColumn(ranges, second.callFrameStartLine, second.callFrameStartColumn), second);
+    const busy = createScript(3, 'busy.js', 'function busy() {}');
+    const preparing = prepareScriptSources([busy]);
+
+    terminateParseWorkerPool();
+
+    assert.deepEqual(parseWorkers.map(worker => worker.terminated), [false, true]);
+
+    await preparing;
+    // a released worker of a terminated pool stops on a zero idle timeout
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    assert.equal(busy.functionRanges!.length, 1);
+    assert.deepEqual(parseWorkers.map(worker => worker.terminated), [true, true]);
 });
 
-test.each([
-    '() => 1',
-    'function first(){}function second(){ return 1; }',
-    'function outer(){ function inner(){} return 1; }',
-    'const outer = () => () => 1;',
-    'class Example { first(){} second(){ return 1; } }',
-    '/* first */ function first(){}\n/* second */ function second(){}',
-    'function outer() { /* inner */ function\ninner() {} }',
-    'const object = { [(() => "method")()]() { return 1; } };',
-    'function outer(value = () => 1) { return value(); }'
-])('agrees with an inclusive runtime-range oracle for %s', source => {
-    const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
-
-    for (let offset = 0; offset <= source.length + 1; offset++) {
-        const candidates = ranges.ranges.filter(range => range.callFrameStart <= offset && offset <= range.end);
-        const starting = candidates.filter(range => range.callFrameStart === offset);
-        const expected = (starting.length ? starting : candidates)
-            .sort((left, right) => left.end - left.callFrameStart - (right.end - right.callFrameStart))[0] || null;
-        const preceding = source.slice(0, offset).split('\n');
-        const line = preceding.length;
-        const column = preceding[line - 1].length + Math.max(0, offset - source.length);
-
-        assert.equal(findFunctionAtPosition(ranges, offset), expected, `offset ${offset}`);
-        assert.equal(findFunctionAtLineColumn(ranges, line, column), expected, `line/column at ${offset}`);
-    }
-});
-
-test('source-map names resolve declaration ranges without changing runtime prefix attribution', () => {
+test('source-map names resolve declaration ranges without changing runtime prefix attribution', async () => {
     const source = 'function outer() {\n  function inner(value: number) { return value; }\n}\nconst after = 1;';
     const script = createScript(1, 'original.ts', source);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-        getFunctionAtScriptOffset(script, 0);
-    } finally {
-        warn.mockRestore();
-    }
+
+    await prepareScriptSources([script]);
+
     const inner = getFunctionAtSourceLineColumn(script, 1, 11)!;
     const outer = getFunctionAtSourceLineColumn(script, 0, 9)!;
 
@@ -247,37 +332,26 @@ test.each([
     'const object = { [(() => ({ [(() => "nested")()]() {} }))()]() {} };',
     'class Example { @(() => 1)() method() {} }',
     'function outer(value = () => 1) { return value(); }'
-])('agrees with an exclusive source-range oracle for %s', source => {
+])('agrees with an exclusive source-range oracle for %s', async source => {
     const script = createScript(1, 'fixture.ts', source);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    try {
-        getFunctionAtScriptOffset(script, 0);
-    } finally {
-        warn.mockRestore();
-    }
+    await prepareScriptSources([script]);
 
     assert.notEqual(script.functionRanges, null);
 
     for (let offset = 0; offset <= source.length; offset++) {
-        const expected = script.functionRanges!.filter(range => range.start <= offset && offset < range.end)
-            .sort((left, right) => left.end - left.start - (right.end - right.start))[0] || null;
+        const expected = shortestRange(script.functionRanges!, 'start', range => range.start <= offset && offset < range.end);
         const preceding = source.slice(0, offset).split('\n');
 
         assert.equal(getFunctionAtSourceLineColumn(script, preceding.length - 1, preceding.at(-1)!.length), expected, `offset ${offset}`);
     }
 });
 
-test('limits source-range refinement to nearby index entries', () => {
+test('limits source-range refinement to nearby index entries', async () => {
     const source = Array.from({ length: 1_000 }, (_, index) => `function fn${index}() {}`).join('\n');
     const script = createScript(1, 'fixture.js', source);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    try {
-        getFunctionAtScriptOffset(script, 0);
-    } finally {
-        warn.mockRestore();
-    }
+    await prepareScriptSources([script]);
 
     const target = script.functionRanges![500];
     let startReads = 0;
@@ -297,201 +371,50 @@ test('limits source-range refinement to nearby index entries', () => {
     assert.ok(startReads < 10, `read ${startReads} source starts`);
 });
 
-test('attributes declaration prefixes and leading comments to the outer runtime range', () => {
-    const source = '/* outer */ function outer() { /* inner */ function inner() {} }';
-    const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
-    const outer = ranges.ranges.find(range => range.name === 'outer')!;
-    const inner = ranges.ranges.find(range => range.name === 'inner')!;
+test.each([
+    { offset: 0, position: { line: 0, column: 0 } },
+    { offset: 8, position: { line: 1, column: 2 } },
+    { offset: 12, position: { line: 1, column: 6 } },
+    { offset: -1, position: null }
+])('converts offset $offset of a script to a zero-based line and column', ({ offset, position }) => {
+    const script = createScript(1, 'fixture.js', 'first\nsecond');
 
-    assert.equal(outer.start, 0);
-    assert.equal(inner.start, source.indexOf('/* inner */'));
-    assert.equal(findFunctionAtPosition(ranges, 0), null);
-    assert.equal(findFunctionAtPosition(ranges, outer.callFrameStart - 1), null);
-    assert.equal(findFunctionAtPosition(ranges, outer.callFrameStart), outer);
-    assert.equal(findFunctionAtPosition(ranges, inner.start), outer);
-    assert.equal(findFunctionAtPosition(ranges, inner.callFrameStart - 1), outer);
-    assert.equal(findFunctionAtPosition(ranges, inner.callFrameStart), inner);
+    assert.deepEqual(getScriptLineColumnFromOffset(script, offset), position);
+});
+
+test('a script without source has no line and column positions', () => {
+    const unavailable = createScript(1, 'missing.js');
+
+    assert.equal(getScriptLineColumnFromOffset(null, 0), null);
+    assert.equal(getScriptLineColumnFromOffset(unavailable, 0), null);
+    assert.equal(getScriptOffsetFromLineColumn(null, 0, 0), -1);
+    assert.equal(getScriptOffsetFromLineColumn(unavailable, 0, 0), -1);
+    assert.equal(getScriptOffsetFromLineColumn(createScript(2, 'fixture.js', 'first\nsecond'), 1, 2), 8);
 });
 
 test.each([
-    { suffix: '', reverse: false },
-    { suffix: '', reverse: true },
-    { suffix: '\nfunction known() { return 3; }', reverse: false },
-    { suffix: '\nfunction known() { return 3; }', reverse: true }
-])('uses one script frame for top-level locations with $suffix, reverse=$reverse', ({ suffix, reverse }) => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    { position: 'the call frame of first', line: 0, column: 14, end: 19 },
+    { position: 'the class Second', line: 1, column: 0, end: 48 },
+    { position: 'the call frame of method', line: 1, column: 21, end: 46 },
+    { position: 'the declaration prefix of first', line: 0, column: 0, end: -1 }
+])('finds the end of a function by the V8 position of $position', async ({ line, column, end }) => {
+    const script = createScript(1, 'fixture.js', 'function first() {}\nclass Second { method() {} }');
 
-    try {
-        const source = 'globalThis.first = 1;\nglobalThis.second = 2;' + suffix;
-        const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, [{
-            id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
-        }]);
-        const script = scripts.get(1)!;
-        const offsets = [source.indexOf('1'), source.indexOf('2')];
-        const positions = offsets.map(offset => {
-            const line = source.slice(0, offset).split('\n');
-            return { offset, line: line.length - 1, column: line[line.length - 1].length };
-        });
-        const locations = (reverse ? positions.slice().reverse() : positions).map(position => {
-            const location = dictionary.resolveLocation(null, script, position.offset);
+    await prepareScriptSources([script]);
 
-            assert.equal(location.callFrame.kind, 'script');
-            assert.equal(location.scriptOffset, position.offset);
-            assert.equal(location.line, position.line);
-            assert.equal(location.column, position.column);
-            assert.equal(dictionary.resolveLocation(null, script, -1, position.line, position.column), location);
-
-            return location;
-        });
-        const frame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
-
-        assert.equal(locations[0].callFrame, frame);
-        assert.equal(locations[1].callFrame, frame);
-        assert.equal(dictionary.resolveLocationCallFrame(script, 0, 0, 0), frame);
-        assert.deepEqual([frame.name, frame.start, frame.end, frame.line, frame.column], ['(script)', 0, source.length, 0, 0]);
-        assert.equal(frame.location.scriptOffset, 0);
-        assert.equal(frame.location.line, 0);
-        assert.equal(frame.location.column, 0);
-        assert.equal(script.callFrames.length, 1);
-
-        if (suffix) {
-            const inside = dictionary.resolveLocation(null, script, source.indexOf('return 3'));
-            assert.equal(inside.callFrame.name, 'known');
-            assert.notEqual(inside.callFrame, frame);
-        }
-    } finally {
-        warn.mockRestore();
-    }
+    assert.equal(getFunctionEndFromScriptLineColumn(script, line, column), end);
 });
 
-test('distinguishes an empty function list from failed parsing across structured clone', () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    try {
-        for (const source of ['', 'globalThis.value = 1;']) {
-            const ranges = structuredClone(parseScriptSourceRanges(source, 'fixture.js', true));
-            assert.equal(ranges.parsed, true);
-            assert.equal(ranges.error, undefined);
-            assert.deepEqual(ranges.ranges, []);
-        }
-
-        const failed = structuredClone(parseScriptSourceRanges('function broken(', 'fixture.js', true));
-        assert.equal(failed.parsed, false);
-        assert.equal(typeof failed.error, 'string');
-        assert.deepEqual(failed.ranges, []);
-        // the parser reports nothing itself; a caller reports the error carried by the result
-        assert.equal(error.mock.calls.length, 0);
-    } finally {
-        error.mockRestore();
-    }
+test('a function end is unknown without a parsed source', () => {
+    assert.equal(getFunctionEndFromScriptLineColumn(null, 0, 0), -1);
+    assert.equal(getFunctionEndFromScriptLineColumn(createScript(1, 'missing.js'), 0, 0), -1);
 });
 
-test('restores all function range types in place after worker transfer', () => {
-    const source = `
-        function declared() {}
-        const expression = function() {};
-        const arrow = () => 1;
-        class Example { method() {} #private() {} }
-        const Anonymous = class {};
-        const object = { method() {} };
-        declare function external(): void;
-        enum Choice { First }
-    `;
-    const expected = parseScriptSourceRanges(source, 'fixture.ts', true);
-    assert.equal(new Set(expected.ranges.map(range => range.type)).size, 10);
-    const types = [...new Set(expected.ranges.map(range => range.type))].reverse();
-    const typeIndexes = new Map(types.map((type, index) => [type, index]));
-    const input: FunctionRanges<number> = {
-        ...parseScriptSourceRanges(source, 'fixture.ts', true),
-        ranges: expected.ranges.map(range => ({ ...range, type: typeIndexes.get(range.type)! }))
-    };
-    const buffers = [(input.starts as unknown as Uint32Array).buffer, (input.indexes as unknown as Int32Array).buffer];
-    const message = structuredClone({ ranges: input, types }, { transfer: buffers });
-    const received = message.ranges;
-    const rangeObjects = received.ranges.slice();
-    const starts = received.starts;
-    const indexes = received.indexes;
-
-    assert.ok(received.ranges.every(range => Number.isInteger(range.type) && range.type >= 0));
-    assert.ok(buffers.every(buffer => buffer.byteLength === 0));
-
-    const decoded = decodeFunctionRangeTypes(received, message.types);
-
-    assert.equal(decoded, received);
-    assert.equal(decoded.ranges, received.ranges);
-    decoded.ranges.forEach((range, index) => assert.equal(range, rangeObjects[index]));
-    assert.equal(decoded.starts, starts);
-    assert.equal(decoded.indexes, indexes);
-    assert.deepEqual(decoded, expected);
-    for (let offset = 0; offset <= source.length; offset++) {
-        assert.deepEqual(findFunctionAtPosition(decoded, offset), findFunctionAtPosition(expected, offset));
-    }
-});
-
-test('the parsing worker transfers source metrics with type-encoded function ranges', async () => {
-    const sources = ['function outer() { return () => "\u0100"; }', '', 'const text = "caf\u00e9";', 'function broken(\u0100'];
-    const messages: { scripts: ParseSourceWorkerScriptResult[]; types: string[] }[] = [];
-    const handler = evaluateModule(new URL('../workers/parse-source-worker.js', import.meta.url), {
-        parseScriptSourceRanges,
-        computeScriptSourceMetrics,
-        postMessage(message: typeof messages[number], transfer: ArrayBuffer[]) {
-            messages.push(structuredClone(message, { transfer }));
-        }
-    }, 'onmessage');
-
-    await handler({ data: sources.map((source, id) => ({ id, source, url: 'fixture.js' })) });
-    assert.equal(messages.length, 1);
-
-    for (let index = 0; index < sources.length; index++) {
-        const { ranges, sourceMetrics } = messages[0].scripts[index];
-        const result = decodeFunctionRangeTypes(ranges, messages[0].types);
-        assert.deepEqual(result, parseScriptSourceRanges(sources[index], 'fixture.js', true));
-        assert.equal(sourceMetrics.byteLength, sources[index].length * sourceMetrics.bytesPerChar);
-
-        if (result.parsed) {
-            assert.equal(sourceMetrics.selfSize! + result.ranges.reduce((sum, range) => sum + range.selfSize, 0), sources[index].length);
-        } else {
-            assert.equal(sourceMetrics.selfSize, null);
-        }
-    }
-});
-
-test.each([true, false])('restores type encoding for an empty result, parsed: %s', parsed => {
-    const starts = new Uint32Array([]);
-    const indexes = new Int32Array([]);
-    const input: FunctionRanges<number> = { parsed, ranges: [], starts, indexes };
-    assert.equal(decodeFunctionRangeTypes(input, []), input);
-    assert.deepEqual(input, { parsed, ranges: [], starts, indexes });
-});
-
-test('decodes multiple scripts against a shared message dictionary without reusing codes across messages', () => {
-    const expected = [
-        parseScriptSourceRanges('() => 1', 'first.js', true),
-        parseScriptSourceRanges('() => 2', 'second.js', true),
-        parseScriptSourceRanges('function third() {}', 'third.js', true)
-    ];
-    const firstMessage = structuredClone({
-        types: ['ArrowFunctionExpression'],
-        scripts: expected.slice(0, 2).map(entry => ({
-            ...entry,
-            ranges: entry.ranges.map(range => ({ ...range, type: 0 }))
-        }))
-    });
-    const secondMessage = structuredClone({
-        types: ['FunctionDeclaration'],
-        scripts: [{ ...expected[2], ranges: expected[2].ranges.map(range => ({ ...range, type: 0 })) }]
-    });
-
-    const first = firstMessage.scripts.map(entry => decodeFunctionRangeTypes(entry, firstMessage.types));
-    const second = decodeFunctionRangeTypes(secondMessage.scripts[0], secondMessage.types);
-
-    assert.deepEqual([...first, second], expected);
-    assert.deepEqual(firstMessage.types, ['ArrowFunctionExpression']);
-    assert.deepEqual(secondMessage.types, ['FunctionDeclaration']);
-});
-
-test.each([null, '', 'function broken('])('keeps the existing fallback when source is %j', source => {
+test.each([
+    { source: null, errors: 0 },
+    { source: '', errors: 0 },
+    { source: 'function broken(', errors: 1 }
+])('keeps the existing fallback when source is $source', ({ source, errors }) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -500,62 +423,135 @@ test.each([null, '', 'function broken('])('keeps the existing fallback when sour
         const dictionary = new Dictionary();
 
         assert.equal(isScriptTopLevelOffset(script, 5), false);
+
         const frame = dictionary.resolveLocationCallFrame(script, 5, 0, 5);
 
         assert.equal(frame.kind, 'function');
         assert.equal(frame.column, 5);
         assert.equal(dictionary.resolveLocationCallFrame(script, 5, 0, 5), frame);
-        assert.equal(error.mock.calls.length, source ? 1 : 0);
+        // a failed parse is reported once for all lookups
+        assert.equal(error.mock.calls.length, errors);
     } finally {
         error.mockRestore();
         warn.mockRestore();
     }
 });
 
-test('does not classify class bodies or function boundaries as top-level', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+test('classifies only offsets outside of function runtime ranges as top-level', async () => {
+    const source = 'globalThis.value = 1; class Example { field = 2; static other = 3; method() { return 4; } } function known() { return 5; } globalThis.done = 6;';
+    const { dictionary, script } = createScriptFixture(source);
 
-    try {
-        const source = 'globalThis.value = 1; class Example { field = 2; static other = 3; method() { return 4; } } function known() { return 5; }';
-        const script = createScript(1, 'fixture.js', source);
-        const dictionary = new Dictionary();
-        const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
+    await prepareScriptSources([script]);
 
-        for (const text of ['class Example', 'field = 2', 'static other', 'return 4', 'return 5']) {
-            const offset = source.indexOf(text);
-            assert.equal(isScriptTopLevelOffset(script, offset), false);
-            assert.notEqual(dictionary.resolveLocationCallFrame(script, offset, 0, offset).kind, 'script');
-        }
-        for (const range of ranges.ranges) {
-            assert.equal(isScriptTopLevelOffset(script, range.callFrameStart), false);
-            assert.equal(isScriptTopLevelOffset(script, range.end), false);
-        }
-        for (const offset of [-1, 0.5, NaN, Infinity, source.length + 1]) {
-            assert.equal(isScriptTopLevelOffset(script, offset), false);
-        }
-        assert.equal(isScriptTopLevelOffset(script, source.indexOf('1')), true);
-    } finally {
-        warn.mockRestore();
+    for (const text of ['class Example', 'field = 2', 'static other', 'return 4', 'return 5']) {
+        const offset = source.indexOf(text);
+
+        assert.equal(isScriptTopLevelOffset(script, offset), false, text);
+        assert.notEqual(dictionary.resolveLocationCallFrame(script, offset, 0, offset).kind, 'script', text);
+    }
+
+    for (const range of script.functionRanges!) {
+        assert.equal(isScriptTopLevelOffset(script, range.callFrameStart), false);
+        assert.equal(isScriptTopLevelOffset(script, range.end), false);
+    }
+
+    for (const offset of [-1, 0.5, NaN, Infinity, source.length + 1]) {
+        assert.equal(isScriptTopLevelOffset(script, offset), false, String(offset));
+    }
+
+    for (const offset of [0, source.indexOf('1'), source.indexOf('done'), source.length]) {
+        assert.equal(isScriptTopLevelOffset(script, offset), true, String(offset));
     }
 });
 
-test('preserves a known frame before considering a parsed top-level fallback', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+test.each([
+    { suffix: '', order: [0, 1] },
+    { suffix: '', order: [1, 0] },
+    { suffix: '\nfunction known() { return 3; }', order: [0, 1] },
+    { suffix: '\nfunction known() { return 3; }', order: [1, 0] }
+])('uses one script frame for top-level locations with $suffix, resolved in order $order', async ({ suffix, order }) => {
+    const source = 'globalThis.first = 1;\nglobalThis.second = 2;' + suffix;
+    const dictionary = new Dictionary();
+    const scripts = new ProfileScriptsMap(dictionary, [{
+        id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
+    }]);
+    const script = scripts.get(1)!;
+    // positions of 1 and 2
+    const positions = [
+        { offset: 19, line: 0, column: 19 },
+        { offset: 42, line: 1, column: 20 }
+    ];
+    const locations: CpuProLocation[] = [];
 
-    try {
-        const source = 'globalThis.value = 1;';
-        const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source }]);
-        const script = scripts.get(1)!;
-        const known = dictionary.resolveCallFrame({
-            scriptId: 1, url: 'fixture.js', functionName: 'provided', lineNumber: 0, columnNumber: 5, start: 5, end: source.length
-        }, scripts);
+    await prepareScriptSources([script]);
 
-        assert.equal(dictionary.resolveLocation(null, script, source.indexOf('1')).callFrame, known);
-        assert.equal(script.callFrames.length, 1);
-    } finally {
-        warn.mockRestore();
+    for (const index of order) {
+        const { offset, line, column } = positions[index];
+        const location = dictionary.resolveLocation(null, script, offset);
+
+        assert.equal(location.callFrame.kind, 'script');
+        assert.equal(location.scriptOffset, offset);
+        assert.equal(location.line, line);
+        assert.equal(location.column, column);
+        assert.equal(dictionary.resolveLocation(null, script, -1, line, column), location);
+        locations[index] = location;
     }
+
+    const frame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+
+    assert.equal(locations[0].callFrame, frame);
+    assert.equal(locations[1].callFrame, frame);
+    assert.equal(dictionary.resolveLocationCallFrame(script, 0, 0, 0), frame);
+    assert.deepEqual([frame.name, frame.start, frame.end, frame.line, frame.column], ['(script)', 0, source.length, 0, 0]);
+    assert.equal(frame.location.scriptOffset, 0);
+    assert.equal(frame.location.line, 0);
+    assert.equal(frame.location.column, 0);
+    assert.equal(script.callFrames.length, 1);
+});
+
+test('preserves a known frame before considering a parsed top-level fallback', async () => {
+    const source = 'globalThis.value = 1;';
+    const { dictionary, scripts, script } = createScriptFixture(source);
+
+    await prepareScriptSources([script]);
+
+    const known = dictionary.resolveCallFrame({
+        scriptId: 7, url: 'fixture.js', functionName: 'provided', lineNumber: 0, columnNumber: 5, start: 5, end: source.length
+    }, scripts);
+
+    assert.equal(dictionary.resolveLocation(null, script, source.indexOf('1')).callFrame, known);
+    assert.equal(script.callFrames.length, 1);
+});
+
+test.each([false, true])('resolves a declaration prefix to script and its runtime start to the function, script first: %s', async scriptFirst => {
+    const source = 'function first() { return 1; }';
+    const dictionary = new Dictionary();
+    const script = createScript(1, 'fixture.js', source);
+
+    script.lineOffset = 4;
+    script.columnOffset = 50;
+    await prepareScriptSources([script]);
+
+    if (scriptFirst) {
+        dictionary.resolveScriptCallFrameIndex(script);
+    }
+
+    const start = source.indexOf('(');
+    const first = dictionary.resolveLocationCallFrame(script, start, 0, start);
+    const atOrigin = dictionary.resolveLocationCallFrame(script, 0, 0, 0);
+    const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+    const count = dictionary.callFrames.length;
+    const identity = Object.freeze({ script, start: 0, end: source.length, line: 0, column: 0 });
+
+    assert.equal(first.name, 'first');
+    assert.notEqual(first, scriptFrame);
+    assert.equal(atOrigin, scriptFrame);
+    assert.equal(matchCallFrameIdentity(atOrigin, identity), 'exact');
+    assert.equal(dictionary.resolveLocationCallFrame(script, start - 1, 0, start - 1), scriptFrame);
+    assert.equal(dictionary.resolveLocationCallFrame(script, start, 0, start), first);
+    assert.equal(dictionary.resolveLocation(null, script, 0).callFrame, scriptFrame);
+    assert.equal(dictionary.resolveLocation(null, script, start).callFrame, first);
+    assert.equal(dictionary.callFrames.length, count);
 });
 
 test.each([
@@ -566,36 +562,29 @@ test.each([
     'class Base {}class Derived extends Base {}',
     'class Base { field = 1; static other = 2; }',
     'class Base { static constructor() {} }'
-])('qualifies a default constructor without changing the class source range: %s', source => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+])('qualifies a default constructor without changing the class source range: %s', async source => {
+    const dictionary = new Dictionary();
+    const script = createScript(1, 'fixture.js', source);
 
-    try {
-        const dictionary = new Dictionary();
-        const script = createScript(1, 'fixture.js', source);
-        const start = source.lastIndexOf('class ');
-        const preceding = source.slice(0, start).split('\n');
-        const line = preceding.length - 1;
-        const column = preceding[line].length;
-        const frame = dictionary.resolveLocationCallFrame(script, start, line, column);
-        const identity = Object.freeze({ script, start, end: start, line, column });
-        const before = [frame.start, frame.end, frame.line, frame.column, frame.location, dictionary.callFrames.length];
+    await prepareScriptSources([script]);
 
-        assert.equal(matchCallFrameIdentity(frame, identity), 'default-constructor');
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, end: frame.end }), 'exact');
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, end: start + 1 }), null);
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, column: column + 1 }), null);
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, line: line + 1 }), null);
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, script: createScript(1, 'fixture.js', source) }), null);
-        assert.deepEqual([frame.start, frame.end, frame.line, frame.column, frame.location, dictionary.callFrames.length], before);
-        assert.ok(frame.end > start);
-        assert.equal(identity.end, start);
+    const start = source.lastIndexOf('class ');
+    const preceding = source.slice(0, start).split('\n');
+    const line = preceding.length - 1;
+    const column = preceding[line].length;
+    const frame = dictionary.resolveLocationCallFrame(script, start, line, column);
+    const identity = Object.freeze({ script, start, end: start, line, column });
+    const before = [frame.start, frame.end, frame.line, frame.column, frame.location, dictionary.callFrames.length];
 
-        const ranges = structuredClone(parseScriptSourceRanges(source, 'fixture.js', true));
-        const range = ranges.ranges.find(range => range.callFrameStart === start)!;
-        assert.equal(range.defaultConstructor, true);
-    } finally {
-        warn.mockRestore();
-    }
+    assert.equal(matchCallFrameIdentity(frame, identity), 'default-constructor');
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, end: frame.end }), 'exact');
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, end: start + 1 }), null);
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, column: column + 1 }), null);
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, line: line + 1 }), null);
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, script: createScript(1, 'fixture.js', source) }), null);
+    assert.deepEqual([frame.start, frame.end, frame.line, frame.column, frame.location, dictionary.callFrames.length], before);
+    assert.ok(frame.end > start);
+    assert.equal(identity.end, start);
 });
 
 test.each([
@@ -603,183 +592,132 @@ test.each([
     'class Explicit { "constructor"() {} }',
     'function ordinary() {}',
     'const arrow = () => 1;'
-])('does not treat an arbitrary zero-length identity as a default constructor: %s', source => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-        const script = createScript(1, 'fixture.js', source);
-        const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
-        const dictionary = new Dictionary();
-
-        for (const range of ranges.ranges) {
-            assert.equal(range.defaultConstructor, false);
-            const start = range.callFrameStart;
-            const line = range.callFrameStartLine - 1;
-            const column = range.callFrameStartColumn;
-            const frame = dictionary.resolveLocationCallFrame(script, start, line, column);
-
-            assert.equal(matchCallFrameIdentity(frame, { script, start, end: start, line, column }), null);
-        }
-    } finally {
-        warn.mockRestore();
-    }
-});
-
-test.each([null, '', 'class Broken {'])('requires parsed class evidence for a different end when source is %j', source => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    try {
-        const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source: source! }]);
-        const script = scripts.get(1)!;
-        const frame = dictionary.resolveCallFrame({
-            scriptId: 1,
-            url: script.url,
-            functionName: 'Provided',
-            lineNumber: 0,
-            columnNumber: 0,
-            start: 0,
-            end: 20
-        }, scripts);
-        const identity = { script, start: 0, end: 0, line: 0, column: 0 };
-
-        assert.equal(matchCallFrameIdentity(frame, identity), null);
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, end: 20 }), 'exact');
-        assert.equal(frame.end, 20);
-        assert.equal(script.callFrames.length, 1);
-        assert.equal(error.mock.calls.length, source ? 1 : 0);
-    } finally {
-        error.mockRestore();
-        warn.mockRestore();
-    }
-});
-
-test('rejects a script frame and a truncated class frame at the constructor position', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-        const source = 'class Base {}';
-        const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source }]);
-        const script = scripts.get(1)!;
-        const identity = { script, start: 0, end: 0, line: 0, column: 0 };
-        const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
-        const truncated = dictionary.resolveCallFrame({
-            scriptId: 1, url: script.url, functionName: 'Base', lineNumber: 0, columnNumber: 0, start: 0, end: source.length - 1
-        }, scripts);
-
-        assert.equal(matchCallFrameIdentity(scriptFrame, identity), null);
-        assert.equal(matchCallFrameIdentity(truncated, identity), null);
-        assert.equal(truncated.end, source.length - 1);
-    } finally {
-        warn.mockRestore();
-    }
-});
-
-test('compares local identity coordinates and rejects unknown or malformed positions', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-        const source = 'class Base {}';
-        const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, [{
-            id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
-        }]);
-        const script = scripts.get(1)!;
-        const frame = dictionary.callFrames[dictionary.resolveCallFrameIndex({
-            scriptId: 1, url: script.url, functionName: 'Base', lineNumber: 6, columnNumber: 225, start: 0, end: source.length
-        }, scripts, true)];
-        const identity = { script, start: 0, end: 0, line: 0, column: 0 };
-
-        assert.equal(matchCallFrameIdentity(frame, identity), 'default-constructor');
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, line: 6, column: 225 }), null);
-
-        for (const key of ['start', 'end', 'line', 'column'] as const) {
-            for (const value of [-1, 0.5, NaN, Infinity]) {
-                assert.equal(matchCallFrameIdentity(frame, { ...identity, [key]: value }), null);
-            }
-        }
-        assert.equal(matchCallFrameIdentity(frame, { ...identity, script: null }), null);
-    } finally {
-        warn.mockRestore();
-    }
-});
-
-test.each([false, true])('resolves a declaration prefix to script and its runtime start to the function, script first: %s', scriptFirst => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-        const source = 'function first() { return 1; }';
-        const dictionary = new Dictionary();
-        const script = createScript(1, 'fixture.js', source);
-        script.lineOffset = 4;
-        script.columnOffset = 50;
-
-        if (scriptFirst) {
-            dictionary.resolveScriptCallFrameIndex(script);
-        }
-
-        const start = source.indexOf('(');
-        const first = dictionary.resolveLocationCallFrame(script, start, 0, start);
-        const atOrigin = dictionary.resolveLocationCallFrame(script, 0, 0, 0);
-        const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
-        const count = dictionary.callFrames.length;
-        const identity = Object.freeze({ script, start: 0, end: source.length, line: 0, column: 0 });
-
-        assert.equal(first.name, 'first');
-        assert.notEqual(first, scriptFrame);
-        assert.equal(atOrigin, scriptFrame);
-        assert.equal(matchCallFrameIdentity(atOrigin, identity), 'exact');
-        assert.equal(dictionary.resolveLocationCallFrame(script, start - 1, 0, start - 1), scriptFrame);
-        assert.equal(dictionary.resolveLocationCallFrame(script, start, 0, start), first);
-        assert.equal(dictionary.resolveLocation(null, script, 0).callFrame, scriptFrame);
-        assert.equal(dictionary.resolveLocation(null, script, start).callFrame, first);
-        assert.equal(dictionary.callFrames.length, count);
-    } finally {
-        warn.mockRestore();
-    }
-});
-
-test('resolves a script location without a position to the script call frame location', () => {
+])('does not treat an arbitrary zero-length identity as a default constructor: %s', async source => {
+    const script = createScript(1, 'fixture.js', source);
     const dictionary = new Dictionary();
-    const script = createScript(1, 'fixture.js', 'function a() {}\nfunction b() {}\n');
 
-    script.module = dictionary.resolveModule(script);
-    dictionary.scripts.push(script);
+    await prepareScriptSources([script]);
 
-    // offset locations go first so location and call frame indices diverge
-    for (let offset = 3; offset < 6; offset++) {
-        dictionary.resolveLocationIndex(null, script, offset);
+    for (const range of script.functionRanges!) {
+        const start = range.callFrameStart;
+        const line = range.callFrameStartLine - 1;
+        const column = range.callFrameStartColumn;
+        const frame = dictionary.resolveLocationCallFrame(script, start, line, column);
+
+        assert.equal(matchCallFrameIdentity(frame, { script, start, end: start, line, column }), null);
     }
-
-    const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
-    const location = dictionary.locations[dictionary.resolveLocationIndex(null, script)];
-
-    assert.equal(location, dictionary.resolveLocation(scriptFrame));
-    assert.equal(location.callFrame, scriptFrame);
-    assert.equal(location.scriptOffset, -1);
 });
 
-test('keeps static initializer identity unresolved without changing class location lookup', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+test.each([
+    { source: null, diagnostics: [] },
+    { source: '', diagnostics: [] },
+    { source: 'class Broken {', diagnostics: ['Failed to parse script for function ranges'] }
+])('requires parsed class evidence for a different end when source is $source', async ({ source, diagnostics }) => {
+    const collector = createDiagnosticsCollector();
+    const dictionary = new Dictionary();
+    const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source: source! }]);
+    const script = scripts.get(1)!;
 
-    try {
-        const source = 'class Example { static field; static method() {} static last; }';
-        const dictionary = new Dictionary();
-        const script = createScript(1, 'fixture.js', source);
-        const start = source.indexOf('static field');
-        const end = source.indexOf('; }');
-        const identity = { script, start, end, line: 0, column: start };
-        const locationFrame = dictionary.resolveLocationCallFrame(script, start, 0, start);
-        const count = dictionary.callFrames.length;
+    await prepareScriptSources([script], collector.diagnose);
 
-        assert.equal(locationFrame.name, 'Example');
-        assert.equal(matchCallFrameIdentity(locationFrame, identity), null);
-        assert.equal(dictionary.resolveLocationCallFrame(script, start, 0, start), locationFrame);
-        assert.equal(dictionary.callFrames.length, count);
-        assert.deepEqual([locationFrame.start, locationFrame.end], [0, source.length]);
-    } finally {
-        warn.mockRestore();
+    const frame = dictionary.resolveCallFrame({
+        scriptId: 1,
+        url: script.url,
+        functionName: 'Provided',
+        lineNumber: 0,
+        columnNumber: 0,
+        start: 0,
+        end: 20
+    }, scripts);
+    const identity = { script, start: 0, end: 0, line: 0, column: 0 };
+
+    assert.equal(matchCallFrameIdentity(frame, identity), null);
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, end: 20 }), 'exact');
+    assert.equal(frame.end, 20);
+    assert.equal(script.callFrames.length, 1);
+    assert.deepEqual(collector.diagnostics.map(diagnostic => diagnostic.message), diagnostics);
+});
+
+test('rejects a script frame and a truncated class frame at the constructor position', async () => {
+    const source = 'class Base {}';
+    const { dictionary, scripts, script } = createScriptFixture(source);
+
+    await prepareScriptSources([script]);
+
+    const identity = { script, start: 0, end: 0, line: 0, column: 0 };
+    const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+    const truncated = dictionary.resolveCallFrame({
+        scriptId: 7, url: script.url, functionName: 'Base', lineNumber: 0, columnNumber: 0, start: 0, end: source.length - 1
+    }, scripts);
+
+    assert.equal(matchCallFrameIdentity(scriptFrame, identity), null);
+    assert.equal(matchCallFrameIdentity(truncated, identity), null);
+    assert.equal(truncated.end, source.length - 1);
+});
+
+test('compares local identity coordinates and rejects unknown or malformed positions', async () => {
+    const source = 'class Base {}';
+    const dictionary = new Dictionary();
+    const scripts = new ProfileScriptsMap(dictionary, [{
+        id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
+    }]);
+    const script = scripts.get(1)!;
+
+    await prepareScriptSources([script]);
+
+    const frame = dictionary.callFrames[dictionary.resolveCallFrameIndex({
+        scriptId: 1, url: script.url, functionName: 'Base', lineNumber: 6, columnNumber: 225, start: 0, end: source.length
+    }, scripts, true)];
+    const identity = { script, start: 0, end: 0, line: 0, column: 0 };
+
+    assert.equal(matchCallFrameIdentity(frame, identity), 'default-constructor');
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, line: 6, column: 225 }), null);
+
+    for (const key of ['start', 'end', 'line', 'column'] as const) {
+        for (const value of [-1, 0.5, NaN, Infinity]) {
+            assert.equal(matchCallFrameIdentity(frame, { ...identity, [key]: value }), null, `${key}: ${value}`);
+        }
     }
+
+    assert.equal(matchCallFrameIdentity(frame, { ...identity, script: null }), null);
+});
+
+test.each([
+    { name: 'all equal', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 0, column: 5 }, match: 'exact' },
+    { name: 'another start', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 6, end: 10, line: 0, column: 5 }, match: null },
+    { name: 'another line', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 1, column: 5 }, match: null },
+    { name: 'another column', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 0, column: 6 }, match: null },
+    { name: 'unknown start', frame: { lineNumber: 0, columnNumber: 5, start: -1, end: -1 }, identity: { start: -1, end: -1, line: 0, column: 5 }, match: null },
+    { name: 'unknown end', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: -1 }, identity: { start: 5, end: -1, line: 0, column: 5 }, match: null },
+    { name: 'unknown line', frame: { lineNumber: -1, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: -1, column: 5 }, match: null },
+    { name: 'unknown column', frame: { lineNumber: 0, columnNumber: -1, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 0, column: -1 }, match: null }
+])('an exact identity needs every coordinate known and equal: $name', ({ frame: position, identity, match }) => {
+    const dictionary = new Dictionary();
+    const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'missing.js', source: null! }]);
+    const script: CpuProScript = scripts.get(1)!;
+    const frame = dictionary.resolveCallFrame({ scriptId: 1, url: script.url, functionName: 'known', ...position }, scripts);
+
+    // the frame keeps the coordinates as given, unknown ones included
+    assert.deepEqual([frame.start, frame.end, frame.line, frame.column], [position.start, position.end, position.lineNumber, position.columnNumber]);
+    assert.equal(matchCallFrameIdentity(frame, { script, ...identity }), match);
+});
+
+test('keeps static initializer identity unresolved without changing class location lookup', async () => {
+    const source = 'class Example { static field; static method() {} static last; }';
+    const dictionary = new Dictionary();
+    const script = createScript(1, 'fixture.js', source);
+
+    await prepareScriptSources([script]);
+
+    const start = source.indexOf('static field');
+    const end = source.indexOf('; }');
+    const identity = { script, start, end, line: 0, column: start };
+    const locationFrame = dictionary.resolveLocationCallFrame(script, start, 0, start);
+    const count = dictionary.callFrames.length;
+
+    assert.equal(locationFrame.name, 'Example');
+    assert.equal(matchCallFrameIdentity(locationFrame, identity), null);
+    assert.equal(dictionary.resolveLocationCallFrame(script, start, 0, start), locationFrame);
+    assert.equal(dictionary.callFrames.length, count);
+    assert.deepEqual([locationFrame.start, locationFrame.end], [0, source.length]);
 });

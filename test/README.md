@@ -50,7 +50,7 @@ CPUPRO_TEST_FULL_DICTIONARY=1 npm test
 
 ## Browser boundaries
 
-The default environment is Node, without jsdom. For profile preparation tests, the root Discovery import is replaced by the small `utils.isArray` adapter in `test/setup/`. Other Discovery imports are not replaced. The parsing-worker entry is replaced by a guard that throws if a fixture tries to start a browser worker. Current profile fixtures use explicit locations and empty source text; parsing and browser-worker execution are not covered by these tests.
+The default environment is Node, without jsdom. For profile preparation tests, the root Discovery import is replaced by the small `utils.isArray` adapter in `test/setup/`. Other Discovery imports are not replaced. The parsing-worker entry is replaced by a guard that throws if a fixture tries to start a browser worker. Current profile fixtures use explicit locations and empty source text. `script-function-resolution.test.ts` replaces the worker entry with an in-thread worker that evaluates the real `parse-source-worker.js`, and stubs the hardware concurrency before import because the pool size is fixed on import; browser-worker execution itself is not covered.
 
 `ruler.test.js` uses the minimal adapter in `test/helpers/ruler.js` to check pointer transitions, preview/commit/cancel, external updates, tooltip context and cleanup. It does not replace real layout or pointer-capture checks. Playwright MCP remains useful for those browser checks.
 
