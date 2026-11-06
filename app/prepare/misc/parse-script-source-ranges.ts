@@ -61,19 +61,15 @@ export function decodeFunctionRangeTypes(ranges: FunctionRanges<number>, types: 
     return decoded as FunctionRanges;
 }
 
-function computeSelfSize(functionRanges: FunctionRanges, code: string): void {
+function computeSelfSize(functionRanges: FunctionRanges): void {
     const { starts, indexes, ranges } = functionRanges;
-    const scriptSize = code.length;
 
-    for (let i = 0; i < starts.length; i++) {
+    // The index ends with the end of the last top-level range, so its last entry always belongs to the script
+    for (let i = 0; i < starts.length - 1; i++) {
         const rangeIndex = indexes[i];
 
         if (rangeIndex !== -1) {
-            const size = i < starts.length - 1
-                ? starts[i + 1] - starts[i]
-                : scriptSize - starts[i];
-
-            ranges[rangeIndex].selfSize += size;
+            ranges[rangeIndex].selfSize += starts[i + 1] - starts[i];
         }
     }
 }
@@ -117,7 +113,7 @@ export function parseScriptSourceRanges(
     // build index for faster search
     if (functionRanges.ranges.length > 0) {
         Object.assign(functionRanges, buildFunctionRangesIndex(functionRanges));
-        computeSelfSize(functionRanges, code);
+        computeSelfSize(functionRanges);
     }
 
     functionRanges.parsed = true;
