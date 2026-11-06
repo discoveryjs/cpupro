@@ -1,13 +1,140 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { extractFromChromiumPerformanceProfile } from './chromium-performance-profile.js';
+import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './chromium-performance-profile.js';
 import { isCPUProfile } from './cpuprofile.js';
 import { createDiagnosticsCollector, type Diagnose } from '../diagnostics.js';
 import { collectProfileUsedScriptIds } from '../preprocessing/scripts.js';
 import { Dictionary } from '../dictionary.js';
 import { createProfileSession } from '../profile-session.mjs';
 import { createProfile } from '../profile.mjs';
+import type { V8CpuProfile } from '../types.js';
 import type { UniformProfilingSession } from './types.js';
+
+const capture = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+
+// A single CPU capture: its Profile declaration followed by ProfileChunk payloads in trace order
+function captureEvents(chunks: object[]) {
+    return [
+        { ...capture, name: 'Profile', args: { data: { startTime: 0 } } },
+        ...chunks.map(data => ({ ...capture, name: 'ProfileChunk', args: { data } }))
+    ];
+}
+
+function publishedAllocations(profile: V8CpuProfile) {
+    return Object.fromEntries(Object.entries(profile).filter(([key, value]) =>
+        key.startsWith('_cpuproAllocation') && value !== undefined
+    ));
+}
+
+function diagnosticEntries(diagnostics: ReturnType<typeof createDiagnosticsCollector>['diagnostics']) {
+    return diagnostics.map(({ message, details }) => [message, details]);
+}
+
+test.each([
+    { input: 'an empty event array', data: [], expected: true },
+    { input: 'an event array', data: [{ pid: 1, tid: 2, ph: 'X', cat: 'v8' }], expected: true },
+    { input: 'JSON object format', data: { traceEvents: [{ pid: 1, tid: 2, ph: 'X', cat: 'v8' }] }, expected: true },
+    { input: 'JSON object format without events', data: { traceEvents: [] }, expected: true },
+    { input: 'JSON object format of other entries', data: { traceEvents: [{ nodes: [] }] }, expected: false },
+    { input: 'an event without pid', data: [{ tid: 2, ph: 'X', cat: 'v8' }], expected: false },
+    { input: 'an event without tid', data: [{ pid: 1, ph: 'X', cat: 'v8' }], expected: false },
+    { input: 'an event without ph', data: [{ pid: 1, tid: 2, cat: 'v8' }], expected: false },
+    { input: 'an event without cat', data: [{ pid: 1, tid: 2, ph: 'X' }], expected: false },
+    { input: 'an array of CPU profiles', data: [{ nodes: [], samples: [], timeDeltas: [] }], expected: false },
+    { input: 'a CPU profile', data: { nodes: [], samples: [], timeDeltas: [] }, expected: false },
+    { input: 'null', data: null, expected: false },
+    { input: 'a string', data: 'traceEvents', expected: false }
+])('detects Chromium trace events in $input: $expected', ({ data, expected }) => {
+    assert.equal(isChromiumPerformanceProfile(data), expected);
+});
+
+test.each([
+    {
+        input: 'without metadata',
+        metadata: undefined,
+        expected: { startTime: null, source: null, dataOrigin: null, ownership: null }
+    },
+    {
+        input: 'with metadata',
+        metadata: {
+            startTime: '2026-11-06T10:00:00.000Z',
+            source: 'DevTools',
+            dataOrigin: 'TraceEvents',
+            ownership: { api: 'ownership', areas: ['app'], files: { 'app.js': [0] } }
+        },
+        expected: {
+            startTime: '2026-11-06T10:00:00.000Z',
+            source: 'DevTools',
+            dataOrigin: 'TraceEvents',
+            ownership: { api: 'ownership', areas: ['app'], files: { 'app.js': [0] } }
+        }
+    }
+])('JSON object format publishes session metadata: $input', ({ metadata, expected }) => {
+    const session = extractFromChromiumPerformanceProfile({ traceEvents: captureEvents([]), metadata });
+
+    assert.deepEqual({
+        startTime: session.startTime,
+        source: session.source,
+        dataOrigin: session.dataOrigin,
+        ownership: session.ownership
+    }, expected);
+    assert.equal(session.profiles.length, 1);
+});
+
+test('records only complete, paired, sampled and compile events in thread events', () => {
+    const counters = { jsHeapSizeUsed: 100 };
+    const event = { pid: 1, tid: 2, cat: 'toplevel', args: {} };
+    const timeline = 'disabled-by-default-devtools.timeline';
+    const compile = 'disabled-by-default-v8.compile';
+    const userTiming = { ...event, cat: 'blink.user_timing' };
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+    const session = extractFromChromiumPerformanceProfile([
+        { ...event, name: 'Task', ph: 'X', ts: 1, dur: 5, id: 'task' },
+        { ...event, name: 'Instant', ph: 'I', ts: 2 },
+        { ...event, name: 'Async', ph: 'b', ts: 3, id: 7 },
+        { ...event, name: 'CompileInstant', cat: compile, ph: 'I', ts: 4 },
+        { ...event, name: 'UpdateCounters', cat: timeline, ph: 'I', ts: 5, args: { data: counters } },
+        { ...event, name: 'Paint', cat: timeline, ph: 'I', ts: 6, args: { data: {} } },
+        { ...event, name: 'Flow', cat: compile, ph: 's', ts: 7, id: 9 },
+        { ...event, name: 'Async', ph: 'e', ts: 8, id: 7 },
+        { ...event, name: 'Flow', cat: compile, ph: 'f', ts: 9, id: 9 },
+        { ...event, name: 'FunctionCall', ph: 'I', ts: 10, args: { data: { sampleTraceId: 42 } } },
+        { ...userTiming, name: 'Measure', ph: 'b', ts: 11, id: 'm', args: { traceId: 3 } },
+        { ...userTiming, name: 'Mark', ph: 'R', ts: 12, args: { traceId: 4 } },
+        { ...userTiming, name: 'Measure', ph: 'e', ts: 15, id: 'm', args: { traceId: 3 } }
+    ], diagnose);
+    const thread = session.threads[0];
+
+    assert.deepEqual(thread.events.map(({ name, tm, duration, eventId, sampleTraceId }) => [name, tm, duration, eventId, sampleTraceId]), [
+        ['Task', 1, 5, null, null],
+        ['Async', 3, 5, 'Async:7', null],
+        ['CompileInstant', 4, 0, null, null],
+        ['UpdateCounters', 5, 0, null, null],
+        ['FunctionCall', 10, 0, null, 42]
+    ]);
+    assert.equal(thread.events[3].data, counters);
+    assert.deepEqual(thread.userTimings.map(({ name, tm, duration, eventId, sampleTraceId }) => [name, tm, duration, eventId, sampleTraceId]), [
+        ['Measure', 11, 4, 'Measure:m', 3]
+    ]);
+    assert.deepEqual(diagnostics, []);
+});
+
+test('threads are ordered by process and thread id regardless of first appearance', () => {
+    const metadata = { ts: 0, ph: 'M', cat: '__metadata' };
+    const session = extractFromChromiumPerformanceProfile([
+        { ...metadata, name: 'thread_name', pid: 2, tid: 1, args: { name: 'worker' } },
+        { ...metadata, name: 'thread_name', pid: 1, tid: 3, args: { name: 'second' } },
+        { ...metadata, name: 'thread_name', pid: 1, tid: 2, args: { name: 'main' } },
+        { ...metadata, name: 'process_name', pid: 1, tid: 2, args: { name: 'Renderer' } }
+    ]);
+
+    assert.deepEqual(session.threads.map(({ pid, tid, name }) => [pid, tid, name]), [
+        [1, 2, 'main'],
+        [1, 3, 'second'],
+        [2, 1, 'worker']
+    ]);
+    assert.deepEqual(session.processes, [{ pid: 1, name: 'Renderer' }]);
+});
 
 test('accepts event-only and empty traces without requiring a CPU capture', () => {
     const session = extractFromChromiumPerformanceProfile([{
@@ -88,6 +215,7 @@ test('compilation facts belong to source threads independently of captures', () 
         second,
         { ...base, name: 'Unrelated', cat: 'other', ts: 105, dur: 3, args: {} },
         first,
+        { ...base, name: 'SimilarCategory', ts: 115, dur: 2, cat: `v8,${category}.extra`, args: {} },
         { ...base, name: 'Unknown', ts: 120, dur: 7, cat: `v8,${category}`, args: { data: { scriptId: -1, start: -1 } } },
         { ...base, name: 'NotThisSource', ts: 130, cat: 'disabled-by-default-v8.compile', dur: 8, args: {} }
     ]);
@@ -103,7 +231,7 @@ test('compilation facts belong to source threads independently of captures', () 
         scriptId: 7, start: 20, end: 30, line: null, column: null, functionName: null,
         allocationStart: 10, allocationEnd: 10, eventIndex: 0, event: null, callFrame: null
     });
-    assert.deepEqual(records.map(record => record.eventIndex), [0, 2, 3]);
+    assert.deepEqual(records.map(record => record.eventIndex), [0, 2, 4]);
     assert.equal(thread.events[records[0].eventIndex!].data, first.args);
     assert.equal(thread.events[records[1].eventIndex!].data, second.args);
     assert.equal(records[2].scriptId, -1);
@@ -113,20 +241,30 @@ test('compilation facts belong to source threads independently of captures', () 
     assert.equal('compilations' in session.threads.find(thread => thread.tid === 3)!, false);
 });
 
-test('compilation extraction waits for source event pairing without inventing missing duration', () => {
+test('compilation timing keeps zero values and leaves unpaired bounds unknown', () => {
     const base = { pid: 1, tid: 2, ts: 100, cat: 'disabled-by-default-v8.compilation_allocations', ph: 'b' };
     const args = { data: { isolate: 'test', scriptId: 7, start: 14 } };
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
     const session = extractFromChromiumPerformanceProfile([
         { ...base, name: 'Profile', ph: 'P', id: 'cpu', args: { data: { startTime: 100 } } },
+        { ...base, name: 'Instant', ph: 'I', ts: 0, args },
         { ...base, name: 'Compile', id: 1, args },
         { ...base, name: 'Compile', id: 1, ts: 125, ph: 'e', args },
-        { ...base, name: 'Unfinished', id: 2, ts: 130, args }
-    ]);
-    const records = session.threads[0].compilations!;
+        { ...base, name: 'Unfinished', id: 2, ts: 130, args },
+        { ...base, name: 'Orphan', id: 3, ts: 140, ph: 'e', args }
+    ], diagnose);
+    const thread = session.threads[0];
+    const records = thread.compilations!;
 
-    assert.deepEqual(records.map(record => record.duration), [25, null]);
-    assert.equal(records[0].eventIndex, 0);
-    assert.equal(session.threads[0].events[records[1].eventIndex!].duration, -1);
+    assert.deepEqual(records.map(({ name, tm, duration, eventIndex }) => [name, tm, duration, eventIndex]), [
+        ['Instant', 0, 0, 0],
+        ['Compile', 100, 25, 1],
+        ['Unfinished', 130, null, 2],
+        ['Orphan', null, 140, 3]
+    ]);
+    assert.deepEqual([thread.events[2].tm, thread.events[2].duration], [130, -1]);
+    assert.deepEqual([thread.events[3].tm, thread.events[3].duration], [-1, 140]);
+    assert.deepEqual(diagnostics.map(({ message }) => message), ['Could not find start event for end event']);
 });
 
 test('CPU sample bounds do not discard compilation with captured allocation ids', () => {
@@ -188,25 +326,22 @@ test('isolate routes CPU and allocation chunks regardless of producer pid and co
 
 test('an undeclared isolate does not fall back to a producer profile id', () => {
     const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: 'profile' };
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+    const session = extractFromChromiumPerformanceProfile([
+        { ...base, name: 'Profile', args: { data: { startTime: 100, isolate: 'known' } } },
+        { ...base, name: 'ProfileChunk', ts: 1, args: { data: {
+            isolate: 'unknown', cpuProfile: { samples: [99] }, timeDeltas: [10]
+        } } }
+    ], diagnose);
 
-    try {
-        const session = extractFromChromiumPerformanceProfile([
-            { ...base, name: 'Profile', args: { data: { startTime: 100, isolate: 'known' } } },
-            { ...base, name: 'ProfileChunk', ts: 1, args: { data: {
-                isolate: 'unknown', cpuProfile: { samples: [99] }, timeDeltas: [10]
-            } } }
-        ]);
-
-        assert.deepEqual(session.profiles[0].samples, new Uint32Array());
-        assert.equal(warning.mock.calls.length, 1);
-    } finally {
-        warning.mockRestore();
-    }
+    assert.deepEqual(session.profiles[0].samples, new Uint32Array());
+    assert.deepEqual(diagnosticEntries(diagnostics), [
+        ['Ignoring ProfileChunk for undeclared Profile', { pid: 1, id: 'profile' }]
+    ]);
 });
 
 test('unknown capture isolate stays unknown', () => {
-    const session = extractScriptCatchups([]);
+    const session = extractFromChromiumPerformanceProfile(captureEvents([]));
 
     assert.deepEqual(session.profiles[0]._capture, { id: '1', isolate: null });
 });
@@ -290,84 +425,75 @@ test('compilation provenance survives JSON round-trip without duplicate event ob
 
 test('inconsistent thread isolates remain unresolved without grouping or discarding source facts', () => {
     const base = { pid: 1, tid: 2, ts: 0, cat: 'disabled-by-default-v8.compilation_allocations', ph: 'X' };
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+    const session = extractFromChromiumPerformanceProfile([
+        { ...base, name: 'Profile', ph: 'P', id: 'cpu', args: { data: { startTime: 0, isolate: 'declared' } } },
+        { ...base, name: 'Compile', ts: 1, dur: 1, args: { data: { isolate: 'different', scriptId: 7, start: 14 } } }
+    ], diagnose);
 
-    try {
-        const session = extractFromChromiumPerformanceProfile([
-            { ...base, name: 'Profile', ph: 'P', id: 'cpu', args: { data: { startTime: 0, isolate: 'declared' } } },
-            { ...base, name: 'Compile', ts: 1, dur: 1, args: { data: { isolate: 'different', scriptId: 7, start: 14 } } }
-        ]);
-
-        assert.equal(session.threads[0].isolate, null);
-        assert.equal(session.threads[0].compilations!.length, 1);
-        assert.equal(session.threads[0].compilations![0].eventIndex, 0);
-        assert.equal(warning.mock.calls.length, 1);
-    } finally {
-        warning.mockRestore();
-    }
+    assert.equal(session.threads[0].isolate, null);
+    assert.equal(session.threads[0].compilations!.length, 1);
+    assert.equal(session.threads[0].compilations![0].eventIndex, 0);
+    assert.deepEqual(diagnosticEntries(diagnostics), [
+        ['Conflicting compilation isolates for thread', { pid: 1, tid: 2 }]
+    ]);
 });
 
-test('allocation order is shared by GC mapping and compilation preparation', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-        for (const ids of [[10, 11, 12], [10, 12, 15]]) {
-            warning.mockClear();
-
-            const session = extractFromChromiumPerformanceProfile([
-                { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-                { ...base, name: 'ProfileChunk', args: { data: {
-                    allocationSamples: { ids, sizes: [8, 16, 32] },
-                    allocationGc: { 5: [10, 12, 99] }
-                } } }
-            ]);
-            const profile = session.profiles[0];
-            const order = ids[1] === 11 ? 'consecutive' : 'ascending';
-
-            assert.equal(profile._cpuproAllocationIdsOrder, order);
-            assert.deepEqual(Array.from(profile._cpuproAllocationIds!), ids);
-            assert.deepEqual(profile._cpuproAllocationGc, Uint32Array.from(ids, id => id === 10 || id === 12 ? 5 : 0));
-            assert.equal(warning.mock.calls.length, order === 'consecutive' ? 0 : 1);
-        }
-    } finally {
-        warning.mockRestore();
+test.each([
+    { order: 'consecutive', ids: [10, 11, 12], gc: [5, 0, 5], diagnostics: [] },
+    {
+        order: 'ascending',
+        ids: [10, 12, 15],
+        gc: [5, 5, 0],
+        diagnostics: [['Allocation ids are not consecutive, GC mapping will be slower', {
+            index: 1, id: 10, nextId: 12, nextIndex: -1, length: 3, lastId: 15
+        }]]
+    },
+    {
+        order: 'ascending',
+        ids: [10, 11, 11, 12],
+        gc: [5, 0, 0, 5],
+        diagnostics: [['Allocation ids are not consecutive, GC mapping will be slower', {
+            index: 2, id: 11, nextId: 11, nextIndex: 3, length: 4, lastId: 12
+        }]]
     }
+])('GC mapping follows $order allocation ids $ids', ({ order, ids, gc, diagnostics: expected }) => {
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+    const session = extractFromChromiumPerformanceProfile(captureEvents([
+        { allocationSamples: { ids }, allocationGc: { 5: [10, 12, 99] } }
+    ]), diagnose);
+    const profile = session.profiles[0];
+
+    assert.equal(profile._cpuproAllocationIdsOrder, order);
+    assert.deepEqual(profile._cpuproAllocationIds, new Uint32Array(ids));
+    assert.deepEqual(profile._cpuproAllocationGc, new Uint32Array(gc));
+    assert.deepEqual(diagnosticEntries(diagnostics), expected);
 });
 
-test('tracing publishes numeric order metadata', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
-    const cases = [
-        { values: [], order: 'consecutive' },
-        { values: [10], order: 'consecutive' },
-        { values: [0, 1, 2], order: 'consecutive' },
-        { values: [0x7fffffff, 0x80000000, 0x80000001], order: 'consecutive' },
-        { values: [0xfffffffe, 0xffffffff], order: 'consecutive' },
-        { values: [10, 12, 15], order: 'ascending' },
-        { values: [10, 10, 11], order: 'ascending' }
-    ];
+test.each([
+    { values: [], order: undefined },
+    { values: [10], order: 'consecutive' },
+    { values: [0, 1, 2], order: 'consecutive' },
+    { values: [0x7fffffff, 0x80000000, 0x80000001], order: 'consecutive' },
+    { values: [0xfffffffe, 0xffffffff], order: 'consecutive' },
+    { values: [10, 12, 15], order: 'ascending' },
+    { values: [10, 10, 11], order: 'ascending' }
+])('tracing publishes numeric order metadata of $values: $order', ({ values, order }) => {
+    const session = extractFromChromiumPerformanceProfile(captureEvents([
+        { allocationSamples: { ids: values } }
+    ]));
 
-    for (const { values, order } of cases) {
-        const session = extractFromChromiumPerformanceProfile([
-            { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-            { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: values } } } }
-        ]);
-
-        assert.equal(session.profiles[0]._cpuproAllocationIdsOrder, values.length ? order : undefined);
-    }
+    assert.equal(session.profiles[0]._cpuproAllocationIdsOrder, order);
 });
 
 test('allocation vectors parse JSON chunks once and preserve unsigned 32-bit IDs', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const parse = vi.spyOn(JSON, 'parse');
 
     try {
-        const session = extractFromChromiumPerformanceProfile([
-            { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-            ...[' [ ] ', '[0]', '[2147483648,4294967295]'].map(ids => ({
-                ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids } } }
-            }))
-        ]);
+        const session = extractFromChromiumPerformanceProfile(captureEvents([' [ ] ', '[0]', '[2147483648,4294967295]'].map(ids => ({
+            allocationSamples: { ids }
+        }))));
+
         assert.deepEqual(session.profiles[0]._cpuproAllocationIds, new Uint32Array([0, 2147483648, 4294967295]));
         assert.equal(parse.mock.calls.length, 3);
     } finally {
@@ -415,7 +541,6 @@ test('tracing preserves signed CPU time deltas across chunks and repeated extrac
 });
 
 test('tracing vector representations preserve unsigned 32-bit values and signed offsets', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const allocationSamples = {
         ids: '[4294967295]', sizes: '[4294967295]', scriptIds: '[-1]', scriptOffsets: '[-1]',
         contextInfo: '[2147483648]', types: '[4294967295]', spaces: '[2147483648]',
@@ -425,10 +550,7 @@ test('tracing vector representations preserve unsigned 32-bit values and signed 
         cpuProfile: { nodes: [], samples: [0xffffffff] }, timeDeltas: [10],
         lines: [-1], columns: [-1], allocationSampleIds: [0xffffffff], allocationSamples
     };
-    const events = [
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, name: 'ProfileChunk', args: { data: chunk } }
-    ];
+    const events = captureEvents([chunk]);
     const profile = extractFromChromiumPerformanceProfile(events).profiles[0];
 
     assert.deepEqual(profile.samples, new Uint32Array([0xffffffff]));
@@ -452,73 +574,87 @@ test('tracing vector representations preserve unsigned 32-bit values and signed 
 });
 
 test('allocation dictionaries without vectors do not require an IDs field', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const allocationSamples = { typesDict: { 1: 'OBJECT' } };
-    const session = extractFromChromiumPerformanceProfile([
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, name: 'ProfileChunk', args: { data: {
-            cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSamples
-        } } }
-    ]);
+    const session = extractFromChromiumPerformanceProfile(captureEvents([
+        { cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSamples }
+    ]));
 
     assert.deepEqual(session.profiles[0].samples, new Uint32Array([1]));
-    assert.equal(session.profiles[0]._cpuproAllocationIds, undefined);
+    assert.deepEqual(publishedAllocations(session.profiles[0]), {});
     assert.deepEqual(allocationSamples, { typesDict: { 1: 'OBJECT' } });
 });
 
-test('missing later allocation vectors do not shift rows silently', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
-    assert.throws(() => extractFromChromiumPerformanceProfile([
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: [1], sizes: [8] } } } },
-        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: [2] } } } },
-        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples: { ids: [3], sizes: [16] } } } }
-    ]), /Missing allocation vector sizes/);
+test('allocation dictionaries are merged across chunks and published with their vectors', () => {
+    const session = extractFromChromiumPerformanceProfile(captureEvents([
+        { allocationSamples: {
+            ids: [1], contextInfo: [3], types: [1], spaces: [0], codeTypes: [0],
+            builtinsDict: { 3: 'ArrayPush' }, vmStatesDict: { 0: 'JS' },
+            typesDict: { 1: 'OBJECT' }, spacesDict: { 0: 'new' }, codeTypesDict: { 0: 'Interpreted' }
+        } },
+        { allocationSamples: {
+            ids: [2], contextInfo: [4], types: [2], spaces: [1], codeTypes: [1],
+            builtinsDict: { 4: 'StringAdd' }, vmStatesDict: { 1: 'GC' },
+            typesDict: { 2: 'STRING' }, spacesDict: { 1: 'old' }, codeTypesDict: { 1: 'Optimized' }
+        } }
+    ]));
+
+    assert.deepEqual(publishedAllocations(session.profiles[0]), {
+        _cpuproAllocationIds: new Uint32Array([1, 2]),
+        _cpuproAllocationIdsOrder: 'consecutive',
+        _cpuproAllocationContextInfo: new Uint32Array([3, 4]),
+        _cpuproAllocationBuiltinNames: { 3: 'ArrayPush', 4: 'StringAdd' },
+        _cpuproAllocationVmStateNames: { 0: 'JS', 1: 'GC' },
+        _cpuproAllocationTypes: new Uint32Array([1, 2]),
+        _cpuproAllocationTypeNames: { 1: 'OBJECT', 2: 'STRING' },
+        _cpuproAllocationSpaces: new Uint32Array([0, 1]),
+        _cpuproAllocationSpaceNames: { 0: 'new', 1: 'old' },
+        _cpuproAllocationCodeType: new Uint32Array([0, 1]),
+        _cpuproAllocationCodeTypeNames: { 0: 'Interpreted', 1: 'Optimized' }
+    });
 });
 
+test('missing later allocation vectors do not shift rows silently', () => {
+    assert.throws(() => extractFromChromiumPerformanceProfile(captureEvents([
+        { allocationSamples: { ids: [1], sizes: [8] } },
+        { allocationSamples: { ids: [2] } },
+        { allocationSamples: { ids: [3], sizes: [16] } }
+    ])), /Missing allocation vector sizes/);
+});
+
+// Trace content with typed vectors read as arrays: extraction may only change the vector representation
+function traceContent(input: unknown) {
+    return JSON.parse(JSON.stringify(input, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as Int32Array) : value));
+}
+
 test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted allocation rows including inversions across chunks: $ids', ({ ids }) => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
-    const chunks = [ids.slice(0, 2), ids.slice(2)].map((part, index) => ({
-        ...base, ts: index + 1, name: 'ProfileChunk', args: { data: {
+    const input = [
+        ...captureEvents([ids.slice(0, 2), ids.slice(2)].map((part, index) => ({
             cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSampleIds: [10 + index * 10],
             allocationSamples: { ids: part, sizes: part.map(() => 8), types: part.map(() => 1), typesDict: { 1: 'OBJECT' } },
             allocationGc: { 5: part }
-        } }
-    }));
-    const input = [
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        ...chunks,
-        { ...base, name: 'Compile', ph: 'X', cat: 'disabled-by-default-v8.compilation_allocations', dur: 1,
+        }))),
+        { ...capture, name: 'Compile', ph: 'X', cat: 'disabled-by-default-v8.compilation_allocations', dur: 1,
             args: { data: { scriptId: 1, start: 0, startAllocationId: 9, endAllocationId: 12 } } }
     ];
     const before = structuredClone(input);
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
 
-    try {
-        const session = extractFromChromiumPerformanceProfile(input);
-        const profile = session.profiles[0];
+    const session = extractFromChromiumPerformanceProfile(input, diagnose);
+    const profile = session.profiles[0];
 
-        assert.deepEqual(profile.samples, new Uint32Array([1, 1]));
-        assert.deepEqual(profile.timeDeltas, new Int32Array([10, 10]));
-        assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([10, 20]));
-        assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
-        assert.equal(session.threads[0].compilations!.length, 1);
-        assert.deepEqual(warning.mock.calls, [['Ignoring allocation data with unsorted IDs', { pid: 1, tid: 2 }]]);
-        assert.deepEqual(JSON.parse(JSON.stringify(input, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as Int32Array) : value)), before);
-    } finally {
-        warning.mockRestore();
-    }
+    assert.deepEqual(profile.samples, new Uint32Array([1, 1]));
+    assert.deepEqual(profile.timeDeltas, new Int32Array([10, 10]));
+    assert.deepEqual(publishedAllocations(profile), { _cpuproAllocationMapping: new Uint32Array([10, 20]) });
+    assert.equal(session.threads[0].compilations!.length, 1);
+    assert.deepEqual(diagnosticEntries(diagnostics), [['Ignoring allocation data with unsorted IDs', { pid: 1, tid: 2 }]]);
+    assert.deepEqual(traceContent(input), before);
 });
 
 test('ProfileChunk releases numeric source arrays without mutating metadata and can be extracted again', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const typesDict = { 1: 'OBJECT' };
     const allocationSamples = { ids: '[10,12]', sizes: [8, 16], types: [1, 1], typesDict };
     const allocationGc = { '005': '[12]' };
-    const input = [
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, name: 'ProfileChunk', args: { data: { allocationSamples, allocationGc } } }
-    ];
+    const input = captureEvents([{ allocationSamples, allocationGc }]);
     const { diagnose } = createDiagnosticsCollector();
     const first = extractFromChromiumPerformanceProfile(input, diagnose);
 
@@ -526,26 +662,24 @@ test('ProfileChunk releases numeric source arrays without mutating metadata and 
     assert.deepEqual(allocationGc['005'], new Uint32Array([12]));
     assert.deepEqual(Object.keys(allocationGc), ['005']);
     assert.equal(allocationSamples.typesDict, typesDict);
+
     const second = extractFromChromiumPerformanceProfile(input, diagnose);
+
     assert.deepEqual(second, first);
 });
 
 test('ProfileChunk typed vectors supplied whole are adopted without copies', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const ids = new Int32Array([10, 12]);
     const sizes = new Int32Array([8, 16]);
     const scriptOffsets = new Int32Array([-1, 4]);
     const empty = new Int32Array(0);
-    const input = [
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, name: 'ProfileChunk', args: { data: {
+    const input = captureEvents([
+        {
             cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSampleIds: new Int32Array([12]),
             allocationSamples: { ids, sizes, scriptOffsets }
-        } } },
-        { ...base, name: 'ProfileChunk', args: { data: {
-            allocationSamples: { ids: empty, sizes: empty, scriptOffsets: empty }
-        } } }
-    ];
+        },
+        { allocationSamples: { ids: empty, sizes: empty, scriptOffsets: empty } }
+    ]);
     const profile = extractFromChromiumPerformanceProfile(input).profiles[0];
 
     assert.equal((profile._cpuproAllocationIds as Uint32Array).buffer, ids.buffer);
@@ -556,17 +690,16 @@ test('ProfileChunk typed vectors supplied whole are adopted without copies', () 
 });
 
 test('reports extraction problems to the provided diagnose instead of the console', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const userTiming = { pid: 1, tid: 2, cat: 'blink.user_timing', args: { traceId: 1 } };
     const { diagnostics, diagnose } = createDiagnosticsCollector();
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     try {
         extractFromChromiumPerformanceProfile([
-            { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
+            ...captureEvents([]),
             { ...userTiming, name: 'Mark', ph: 'e', ts: 5, id: 'a' },
             { ...userTiming, name: 'Mark', ph: 'e', ts: 6 },
-            { ...base, name: 'ProfileChunk', id: 'unknown', args: { data: {} } }
+            { ...capture, name: 'ProfileChunk', id: 'unknown', args: { data: {} } }
         ], diagnose);
 
         assert.deepEqual(warning.mock.calls, []);
@@ -602,16 +735,10 @@ test('reports extraction problems to the provided diagnose instead of the consol
 });
 
 test('tracing preserves CPU-aligned allocation mapping without allocation rows', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
-    const input = [
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, name: 'ProfileChunk', ts: 1, args: { data: {
-            cpuProfile: { nodes: [], samples: [1, 2] }, timeDeltas: [10, 10], allocationSampleIds: [10, 15]
-        } } },
-        { ...base, name: 'ProfileChunk', ts: 2, args: { data: {
-            cpuProfile: { nodes: [], samples: [3] }, timeDeltas: [10], allocationSampleIds: [20]
-        } } }
-    ];
+    const input = captureEvents([
+        { cpuProfile: { nodes: [], samples: [1, 2] }, timeDeltas: [10, 10], allocationSampleIds: [10, 15] },
+        { cpuProfile: { nodes: [], samples: [3] }, timeDeltas: [10], allocationSampleIds: [20] }
+    ]);
     const before = structuredClone(input);
 
     const session = extractFromChromiumPerformanceProfile(input);
@@ -619,21 +746,19 @@ test('tracing preserves CPU-aligned allocation mapping without allocation rows',
     assert.equal(session.profiles.length, 1);
     assert.deepEqual(session.profiles[0].samples, new Uint32Array([1, 2, 3]));
     assert.deepEqual(session.profiles[0].timeDeltas, new Int32Array([10, 10, 10]));
-    assert.deepEqual(session.profiles[0]._cpuproAllocationMapping, new Uint32Array([10, 15, 20]));
-    assert.deepEqual(Object.keys(session.profiles[0]).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
-    assert.deepEqual(JSON.parse(JSON.stringify(input, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as Int32Array) : value)), before);
+    assert.deepEqual(publishedAllocations(session.profiles[0]), { _cpuproAllocationMapping: new Uint32Array([10, 15, 20]) });
+    assert.deepEqual(traceContent(input), before);
 });
 
-test('CPU-only profiles are published without allocation chunks and retain node order and trace ids', () => {
-    const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
+test('CPU-only profiles are published without allocation fields and retain node order and trace ids', () => {
     const first = { id: 1, callFrame: { scriptId: 0, url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 } };
     const second = { ...first, id: 2 };
-    const session = extractFromChromiumPerformanceProfile([
-        { ...base, name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, name: 'ProfileChunk', args: { data: { cpuProfile: { nodes: [first], trace_ids: { first: 1 } } } } },
-        { ...base, name: 'ProfileChunk', args: { data: {} } },
-        { ...base, name: 'ProfileChunk', args: { data: { cpuProfile: { nodes: [second], trace_ids: { second: 2 } } } } }
-    ]);
+    const session = extractFromChromiumPerformanceProfile(captureEvents([
+        { cpuProfile: { nodes: [first], trace_ids: { first: 1 } } },
+        {},
+        { allocationSampleIds: [] },
+        { cpuProfile: { nodes: [second], trace_ids: { second: 2 } } }
+    ]));
 
     assert.equal(session.profiles.length, 1);
     assert.deepEqual(Object.keys(session.profiles[0]).filter(key => key.startsWith('_cpuproAllocation')), []);
@@ -641,31 +766,98 @@ test('CPU-only profiles are published without allocation chunks and retain node 
     assert.deepEqual(session.profiles[0].trace_ids, { first: 1, second: 2 });
 });
 
-function extractScriptCatchups(
-    catchups: { name?: string; pid?: number; tid?: number; data: Record<string, unknown> }[],
-    diagnose?: Diagnose
-) {
-    const base = { pid: 1, tid: 2, ts: 0, ph: 'X', cat: 'disabled-by-default-v8.source' };
+test.each([
+    { vectors: 'lines', chunk: { lines: [5] }, lines: undefined, columns: undefined },
+    { vectors: 'columns', chunk: { columns: [6] }, lines: undefined, columns: undefined },
+    { vectors: 'lines and columns', chunk: { lines: [5], columns: [6] }, lines: new Int32Array([0, 5]), columns: new Int32Array([0, 6]) }
+])('line and column vectors are published as a sample-aligned pair: $vectors', ({ chunk, lines, columns }) => {
+    const profile = extractFromChromiumPerformanceProfile(captureEvents([
+        { cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10] },
+        { cpuProfile: { nodes: [], samples: [2] }, timeDeltas: [10], ...chunk }
+    ])).profiles[0];
 
-    return extractFromChromiumPerformanceProfile([
-        { ...base, name: 'Profile', ph: 'P', id: '1', args: { data: { startTime: 0 } } },
+    assert.deepEqual(profile.samples, new Uint32Array([1, 2]));
+    assert.deepEqual(profile.lines, lines);
+    assert.deepEqual(profile.columns, columns);
+});
+
+test('capture end time is the latest end time reported by its chunks', () => {
+    const profile = extractFromChromiumPerformanceProfile(captureEvents([
+        { endTime: 200 },
+        { endTime: 300 },
+        { endTime: 250 },
+        {}
+    ])).profiles[0];
+
+    assert.deepEqual([profile.startTime, profile.endTime], [0, 300]);
+});
+
+// Catchups are delivered in reverse trace order; extraction applies them in timestamp order
+function scriptCatchupEvents(catchups: { name?: string; pid?: number; tid?: number; data: Record<string, unknown> }[]) {
+    const base = { ph: 'X', cat: 'disabled-by-default-v8.source' };
+
+    return [
+        ...captureEvents([]),
         ...catchups.map(({ name = 'ScriptCatchup', pid = 1, tid = 2, data }, index) => ({
             ...base, name, pid, tid, ts: index + 1, args: { data }
         })).reverse()
-    ], diagnose);
+    ];
+}
+
+function extractScriptCatchups(catchups: Parameters<typeof scriptCatchupEvents>[0], diagnose?: Diagnose) {
+    return extractFromChromiumPerformanceProfile(scriptCatchupEvents(catchups), diagnose);
 }
 
 function largeCatchup(data: Record<string, unknown>) {
     return { name: 'LargeScriptCatchup', data };
 }
 
-function diagnoseScriptCatchups(catchups: Parameters<typeof extractScriptCatchups>[0]) {
+function diagnoseScriptCatchups(catchups: Parameters<typeof scriptCatchupEvents>[0]) {
     const { diagnostics, diagnose } = createDiagnosticsCollector();
 
     extractScriptCatchups(catchups, diagnose);
 
-    return diagnostics.map(({ message, details }) => [message, details]);
+    return diagnosticEntries(diagnostics);
 }
+
+function sourceMapEntry(url: string, sourceMapUrl: string, file: string) {
+    return { url, sourceMapUrl, sourceMap: { version: '3', file, sources: [], names: [], mappings: '' } };
+}
+
+const exactSourceMap = sourceMapEntry('', 'app.js.map', 'exact');
+const resolvedSourceMap = sourceMapEntry('', 'https://site/app.js.map', 'resolved');
+const scriptSourceMap = sourceMapEntry('https://site/app.js', '', 'script');
+
+test.each([
+    {
+        resolution: 'the reported source map URL first',
+        sourceMaps: [scriptSourceMap, resolvedSourceMap, exactSourceMap],
+        expected: exactSourceMap.sourceMap
+    },
+    {
+        resolution: 'the source map URL resolved against the script URL',
+        sourceMaps: [scriptSourceMap, resolvedSourceMap],
+        expected: resolvedSourceMap.sourceMap
+    },
+    {
+        resolution: 'the script URL',
+        sourceMaps: [scriptSourceMap],
+        expected: scriptSourceMap.sourceMap
+    },
+    {
+        resolution: 'no script URL shared by several source maps',
+        sourceMaps: ['first', 'second', 'third'].map(file => sourceMapEntry('https://site/app.js', '', file)),
+        expected: null
+    }
+])('attaches metadata source maps to scripts by $resolution', ({ sourceMaps, expected }) => {
+    const session = extractFromChromiumPerformanceProfile({
+        traceEvents: scriptCatchupEvents([{ data: { scriptId: 5, url: 'https://site/app.js', sourceMapUrl: 'app.js.map' } }]),
+        metadata: { sourceMaps }
+    });
+
+    assert.equal(session.threads[0].scripts![0].sourceMap, expected);
+    assert.equal(session.profiles[0]._scripts![0], session.threads[0].scripts![0]);
+});
 
 test('repeated full source catchups replace text without duplicating it or losing metadata', () => {
     const sourceText = 'globalThis.value = 1;\n//# sourceMappingURL=fixture.js.map';
@@ -840,11 +1032,13 @@ test.each([
     { splitIndex: NaN, splitCount: 2 }
 ])('does not concatenate large catchups with invalid chunk metadata: %j', metadata => {
     const data = Object.freeze({ scriptId: 5, sourceText: 'partial', ...metadata });
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
     const session = extractScriptCatchups([
         { data: { scriptId: 5, sourceText: 'complete' } },
         { name: 'LargeScriptCatchup', data }
-    ]);
+    ], diagnose);
 
     assert.equal(session.threads[0].scripts![0].source, 'complete');
     assert.equal(data.sourceText, 'partial');
+    assert.deepEqual(diagnostics.map(({ message }) => message), ['Ignoring script source chunk with invalid split metadata']);
 });
