@@ -57,9 +57,14 @@ test.each([false, true])('extends the curve to coverage edges on the viewport sc
     assert.ok(curve.includes('H 200 '));
     assert.ok(curve.includes('L 500 '));
     assert.ok(line ? curve.endsWith('H 900') : /L 900 [\d.]+ V [\d.]+ Z$/.test(curve));
+});
+
+test('range coverage pads an element by the uncovered fractions of the viewport', () => {
     const styles = new Map();
     const element = { classList: new Set(), style: { setProperty: (key, value) => styles.set(key, value) } };
-    setRangeCoverage(element, extent, { start: 100, end: 200 });
+
+    setRangeCoverage(element, { start: 110, end: 190 }, { start: 100, end: 200 });
+
     assert.equal(styles.get('--range-pad-start'), 0.1);
     assert.equal(styles.get('--range-pad-end'), 0.1);
     assert.ok(element.classList.has('range-coverage'));

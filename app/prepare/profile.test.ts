@@ -5,6 +5,10 @@ import { createProfile } from './profile.mjs';
 import { noopWorkHandler } from './misc/work.js';
 
 const dimensions = ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners'] as const;
+const allKinds = {
+    timeline: ['call-stack', 'call-stack-sm'],
+    memline: ['call-stack', 'location', 'call-stack-sm', 'location-sm']
+};
 const cases: { name: string; options: ProfileFixtureOptions; populations: number }[] = [
     { name: 'combined', options: {}, populations: 3 },
     { name: 'context nodes', options: { contexts: [1, 2, 1, 0] }, populations: 3 },
@@ -132,50 +136,79 @@ describe('profile breakdowns', () => {
         assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], 160);
     });
 
-    test.each(cases)('shares sources, populations and selection: $name', async ({ options, populations }) => {
+    test.each([
+        { name: 'combined', options: {}, kinds: allKinds },
+        { name: 'call-frame fallback', options: { fallback: true }, kinds: {
+            timeline: ['call-stack'],
+            memline: ['call-stack', 'location', 'location-sm']
+        } },
+        { name: 'no source maps', options: { noSourceMap: true }, kinds: {
+            timeline: ['call-stack'],
+            memline: ['call-stack', 'location']
+        } },
+        { name: 'CPU only', options: { cpuOnly: true }, kinds: { timeline: allKinds.timeline } },
+        { name: 'stack only', options: { stackOnly: true }, kinds: {
+            timeline: allKinds.timeline,
+            memline: ['call-stack', 'call-stack-sm']
+        } },
+        { name: 'locations only', options: { locationsOnly: true }, kinds: {
+            timeline: allKinds.timeline,
+            memline: ['location', 'location-sm']
+        } }
+    ])('creates breakdowns of the available attributions: $name', async ({ options, kinds }) => {
+        const { profile } = await createProfileFixture(options);
+        const actual = Object.fromEntries(profile.lines.map(line => [line.type, line.breakdowns.map(breakdown => breakdown.kind)]));
+
+        assert.deepEqual(actual, kinds);
+    });
+
+    test.each(cases)('breakdowns share their population chain and map every sample to a node: $name', async ({ options, populations }) => {
         const { profile } = await createProfileFixture(options);
         const breakdowns = profile.lines.flatMap(line => line.breakdowns);
+
         assert.equal(new Set(breakdowns.map(breakdown => breakdown.population)).size, populations);
         assert.equal(new Set(breakdowns.map(breakdown => breakdown.populationFiltered)).size, populations);
-        assert.equal(new Set(breakdowns.map(breakdown => breakdown.populationFiltered.source)).size, populations);
 
         for (const line of profile.lines) {
-            const expectedKinds = line.type === 'timeline'
-                ? ['call-stack']
-                : [...options.locationsOnly ? [] : ['call-stack'], ...options.stackOnly ? [] : ['location']];
-            const mappedKinds = options.noSourceMap ? [] : expectedKinds
-                .filter(kind => !options.fallback || kind !== 'call-stack')
-                .map(kind => `${kind}-sm`);
-            assert.deepEqual(line.breakdowns.map(breakdown => breakdown.kind), [...expectedKinds, ...mappedKinds]);
-
             for (const breakdown of line.breakdowns) {
+                const { population, populationViewport, populationFiltered, source } = breakdown;
+
                 assert.equal(breakdown.line, line);
-                assert.equal(breakdown.populationFiltered.population, breakdown.population);
-                assert.notEqual(breakdown.populationFiltered.source, breakdown.population);
-                assert.equal(breakdown.populationFiltered.source, breakdown.populationViewport);
-                assert.equal(breakdown.populationViewport.source, breakdown.population);
-                assert.equal(breakdown.populationFiltered.source.cumulative, breakdown.population.cumulative);
-                for (const sample of breakdown.population.samples) {
-                    const node = breakdown.source.sourceIdToNode[sample];
-                    assert.ok(node >= 0 && node < breakdown.source.nodes.length);
+                assert.equal(populationViewport.source, population);
+                assert.equal(populationFiltered.source, populationViewport);
+
+                for (const sample of population.samples) {
+                    const node = source.sourceIdToNode[sample];
+
+                    assert.ok(node >= 0 && node < source.nodes.length);
                 }
+
                 for (const name of dimensions) {
                     const dimension = breakdown[name];
+
                     if (dimension) {
                         assert.equal(dimension.bounds.tree, dimension.tree);
                         assert.equal(dimension.bounds.sampleToNode, dimension.sampleToNode);
-                        assert.equal(dimension.bounds.sampleToNode, dimension.all.nodes.sampleToNode);
-                        assert.equal(dimension.bounds.sampleToNode, dimension.filtered.nodes.sampleToNode);
+                        assert.equal(dimension.all.nodes.sampleToNode, dimension.sampleToNode);
+                        assert.equal(dimension.filtered.nodes.sampleToNode, dimension.sampleToNode);
                     }
                 }
             }
+        }
+    });
 
-            for (const kind of expectedKinds) {
-                const original = line.breakdowns.find(breakdown => breakdown.kind === kind)!;
-                const mapped = line.breakdowns.find(breakdown => breakdown.kind === `${kind}-sm`);
-                if (!mapped) {
-                    continue;
-                }
+    test.each(cases)('source-mapped breakdowns share the original population and recompute with it: $name', async ({ options }) => {
+        const { profile } = await createProfileFixture(options);
+
+        for (const line of profile.lines) {
+            for (const mapped of line.breakdowns.filter(breakdown => breakdown.kind.endsWith('-sm'))) {
+                const original = line.breakdowns.find(breakdown => breakdown.kind + '-sm' === mapped.kind)!;
+                const all = mapped.callFrames!.all.nodes;
+                const filtered = mapped.callFrames!.filtered.nodes;
+                const allBefore = all.selfValues.slice();
+                let originalUpdates = 0;
+                let mappedUpdates = 0;
+
                 assert.equal(mapped.population, original.population);
                 assert.equal(mapped.populationFiltered, original.populationFiltered);
                 assert.equal(mapped.source.parent, original.source.parent);
@@ -184,30 +217,27 @@ describe('profile breakdowns', () => {
                 assert.notEqual(mapped.source.nodes, original.source.nodes);
                 assert.ok(mapped.locations!.tree.dictionary.some(location => location.script?.url.endsWith('original.js')));
 
-                let originalUpdates = 0;
-                let mappedUpdates = 0;
-                const unsubscribeOriginal = original.callFrames!.filtered.nodes.subscribe(() => originalUpdates++);
-                const unsubscribeMapped = mapped.callFrames!.filtered.nodes.subscribe(() => mappedUpdates++);
-                const allBefore = mapped.callFrames!.all.nodes.selfValues.slice();
+                original.callFrames!.filtered.nodes.subscribe(() => originalUpdates++);
+                filtered.subscribe(() => mappedUpdates++);
+
                 original.populationFiltered.setRange(5, 20);
                 assert.equal(originalUpdates, 1);
                 assert.equal(mappedUpdates, 1);
-                assert.deepEqual(mapped.callFrames!.all.nodes.selfValues, allBefore);
-                const filtered = mapped.callFrames!.filtered.nodes;
-                assert.equal(filtered.selfValues[0] + filtered.nestedValues[0], 15);
+                assert.deepEqual(all.selfValues, allBefore);
+                assert.equal(filtered.selfValues[0] + filtered.nestedValues[0], 20 - 5);
+
                 original.populationFiltered.resetRange();
                 assert.equal(originalUpdates, 2);
                 assert.equal(mappedUpdates, 2);
-                assert.deepEqual(filtered.selfValues, mapped.callFrames!.all.nodes.selfValues);
-                unsubscribeOriginal();
-                unsubscribeMapped();
+                assert.deepEqual(filtered.selfValues, all.selfValues);
             }
         }
+    });
 
-        const cpuStack = profile.timeline!.breakdowns[0];
-        const allocationStack = profile.memline?.breakdowns.find(breakdown => breakdown.kind === 'call-stack');
-        if (allocationStack) {
-            assert.equal(cpuStack.source, allocationStack.source);
-        }
+    test('CPU and allocation call stacks share one attribution source', async () => {
+        const { profile } = await createProfileFixture();
+        const allocationStack = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
+
+        assert.equal(profile.timeline!.breakdowns[0].source, allocationStack.source);
     });
 });

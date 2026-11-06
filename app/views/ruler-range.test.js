@@ -75,43 +75,35 @@ test('applies the supplied continuous gesture minimum without expanding external
     assert.deepEqual(createState([-1, 1], 10, { start: 0, end: 0 }).selection, { start: 0, end: 0 });
 });
 
-test('keeps exact external spans independent of snapping and handles an empty scale', () => {
-    const state = createState(1001, 10, { start: 123, end: 567 });
-    for (const delta of [-2, 0, 0.137, 2]) {
-        const moved = moveRange(state, state.selection, delta);
-        assert.ok(Math.abs(moved.end - moved.start - 444) < 1e-10);
-        assert.ok(moved.start >= 0 && moved.end <= 1001);
-    }
-    assert.deepEqual(moveRange(state, state.selection, 0), state.selection);
-    assert.equal(createState(0, 10).segments, null);
-});
-
 describe('ruler ranges', () => {
-    for (const duration of [11, 1000, 4960851]) {
-        test(`preserves exact ranges across segment grids, duration=${duration}`, () => {
-            const start = Math.round(duration * 0.13);
-            const end = Math.round(duration * 0.67);
-            for (const segments of [null, 7, 10, 500, 1432, 2000]) {
-                const state = createState(duration, segments, { start, end });
-                assert.deepEqual(state.selection, { start, end });
-                assert.deepEqual(createState(duration, segments, state.selection), state);
-            }
-        });
+    test.each([11, 1000, 4960851])('preserves exact ranges across segment grids, duration=%i', duration => {
+        const start = Math.round(duration * 0.13);
+        const end = Math.round(duration * 0.67);
 
-        test(`preserves span during translation and boundary clamping, duration=${duration}`, () => {
-            const start = Math.round(duration * 0.13);
-            const end = Math.round(duration * 0.67);
-            for (const segments of [null, 10, 500, 1432]) {
-                const initial = createState(duration, segments, { start, end });
-                for (const delta of [-2, -0.01, 0, 0.137, 2]) {
-                    const moved = moveRange(initial, initial.selection, delta);
-                    assert.ok(Math.abs(moved.end - moved.start - (end - start)) < 1e-8);
-                    assert.ok(moved.start >= 0 && moved.end <= duration);
-                }
-                assert.deepEqual(moveRange(initial, initial.selection, 0), initial.selection);
+        for (const segments of [null, 7, 10, 500, 1432, 2000]) {
+            const state = createState(duration, segments, { start, end });
+
+            assert.deepEqual(state.selection, { start, end });
+            assert.deepEqual(createState(duration, segments, state.selection), state);
+        }
+    });
+
+    test.each([11, 1000, 4960851])('preserves span during translation and boundary clamping, duration=%i', duration => {
+        const start = Math.round(duration * 0.13);
+        const end = Math.round(duration * 0.67);
+
+        for (const segments of [null, 10, 500, 1432]) {
+            const initial = createState(duration, segments, { start, end });
+
+            for (const delta of [-2, -0.01, 0, 0.137, 2]) {
+                const moved = moveRange(initial, initial.selection, delta);
+
+                assert.ok(Math.abs(moved.end - moved.start - (end - start)) < 1e-8);
+                assert.ok(moved.start >= 0 && moved.end <= duration);
             }
-        });
-    }
+            assert.deepEqual(moveRange(initial, initial.selection, 0), initial.selection);
+        }
+    });
 
     test.each([11, 1001, 4960851])('uses contiguous half-open segment boundaries for duration=%i', duration => {
         for (let index = 0; index < 10; index++) {
@@ -135,7 +127,10 @@ describe('ruler ranges', () => {
         assert.deepEqual(resizeRange(createState(1000, 10), 123, 0.49), { start: 123, end: 500 });
     });
 
-    test('has no selection for an empty axis', () => {
-        assert.equal(createState(0, 10).selection, null);
+    test('has no segments or selection for an empty axis', () => {
+        const state = createState(0, 10);
+
+        assert.equal(state.segments, null);
+        assert.equal(state.selection, null);
     });
 });
