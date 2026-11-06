@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { extractFromChromiumPerformanceProfile } from './chromium-performance-profile.js';
-import { isCPUProfile, unwrapSamplesIfNeeded } from './cpuprofile.js';
+import { isCPUProfile } from './cpuprofile.js';
 import { createDiagnosticsCollector, type Diagnose } from '../diagnostics.js';
 import { collectProfileUsedScriptIds } from '../preprocessing/scripts.js';
 import { Dictionary } from '../dictionary.js';
@@ -476,23 +476,6 @@ test('missing later allocation vectors do not shift rows silently', () => {
     ]), /Missing allocation vector sizes/);
 });
 
-test('combined typed numeric vectors survive unwrapping without copies', () => {
-    const input = {
-        startTime: 0, endTime: 20, nodes: [], samples: new Uint32Array([1, 1]), timeDeltas: new Uint32Array([10, 10]),
-        allocationSampleIds: new Uint32Array([10, 12]),
-        allocationSamples: {
-            ids: new Uint32Array([10, 12]), sizes: new Uint32Array([8, 16]),
-            gc: new Uint32Array([0, 5]), types: new Uint32Array([1, 1])
-        }
-    };
-    const profile = unwrapSamplesIfNeeded(input);
-    assert.equal(profile.samples, input.samples);
-    assert.equal(profile.timeDeltas, input.timeDeltas);
-    assert.equal(profile._cpuproAllocationIds, input.allocationSamples.ids);
-    assert.equal(profile._cpuproAllocationGc, input.allocationSamples.gc);
-    assert.equal(profile._cpuproAllocationTypes, input.allocationSamples.types);
-});
-
 test.each([{ ids: [10, 9, 12] }, { ids: [10, 12, 11] }])('rejects unsorted allocation rows including inversions across chunks: $ids', ({ ids }) => {
     const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const chunks = [ids.slice(0, 2), ids.slice(2)].map((part, index) => ({
@@ -618,21 +601,6 @@ test('reports extraction problems to the provided diagnose instead of the consol
     }
 });
 
-test('reports ignored unsorted allocations of a combined profile to the provided diagnose', () => {
-    const { diagnostics, diagnose } = createDiagnosticsCollector();
-
-    unwrapSamplesIfNeeded({
-        nodes: [],
-        samples: [],
-        allocationSampleIds: [],
-        allocationSamples: { ids: [2, 1], sizes: [8, 8] }
-    } as unknown as Parameters<typeof unwrapSamplesIfNeeded>[0], diagnose);
-
-    assert.deepEqual(diagnostics, [
-        { level: 'warn', scope: [], message: 'Ignoring allocation data with unsorted IDs' }
-    ]);
-});
-
 test('tracing preserves CPU-aligned allocation mapping without allocation rows', () => {
     const base = { pid: 1, tid: 2, ts: 0, cat: 'profile', ph: 'P', id: '1' };
     const input = [
@@ -654,63 +622,6 @@ test('tracing preserves CPU-aligned allocation mapping without allocation rows',
     assert.deepEqual(session.profiles[0]._cpuproAllocationMapping, new Uint32Array([10, 15, 20]));
     assert.deepEqual(Object.keys(session.profiles[0]).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
     assert.deepEqual(JSON.parse(JSON.stringify(input, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as Int32Array) : value)), before);
-});
-
-test.each([
-    { allocationSamples: undefined },
-    { allocationSamples: {} },
-    { allocationSamples: { ids: [10, 15] } },
-    { allocationSamples: { sizes: [8, 16] } }
-])('combined cpuprofile preserves mapping without complete allocation rows: %j', ({ allocationSamples }) => {
-    const input = {
-        startTime: 0, endTime: 20, samples: [], timeDeltas: [], nodes: [],
-        cpuProfile: { samples: [1, 2], timeDeltas: [10, 10], nodes: [] },
-        allocationSampleIds: [10, 15],
-        allocationSamples
-    };
-    const before = structuredClone(input);
-
-    const profile = unwrapSamplesIfNeeded(input);
-
-    assert.equal(profile.samples, input.cpuProfile.samples);
-    assert.equal(profile.timeDeltas, input.cpuProfile.timeDeltas);
-    assert.equal(profile.nodes, input.cpuProfile.nodes);
-    assert.equal(profile._cpuproAllocationMapping, input.allocationSampleIds);
-    assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
-    assert.deepEqual(input, before);
-});
-
-test.each([{ ids: [10, 11, 12] }, { ids: [10, 12, 15] }, { ids: [10, 12, 11] }])('combined cpuprofile checks allocation order before publishing vectors: $ids', ({ ids }) => {
-    const input = {
-        startTime: 0, endTime: 20, samples: [], timeDeltas: [], nodes: [],
-        cpuProfile: { samples: [1, 1], timeDeltas: [10, 10], nodes: [] },
-        allocationSampleIds: [10, 15],
-        allocationSamples: { ids, sizes: [8, 16, 32], types: [1, 2, 3], gc: [0, 1, 2], typesDict: { 1: 'OBJECT' } }
-    };
-    const before = structuredClone(input);
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-        const profile = unwrapSamplesIfNeeded(input);
-
-        assert.equal(profile.samples, input.cpuProfile.samples);
-        assert.equal(profile.timeDeltas, input.cpuProfile.timeDeltas);
-        assert.equal(profile._cpuproAllocationMapping, input.allocationSampleIds);
-        if (ids[2] === 11) {
-            assert.deepEqual(Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation')), ['_cpuproAllocationMapping']);
-            assert.deepEqual(warning.mock.calls, [['Ignoring allocation data with unsorted IDs']]);
-        } else {
-            assert.equal(profile._cpuproAllocationIds, ids);
-            assert.equal(profile._cpuproAllocationIdsOrder, ids[1] === 11 ? 'consecutive' : 'ascending');
-            assert.equal(profile._cpuproAllocationSizes, input.allocationSamples.sizes);
-            assert.equal(profile._cpuproAllocationTypes, input.allocationSamples.types);
-            assert.equal(profile._cpuproAllocationGc, input.allocationSamples.gc);
-            assert.equal(warning.mock.calls.length, 0);
-        }
-        assert.deepEqual(input, before);
-    } finally {
-        warning.mockRestore();
-    }
 });
 
 test('CPU-only profiles are published without allocation chunks and retain node order and trace ids', () => {
