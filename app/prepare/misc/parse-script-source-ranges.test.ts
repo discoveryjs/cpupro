@@ -90,6 +90,8 @@ test.each([
     { origin: 'a string property key', source: 'const object = { "literal": function() {} };', names: ['literal'] },
     { origin: 'a class field', source: 'class Example { handler = () => 1; }', names: ['Example', 'handler'] },
     { origin: 'an assignment target', source: 'assigned = function() {};', names: ['assigned'] },
+    { origin: 'a private method', source: 'class Example { #method() {} static #shared() {} get #value() { return 1; } }', names: ['Example', '#method', '#shared', '#value'] },
+    { origin: 'a private field', source: 'class Example { #handler = () => 1; }', names: ['Example', '#handler'] },
     { origin: 'nothing', source: 'run(() => 1);', names: [''] }
 ])('names a function after $origin', ({ source, names }) => {
     const { ranges } = parseScriptSourceRanges(source, 'fixture.js', true);

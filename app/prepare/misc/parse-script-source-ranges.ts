@@ -233,19 +233,36 @@ function findCallFrameStart(node: ASTNode, code: string, fallbackStart: number):
     return callFrameStart !== -1 ? callFrameStart : fallbackStart;
 }
 
+// V8 names a function after a private class member with its hash, e.g. `#method`
+function getKeyName(key: ASTNode | null | undefined): string | null {
+    if (!key) {
+        return null;
+    }
+
+    if (key.type === 'PrivateName') {
+        return '#' + key.id.name;
+    }
+
+    if (typeof key.name === 'string') {
+        return key.name;
+    }
+
+    if (typeof key.value === 'string') {
+        return key.value;
+    }
+
+    return null;
+}
+
 function getFunctionName(node: ASTNode, parent: ASTNode | null): string {
     if (node.id && typeof node.id.name === 'string') {
         return node.id.name;
     }
 
-    if (node.key) {
-        if (typeof node.key.name === 'string') {
-            return node.key.name;
-        }
+    const keyName = getKeyName(node.key);
 
-        if (typeof node.key.value === 'string') {
-            return node.key.value;
-        }
+    if (keyName !== null) {
+        return keyName;
     }
 
     if (parent) {
@@ -253,14 +270,10 @@ function getFunctionName(node: ASTNode, parent: ASTNode | null): string {
             return parent.id.name;
         }
 
-        if (parent.key) {
-            if (typeof parent.key.name === 'string') {
-                return parent.key.name;
-            }
+        const parentKeyName = getKeyName(parent.key);
 
-            if (typeof parent.key.value === 'string') {
-                return parent.key.value;
-            }
+        if (parentKeyName !== null) {
+            return parentKeyName;
         }
 
         if (parent.left && typeof parent.left.name === 'string') {
