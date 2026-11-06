@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { equal, deepEqual } from '@discoveryjs/discovery/lib/core/utils/compare.js';
-import { runInNewContext } from 'node:vm';
 import * as ranges from '../../app/views/ruler-range.js';
+import { evaluateModule } from './evaluate-module.js';
 
 class Element {
     constructor(tag) {
@@ -115,7 +114,7 @@ export function createRulerHarness(render = () => {}) {
             globalEvents.set(name, callback);
         }
     };
-    runInNewContext(readFileSync(new URL('../../app/views/ruler.js', import.meta.url), 'utf8'), {
+    evaluateModule(new URL('../../app/views/ruler.js', import.meta.url), {
         discovery,
         document: { createElement: tag => new Element(tag) },
         HTMLElement: Element,
@@ -141,6 +140,17 @@ export function createRulerHarness(render = () => {}) {
         render: (...args) => renderRuler.call({ render }, ...args),
         showTooltip: () => tooltip?.(new Element('tooltip')),
         move: position => pointerMove(position),
+        // Gestures use one pointer at a fixed vertical position
+        pointerDown(x, target) {
+            pointerMove({ x, y: 5 });
+            hostEvents.get('pointerdown')({ buttons: 1, pointerId: 1, x, y: 5, target });
+        },
+        pointerUp(x) {
+            globalEvents.get('pointerup')({ pointerId: 1, x, y: 5 });
+        },
+        selectionHandle: (element, trigger) => element.querySelector('.view-ruler__selection-overlay-mover')
+            .children.find(child => child.dataset.trigger === trigger),
+        destroy: element => element.children.find(child => child.tag === 'destroy-ruler').onDestroy(),
         setActive(element, ...targets) {
             activeElement = element;
             hitElements = targets.length ? targets : [element];

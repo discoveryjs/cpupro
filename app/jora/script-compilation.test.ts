@@ -1,36 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { Dictionary } from '../prepare/dictionary.js';
-import type { CpuProCompilationRecord } from '../prepare/types.js';
-import { parseScriptSourceRanges } from '../prepare/misc/parse-script-source-ranges.js';
-import { computeScriptSourceMetrics } from '../prepare/misc/source-text-metrics.js';
-import { OriginalScriptsMap, ProfileScriptsMap } from '../prepare/preprocessing/scripts.js';
 import { processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
+import { createCompilationRecord } from '../../test/fixtures/compilation.js';
+import { createScriptFixture } from '../../test/fixtures/scripts.js';
 import { scriptSourceSummary } from './script-compilation.js';
 
-function fixture(source = 'function outer() { function inner() {} return 1; }') {
-    const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source }]);
-    const script = scripts.get(7)!;
-    const parsed = parseScriptSourceRanges(source, script.url, true);
-    script.sourceMetrics = computeScriptSourceMetrics(source, parsed.ranges);
-    script.functionRanges = parsed.ranges;
-
-    return { script, scripts };
-}
-
-function record(name: string, start: number, end: number): CpuProCompilationRecord {
-    return { name, scriptId: 7, start, end, tm: 0, duration: 1, line: null, column: null,
-        functionName: null, allocationStart: null, allocationEnd: null, event: null, eventIndex: null, callFrame: null };
-}
+const nestedFunctions = 'function outer() { function inner() {} return 1; }';
 
 test('compilation states use exact source identities and exclusive byte contributions', () => {
-    const { script, scripts } = fixture();
+    const { script, scripts } = createScriptFixture(nestedFunctions);
     const [outer, inner] = script.functionRanges!;
     const records = [
-        record('CompileCode', 0, script.source!.length),
-        record('CompileFunction', outer.callFrameStart, outer.end),
-        record('PreParse', inner.callFrameStart, inner.end)
+        createCompilationRecord({ name: 'CompileCode', start: 0, end: script.source!.length }),
+        createCompilationRecord({ name: 'CompileFunction', start: outer.callFrameStart, end: outer.end }),
+        createCompilationRecord({ name: 'PreParse', start: inner.callFrameStart, end: inner.end })
     ];
 
     const compilation = processScriptCompilation(records, scripts).get(7)!;
@@ -43,7 +26,7 @@ test('compilation states use exact source identities and exclusive byte contribu
     assert.equal(summary.unmatched, 0);
 
     const optimized = processScriptCompilation([
-        ...records, record('FinalizeMaglevCompilationJob', inner.callFrameStart, inner.end), ...records
+        ...records, createCompilationRecord({ name: 'FinalizeMaglevCompilationJob', start: inner.callFrameStart, end: inner.end }), ...records
     ], scripts).get(7)!;
 
     assert.deepEqual([...optimized.states], [3, 3, 4]);
@@ -52,11 +35,11 @@ test('compilation states use exact source identities and exclusive byte contribu
 });
 
 test('unknown coverage differs from unobserved code, and two-byte payload is weighted for the whole script', () => {
-    const { script, scripts } = fixture('function run() { return "\u0100"; }');
+    const { script, scripts } = createScriptFixture('function run() { return "\u0100"; }');
     const range = script.functionRanges![0];
 
     assert.equal(scriptSourceSummary(script).compiledBytes, null);
-    const compilation = processScriptCompilation([record('ParseFunction', range.callFrameStart, range.end)], scripts).get(7)!;
+    const compilation = processScriptCompilation([createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })], scripts).get(7)!;
 
     assert.equal(scriptSourceSummary(script, compilation).compiledBytes, 0);
     assert.equal(scriptSourceSummary(script, compilation).stateSizes![2], range.selfSize * 2);
@@ -64,11 +47,11 @@ test('unknown coverage differs from unobserved code, and two-byte payload is wei
 });
 
 test('observed compiled bytes use script-wide encoding for own sizes even when Unicode is only in an unobserved nested function', () => {
-    const { script, scripts } = fixture('function outer() { function inner() { return "\u044f\ud83d\ude00"; } return 1; }');
+    const { script, scripts } = createScriptFixture('function outer() { function inner() { return "\u044f\ud83d\ude00"; } return 1; }');
     const [outer, inner] = script.functionRanges!;
     const compilation = processScriptCompilation([
-        record('CompileCode', 0, script.source!.length),
-        record('CompileFunction', outer.callFrameStart, outer.end)
+        createCompilationRecord({ name: 'CompileCode', start: 0, end: script.source!.length }),
+        createCompilationRecord({ name: 'CompileFunction', start: outer.callFrameStart, end: outer.end })
     ], scripts).get(7)!;
 
     const summary = scriptSourceSummary(script, compilation);
@@ -80,7 +63,7 @@ test('observed compiled bytes use script-wide encoding for own sizes even when U
 });
 
 test('missing and failed parsing never report zero source sizes as known values', () => {
-    const { script } = fixture();
+    const { script } = createScriptFixture(nestedFunctions);
     script.sourceMetrics = null;
     script.functionRanges = null;
 

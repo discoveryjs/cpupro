@@ -1,163 +1,202 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { setImmediate } from 'node:timers/promises';
 import { test } from 'vitest';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
-function createHarness(debounce = false, { multiple = false, preserveFocus = false } = {}) {
-    let renderView;
-    let unsubscribed = 0;
-    let frames = 0;
-    let renders = 0;
-    let replacements = 0;
-    let controls = [];
-    let completion = Promise.resolve();
+async function createHarness({ multiple = false, ...options } = {}) {
+    const frames = new Map();
+    const debounced = [];
+    const pausedRenders = [];
     const root = { activeElement: null };
-    const focusOptions = [];
-    const callbacks = new Map();
-    const delayed = [];
     const sources = Array.from({ length: multiple ? 2 : 1 }, () => {
         const listeners = new Set();
+
         return {
+            listeners,
             subscribe(callback) {
                 listeners.add(callback);
-                return () => {
-                    listeners.delete(callback);
-                    unsubscribed++;
-                };
+                return () => listeners.delete(callback);
             },
             emit() {
-                listeners.forEach(callback => callback());
+                for (const callback of listeners) {
+                    callback();
+                }
             }
         };
     });
-    runInNewContext(readFileSync(new URL('./update-on-line-metrics-changes.js', import.meta.url), 'utf8'), {
+    const harness = {
+        sources,
+        root,
+        renders: 0,
+        commits: 0,
+        focusCalls: [],
+        element: {
+            children: [],
+            getRootNode: () => root,
+            contains: node => harness.element.children.includes(node),
+            querySelectorAll: () => harness.element.children,
+            replaceChildren(fragment) {
+                // A removed node loses focus, as in the DOM
+                if (harness.element.children.includes(root.activeElement)) {
+                    root.activeElement = null;
+                }
+
+                harness.element.children = fragment.children;
+                harness.commits++;
+            }
+        },
+        // The next render stays incomplete until the returned function is called
+        pauseRender() {
+            let resume;
+
+            pausedRenders.push(new Promise(resolve => {
+                resume = resolve;
+            }));
+
+            return resume;
+        },
+        async flush() {
+            for (const callback of debounced.splice(0)) {
+                callback();
+            }
+
+            for (const [id, callback] of frames) {
+                frames.delete(id);
+                callback();
+            }
+
+            await setImmediate();
+        }
+    };
+    let renderView;
+    let lastFrame = 0;
+
+    evaluateModule(new URL('./update-on-line-metrics-changes.js', import.meta.url), {
         discovery: { view: { define(name, render) {
             renderView = render;
         } } },
         HTMLElement: class {},
         customElements: { define() {} },
-        document: { body: {} },
+        document: {
+            body: {},
+            createDocumentFragment: () => ({ children: [] })
+        },
         requestAnimationFrame(callback) {
-            callbacks.set(++frames, callback);
-            return frames;
+            frames.set(++lastFrame, callback);
+            return lastFrame;
         },
         cancelAnimationFrame(id) {
-            callbacks.delete(id);
+            frames.delete(id);
         },
-        require() {
-            return { utils: { debounce: callback => () => delayed.push(callback) } };
-        }
+        require: () => ({ utils: {
+            debounce: callback => () => debounced.push(callback)
+        } })
     });
-    const element = {
-        getRootNode: () => root,
-        contains: control => controls.includes(control),
-        querySelectorAll: () => controls,
-        replaceChildren() {
-            replacements++;
-            if (controls.includes(root.activeElement)) {
-                root.activeElement = null;
-            }
-            controls = [];
+
+    const host = {
+        render(fragment) {
+            const control = {
+                id: ++harness.renders,
+                focus(options) {
+                    root.activeElement = control;
+                    // Copy out of the module's realm so deepEqual compares plain objects
+                    harness.focusCalls.push({ ...options });
+                }
+            };
+
+            fragment.children.push(control);
+
+            return pausedRenders.shift() || Promise.resolve();
         }
     };
-    renderView.call({ render() {
-        renders++;
-        const control = {
-            focus(options) {
-                root.activeElement = control;
-                focusOptions.push(options);
-            }
-        };
-        controls = [control];
-        return completion;
-    } }, element, { metrics: multiple ? sources : sources[0], debounce, preserveFocus, content: 'text' }, {}, {});
-    return {
-        element, sources, root, focusOptions,
-        get controls() {
-            return controls;
-        },
-        set completion(value) {
-            completion = value;
-        },
-        update: () => sources[0].emit(),
-        flush() {
-            const pending = [];
-            for (const callback of delayed.splice(0)) {
-                callback();
-            }
-            for (const [id, callback] of callbacks) {
-                callbacks.delete(id);
-                pending.push(callback());
-            }
-            return Promise.all(pending);
-        },
-        counts: () => ({ renders, replacements, unsubscribed: unsubscribed === sources.length })
+    const config = {
+        ...options,
+        metrics: multiple ? sources : sources[0],
+        content: 'text'
     };
+
+    await renderView.call(host, harness.element, config, {}, {});
+
+    return harness;
 }
 
-test('coalesces repeated metric notifications into one live render', () => {
-    const harness = createHarness();
-    harness.update();
-    harness.update();
-    harness.flush();
-    assert.deepEqual(harness.counts(), { renders: 2, replacements: 1, unsubscribed: false });
-});
+test.each([false, true])('coalesces notifications into one render per frame (multiple sources: %s)', async multiple => {
+    const harness = await createHarness({ multiple });
 
-test.each([false, true])('does not render after destruction with debounce=%s', debounce => {
-    const harness = createHarness(debounce);
-    harness.update();
-    harness.element.onDestroy();
-    harness.flush();
-    assert.deepEqual(harness.counts(), { renders: 1, replacements: 0, unsubscribed: true });
-});
-
-test('coalesces multiple sources and unsubscribes from all of them', async () => {
-    const harness = createHarness(false, { multiple: true });
-    harness.sources.forEach(source => {
+    for (const source of harness.sources) {
         source.emit();
         source.emit();
-    });
+    }
     await harness.flush();
-    assert.deepEqual(harness.counts(), { renders: 2, replacements: 1, unsubscribed: false });
+
+    assert.equal(harness.renders, 2);
+    assert.equal(harness.commits, 2);
+    assert.equal(harness.element.children[0].id, 2);
+});
+
+test.each([false, true])('stops rendering and unsubscribes from all sources on destroy (debounce: %s)', async debounce => {
+    const harness = await createHarness({ multiple: true, debounce });
+
+    for (const source of harness.sources) {
+        assert.equal(source.listeners.size, 1);
+    }
 
     harness.sources[0].emit();
     harness.element.onDestroy();
-    harness.sources.forEach(source => source.emit());
-    await harness.flush();
-    assert.deepEqual(harness.counts(), { renders: 2, replacements: 1, unsubscribed: true });
-});
-
-test('does not inspect focus when preservation is disabled', async () => {
-    const harness = createHarness();
-    harness.element.getRootNode = () => assert.fail('Focus preservation must be opt-in');
-    harness.update();
     await harness.flush();
 
-    assert.deepEqual(harness.counts(), { renders: 2, replacements: 1, unsubscribed: false });
-});
-
-test.each([false, true])('restores control focus only when requested (preserveFocus=%s)', async preserveFocus => {
-    const harness = createHarness(false, { preserveFocus });
-    harness.root.activeElement = harness.controls[0];
-    harness.update();
-    await harness.flush();
-
-    assert.equal(harness.root.activeElement, preserveFocus ? harness.controls[0] : null);
-    assert.equal(harness.focusOptions.length, preserveFocus ? 1 : 0);
-    if (preserveFocus) {
-        assert.equal(harness.focusOptions[0].preventScroll, true);
+    assert.equal(harness.renders, 1);
+    for (const source of harness.sources) {
+        assert.equal(source.listeners.size, 0);
     }
 });
 
-test.each(['focus moved', 'destroyed'])('does not restore focus after %s during rendering', async reason => {
-    const harness = createHarness(false, { preserveFocus: true });
-    let finish;
-    harness.completion = new Promise(resolve => {
-        finish = resolve;
-    });
-    harness.root.activeElement = harness.controls[0];
-    harness.update();
-    const rendering = harness.flush();
+test('does not commit a render superseded before completion', async () => {
+    const harness = await createHarness();
+    const resumeSuperseded = harness.pauseRender();
+
+    harness.sources[0].emit();
+    await harness.flush();
+    harness.sources[0].emit();
+    await harness.flush();
+    resumeSuperseded();
+    await harness.flush();
+
+    assert.equal(harness.renders, 3);
+    assert.equal(harness.element.children[0].id, 3);
+});
+
+test('leaves focus alone unless preservation is requested', async () => {
+    const harness = await createHarness();
+
+    harness.root.activeElement = harness.element.children[0];
+    harness.element.getRootNode = () => assert.fail('Focus preservation must be opt-in');
+    harness.sources[0].emit();
+    await harness.flush();
+
+    assert.equal(harness.root.activeElement, null);
+    assert.deepEqual(harness.focusCalls, []);
+});
+
+test('restores focus to the control at the same position without scrolling', async () => {
+    const harness = await createHarness({ preserveFocus: true });
+
+    harness.root.activeElement = harness.element.children[0];
+    harness.sources[0].emit();
+    await harness.flush();
+
+    assert.equal(harness.root.activeElement, harness.element.children[0]);
+    assert.equal(harness.root.activeElement.id, 2);
+    assert.deepEqual(harness.focusCalls, [{ preventScroll: true }]);
+});
+
+test.each(['focus moved', 'destroyed'])('does not restore focus when %s during rendering', async reason => {
+    const harness = await createHarness({ preserveFocus: true });
+    const resume = harness.pauseRender();
+
+    harness.root.activeElement = harness.element.children[0];
+    harness.sources[0].emit();
+    await harness.flush();
 
     if (reason === 'focus moved') {
         harness.root.activeElement = {};
@@ -165,7 +204,8 @@ test.each(['focus moved', 'destroyed'])('does not restore focus after %s during 
         harness.element.onDestroy();
     }
 
-    finish();
-    await rendering;
-    assert.equal(harness.focusOptions.length, 0);
+    resume();
+    await harness.flush();
+
+    assert.deepEqual(harness.focusCalls, []);
 });

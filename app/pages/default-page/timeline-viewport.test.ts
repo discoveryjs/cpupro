@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import jora from 'jora';
 import { methods as appMethods } from '../../jora/index.mjs';
@@ -16,6 +14,7 @@ import { histAllocationSpaces } from './hist-allocation-spaces.js';
 import { histAllocationLifespan } from './hist-allocation-lifespan.js';
 import { histAllocationGcs } from './hist-allocation-gcs.js';
 import { histAllocationCodeType } from './hist-allocation-code-type.js';
+import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 
 const methods = {
     ...appMethods,
@@ -25,7 +24,7 @@ const methods = {
 };
 
 const detailRenders = [];
-const timeline = runInNewContext(readFileSync(new URL('../default.js', import.meta.url), 'utf8') + '\ncategoriesTimeline;', {
+const timeline = evaluateModule(new URL('../default.js', import.meta.url), {
     require: () => ({ supportedFormats: [], sessionExpandState: () => ({}), chartUsedHeap, userTimingsTimeline }),
     discovery: {
         nav: { primary: { append() {} } },
@@ -35,7 +34,7 @@ const timeline = runInNewContext(readFileSync(new URL('../default.js', import.me
             render: (...args) => detailRenders.push(args)
         }
     }
-});
+}, 'categoriesTimeline');
 const query = jora.setup({ methods: { ...methods, marker: () => ({ href: '#' }) } });
 
 test('tooltip dispatch selects one section and uses its current local data and scope', () => {

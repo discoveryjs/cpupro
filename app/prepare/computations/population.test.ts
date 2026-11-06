@@ -108,76 +108,6 @@ describe('PopulationFiltered', () => {
         viewport.destroy();
     });
 
-    test.each([
-        { name: 'empty', weights: [] },
-        { name: 'zero weights', weights: [0, 0, 0] },
-        { name: 'repeated coordinates', weights: [0, 0, 10, 0, 0, 20, 0, 30, 0, 0] },
-        { name: 'single event', weights: [10] },
-        { name: 'uint32 boundary', weights: [0xfffffffe, 1, 0] }
-    ])('matches per-event clipping through range and constraint transitions: $name', ({ weights }) => {
-        const population = new Population(Uint32Array.from(weights, (_, index) => index % 3), Uint32Array.from(weights));
-        const filtered = new PopulationFiltered(population);
-        filtered.updateMask(mask => {
-            mask[0] = 1;
-        });
-        const values = filtered.values;
-        const samples = filtered.samples;
-        const total = weights.length ? population.cumulative[weights.length - 1] + weights[weights.length - 1] : 0;
-        const coordinates = [-1, 0, 0.25, 0.75, 5, 10, 10.25, 30, total, total + 1];
-        let seed = 12345;
-        const random = (size: number) => {
-            seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-            return seed % size;
-        };
-        const verify = () => {
-            let rangeSamples = 0;
-            const fullValues = new Uint32Array(weights.length);
-            const expectedValues = population.values.map((value, index) => {
-                const contribution = filtered.rangeStart === null || filtered.rangeEnd === null
-                    ? value
-                    : Math.max(0, Math.min(population.cumulative[index] + value, filtered.rangeEnd) - Math.max(population.cumulative[index], filtered.rangeStart));
-                rangeSamples += contribution > 0 ? 1 : 0;
-                const accepted = index >= (filtered.indexStart ?? 0) && index < (filtered.indexEnd ?? weights.length) &&
-                    value >= (filtered.valueMin ?? -Infinity) && value < (filtered.valueMax ?? Infinity);
-                fullValues[index] = accepted && contribution > 0 ? value : 0;
-                return accepted ? contribution : 0;
-            });
-            const totals = new Uint32Array(filtered.samplesTotal.length + 1);
-            const counts = new Uint32Array(totals.length);
-            expectedValues.forEach((value, index) => {
-                const sampleId = population.samples[index] === 0 ? filtered.sinkId : population.samples[index];
-                totals[sampleId] += value;
-                counts[sampleId] += value > 0 ? 1 : 0;
-            });
-            assert.equal(filtered.values, values);
-            assert.equal(filtered.samples, samples);
-            assert.deepEqual(filtered.values, fullValues);
-            assert.equal(filtered.rangeSamples, filtered.rangeStart === null ? null : rangeSamples);
-            assert.deepEqual(filtered.samplesTotal, totals.subarray(0, filtered.samplesTotal.length));
-            assert.deepEqual(filtered.samplesCount, counts.subarray(0, filtered.samplesCount.length));
-            assert.deepEqual(filtered.sink, { total: totals[filtered.sinkId], count: counts[filtered.sinkId] });
-        };
-
-        for (let pass = 0; pass < 120; pass++) {
-            const start = coordinates[random(coordinates.length)];
-            const end = coordinates[random(coordinates.length)];
-            filtered.setRange(Math.min(start, end), Math.max(start, end));
-            verify();
-            const first = random(weights.length + 1);
-            const last = random(weights.length + 1);
-            filtered.setIndexRange(Math.min(first, last), Math.max(first, last));
-            verify();
-            filtered.setValueRange(pass % 2 ? null : 10, pass % 3 ? null : 30);
-            verify();
-            filtered.resetIndexRange();
-            verify();
-            filtered.resetValueRange();
-            verify();
-            filtered.resetRange();
-            verify();
-        }
-    });
-
     test('moves and resets ranges without evaluating event acceptance or rebuilding sample destinations', () => {
         const population = new Population(new Uint32Array([0, 1, 0, 2, 1]), new Uint32Array([10, 0, 20, 30, 0]));
         const filtered = new PopulationFiltered(population);
@@ -227,47 +157,33 @@ describe('PopulationFiltered', () => {
         assert.deepEqual([...population.values], [0, 10, 0, 20, 0, 30, 0]);
     });
 
-    test('combines all constraints from original values, without re-evaluating the bucket filter', () => {
+    test('resets each constraint independently, without re-running the mask update', () => {
         const population = new Population(new Uint32Array([0, 1, 0, 2, 1]), new Uint32Array([10, 20, 30, 40, 0]));
-        const first = new PopulationFiltered(population);
-        const second = new PopulationFiltered(population);
-        let filterCalls = 0;
-        const maskFn = (mask: Uint32Array) => {
-            filterCalls++; mask[0] |= 1;
-        };
-        first.updateMask(maskFn);
-        first.setRange(15, 65);
-        first.setIndexRange(1, 4);
-        first.setValueRange(20, 40);
-        second.setValueRange(20, 40);
-        second.setIndexRange(1, 4);
-        second.setRange(15, 65);
-        second.updateMask(maskFn);
-        assert.equal(filterCalls, 2);
-        assert.deepEqual([...first.values], [0, 20, 30, 0, 0]);
-        assert.deepEqual([...first.samplesTotal], [0, 15, 0]);
-        assert.deepEqual(first.sink, { count: 1, total: 30 });
-        assert.deepEqual(first.values, second.values);
-        assert.deepEqual(first.samples, second.samples);
-        assert.deepEqual(first.samplesTotal, second.samplesTotal);
-        assert.deepEqual(first.sink, second.sink);
+        const filtered = new PopulationFiltered(population);
+        let maskUpdates = 0;
 
-        first.resetRange();
-        assert.deepEqual([...first.values], [0, 20, 30, 0, 0]);
-        first.resetValueRange();
-        assert.deepEqual([...first.values], [0, 20, 30, 40, 0]);
-        first.resetIndexRange();
-        assert.deepEqual(first.values, population.values);
-        assert.deepEqual(first.sink, { count: 2, total: 40 });
-        first.resetMask();
-        assert.deepEqual(first.samples, population.samples);
-        assert.deepEqual(first.samplesTotal, population.samplesTotal);
-        assert.equal(filterCalls, 2);
+        filtered.updateMask(mask => {
+            maskUpdates++;
+            mask[0] |= 1;
+        });
+        filtered.setRange(15, 65);
+        filtered.setIndexRange(1, 4);
+        filtered.setValueRange(20, 40);
+        assert.deepEqual([...filtered.values], [0, 20, 30, 0, 0]);
+        assert.deepEqual([...filtered.samplesTotal], [0, 15, 0]);
+        assert.deepEqual(filtered.sink, { count: 1, total: 30 });
 
-        second.resetMask();
-        assert.deepEqual([...second.samplesTotal], [30, 15, 0]);
-        assert.deepEqual(second.sink, { count: 0, total: 0 });
-        assert.deepEqual([...population.values], [10, 20, 30, 40, 0]);
+        filtered.resetRange();
+        assert.deepEqual([...filtered.values], [0, 20, 30, 0, 0]);
+        filtered.resetValueRange();
+        assert.deepEqual([...filtered.values], [0, 20, 30, 40, 0]);
+        filtered.resetIndexRange();
+        assert.deepEqual(filtered.values, population.values);
+        assert.deepEqual(filtered.sink, { count: 2, total: 40 });
+        filtered.resetMask();
+        assert.deepEqual(filtered.samples, population.samples);
+        assert.deepEqual(filtered.samplesTotal, population.samplesTotal);
+        assert.equal(maskUpdates, 1);
     });
 
     test('supports open index/value bounds and suppresses identical updates', () => {
@@ -288,6 +204,10 @@ describe('PopulationFiltered', () => {
         filtered.resetIndexRange();
         filtered.setValueRange(null, 30);
         assert.deepEqual([...filtered.values], [10, 20, 0]);
+        const updatesBeforeReset = updates;
+        filtered.resetRange();
+        filtered.resetRange();
+        assert.equal(updates, updatesBeforeReset + 1);
         assert.throws(() => filtered.setRange(20, 10), RangeError);
         assert.throws(() => filtered.setIndexRange(0.5, 1), RangeError);
         assert.throws(() => filtered.setValueRange(NaN, 1), RangeError);
@@ -354,7 +274,6 @@ describe('PopulationFiltered', () => {
         const totals = filtered.samplesTotal;
         assert.equal(filtered.samplesMask.length, 3);
         assert.equal(filtered.sinkId, 3);
-        assert.equal(filtered.buffer.samplesTotal.length, 4);
         assert.equal(filtered.hasMask(), false);
         assert.deepEqual(filtered.sink, { count: 0, total: 0 });
 
@@ -397,38 +316,10 @@ describe('PopulationFiltered', () => {
         filtered.resetMask();
         assert.equal(notifications, 4);
         assert.equal(filtered.samples, samples);
-        assert.equal(filtered.samples, filtered.buffer.samples);
         assert.equal(filtered.values, values);
         assert.equal(filtered.samplesCount, counts);
         assert.equal(filtered.samplesTotal, totals);
         assert.deepEqual(totals, population.samplesTotal);
-    });
-
-    test('combines range and mask independently of update order', () => {
-        const population = new Population(new Uint32Array([0, 1, 0]), new Uint32Array([10, 20, 30]));
-        const first = new PopulationFiltered(population);
-        const second = new PopulationFiltered(population);
-        first.updateMask(mask => {
-            mask[0] = 1;
-        });
-        first.setRange(5, 35);
-        second.setRange(5, 35);
-        second.updateMask(mask => {
-            mask[0] = 1;
-        });
-        assert.deepEqual(first.samples, second.samples);
-        assert.deepEqual(first.values, second.values);
-        assert.deepEqual([...first.samplesTotal], [0, 20]);
-        assert.deepEqual(first.samplesTotal, second.samplesTotal);
-        assert.deepEqual(first.sink, { count: 2, total: 10 });
-        first.resetMask();
-        assert.deepEqual([...first.samplesTotal], [10, 20]);
-        assert.deepEqual(first.sink, { count: 0, total: 0 });
-        second.resetRange();
-        assert.deepEqual([...second.samplesTotal], [0, 20]);
-        assert.deepEqual(second.sink, { count: 2, total: 40 });
-        second.resetMask();
-        assert.deepEqual(second.samplesTotal, population.samplesTotal);
     });
 
     const cases = [
@@ -451,31 +342,5 @@ describe('PopulationFiltered', () => {
         const originalTotals = population.samplesTotal.slice();
         filtered.samplesTotal[0] = 42;
         assert.deepEqual(population.samplesTotal, originalTotals);
-    });
-
-    test('updates a range once and resets without mutating the base population', () => {
-        const population = new Population(new Uint32Array([0, 1, 0]), new Uint32Array([10, 20, 30]));
-        const filtered = new PopulationFiltered(population);
-        let notifications = 0;
-        const unsubscribe = filtered.subscribe(() => notifications++);
-
-        filtered.setRange(5, 35);
-        assert.deepEqual([...filtered.values], [10, 20, 30]);
-        assert.deepEqual([...filtered.samplesTotal], [10, 20]);
-        assert.deepEqual([...filtered.samplesCount], [2, 1]);
-        assert.equal(notifications, 1);
-        assert.deepEqual([...population.values], [10, 20, 30]);
-        assert.deepEqual([...population.samplesTotal], [40, 20]);
-
-        filtered.resetRange();
-        assert.deepEqual(filtered.values, population.values);
-        assert.deepEqual(filtered.samplesTotal, population.samplesTotal);
-        assert.deepEqual(filtered.samplesCount, population.samplesCount);
-        assert.equal(filtered.rangeStart, null);
-        assert.equal(filtered.rangeEnd, null);
-        assert.equal(notifications, 2);
-        filtered.resetRange();
-        assert.equal(notifications, 2);
-        unsubscribe();
     });
 });

@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../jora/index.mjs';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 let page;
 
-runInNewContext(readFileSync(new URL('./events.js', import.meta.url), 'utf8'), {
+evaluateModule(new URL('./events.js', import.meta.url), {
     discovery: {
         page: { define(name, config) {
             assert.equal(name, 'events');

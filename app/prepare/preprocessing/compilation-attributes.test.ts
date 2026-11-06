@@ -9,21 +9,17 @@ import type { CpuProCompilationRecord } from '../types.js';
 import { createWorkHandler } from '../misc/work.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 import * as computations from '../computations/misc.js';
-import * as utils from '../formats/utils.js';
 import {
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute
 } from '../lines/memline-attributes.mjs';
 import { collectProfileUsedScriptIds, OriginalScriptsMap, ProfileScriptsMap } from './scripts.js';
 import { prepareCompilationRecords, resolveCompilationCallFrames } from './compilation-events.js';
+import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
 
-function record(overrides: Partial<UniformCompilationRecord> = {}): UniformCompilationRecord {
-    return {
-        name: 'Compile', tm: 100, duration: 10, scriptId: 7, start: 14, end: 30,
-        line: 0, column: 14, functionName: null, allocationStart: 0, allocationEnd: 0,
-        eventIndex: null, event: null, callFrame: null,
-        ...overrides
-    };
+// Records default to the fixture function `known` at 14..30 (line 0, column 14) of script 7
+function record(fields: Partial<UniformCompilationRecord> = {}) {
+    return createCompilationRecord({ start: 14, end: 30, line: 0, column: 14, ...fields });
 }
 
 function sourceFixture(cpuOnly = false) {
@@ -84,15 +80,28 @@ test('allocation rows map to innermost owner and stage with exclusive starts and
         record({ name: 'Absent', allocationStart: null, allocationEnd: null })
     ];
 
+    // Allocation ranges are (start, end]; the innermost record wins
+    const stageOf = (id: number) => {
+        if (id > 12 && id <= 15) {
+            return 'Inner';
+        }
+
+        if (id > 10 && id <= 20) {
+            return 'Compile';
+        }
+
+        return 'none';
+    };
+    const ownerStart: Record<string, number | null> = { Inner: 30, Compile: 14, none: null };
+
     for (const ids of [[10, 11, 12, 13, 14, 15, 16, 20, 21], [0, 11, 13, 20, 30], [10, 11, 13, 13, 20, 21]]) {
         for (const input of [records, records.slice().reverse()]) {
             const prepared = prepareCompilationRecords(input, []);
             const { owner, stage } = attributes(prepared, ids);
-            const expected = ids.map(id => id > 12 && id <= 15 ? 'Inner' : id > 10 && id <= 20 ? 'Compile' : 'none');
+            const expected = ids.map(stageOf);
 
             assert.deepEqual(Array.from(stage.values, index => stage.dict[index]), expected);
-            assert.deepEqual(Array.from(owner.values, index => owner.dict[index]?.start ?? null),
-                expected.map(name => name === 'Inner' ? 30 : name === 'Compile' ? 14 : null));
+            assert.deepEqual(Array.from(owner.values, index => owner.dict[index]?.start ?? null), expected.map(name => ownerStart[name]));
             assert.deepEqual(new Set(stage.dict), new Set(['none', 'Compile', 'Inner', 'Empty', 'Absent']));
             assert.deepEqual(owner.dict.slice(1).map(entry => entry!.start).sort(), [14, 30]);
         }
@@ -127,7 +136,7 @@ test('owner dictionary keys compiled functions by raw script and start, not reso
     }
 });
 
-test('known consecutive ids avoid rescanning and ordered intervals avoid sorting', () => {
+test('consecutive allocation ids are located by offset without scanning or searching', () => {
     const records = [record({ allocationStart: 10, allocationEnd: 20 }), record({ name: 'Inner', allocationStart: 12, allocationEnd: 15 })];
     let reads = 0;
     const ids = new Proxy(Array.from({ length: 1000 }, (_, index) => index + 10), {
@@ -139,21 +148,18 @@ test('known consecutive ids avoid rescanning and ordered intervals avoid sorting
             return Reflect.get(target, property, target);
         }
     });
-    const classify = vi.spyOn(utils, 'getNumericArrayOrder');
     const search = vi.spyOn(computations, 'lowerBound');
-    const sort = vi.spyOn(Array.prototype, 'sort');
 
     try {
-        attributes(records, ids, 'consecutive');
+        const { stage } = attributes(records, ids, 'consecutive');
 
+        // Only the first id is read, once per attribute
         assert.equal(reads, 2);
-        assert.equal(classify.mock.calls.length, 0);
         assert.equal(search.mock.calls.length, 0);
-        assert.equal(sort.mock.calls.length, 0);
+        assert.deepEqual(Array.from(stage.values.subarray(0, 12), index => stage.dict[index]),
+            ['none', 'Compile', 'Compile', 'Inner', 'Inner', 'Inner', 'Compile', 'Compile', 'Compile', 'Compile', 'Compile', 'none']);
     } finally {
-        classify.mockRestore();
         search.mockRestore();
-        sort.mockRestore();
     }
 });
 

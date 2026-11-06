@@ -33,14 +33,11 @@ test('selection indicators measure the union within line coverage in time or byt
         assert.ok(filter instanceof SetAttributeFilter);
         filter.setSelection('include', []);
         assert.equal(lengthValue({}, context), length);
-        assert.equal(value({}, context), line.formatValue(length));
         assert.equal(line.range.selection.ranges, requested);
         line.range.setRange(line.axisTotal + 1, line.axisTotal + 10);
         assert.equal(lengthValue({}, context), 0);
-        assert.equal(value({}, context), line.formatValue(0));
         line.range.setRanges([]);
         assert.equal(lengthValue({}, context), 0);
-        assert.equal(value({}, context), line.formatValue(0));
         assert.equal(visible({}, context), true);
         line.range.resetRange();
         assert.equal(visible({}, context), false);

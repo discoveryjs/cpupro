@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import usage from './chart.usage.js';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 function createElement() {
     return {
@@ -20,16 +19,13 @@ function createElement() {
 
 let renderChart;
 
-const generateCurve = runInNewContext(
-    readFileSync(new URL('./chart.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '') + '\ngenerateCurve;',
-    {
-        discovery: { view: { define(name, render) {
-            renderChart = render;
-        } } },
-        usage, setRangeCoverage,
-        document: { createElement, createElementNS: createElement }
-    }
-);
+const generateCurve = evaluateModule(new URL('./chart.js', import.meta.url), {
+    discovery: { view: { define(name, render) {
+        renderChart = render;
+    } } },
+    usage, setRangeCoverage,
+    document: { createElement, createElementNS: createElement }
+}, 'generateCurve');
 
 test('uses point bounds by default and caller-supplied minX/maxX independently of context', () => {
     for (const [config, minX, maxX] of [

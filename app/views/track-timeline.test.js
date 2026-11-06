@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { afterEach, test, vi } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
@@ -8,6 +7,7 @@ import { TrackTimeline as CanvasTrackTimeline } from './track-timeline/index.js'
 import { layoutSpans } from './track-timeline/layout.js';
 import { SpanIndex } from './track-timeline/span-index.js';
 import { SpanLabels } from './track-timeline/labels.js';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 test('label thresholds reuse full and first-grapheme widths without ellipsis-only output', () => {
     const labels = new SpanLabels();
@@ -322,7 +322,7 @@ async function renderTimeline(config = {}, scopeViewport) {
     const element = { classList: new Set(), append() {} };
     const destroyElement = {};
 
-    runInNewContext(readFileSync(new URL('./track-timeline.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, ''), {
+    evaluateModule(new URL('./track-timeline.js', import.meta.url), {
         resolveScopeProfileLine, resolveScopeViewport,
         discovery: { view: { define: (_, callback) => render = callback } },
         utils: { createElement: name => name === 'destroy-track-timeline' ? destroyElement : element },

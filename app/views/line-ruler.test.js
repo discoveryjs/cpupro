@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import { createRulerHarness } from '../../test/helpers/ruler.js';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
@@ -8,10 +6,11 @@ import { resolveScopeProfileLine } from '../jora/profile.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 import { rangeToSegments } from './ruler-range.js';
 import { RangeSelection } from '../prepare/computations/range.js';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 let renderLineRuler;
 let viewOptions;
-runInNewContext(readFileSync(new URL('./line-ruler.js', import.meta.url), 'utf8'), {
+evaluateModule(new URL('./line-ruler.js', import.meta.url), {
     discovery: { view: { define(name, render, options) {
         assert.equal(name, 'line-ruler');
         renderLineRuler = render;
@@ -57,7 +56,7 @@ test('forwards resolved props and callbacks without a container or a second sele
         assert.equal(marker.dataset.title, expected);
         assert.equal(initialized, 1);
         assert.equal(profile.timeline.range.selection.ranges, null);
-        element.children.find(child => child.tag === 'destroy-ruler').onDestroy();
+        harness.destroy(element);
     }
 });
 
@@ -96,6 +95,8 @@ test.each([false, true])('owns manager lifecycle, calls user onInit and adapts d
     assert.equal(config.segments, 7);
     assert.deepEqual(Array.from(api.state.segments), Array.from({ length: 8 }, (_, index) => 100 + index * 30 / 7));
     assert.deepEqual(api.state.selection, multiple ? [{ start: 102, end: 108 }] : { start: 102, end: 108 });
+    manager.setRanges([{ start: 110, end: 115 }, { start: 120, end: 125 }]);
+    assert.deepEqual(api.state.selection, multiple ? [{ start: 110, end: 115 }, { start: 120, end: 125 }] : { start: 110, end: 115 });
     manager.setRange(110, 115);
     assert.equal(changes, 0);
     assert.deepEqual(api.state.selection, multiple ? [{ start: 110, end: 115 }] : { start: 110, end: 115 });
@@ -115,13 +116,13 @@ test.each([false, true])('owns manager lifecycle, calls user onInit and adapts d
     assert.ok(Math.abs(detailsContext.timeStart - 60 / 7) < 1e-12);
     assert.ok(Math.abs(detailsContext.timeEnd - 90 / 7) < 1e-12);
     assert.equal(api.state.selection, null);
-    harness.hostEvents.get('pointerdown')({ buttons: 1, pointerId: 1, x: element.width * 0.4, y: 5, target: element });
+    harness.pointerDown(element.width * 0.4, element);
     harness.move({ x: element.width * 0.7, y: 5 });
-    harness.globalEvents.get('pointerup')({ pointerId: 1, x: element.width * 0.7, y: 5 });
+    harness.pointerUp(element.width * 0.7);
     assert.deepEqual(manager.ranges, [{ start: 100 + 60 / 7, end: 100 + 150 / 7 }]);
     assert.equal(changes, 1);
     const selected = api.state.selection;
-    element.children.find(child => child.tag === 'destroy-ruler').onDestroy();
+    harness.destroy(element);
     manager.setRange(0, 30);
     assert.equal(api.state.selection, selected);
     assert.equal(cleanups, 1);
@@ -138,61 +139,64 @@ test('forwards explicit segment boundaries and fractional ranges without normali
     } }, {}, { range, segments, selection }, {}, { scopeLine: { type: 'timeline' } });
 });
 
-test.each([false, true])('keeps a minimum resize in the manager and commits it after crossing the anchor, multiple=%s', multiple => {
-    for (const segments of [null, 10]) {
-        for (const trigger of ['start', 'finish']) {
-            const manager = new RangeSelection({ name: 'time', unit: 'us' });
-            manager.setRange(120, 160);
-            const harness = createRulerHarness();
-            const element = harness.createElement('ruler');
-            element.width = 100;
-            const styles = new Map();
-            element.style.setProperty = (name, value) => styles.set(name, value);
-            harness.createElement('parent').appendChild(element);
-            let api;
-            let commits = 0;
-            renderLineRuler.call({ render: harness.render }, element, {
-                range: [100, 200], segments, multiple, rangeManager: manager,
-                onInit(value) {
-                    api = value;
-                },
-                onCommit() {
-                    commits++;
-                }
-            }, {}, { scopeLine: { type: 'timeline' } });
-            const handle = element.querySelector('.view-ruler__selection-overlay-mover')
-                .children.find(child => child.dataset.trigger === trigger);
-            const start = trigger === 'start' ? 20 : 60;
-            const anchor = trigger === 'start' ? 60 : 20;
-            const crossed = trigger === 'start' ? 80 : 10;
-            harness.setActive(element);
-            harness.move({ x: start, y: 5 });
-            harness.hostEvents.get('pointerdown')({ buttons: 1, pointerId: 1, x: start, y: 5, target: handle });
-            harness.move({ x: anchor, y: 5 });
-            const minimum = segments ? 10 : 1;
-            const initialMinimum = trigger === 'start'
-                ? { start: 100 + anchor - minimum, end: 100 + anchor }
-                : { start: 100 + anchor, end: 100 + anchor + minimum };
-            assert.deepEqual(manager.ranges, [initialMinimum]);
-            assert.deepEqual(api.state.selection, multiple ? [initialMinimum] : initialMinimum);
-            assert.equal(styles.get('--selection-start'), (initialMinimum.start - 100) / 100);
-            assert.equal(styles.get('--selection-end'), (initialMinimum.end - 100) / 100);
-            assert.equal(element.hasPointerCapture(1), true);
-            harness.move({ x: crossed, y: 5 });
-            const selection = { start: 100 + Math.min(anchor, crossed), end: 100 + Math.max(anchor, crossed) };
-            assert.deepEqual(manager.ranges, [selection]);
-            assert.deepEqual(api.state.selection, multiple ? [selection] : selection);
-            harness.move({ x: anchor, y: 5 });
-            const finalMinimum = trigger === 'start'
-                ? { start: 100 + anchor, end: 100 + anchor + minimum }
-                : { start: 100 + anchor - minimum, end: 100 + anchor };
-            harness.globalEvents.get('pointerup')({ pointerId: 1, x: anchor, y: 5 });
-            assert.deepEqual(manager.ranges, [finalMinimum]);
-            assert.deepEqual(api.state.selection, multiple ? [finalMinimum] : finalMinimum);
-            assert.equal(element.dataset.state, 'selected');
-            assert.equal(commits, 1);
-            assert.equal(element.hasPointerCapture(1), false);
-            element.children.find(child => child.tag === 'destroy-ruler').onDestroy();
-        }
+// A drag starts on a handle at `from`, reaches the opposite edge `anchor`, crosses it and returns.
+// The handle stays on its `side` of the anchor until crossing.
+const minimumResizeCases = [false, true].flatMap(multiple => [null, 10].flatMap(segments => [
+    { multiple, segments, trigger: 'start', side: -1, from: 20, anchor: 60, crossed: 80 },
+    { multiple, segments, trigger: 'finish', side: 1, from: 60, anchor: 20, crossed: 10 }
+]));
+
+test.each(minimumResizeCases)(
+    'keeps a minimum resize in the manager and commits it after crossing the anchor: $trigger, segments=$segments, multiple=$multiple',
+    ({ multiple, segments, trigger, side, from, anchor, crossed }) => {
+        // The ruler is 100px wide over [100, 200], so a pointer offset is a scale offset
+        const span = (first, second) => ({ start: 100 + Math.min(first, second), end: 100 + Math.max(first, second) });
+        const selected = range => multiple ? [range] : range;
+        // A segmented scale stops at the nearest boundary, a continuous one at one CSS pixel
+        const minimum = segments ? 10 : 1;
+        const manager = new RangeSelection({ name: 'time', unit: 'us' });
+        const harness = createRulerHarness();
+        const element = harness.createElement('ruler');
+        const styles = new Map();
+        let api;
+        let commits = 0;
+
+        manager.setRange(120, 160);
+        element.width = 100;
+        element.style.setProperty = (name, value) => styles.set(name, value);
+        harness.createElement('parent').appendChild(element);
+        renderLineRuler.call({ render: harness.render }, element, {
+            range: [100, 200], segments, multiple, rangeManager: manager,
+            onInit(value) {
+                api = value;
+            },
+            onCommit() {
+                commits++;
+            }
+        }, {}, { scopeLine: { type: 'timeline' } });
+        harness.setActive(element);
+
+        harness.pointerDown(from, harness.selectionHandle(element, trigger));
+        harness.move({ x: anchor, y: 5 });
+        const initial = span(anchor, anchor + side * minimum);
+        assert.deepEqual(manager.ranges, [initial]);
+        assert.deepEqual(api.state.selection, selected(initial));
+        assert.equal(styles.get('--selection-start'), (initial.start - 100) / 100);
+        assert.equal(styles.get('--selection-end'), (initial.end - 100) / 100);
+        assert.equal(element.hasPointerCapture(1), true);
+
+        harness.move({ x: crossed, y: 5 });
+        assert.deepEqual(manager.ranges, [span(anchor, crossed)]);
+        assert.deepEqual(api.state.selection, selected(span(anchor, crossed)));
+
+        harness.move({ x: anchor, y: 5 });
+        harness.pointerUp(anchor);
+        const final = span(anchor, anchor - side * minimum);
+        assert.deepEqual(manager.ranges, [final]);
+        assert.deepEqual(api.state.selection, selected(final));
+        assert.equal(element.dataset.state, 'selected');
+        assert.equal(commits, 1);
+        assert.equal(element.hasPointerCapture(1), false);
+        harness.destroy(element);
     }
-});
+);

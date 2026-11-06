@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { lineExtent } from '../jora/viewport.js';
@@ -8,14 +6,13 @@ import { validateRange } from '../prepare/computations/coordinates.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import usage from './line-histogram.usage.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 type Render = (element: unknown, props: unknown, data: unknown, context: unknown) => Promise<void>;
 
 function renderHistogram(props = {}, context = {}) {
     let render: Render = () => assert.fail('View was not registered');
-    const source = readFileSync(new URL('./line-histogram.js', import.meta.url), 'utf8')
-        .replace(/^import .*;\n/gm, '');
-    runInNewContext(source, {
+    evaluateModule(new URL('./line-histogram.js', import.meta.url), {
         resolveScopeProfileLine,
         resolveScopeViewport,
         lineExtent,

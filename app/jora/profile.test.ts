@@ -2,10 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import jora from 'jora';
 import { methods, resolveScopeViewport } from './profile.js';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { methods as viewportMethods } from './viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 const query = jora.setup({ methods: { ...methods, ...viewportMethods } });
 
@@ -64,12 +63,12 @@ test('checks viewport values at runtime, including empty, malformed and non-fini
     assert.equal(resolveScopeViewport(undefined, nested), scopeViewport);
 });
 
-test.each(['../pages/samples.js'])('keeps the existing local ruler and bins in one explicit context: %s', async path => {
+test('the samples page keeps its local ruler and bins in one explicit context', async () => {
     let definition: { context: string };
     const register = (_: string, config: typeof definition) => {
         definition = config;
     };
-    runInNewContext(readFileSync(new URL(path, import.meta.url), 'utf8'), {
+    evaluateModule(new URL('../pages/samples.js', import.meta.url), {
         discovery: { page: { define: register }, view: { define: register } },
         require: () => ({})
     });

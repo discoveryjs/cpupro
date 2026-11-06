@@ -3,6 +3,7 @@ import { describe, test } from 'vitest';
 import jora from 'jora';
 import type { CpuProCompilationRecord, CpuProThread } from '../prepare/types.js';
 import { createProfileFixture, createLineFixture } from '../../test/fixtures/profile.js';
+import { createCompilationRecord } from '../../test/fixtures/compilation.js';
 import { createProfile } from '../prepare/profile.mjs';
 import {
     analyzeEventNesting,
@@ -16,25 +17,18 @@ type Interval = [start: number, end: number];
 
 const query = jora.setup({ methods });
 
-function createEvent(name: string, time: Interval, allocations?: Interval): CpuProCompilationRecord {
-    const [start, end] = time;
-
-    return {
+// A compilation event outside of any script, placed by its time and allocation intervals
+function createEvent(name: string, [start, end]: Interval, allocations?: Interval): CpuProCompilationRecord {
+    return createCompilationRecord({
         name,
         tm: start,
         duration: end - start,
-        allocationStart: allocations?.[0] ?? null,
-        allocationEnd: allocations?.[1] ?? null,
         scriptId: null,
         start: null,
         end: null,
-        line: null,
-        column: null,
-        functionName: null,
-        eventIndex: null,
-        event: null,
-        callFrame: null
-    };
+        allocationStart: allocations?.[0] ?? null,
+        allocationEnd: allocations?.[1] ?? null
+    });
 }
 
 function createThread(compilations: CpuProCompilationRecord[]) {

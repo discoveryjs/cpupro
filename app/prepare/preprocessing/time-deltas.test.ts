@@ -21,11 +21,12 @@ test('re-evaluates the previous sample after a swap when several samples are out
     const samples = [1, 2, 3, 4];
     const mapping = [1, 5, 3, 2];
 
+    // Timestamps of samples 1..4 are 10, 15, 7 and 4
     fixTimeDeltasOrderIfNeeded(timeDeltas, samples, null, mapping);
 
-    assert.ok(timeDeltas.every(delta => delta >= 0));
-    assert.deepEqual(samples.slice().sort(), [1, 2, 3, 4]);
-    assert.deepEqual(mapping, samples.map(sample => [1, 5, 3, 2][sample - 1]));
+    assert.deepEqual(samples, [4, 3, 1, 2]);
+    assert.deepEqual(timeDeltas, [4, 3, 3, 5]);
+    assert.deepEqual(mapping, [2, 3, 1, 5]);
 });
 
 test('keeps ordered input intact and tolerates a mapping shorter than samples', () => {

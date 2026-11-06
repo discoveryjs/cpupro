@@ -59,14 +59,14 @@ function setup(options = {}, render) {
         }
     }, data, context);
     harness.setActive(element);
-    const move = x => harness.move({ x, y: 5 });
-    const down = (x, target = element) => {
-        move(x);
-        harness.hostEvents.get('pointerdown')({ buttons: 1, pointerId: 1, x, y: 5, target });
-    };
-    const up = x => harness.globalEvents.get('pointerup')({ pointerId: 1, x, y: 5 });
-    return { harness, element, api, calls, move, down, up, cleanups: () => cleanups,
-        destroy: () => element.children.find(child => child.tag === 'destroy-ruler').onDestroy()
+    return {
+        harness, element, api, calls,
+        move: x => harness.move({ x, y: 5 }),
+        down: (x, target = element) => harness.pointerDown(x, target),
+        up: x => harness.pointerUp(x),
+        handle: trigger => harness.selectionHandle(element, trigger),
+        cleanups: () => cleanups,
+        destroy: () => harness.destroy(element)
     };
 }
 
@@ -182,7 +182,7 @@ test.each([null, 10])('moves and resizes without rebuilding segments, segments=%
     view.up(45);
     const moved = view.api.state.selection;
     assert.equal(moved.end - moved.start, 44);
-    const handle = mover.children.find(child => child.dataset.trigger === 'finish');
+    const handle = view.handle('finish');
     view.down(moved.end - 100, handle);
     view.move(99);
     view.up(99);
@@ -195,8 +195,7 @@ test.each([null, 10])('moves and resizes without rebuilding segments, segments=%
 
 test.each([null, 100])('jumps across the original resize anchor after reaching the minimum, segments=%s', segments => {
     const view = setup({ range: 100, segments, selection: { start: 10, end: 40 } });
-    const handle = view.element.querySelector('.view-ruler__selection-overlay-mover')
-        .children.find(child => child.dataset.trigger === 'start');
+    const handle = view.handle('start');
     view.down(12, handle);
     for (const pointer of [39, 39.5, 40]) {
         view.move(pointer + 2);
@@ -226,8 +225,7 @@ test.each(['pointercancel', 'keydown'])('cancels preview and restores multiple s
 test.each([50, 200])('uses one CSS pixel for continuous pointer resize and retains committed coordinates, width=%s', width => {
     const view = setup({ range: [-1, 1], selection: { start: -0.5, end: 0.5 } });
     view.element.width = width;
-    const handle = view.element.querySelector('.view-ruler__selection-overlay-mover')
-        .children.find(child => child.dataset.trigger === 'finish');
+    const handle = view.handle('finish');
     view.down(width * 0.75 + 2, handle);
     view.move(width * 0.25 + 2);
     const minimum = { start: -0.5, end: -0.5 + 2 / width };
@@ -260,8 +258,7 @@ test.each([25, 100])('retains a one-pixel selection when a new continuous drag r
 test.each([null, 10])('cancels a minimum resize and restores the exact external range, segments=%s', segments => {
     const selection = { start: 120, end: 120.001 };
     const view = setup({ segments, selection });
-    const handle = view.element.querySelector('.view-ruler__selection-overlay-mover')
-        .children.find(child => child.dataset.trigger === 'finish');
+    const handle = view.handle('finish');
     view.down(selection.end - 100, handle);
     view.move(20);
     assert.ok(view.api.state.selection.end > selection.end);

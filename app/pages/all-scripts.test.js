@@ -4,10 +4,10 @@ import jora from 'jora';
 import * as scriptFunctions from '../prepare/misc/script-function-resolution.js';
 import { methods } from '../jora/index.mjs';
 import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../prepare/preprocessing/scripts.js';
-import { parseScriptSourceRanges } from '../prepare/misc/parse-script-source-ranges.js';
 import { Dictionary } from '../prepare/dictionary.js';
 import { processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
-import { computeScriptSourceMetrics } from '../prepare/misc/source-text-metrics.js';
+import { createCompilationRecord } from '../../test/fixtures/compilation.js';
+import { parseScriptFixture } from '../../test/fixtures/scripts.js';
 
 let page;
 vi.stubGlobal('discovery', { page: { define(name, config) {
@@ -35,13 +35,11 @@ test('scripts page includes inactive source and excludes originals by default wi
         { id: 2, url: 'inactive.js', source: 'function idle() {}' }
     ]);
     for (const [, script] of scripts.entries()) {
-        const parsed = parseScriptSourceRanges(script.source, script.url, true);
-        script.sourceMetrics = computeScriptSourceMetrics(script.source, parsed.ranges);
-        script.functionRanges = parsed.ranges;
+        parseScriptFixture(script);
     }
     const active = scripts.get(1);
     const range = active.functionRanges[0];
-    const record = { scriptId: 1, start: range.callFrameStart, end: range.end, name: 'CompileFunction', duration: 1 };
+    const record = createCompilationRecord({ name: 'CompileFunction', scriptId: 1, start: range.callFrameStart, end: range.end });
     const compilation = processScriptCompilation([record], scripts).get(1);
     const original = createScript(3, 'original.ts', '');
     original.originalFor = active;
@@ -74,11 +72,9 @@ test('scripts page includes inactive source and excludes originals by default wi
 
 test('profile switches select thread scripts and thread compilation evidence for totals and details', async () => {
     const shared = createScript(1, 'shared.js', 'function shared() {}');
-    const parsed = parseScriptSourceRanges(shared.source, shared.url, true);
-    shared.functionRanges = parsed.ranges;
-    shared.sourceMetrics = computeScriptSourceMetrics(shared.source, parsed.ranges);
-    const range = parsed.ranges[0];
-    const compilationRecord = { scriptId: 7, start: range.callFrameStart, end: range.end, name: 'CompileFunction', duration: 1 };
+    parseScriptFixture(shared);
+    const range = shared.functionRanges[0];
+    const compilationRecord = createCompilationRecord({ name: 'CompileFunction', start: range.callFrameStart, end: range.end });
     const compile = processScriptCompilation([compilationRecord], new Map([[7, shared]])).get(7);
     const parseRecord = { ...compilationRecord, scriptId: 42, name: 'PreParse' };
     const preparse = processScriptCompilation([parseRecord], new Map([[42, shared]])).get(42);
@@ -109,9 +105,9 @@ test('profile switches select thread scripts and thread compilation evidence for
 
 test.each(['', '/* caf\u00e9 */', '/* a\u044f\ud83d\ude00 */'])('storage details show code-unit composition and whole-string overhead: %s', source => {
     const script = createScript(1, 'fixture.js', source);
-    const parsed = parseScriptSourceRanges(source, script.url, true);
-    script.sourceMetrics = computeScriptSourceMetrics(source, parsed.ranges);
-    const column = page.content.content[0].cols[1];
+    const column = page.content.content[0].cols.find(column => column.header === 'Storage');
+
+    parseScriptFixture(script);
 
     const details = query(column.details.data)({ script });
 
@@ -130,8 +126,7 @@ test('UTF chars column counts non-Latin-1 code points and sorts missing source l
     const rows = [null, '/* caf\u00e9 */', '/* \u044f\ud83d\ude00 */', '', '/* \\u0100 */'].map((source, index) => {
         const script = createScript(index + 1, 'fixture.js', source);
         if (source !== null) {
-            const ranges = parseScriptSourceRanges(source, script.url, true).ranges;
-            script.sourceMetrics = computeScriptSourceMetrics(source, ranges);
+            parseScriptFixture(script);
         }
         return { script };
     });
@@ -181,8 +176,7 @@ test('Unicode context counts code points across newlines without splitting surro
 
 test('Storage and UTF chars details scan the selected source and share occurrence rows', () => {
     const script = createScript(1, 'fixture.js', '/* \u044f\ud83d\ude00 */');
-    script.functionRanges = parseScriptSourceRanges(script.source, script.url, true);
-    script.sourceMetrics = computeScriptSourceMetrics(script.source, script.functionRanges);
+    parseScriptFixture(script);
     const columns = page.content.content[0].cols;
     const storage = columns.find(column => column.header === 'Storage');
     const utf = columns.find(column => column.header.text === 'UTF chars');

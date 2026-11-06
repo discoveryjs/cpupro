@@ -64,9 +64,8 @@ test('annotations use Discovery traversal context and surround values', async ()
     const visit = visits.find(([value]) => value === 1);
 
     assert.ok(visit);
-    const [value, context] = visit;
+    const [, context] = visit;
 
-    assert.equal(value, 1);
     assert.equal(context.host, data.values);
     assert.equal(context.key, 0);
     assert.equal(context.index, 0);
@@ -278,7 +277,7 @@ test('property names are escaped', async () => {
     assert.equal(text, '{ "line\\nkey": 1 }');
 });
 
-test.each([null, undefined, true, false, NaN, Infinity, -Infinity, 12n, Symbol('name')])(
+test.each([null, undefined, true, false, NaN, Infinity, -Infinity])(
     'scalar %s uses the DOM struct representation',
     async value => {
         const text = await render(value);
@@ -288,6 +287,8 @@ test.each([null, undefined, true, false, NaN, Infinity, -Infinity, 12n, Symbol('
 );
 
 test.each([
+    { name: 'bigint', value: 12n, expected: '[BigInt] 12' },
+    { name: 'symbol', value: Symbol('name'), expected: '[Symbol] Symbol(name)' },
     { name: 'function', value: () => {}, expected: '\u0192n' },
     { name: 'regexp', value: /test/gi, expected: '/test/gi' },
     { name: 'date', value: new Date(0), expected: String(new Date(0)) },
@@ -316,11 +317,11 @@ test('sets use sequence limits and bound recursive previews without reference la
     const compactText = await render(set, { limitCollapsed: 2 });
     const expandedText = await render(set, { expanded: true, maxDepth: false });
 
-    assert.ok(compactText.endsWith('["one", "two", \u2026 1 more]'));
-    assert.ok(expandedText.endsWith('[\n    "one",\n    "two",\n    ["one", "two", [\u2026]]\n]'));
+    assert.equal(compactText, '[Set] ["one", "two", \u2026 1 more]');
+    assert.equal(expandedText, '[Set] [\n    "one",\n    "two",\n    [Set] ["one", "two", [\u2026]]\n]');
 });
 
-test('deeply nested compact arrays stop at an explicit depth boundary', async () => {
+test('deeply nested compact arrays stop at the default depth boundary', async () => {
     let data: unknown = 1;
 
     for (let depth = 0; depth < 10000; depth++) {
@@ -329,8 +330,7 @@ test('deeply nested compact arrays stop at an explicit depth boundary', async ()
 
     const text = await render(data);
 
-    assert.ok(text.includes('[Depth limit]'));
-    assert.ok(text.length < 200);
+    assert.equal(text, '['.repeat(64) + '[Depth limit]' + ']'.repeat(64));
 });
 
 test('the depth boundary can be configured or disabled', async () => {

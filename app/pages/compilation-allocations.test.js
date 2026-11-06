@@ -3,6 +3,7 @@ import { test, vi } from 'vitest';
 import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
+import { createCompilationRecord } from '../../test/fixtures/compilation.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { prepareCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
 import {
@@ -25,11 +26,9 @@ const contextFor = (profile, kind = 'location') => query(page.content.context)(n
     primaryProfile: profile, primaryLineType: 'timeline', primaryBreakdownKind: kind
 });
 
+// Records of the fixture script 1
 function record(name, start, allocationStart = null, allocationEnd = null, callFrame = null) {
-    return {
-        name, tm: 100, duration: 20, scriptId: 1, start, end: null, line: null, column: null,
-        functionName: null, allocationStart, allocationEnd, eventIndex: null, event: null, callFrame
-    };
+    return createCompilationRecord({ name, scriptId: 1, start, allocationStart, allocationEnd, callFrame });
 }
 
 function compilationAttributes(records, ids) {

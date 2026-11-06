@@ -38,9 +38,14 @@ test('maps each byte interval as a whole without adding gaps from samples with n
     assert.deepEqual(mapLineRanges(allocations, time, [{ start: 0, end: 16 }, { start: 96, end: 160 }]), [
         { start: 10, end: 20 }, { start: 30, end: 40 }
     ]);
-    assert.equal(mapLineRanges(time, allocations, null), null);
-    assert.deepEqual(mapLineRanges(time, allocations, []), []);
+});
+
+test('passes unrestricted and empty requests through, and cannot map lines without an allocation mapping', async () => {
+    const { profile } = await createProfileFixture();
     const { profile: unmapped } = await createProfileFixture({ locationsOnly: true });
+
+    assert.equal(mapLineRanges(profile.timeline!, profile.memline!, null), null);
+    assert.deepEqual(mapLineRanges(profile.timeline!, profile.memline!, []), []);
     assert.equal(mapLineRanges(unmapped.timeline!, unmapped.memline!, null), undefined);
-    assert.equal(mapLineRanges(time, unmapped.memline!, [{ start: 0, end: 40 }]), undefined);
+    assert.equal(mapLineRanges(profile.timeline!, unmapped.memline!, [{ start: 0, end: 40 }]), undefined);
 });

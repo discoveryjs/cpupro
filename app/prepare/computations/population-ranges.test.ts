@@ -206,15 +206,20 @@ test('materializes disjoint intervals without filling gaps or double-counting bo
     assert.equal(filtered.sink.total, 40);
 });
 
-test('matches scalar overlap through multi-range, mask, index and value transitions', () => {
-    const weights = [0, 0, 10, 0, 20, 0, 0, 30, 0, 40, 0];
+test.each([
+    { name: 'empty', weights: [] },
+    { name: 'zero weights', weights: [0, 0, 0] },
+    { name: 'single event', weights: [10] },
+    { name: 'repeated coordinates', weights: [0, 0, 10, 0, 20, 0, 0, 30, 0, 40, 0] },
+    { name: 'uint32 boundary', weights: [0xfffffffe, 1, 0] }
+])('matches per-event overlap through range, mask, index and value transitions: $name', ({ weights }) => {
     const base = new Population(Uint32Array.from(weights, (_, index) => index % 3), Uint32Array.from(weights));
     const filtered = new PopulationFiltered(base);
     const values = filtered.values;
     const destinations = filtered.samples;
-    filtered.updateMask(mask => {
-        mask[0] = 1;
-    });
+    const total = base.cumulativeEnd;
+    // Event boundaries, points next to them and inside events, and points outside the population
+    const coordinates = [-1, total - 0.25, total, total + 1];
     let seed = 54321;
     const random = (size: number) => {
         seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -223,23 +228,34 @@ test('matches scalar overlap through multi-range, mask, index and value transiti
     const verify = () => {
         let rangeSamples = 0;
         const fullValues = new Uint32Array(weights.length);
-        const expected = base.values.map((value, index) => {
-            const start = base.cumulative[index];
-            const contribution = filtered.ranges === null ? value : filtered.ranges.reduce((sum, range) =>
-                sum + Math.max(0, Math.min(start + value, range.end) - Math.max(start, range.start)), 0);
-            rangeSamples += contribution > 0 ? 1 : 0;
-            const accepted = index >= (filtered.indexStart ?? 0) && index < (filtered.indexEnd ?? weights.length) &&
-                value >= (filtered.valueMin ?? -Infinity) && value < (filtered.valueMax ?? Infinity);
-            fullValues[index] = accepted && contribution > 0 ? value : 0;
-            return accepted ? contribution : 0;
-        });
         const counts = new Uint32Array(filtered.samplesCount.length + 1);
         const totals = new Uint32Array(counts.length);
-        expected.forEach((value, index) => {
-            const sampleId = destinations[index];
-            totals[sampleId] += value;
-            counts[sampleId] += value > 0 ? 1 : 0;
-        });
+
+        for (let index = 0; index < weights.length; index++) {
+            const value = base.values[index];
+            const start = base.cumulative[index];
+            const accepted = index >= (filtered.indexStart ?? 0) && index < (filtered.indexEnd ?? weights.length) &&
+                value >= (filtered.valueMin ?? -Infinity) && value < (filtered.valueMax ?? Infinity);
+            let contribution = value;
+
+            if (filtered.ranges !== null) {
+                contribution = 0;
+                for (const range of filtered.ranges) {
+                    contribution += Math.max(0, Math.min(start + value, range.end) - Math.max(start, range.start));
+                }
+                rangeSamples += contribution > 0 ? 1 : 0;
+            }
+
+            if (accepted && contribution > 0) {
+                // Totals are integral, an event is counted when its truncated contribution remains
+                const effectiveValue = Math.trunc(contribution);
+
+                fullValues[index] = value;
+                totals[destinations[index]] += effectiveValue;
+                counts[destinations[index]] += effectiveValue > 0 ? 1 : 0;
+            }
+        }
+
         assert.deepEqual(values, fullValues);
         assert.equal(filtered.values, values);
         assert.equal(filtered.samples, destinations);
@@ -249,19 +265,34 @@ test('matches scalar overlap through multi-range, mask, index and value transiti
         assert.deepEqual(filtered.sink, { count: counts[filtered.sinkId], total: totals[filtered.sinkId] });
     };
 
+    for (let index = 0; index < weights.length; index++) {
+        const start = base.cumulative[index];
+
+        coordinates.push(start - 0.25, start, start + 0.25, start + weights[index] / 2);
+    }
+
+    filtered.updateMask(mask => {
+        mask[0] = 1;
+    });
+
     for (let pass = 0; pass < 120; pass++) {
-        const ranges = Array.from({ length: 2 + random(10) }, () => {
-            const start = random(420) / 4 - 2;
-            return { start, end: start + random(40) / 4 };
+        const ranges = Array.from({ length: 1 + random(4) }, () => {
+            const start = coordinates[random(coordinates.length)];
+            const end = coordinates[random(coordinates.length)];
+
+            return { start: Math.min(start, end), end: Math.max(start, end) };
         });
-        filtered.setRanges(ranges);
-        verify();
         const first = random(weights.length + 1);
         const last = random(weights.length + 1);
+
+        filtered.setRanges(ranges);
+        verify();
         filtered.setIndexRange(Math.min(first, last), Math.max(first, last));
-        filtered.setValueRange(pass % 2 ? null : 20, pass % 3 ? null : 40);
+        verify();
+        filtered.setValueRange(pass % 2 ? null : 10, pass % 3 ? null : 30);
         verify();
         filtered.resetIndexRange();
+        verify();
         filtered.resetValueRange();
         verify();
         filtered.resetRange();

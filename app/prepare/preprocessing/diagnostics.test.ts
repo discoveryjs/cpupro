@@ -1,27 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createDiagnosticsCollector } from '../diagnostics.js';
-import { Dictionary } from '../dictionary.js';
-import { parseScriptSourceRanges } from '../misc/parse-script-source-ranges.js';
-import { computeScriptSourceMetrics } from '../misc/source-text-metrics.js';
 import { processCallFrameCodes } from './call-frame-codes.js';
 import { linkThreadScripts } from './script-compilation.js';
-import { OriginalScriptsMap, ProfileScriptsMap, scriptFromScriptId } from './scripts.js';
+import { scriptFromScriptId } from './scripts.js';
 import { processCodePositionTables } from '../formats/v8-log-processed/positions.js';
 import type { CpuProThread, V8CpuProfileCallFrameCodes } from '../types.js';
 import type { V8LogCode } from '../formats/v8-log-processed/types.js';
+import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
+import { createScriptFixture } from '../../../test/fixtures/scripts.js';
 
 function createScriptsMap() {
     const { diagnostics, diagnose } = createDiagnosticsCollector();
-    const dictionary = new Dictionary(diagnose);
-    const scripts = new ProfileScriptsMap(
-        dictionary,
-        new OriginalScriptsMap(dictionary),
-        [{ id: 7, url: 'fixture.js', source: 'const run = () => 1;' }],
-        diagnose
-    );
 
-    return { diagnostics, dictionary, scripts };
+    return { diagnostics, ...createScriptFixture('const run = () => 1;', diagnose) };
 }
 
 test('reports used script ids that are not found, except the absent script id 0', () => {
@@ -55,28 +47,9 @@ test('reports a normalized script id only when it already belongs to a script', 
 
 test('reports a script with compilation data that is missing in the thread scripts', () => {
     const { diagnostics, scripts } = createScriptsMap();
-    const script = scripts.get(7)!;
-    const parsed = parseScriptSourceRanges(script.source!, script.url, true);
     const thread = { scripts: [] } as unknown as CpuProThread;
 
-    script.sourceMetrics = computeScriptSourceMetrics(script.source, parsed.ranges);
-    script.functionRanges = parsed.ranges;
-    thread.compilations = [{
-        name: 'CompileFunction',
-        scriptId: 7,
-        start: 0,
-        end: 5,
-        tm: 0,
-        duration: 1,
-        line: null,
-        column: null,
-        functionName: null,
-        allocationStart: null,
-        allocationEnd: null,
-        event: null,
-        eventIndex: null,
-        callFrame: null
-    }];
+    thread.compilations = [createCompilationRecord({ name: 'CompileFunction', start: 0, end: 5 })];
     linkThreadScripts(thread, scripts);
 
     assert.deepEqual(diagnostics, [

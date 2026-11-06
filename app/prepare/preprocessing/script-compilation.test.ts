@@ -1,38 +1,24 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { Dictionary } from '../dictionary.js';
-import type { CpuProCompilationRecord } from '../types.js';
-import { parseScriptSourceRanges } from '../misc/parse-script-source-ranges.js';
-import { computeScriptSourceMetrics } from '../misc/source-text-metrics.js';
 import { OriginalScriptsMap, ProfileScriptsMap } from './scripts.js';
-import { processScriptCompilation } from './script-compilation.js';
-import { linkThreadScripts } from './script-compilation.js';
+import { linkThreadScripts, prepareCompilationSubjects, processScriptCompilation } from './script-compilation.js';
 import { createProfileSession } from '../profile-session.mjs';
 import { extractFromChromiumPerformanceProfile } from '../formats/chromium-performance-profile.js';
+import { Dictionary } from '../dictionary.js';
+import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
+import { createScriptFixture, parseScriptFixture } from '../../../test/fixtures/scripts.js';
 
-function fixture(source = 'function outer() { function inner() {} return 1; }') {
-    const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source }]);
-    const script = scripts.get(7)!;
-    const parsed = parseScriptSourceRanges(source, script.url, true);
-    script.sourceMetrics = computeScriptSourceMetrics(source, parsed.ranges);
-    script.functionRanges = parsed.ranges;
+// Function compilation states: 0 untouched, 1 pre-parsed, 2 parsed, 3 compiled
 
-    return { script, scripts };
-}
-
-function record(name: string, start: number, end: number): CpuProCompilationRecord {
-    return { name, scriptId: 7, start, end, tm: 0, duration: 1, line: null, column: null,
-        functionName: null, allocationStart: null, allocationEnd: null, event: null, eventIndex: null, callFrame: null };
-}
+const nestedFunctions = 'function outer() { function inner() {} return 1; }';
 
 test('enclosing frame links, incomplete events and unknown stages cannot activate a different function', () => {
-    const { script, scripts } = fixture();
+    const { script, scripts } = createScriptFixture(nestedFunctions);
     const [outer, inner] = script.functionRanges!;
     const records = [
-        record('CompileFunction', inner.callFrameStart + 1, inner.end),
-        { ...record('CompileFunction', outer.callFrameStart, outer.end), duration: null },
-        record('UnknownStage', inner.callFrameStart, inner.end)
+        createCompilationRecord({ name: 'CompileFunction', start: inner.callFrameStart + 1, end: inner.end }),
+        createCompilationRecord({ name: 'CompileFunction', start: outer.callFrameStart, end: outer.end, duration: null }),
+        createCompilationRecord({ name: 'UnknownStage', start: inner.callFrameStart, end: inner.end })
     ];
 
     const compilation = processScriptCompilation([...records, ...records], scripts).get(7)!;
@@ -43,14 +29,14 @@ test('enclosing frame links, incomplete events and unknown stages cannot activat
 });
 
 test('local script IDs and separate thread event sets do not share compilation state', () => {
-    const { script, scripts } = fixture();
+    const { script, scripts } = createScriptFixture(nestedFunctions);
     const range = script.functionRanges![0];
     scripts.set(8, script);
     const first = processScriptCompilation([
-        record('CompileFunction', range.callFrameStart, range.end),
-        { ...record('PreParse', range.callFrameStart, range.end), scriptId: 8 }
+        createCompilationRecord({ name: 'CompileFunction', start: range.callFrameStart, end: range.end }),
+        createCompilationRecord({ name: 'PreParse', scriptId: 8, start: range.callFrameStart, end: range.end })
     ], scripts);
-    const second = processScriptCompilation([record('ParseFunction', range.callFrameStart, range.end)], scripts);
+    const second = processScriptCompilation([createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })], scripts);
 
     assert.equal(first.get(7)!.states[1], 3);
     assert.equal(first.get(8)!.states[1], 1);
@@ -61,9 +47,9 @@ test('local script IDs and separate thread event sets do not share compilation s
 
 test.each(['CompileMaglev', 'MaglevConcurrentPrepare', 'CompileOptimized', 'CompileOptimizedOSR', 'Turbofan.OptimizeConcurrentPrepare'])(
     '%s is compiled evidence but not completed optimization', name => {
-        const { script, scripts } = fixture();
+        const { script, scripts } = createScriptFixture(nestedFunctions);
         const range = script.functionRanges![0];
-        const compilation = processScriptCompilation([record(name, range.callFrameStart, range.end)], scripts).get(7)!;
+        const compilation = processScriptCompilation([createCompilationRecord({ name, start: range.callFrameStart, end: range.end })], scripts).get(7)!;
 
         assert.equal(compilation.states[1], 3);
         assert.deepEqual(compilation.unknownStages, []);
@@ -71,9 +57,9 @@ test.each(['CompileMaglev', 'MaglevConcurrentPrepare', 'CompileOptimized', 'Comp
 );
 
 test('streamed script lookup is recognized without claiming compilation', () => {
-    const { script, scripts } = fixture();
+    const { script, scripts } = createScriptFixture(nestedFunctions);
     const compilation = processScriptCompilation([
-        record('GetSharedFunctionInfoForStreamedScript', 0, script.source!.length)
+        createCompilationRecord({ name: 'GetSharedFunctionInfoForStreamedScript', start: 0, end: script.source!.length })
     ], scripts).get(7)!;
 
     assert.ok(compilation.states.every(state => state === 0));
@@ -81,11 +67,11 @@ test('streamed script lookup is recognized without claiming compilation', () => 
 });
 
 test('whole-script stages take precedence while ambiguous function ranges remain unresolved', () => {
-    const { script, scripts } = fixture('() => 1');
+    const { script, scripts } = createScriptFixture('() => 1');
     const range = script.functionRanges![0];
     const records = [
-        record('CompileCode', 0, script.source!.length),
-        record('PreParse', range.callFrameStart, range.end)
+        createCompilationRecord({ name: 'CompileCode', start: 0, end: script.source!.length }),
+        createCompilationRecord({ name: 'PreParse', start: range.callFrameStart, end: range.end })
     ];
 
     assert.deepEqual([...processScriptCompilation(records, scripts).get(7)!.states], [3, 1]);
@@ -113,9 +99,7 @@ test('thread script links retain local IDs and isolate events even when Dictiona
     const { profiles } = createProfileSession(raw, dictionary);
     const maps = profiles.map(entry => new ProfileScriptsMap(dictionary, originals, entry.profile._scripts));
     const shared = maps[0].get(7)!;
-    const parsed = parseScriptSourceRanges(source, 'shared.js', true);
-    shared.functionRanges = parsed.ranges;
-    shared.sourceMetrics = computeScriptSourceMetrics(source, parsed.ranges);
+    parseScriptFixture(shared);
     const original = maps[0].resolveOriginalScript('only-first.ts', '', shared);
 
     profiles.forEach((entry, index) => linkThreadScripts(entry.thread, maps[index]));
@@ -133,4 +117,18 @@ test('thread script links retain local IDs and isolate events even when Dictiona
     assert.ok(first.every(entry => entry.script !== original));
     assert.equal('compilation' in shared, false);
     assert.deepEqual(raw.threads.map(thread => thread.scripts), before);
+});
+
+test('a compilation subject takes the most advanced state of its complete records', () => {
+    const subjects = prepareCompilationSubjects([
+        createCompilationRecord({ name: 'CompileFunction', start: 10 }),
+        createCompilationRecord({ name: 'PreParse', start: 10 }),
+        createCompilationRecord({ name: 'PreParse', start: 30 }),
+        createCompilationRecord({ name: 'Turbofan.OptimizeCode', start: 30, duration: null })
+    ]);
+
+    assert.deepEqual(subjects.map(subject => [subject.subject, subject.state, subject.events]), [
+        ['7:10', 'compiled', 2],
+        ['7:30', 'pre-parsed', 2]
+    ]);
 });

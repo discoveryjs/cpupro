@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { test, vi } from 'vitest';
 import { Dictionary } from '../dictionary.js';
 import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../preprocessing/scripts.js';
@@ -8,6 +6,7 @@ import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRanges 
 import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, getFunctionAtSourceLineColumn, isScriptTopLevelOffset, matchCallFrameIdentity, prepareScriptSources } from './script-function-resolution.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
 import { ParseSourceWorkerScriptResult } from '../workers/types.js';
+import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 
 test('indexes a function whose source range starts at zero', () => {
     const source = '() => 1';
@@ -433,17 +432,13 @@ test('restores all function range types in place after worker transfer', () => {
 test('the parsing worker transfers source metrics with type-encoded function ranges', async () => {
     const sources = ['function outer() { return () => "\u0100"; }', '', 'const text = "caf\u00e9";', 'function broken(\u0100'];
     const messages: { scripts: ParseSourceWorkerScriptResult[]; types: string[] }[] = [];
-    const handler = runInNewContext(
-        readFileSync(new URL('../workers/parse-source-worker.js', import.meta.url), 'utf8')
-            .replace(/^(import .*;\n)+/, '') + '\nonmessage;',
-        {
-            parseScriptSourceRanges,
-            computeScriptSourceMetrics,
-            postMessage(message: typeof messages[number], transfer: ArrayBuffer[]) {
-                messages.push(structuredClone(message, { transfer }));
-            }
+    const handler = evaluateModule(new URL('../workers/parse-source-worker.js', import.meta.url), {
+        parseScriptSourceRanges,
+        computeScriptSourceMetrics,
+        postMessage(message: typeof messages[number], transfer: ArrayBuffer[]) {
+            messages.push(structuredClone(message, { transfer }));
         }
-    );
+    }, 'onmessage');
 
     await handler({ data: sources.map((source, id) => ({ id, source, url: 'fixture.js' })) });
     assert.equal(messages.length, 1);

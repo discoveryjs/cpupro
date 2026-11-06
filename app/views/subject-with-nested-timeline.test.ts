@@ -1,23 +1,22 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
+import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
-const definition = runInNewContext(readFileSync(new URL('./subject-with-nested-timeline.js', import.meta.url), 'utf8'), {
+const definition = evaluateModule(new URL('./subject-with-nested-timeline.js', import.meta.url), {
     discovery: { view: { define: (_: string, config: unknown) => config } },
     require: () => ({ resolveScopeProfileLine, resolveScopeViewport })
 });
 const query = jora.setup({ methods: { ...methods, marker: () => ({ type: 'category' }) } });
 
 test('matches the default page category bins under the computed common viewport', async () => {
-    const timeline = runInNewContext(readFileSync(new URL('../pages/default.js', import.meta.url), 'utf8') + '\ncategoriesTimeline;', {
+    const timeline = evaluateModule(new URL('../pages/default.js', import.meta.url), {
         require: () => ({ supportedFormats: [], sessionExpandState: () => ({}) }),
         discovery: { nav: { primary: { append() {} } }, page: { define() {} } }
-    });
+    }, 'categoriesTimeline');
     const { profile } = await createProfileFixture({ cpuOnly: true });
     const context = {
         primaryProfile: profile, primaryLineType: 'timeline',
