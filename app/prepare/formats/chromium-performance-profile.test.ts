@@ -711,24 +711,19 @@ test('ProfileChunk releases numeric source arrays without mutating metadata and 
     assert.deepEqual(second, first);
 });
 
-test('ProfileChunk typed vectors supplied whole are adopted without copies', () => {
-    const ids = new Int32Array([10, 12]);
-    const sizes = new Int32Array([8, 16]);
-    const scriptOffsets = new Int32Array([-1, 4]);
-    const empty = new Int32Array(0);
+test('ProfileChunk typed Int32 vectors are accepted as their unsigned and signed kinds', () => {
     const input = captureEvents([
         {
             cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSampleIds: new Int32Array([12]),
-            allocationSamples: { ids, sizes, scriptOffsets }
+            allocationSamples: { ids: new Int32Array([10]), sizes: new Int32Array([-1]), scriptOffsets: new Int32Array([-1]) }
         },
-        { allocationSamples: { ids: empty, sizes: empty, scriptOffsets: empty } }
+        { allocationSamples: { ids: new Int32Array([12]), sizes: new Int32Array([16]), scriptOffsets: new Int32Array([4]) } }
     ]);
     const profile = extractFromChromiumPerformanceProfile(input).profiles[0];
 
-    assert.equal((profile._cpuproAllocationIds as Uint32Array).buffer, ids.buffer);
-    assert.equal((profile._cpuproAllocationSizes as Uint32Array).buffer, sizes.buffer);
-    assert.equal(profile._cpuproAllocationLocations, scriptOffsets);
-    assert.deepEqual(profile._cpuproAllocationSizes, new Uint32Array([8, 16]));
+    assert.deepEqual(profile._cpuproAllocationIds, new Uint32Array([10, 12]));
+    assert.deepEqual(profile._cpuproAllocationSizes, new Uint32Array([0xffffffff, 16]));
+    assert.deepEqual(profile._cpuproAllocationLocations, new Int32Array([-1, 4]));
     assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([12]));
 });
 

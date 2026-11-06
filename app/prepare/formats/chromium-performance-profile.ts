@@ -79,34 +79,41 @@ type ScriptSourceChunks = Map<V8CpuProfileScript, {
 }>;
 type TraceAllocationIdVector = AllocationIdVector; // Exclude<AllocationIdVector, Uint32Array>;
 type TraceScriptIdVector = number[] | Int32Array;
+// Each ProfileChunk holds a segment of the capture's allocation vectors, encoded as an array
+// of numbers or as JSON.stringify(numbers). The jsonxl layout holds null instead and stores
+// whole vectors in trace metadata (see AllocationVectorEntry).
 type AllocationSamples = {
-    ids?: TraceAllocationIdVector | string;
-    sizes?: AllocationSizeVector | string;
-    scriptIds?: TraceScriptIdVector | string;
-    scriptOffsets?: ScriptOffsetVector | string;
-    contextInfo?: AllocationContextInfoVector | string; // vm state + builtin id
+    ids?: TraceAllocationIdVector | string | null;
+    sizes?: AllocationSizeVector | string | null;
+    scriptIds?: TraceScriptIdVector | string | null;
+    scriptOffsets?: ScriptOffsetVector | string | null;
+    contextInfo?: AllocationContextInfoVector | string | null; // vm state + builtin id
     builtinsDict?: Record<number, string>;
     vmStatesDict?: Record<number, string>;
-    types?: AllocationTypeVector | string;
+    types?: AllocationTypeVector | string | null;
     typesDict?: Record<string, string>;
-    spaces?: AllocationSpaceVector | string;
+    spaces?: AllocationSpaceVector | string | null;
     spacesDict?: Record<string, string>;
-    codeTypes?: AllocationCodeTypeVector | string;
+    codeTypes?: AllocationCodeTypeVector | string | null;
     codeTypesDict?: Record<string, string>;
-    gc?: AllocationGcVector | string;
+    gc?: AllocationGcVector | string | null;
 };
+// Allocation ids per GC (the key)
 type AllocationGc = {
-    [key: string]: TraceAllocationIdVector | string;
+    [key: string]: TraceAllocationIdVector | Int32Array | string | null;
 };
-// Allocation vectors after prepareChunkVectors() decoded them in place. Traces encode allocation
-// vectors either as arrays of numbers or as JSON.stringify(numbers); both forms are decoded there,
-// once per chunk, so the vector builders below receive decoded vectors only
-type DecodedAllocationSamples = {
-    [Key in keyof AllocationSamples]: Exclude<AllocationSamples[Key], string>;
+type AllocationSampleVectors = {
+    ids?: Uint32Array;
+    sizes?: Uint32Array;
+    scriptIds?: Int32Array;
+    scriptOffsets?: Int32Array;
+    contextInfo?: Uint32Array;
+    types?: Uint32Array;
+    spaces?: Uint32Array;
+    codeTypes?: Uint32Array;
+    gc?: Uint32Array;
 };
-type DecodedAllocationGc = {
-    [key: string]: Exclude<AllocationGc[string], string>;
-};
+type DecodedAllocationGc = Record<string, Uint32Array>;
 const signedAllocationKeys = ['scriptIds', 'scriptOffsets'] as const;
 const unsignedAllocationKeys = ['sizes', 'contextInfo', 'types', 'spaces', 'codeTypes', 'gc'] as const;
 type CompilationAllocationEventData = {
@@ -143,9 +150,12 @@ type ChromiumTraceProfileData = {
     samples: number;
     hasLineColumns: boolean;
     hasAllocationsMapping: boolean;
-    allocationChunks: DecodedAllocationSamples[];
+    // allocation samples of chunks, for their dictionaries
+    allocationChunks: AllocationSamples[];
+    // decoded vector segments of chunks, in chunk order
+    allocationSegments: AllocationSampleVectors[];
     allocationGcs: DecodedAllocationGc[];
-    // producers of allocation chunks whose vectors are stored in metadata
+    // producers of chunks whose allocation vectors are stored in metadata (jsonxl)
     allocationVectorProducers: Set<string>;
 }
 
@@ -518,6 +528,7 @@ export function extractFromChromiumPerformanceProfile(
                     hasLineColumns: false,
                     hasAllocationsMapping: false,
                     allocationChunks: [],
+                    allocationSegments: [],
                     allocationGcs: [],
                     allocationVectorProducers: new Set()
                 };
@@ -623,10 +634,6 @@ export function extractFromChromiumPerformanceProfile(
                     continue;
                 }
 
-                if (chunk.allocationSamples?.ids === null) {
-                    profileData.allocationVectorProducers.add(`${event.pid}:${event.tid}`);
-                }
-
                 prepareChunkVectors(chunk);
                 profileData.chunks.push(chunk);
                 profileData.hasLineColumns ||= isInt32Vector(chunk.lines) && isInt32Vector(chunk.columns);
@@ -638,12 +645,22 @@ export function extractFromChromiumPerformanceProfile(
                     profileData.samples += cpuProfile.samples?.length ?? 0;
                 }
 
-                if (allocationSamples) {
-                    profileData.allocationChunks.push(allocationSamples as DecodedAllocationSamples);
+                if (allocationSamples?.ids === null || (allocationGc && Object.values(allocationGc).includes(null))) {
+                    // jsonxl: the chunk's vectors are in metadata, the chunk supplies dictionaries only
+                    profileData.allocationVectorProducers.add(`${event.pid}:${event.tid}`);
+                } else {
+                    // decoding replaces the encoded vectors in the trace, which releases JSON strings early
+                    if (allocationSamples) {
+                        profileData.allocationSegments.push(decodeAllocationSamples(allocationSamples));
+                    }
+
+                    if (allocationGc) {
+                        profileData.allocationGcs.push(decodeAllocationGc(allocationGc));
+                    }
                 }
 
-                if (allocationGc) {
-                    profileData.allocationGcs.push(allocationGc as DecodedAllocationGc);
+                if (allocationSamples) {
+                    profileData.allocationChunks.push(allocationSamples);
                 }
 
                 if (endTime && endTime > profileData.endTime) {
@@ -720,8 +737,7 @@ export function extractFromChromiumPerformanceProfile(
     const allocationVectorsByProducer = groupAllocationVectorsByProducer(metadata.allocationVectors);
 
     for (const profileData of profileDataById.values()) {
-        const { pid, tid, eventChannel, startTime, endTime, chunks, samples } = profileData;
-        let { allocationChunks, allocationGcs } = profileData;
+        const { pid, tid, eventChannel, startTime, endTime, chunks, samples, allocationChunks } = profileData;
         const { thread } = eventChannel;
         const profile: V8CpuProfile = {
             _name: thread.name,
@@ -756,56 +772,51 @@ export function extractFromChromiumPerformanceProfile(
             profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples, Uint32Array);
         }
 
+        // Allocation vectors of the capture are either stored whole in metadata by their producer (jsonxl)
+        // or concatenated from the segments of the chunks
+        let allocationVectors: AllocationSampleVectors | null = null;
+        let allocationGcs = profileData.allocationGcs;
+
         if (profileData.allocationVectorProducers.size > 0) {
             const producers = [...profileData.allocationVectorProducers];
-            const vectors = allocationVectorsByProducer.get(producers[0]);
+            const stored = allocationVectorsByProducer.get(producers[0]);
 
             if (producers.length > 1) {
                 // the order of concatenation across producers is unknown
                 diagnose('warn', 'Ignoring allocation data with metadata vectors of several producers', { pid, tid, producers });
-                allocationChunks = [];
-                allocationGcs = [];
-            } else if (vectors === undefined) {
+            } else if (stored === undefined) {
                 diagnose('warn', 'Ignoring allocation data with vectors missing in metadata', { pid, tid, producers });
-                allocationChunks = [];
-                allocationGcs = [];
             } else {
-                // Vectors of a producer stand for the concatenation of its chunk vectors (the chunks
-                // contribute empty vectors), while dictionaries remain in the chunks
-                allocationChunks = [vectors.samples, ...allocationChunks];
-                allocationGcs = [vectors.gc];
+                allocationVectors = stored.vectors;
+                allocationGcs = [stored.gc];
             }
+        } else if (allocationChunks.length > 0) {
+            allocationVectors = concatAllocationSegments(profileData.allocationSegments);
         }
 
-        const ids = buildChunkedVector(allocationChunks, 'ids', Uint32Array);
-        const idsOrder = ids ? getNumericArrayOrder(ids) : undefined;
+        if (allocationVectors !== null) {
+            const { ids } = allocationVectors;
+            const idsOrder = ids ? getNumericArrayOrder(ids) : undefined;
 
-        if (idsOrder === 'unordered') {
-            diagnose('warn', 'Ignoring allocation data with unsorted IDs', { pid, tid });
-        } else if (allocationChunks.length > 0) {
-            const allocationsCount = ids ? ids.length : 0;
-
-            profile._cpuproAllocationIds = ids;
-            profile._cpuproAllocationIdsOrder = idsOrder;
-            profile._cpuproAllocationSizes = buildChunkedVector(allocationChunks, 'sizes', Uint32Array, allocationsCount);
-            profile._cpuproAllocationScriptIds = buildChunkedVector(allocationChunks, 'scriptIds', Int32Array, allocationsCount);
-            profile._cpuproAllocationLocations = buildChunkedVector(allocationChunks, 'scriptOffsets', Int32Array, allocationsCount);
-            profile._cpuproAllocationContextInfo = buildChunkedVector(allocationChunks, 'contextInfo', Uint32Array, allocationsCount);
-            profile._cpuproAllocationBuiltinNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'builtinsDict');
-            profile._cpuproAllocationVmStateNames = buildChunkedMap(profile._cpuproAllocationContextInfo, allocationChunks, 'vmStatesDict');
-            profile._cpuproAllocationTypes = buildChunkedVector(allocationChunks, 'types', Uint32Array, allocationsCount);
-            profile._cpuproAllocationTypeNames = buildChunkedMap(profile._cpuproAllocationTypes, allocationChunks, 'typesDict');
-            profile._cpuproAllocationSpaces = buildChunkedVector(allocationChunks, 'spaces', Uint32Array, allocationsCount);
-            profile._cpuproAllocationSpaceNames = buildChunkedMap(profile._cpuproAllocationSpaces, allocationChunks, 'spacesDict');
-            profile._cpuproAllocationCodeType = buildChunkedVector(allocationChunks, 'codeTypes', Uint32Array, allocationsCount);
-            profile._cpuproAllocationCodeTypeNames = buildChunkedMap(profile._cpuproAllocationCodeType, allocationChunks, 'codeTypesDict');
-            profile._cpuproAllocationGc = updateAllocationsGc(
-                diagnose,
-                ids,
-                profile._cpuproAllocationIdsOrder,
-                allocationGcs,
-                buildChunkedVector(allocationChunks, 'gc', Uint32Array, allocationsCount)
-            );
+            if (idsOrder === 'unordered') {
+                diagnose('warn', 'Ignoring allocation data with unsorted IDs', { pid, tid });
+            } else {
+                profile._cpuproAllocationIds = ids;
+                profile._cpuproAllocationIdsOrder = idsOrder;
+                profile._cpuproAllocationSizes = allocationVectors.sizes;
+                profile._cpuproAllocationScriptIds = allocationVectors.scriptIds;
+                profile._cpuproAllocationLocations = allocationVectors.scriptOffsets;
+                profile._cpuproAllocationContextInfo = allocationVectors.contextInfo;
+                profile._cpuproAllocationBuiltinNames = buildChunkedMap(allocationVectors.contextInfo, allocationChunks, 'builtinsDict');
+                profile._cpuproAllocationVmStateNames = buildChunkedMap(allocationVectors.contextInfo, allocationChunks, 'vmStatesDict');
+                profile._cpuproAllocationTypes = allocationVectors.types;
+                profile._cpuproAllocationTypeNames = buildChunkedMap(allocationVectors.types, allocationChunks, 'typesDict');
+                profile._cpuproAllocationSpaces = allocationVectors.spaces;
+                profile._cpuproAllocationSpaceNames = buildChunkedMap(allocationVectors.spaces, allocationChunks, 'spacesDict');
+                profile._cpuproAllocationCodeType = allocationVectors.codeTypes;
+                profile._cpuproAllocationCodeTypeNames = buildChunkedMap(allocationVectors.codeTypes, allocationChunks, 'codeTypesDict');
+                profile._cpuproAllocationGc = updateAllocationsGc(diagnose, ids, idsOrder, allocationGcs, allocationVectors.gc);
+            }
         }
 
         profiles.push(profile);
@@ -901,51 +912,34 @@ function extractCompilations(
     return records;
 }
 
+// Metadata vectors of a producer have the form of a single chunk holding whole vectors
 function groupAllocationVectorsByProducer(entries: AllocationVectorEntry[] = []) {
-    const namedVectorsByProducer = new Map<string, Map<string, AllocationVectorEntry['data']>>();
-    const vectorsByProducer = new Map<string, { samples: DecodedAllocationSamples; gc: DecodedAllocationGc }>();
+    const encodedByProducer = new Map<string, { samples: Record<string, unknown>; gc: AllocationGc }>();
+    const decodedByProducer = new Map<string, { vectors: AllocationSampleVectors; gc: DecodedAllocationGc }>();
 
     for (const { pid, tid, name, data } of entries) {
         const producer = `${pid}:${tid}`;
-        let namedVectors = namedVectorsByProducer.get(producer);
+        let encoded = encodedByProducer.get(producer);
 
-        if (namedVectors === undefined) {
-            namedVectorsByProducer.set(producer, namedVectors = new Map());
+        if (encoded === undefined) {
+            encodedByProducer.set(producer, encoded = { samples: {}, gc: {} });
         }
 
-        namedVectors.set(name, data);
+        if (name.startsWith('allocationSamples.')) {
+            encoded.samples[name.slice('allocationSamples.'.length)] = data;
+        } else if (name.startsWith('allocationGc.')) {
+            encoded.gc[name.slice('allocationGc.'.length)] = data;
+        }
     }
 
-    for (const [producer, namedVectors] of namedVectorsByProducer) {
-        const samples: DecodedAllocationSamples = {};
-        const gc: DecodedAllocationGc = {};
-
-        for (const key of ['ids', ...unsignedAllocationKeys] as const) {
-            const data = namedVectors.get(`allocationSamples.${key}`);
-
-            if (data !== undefined) {
-                samples[key] = decodeChunkVector(data, Uint32Array);
-            }
-        }
-
-        for (const key of signedAllocationKeys) {
-            const data = namedVectors.get(`allocationSamples.${key}`);
-
-            if (data !== undefined) {
-                samples[key] = decodeChunkVector(data, Int32Array);
-            }
-        }
-
-        for (const [name, data] of namedVectors) {
-            if (name.startsWith('allocationGc.')) {
-                gc[name.slice('allocationGc.'.length)] = decodeChunkVector(data, Uint32Array);
-            }
-        }
-
-        vectorsByProducer.set(producer, { samples, gc });
+    for (const [producer, { samples, gc }] of encodedByProducer) {
+        decodedByProducer.set(producer, {
+            vectors: decodeAllocationSamples(samples as AllocationSamples),
+            gc: decodeAllocationGc(gc)
+        });
     }
 
-    return vectorsByProducer;
+    return decodedByProducer;
 }
 
 function appendCpuProfileChunks(profile: V8CpuProfile, chunks: ChromiumTraceProfileChunkEventData[]) {
@@ -1009,36 +1003,41 @@ function prepareChunkVectors(chunk: ChromiumTraceProfileChunkEventData) {
             chunk[key] = decodeChunkVector(value, Int32Array);
         }
     }
+}
 
-    const { allocationSamples, allocationGc } = chunk;
+// Decodes allocation sample vectors in place and returns them;
+// it's not applied to jsonxl chunks, whose vectors are null
+function decodeAllocationSamples(allocationSamples: AllocationSamples): AllocationSampleVectors {
+    if (allocationSamples.ids !== undefined) {
+        allocationSamples.ids = decodeChunkVector(allocationSamples.ids!, Uint32Array);
+    }
 
-    if (allocationSamples) {
-        if (allocationSamples.ids !== undefined) {
-            allocationSamples.ids = decodeChunkVector(allocationSamples.ids, Uint32Array);
-        }
+    for (const key of signedAllocationKeys) {
+        const value = allocationSamples[key];
 
-        for (const key of signedAllocationKeys) {
-            const value = allocationSamples[key];
-
-            if (value !== undefined) {
-                allocationSamples[key] = decodeChunkVector(value, Int32Array);
-            }
-        }
-
-        for (const key of unsignedAllocationKeys) {
-            const value = allocationSamples[key];
-
-            if (value !== undefined) {
-                allocationSamples[key] = decodeChunkVector(value, Uint32Array);
-            }
+        if (value !== undefined) {
+            allocationSamples[key] = decodeChunkVector(value!, Int32Array);
         }
     }
 
-    if (allocationGc) {
-        for (const key of Object.keys(allocationGc)) {
-            allocationGc[key] = decodeChunkVector(allocationGc[key], Uint32Array);
+    for (const key of unsignedAllocationKeys) {
+        const value = allocationSamples[key];
+
+        if (value !== undefined) {
+            allocationSamples[key] = decodeChunkVector(value!, Uint32Array);
         }
     }
+
+    return allocationSamples as AllocationSampleVectors;
+}
+
+// Decodes allocation ids per GC in place and returns them
+function decodeAllocationGc(allocationGc: AllocationGc): DecodedAllocationGc {
+    for (const key of Object.keys(allocationGc)) {
+        allocationGc[key] = decodeChunkVector(allocationGc[key]!, Uint32Array);
+    }
+
+    return allocationGc as DecodedAllocationGc;
 }
 
 function decodeChunkVector<Vector extends Int32Array | Uint32Array>(
@@ -1065,61 +1064,63 @@ function decodeChunkVector<Vector extends Int32Array | Uint32Array>(
     return new VectorType(source);
 }
 
-function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Array>(
-    chunks: DecodedAllocationSamples[],
-    key: 'ids' | typeof signedAllocationKeys[number] | typeof unsignedAllocationKeys[number],
-    VectorType: { new(length: number): Vector },
-    totalLength: number = 0
+// Concatenates the vector segments of chunks, in chunk order, into the capture's vectors
+function concatAllocationSegments(segments: AllocationSampleVectors[]): AllocationSampleVectors {
+    return {
+        ids: concatSegments(segments, 'ids', Uint32Array),
+        sizes: concatSegments(segments, 'sizes', Uint32Array),
+        scriptIds: concatSegments(segments, 'scriptIds', Int32Array),
+        scriptOffsets: concatSegments(segments, 'scriptOffsets', Int32Array),
+        contextInfo: concatSegments(segments, 'contextInfo', Uint32Array),
+        types: concatSegments(segments, 'types', Uint32Array),
+        spaces: concatSegments(segments, 'spaces', Uint32Array),
+        codeTypes: concatSegments(segments, 'codeTypes', Uint32Array),
+        gc: concatSegments(segments, 'gc', Uint32Array)
+    };
+}
+
+function concatSegments<Vector extends Int32Array | Uint32Array>(
+    segments: AllocationSampleVectors[],
+    key: keyof AllocationSampleVectors,
+    VectorType: { new(length: number): Vector }
 ): Vector | undefined {
-    if (!chunks.length || chunks[0][key] === undefined) {
+    if (segments.length === 0 || segments[0][key] === undefined) {
         return undefined;
     }
 
-    // A vector supplied whole by a single chunk (e.g. by jsonxl) is adopted instead of copied
-    let wholeVector: DecodedAllocationSamples[typeof key] = undefined;
-    let nonEmptyChunks = 0;
+    let length = 0;
 
-    for (const chunk of chunks) {
-        const values = chunk[key];
+    for (const segment of segments) {
+        const values = segment[key];
 
+        // a missing segment would shift the rows of the following chunks
         if (values === undefined) {
             throw new TypeError(`Missing allocation vector ${key} in ProfileChunk`);
         }
 
-        if (values.length > 0) {
-            wholeVector = values;
-            nonEmptyChunks++;
-        }
+        length += values.length;
     }
 
-    if (nonEmptyChunks === 1 &&
-        wholeVector instanceof VectorType &&
-        (totalLength === 0 || wholeVector.length === totalLength)) {
-        return wholeVector;
+    if (length === 0) {
+        return undefined;
     }
 
-    if (totalLength === 0) {
-        for (const chunk of chunks) {
-            totalLength += chunk[key]!.length;
-        }
-    }
-
-    const vector = new VectorType(totalLength);
+    const vector = new VectorType(length);
     let offset = 0;
 
-    for (const chunk of chunks) {
-        const values = chunk[key]!;
+    for (const segment of segments) {
+        const values = segment[key]!;
 
         vector.set(values, offset);
         offset += values.length;
     }
 
-    return vector.length ? vector : undefined;
+    return vector;
 }
 
 function buildChunkedMap(
     vector: Uint32Array | undefined,
-    chunks: DecodedAllocationSamples[],
+    chunks: AllocationSamples[],
     key: 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict' | 'codeTypesDict'
 ): Record<string, string> | undefined {
     if (!vector || vector.length === 0) {
