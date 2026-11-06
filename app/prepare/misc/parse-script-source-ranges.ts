@@ -193,7 +193,10 @@ function collectFunctionRangesFromAST(ast: ASTNode, code: string): FunctionRange
         // simple recursive walk
         for (const key of Object.keys(node)) {
             const v = node[key];
-            if (!v) {
+
+            // only objects can be nodes or arrays of nodes; testing primitives for a type property
+            // goes through their prototypes and is a significant part of the walk
+            if (v === null || typeof v !== 'object') {
                 continue;
             }
 
