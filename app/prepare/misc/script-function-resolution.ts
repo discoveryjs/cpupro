@@ -397,6 +397,18 @@ const parseWorkerPool = (function createParseWorkerPool() {
         MAX_WORKERS,
         parsingScripts: new WeakMap<CpuProScript, Promise<void>>(),
 
+        idleWorkerCount() {
+            let count = 0;
+
+            for (const entry of workerPool) {
+                if (!entry.controller) {
+                    count++;
+                }
+            }
+
+            return count;
+        },
+
         async parse(payload: ParseWorkerPayload) {
             const entry = await getWorkerEntry();
             const { signal: aboutSignal } = entry.controller!;
@@ -507,10 +519,12 @@ export async function prepareScriptSources(
         return;
     }
 
+    // A new worker pays off only for a large enough payload (startup and a cold parser),
+    // while idle workers already in the pool are free to use
     const workerCount = Math.min(
         parseWorkerPool.MAX_WORKERS,
         scriptsToParse.length,
-        Math.max(1, Math.ceil(totalSourceSize / 4_000_000)),
+        Math.max(1, parseWorkerPool.idleWorkerCount(), Math.ceil(totalSourceSize / 4_000_000)),
         Math.max(1, Math.floor(navigator.hardwareConcurrency / 2))
     );
 
