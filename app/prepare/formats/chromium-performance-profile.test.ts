@@ -689,6 +689,83 @@ test('ProfileChunk typed vectors supplied whole are adopted without copies', () 
     assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([12]));
 });
 
+// The jsonxl layout: chunk allocation vectors are null, their concatenation per producer is in metadata
+// (a factory since extraction decodes chunk vectors in place)
+const detachedAllocationSamples = () => ({ ids: null, sizes: null, scriptOffsets: null, typesDict: { 1: 'OBJECT' } });
+
+test('allocation vectors of detached chunks are taken from metadata by producer without copies', () => {
+    const ids = new Int32Array([10, 11, 12]);
+    const sizes = new Int32Array([8, 16, -1]);
+    const scriptOffsets = new Int32Array([-1, 4, 5]);
+    const types = new Int32Array([1, 1, 1]);
+    const gc = new Int32Array([11]);
+    // chunks produced by another thread are routed to the capture by its pid and id
+    const producerChunk = (data: object) => ({ ...capture, tid: 8, name: 'ProfileChunk', args: { data } });
+    const session = extractFromChromiumPerformanceProfile({
+        traceEvents: [
+            ...captureEvents([{ cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10], allocationSampleIds: new Int32Array([12]) }]),
+            producerChunk({ allocationSamples: { ...detachedAllocationSamples(), types: null } }),
+            producerChunk({ allocationSamples: { ...detachedAllocationSamples(), types: null, typesDict: { 2: 'STRING' } } }),
+            producerChunk({ allocationGc: { 9: null } })
+        ],
+        metadata: { allocationVectors: [
+            { pid: 1, tid: 8, name: 'allocationSamples.ids', data: ids },
+            { pid: 1, tid: 8, name: 'allocationSamples.sizes', data: sizes },
+            { pid: 1, tid: 8, name: 'allocationSamples.scriptOffsets', data: scriptOffsets },
+            { pid: 1, tid: 8, name: 'allocationSamples.types', data: types },
+            { pid: 1, tid: 8, name: 'allocationGc.9', data: gc },
+            { pid: 1, tid: 2, name: 'allocationSamples.ids', data: new Int32Array([1]) }
+        ] }
+    });
+    const profile = session.profiles[0];
+
+    assert.equal((profile._cpuproAllocationIds as Uint32Array).buffer, ids.buffer);
+    assert.equal((profile._cpuproAllocationSizes as Uint32Array).buffer, sizes.buffer);
+    assert.equal(profile._cpuproAllocationLocations, scriptOffsets);
+    assert.deepEqual(publishedAllocations(profile), {
+        _cpuproAllocationMapping: new Uint32Array([12]),
+        _cpuproAllocationIds: new Uint32Array([10, 11, 12]),
+        _cpuproAllocationIdsOrder: 'consecutive',
+        _cpuproAllocationSizes: new Uint32Array([8, 16, 0xffffffff]),
+        _cpuproAllocationLocations: new Int32Array([-1, 4, 5]),
+        _cpuproAllocationTypes: new Uint32Array([1, 1, 1]),
+        _cpuproAllocationTypeNames: { 1: 'OBJECT', 2: 'STRING' },
+        _cpuproAllocationGc: new Uint32Array([0, 9, 0])
+    });
+});
+
+test.each([
+    {
+        title: 'missing in metadata',
+        producers: [1],
+        message: 'Ignoring allocation data with vectors missing in metadata',
+        details: { pid: 1, tid: 2, producers: ['1:2'] }
+    },
+    {
+        title: 'of several producers',
+        producers: [1, 3],
+        message: 'Ignoring allocation data with metadata vectors of several producers',
+        details: { pid: 1, tid: 2, producers: ['1:2', '3:2'] }
+    }
+])('detached allocation vectors $title are reported instead of being dropped silently', ({ producers, message, details }) => {
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+    const session = extractFromChromiumPerformanceProfile({
+        traceEvents: [
+            ...captureEvents([{ cpuProfile: { nodes: [], samples: [1] }, timeDeltas: [10] }]),
+            ...producers.map(pid => ({ ...capture, pid, name: 'ProfileChunk', args: { data: {
+                isolate: 'target', allocationSamples: detachedAllocationSamples(), allocationGc: { 9: null }
+            } } }))
+        ].map(event => event.name === 'Profile' ? { ...event, args: { data: { startTime: 0, isolate: 'target' } } } : event),
+        metadata: { allocationVectors: [
+            { pid: 9, tid: 2, name: 'allocationSamples.ids', data: new Int32Array([1]) },
+            ...producers.length > 1 ? producers.map(pid => ({ pid, tid: 2, name: 'allocationSamples.ids', data: new Int32Array([1]) })) : []
+        ] }
+    }, diagnose);
+
+    assert.deepEqual(publishedAllocations(session.profiles[0]), {});
+    assert.deepEqual(diagnosticEntries(diagnostics), [[message, details]]);
+});
+
 test('reports extraction problems to the provided diagnose instead of the console', () => {
     const userTiming = { pid: 1, tid: 2, cat: 'blink.user_timing', args: { traceId: 1 } };
     const { diagnostics, diagnose } = createDiagnosticsCollector();

@@ -34,6 +34,16 @@ export type ChromiumTraceEventsMetadata = {
     dataOrigin?: string;
     sourceMaps?: ProfileSourceMap[];
     ownership?: Ownership;
+    allocationVectors?: AllocationVectorEntry[];
+};
+// The jsonxl trace layout moves ProfileChunk allocation vectors into metadata, leaving null
+// in the chunks: one vector per producer (pid and tid of the chunk events) and name, e.g.
+// "allocationSamples.ids" or "allocationGc.9", holding the concatenation over the producer's chunks
+type AllocationVectorEntry = {
+    pid: number;
+    tid: number;
+    name: string;
+    data: TraceAllocationIdVector | Int32Array;
 };
 export type ChromiumTraceEventsSource = {
     traceEvents: ChromiumTraceEvent[];
@@ -126,6 +136,8 @@ type ChromiumTraceProfileData = {
     hasAllocationsMapping: boolean;
     allocationChunks: AllocationSamples[];
     allocationGcs: AllocationGc[];
+    // producers of allocation chunks whose vectors are stored in metadata
+    allocationVectorProducers: Set<string>;
 }
 
 interface ChromiumTraceEvent {
@@ -497,7 +509,8 @@ export function extractFromChromiumPerformanceProfile(
                     hasLineColumns: false,
                     hasAllocationsMapping: false,
                     allocationChunks: [],
-                    allocationGcs: []
+                    allocationGcs: [],
+                    allocationVectorProducers: new Set()
                 };
 
                 profileDataById.set(profileId, profileData);
@@ -601,6 +614,10 @@ export function extractFromChromiumPerformanceProfile(
                     continue;
                 }
 
+                if (chunk.allocationSamples?.ids === null) {
+                    profileData.allocationVectorProducers.add(`${event.pid}:${event.tid}`);
+                }
+
                 prepareChunkVectors(chunk);
                 profileData.chunks.push(chunk);
                 profileData.hasLineColumns ||= isInt32Vector(chunk.lines) && isInt32Vector(chunk.columns);
@@ -691,8 +708,11 @@ export function extractFromChromiumPerformanceProfile(
         }
     }
 
+    const allocationVectorsByProducer = groupAllocationVectorsByProducer(metadata.allocationVectors);
+
     for (const profileData of profileDataById.values()) {
-        const { pid, tid, eventChannel, startTime, endTime, chunks, samples, allocationChunks, allocationGcs } = profileData;
+        const { pid, tid, eventChannel, startTime, endTime, chunks, samples } = profileData;
+        let { allocationChunks, allocationGcs } = profileData;
         const { thread } = eventChannel;
         const profile: V8CpuProfile = {
             _name: thread.name,
@@ -725,6 +745,27 @@ export function extractFromChromiumPerformanceProfile(
 
         if (profileData.hasAllocationsMapping) {
             profile._cpuproAllocationMapping = buildChunkedArray('allocationSampleIds', chunks, samples, Uint32Array);
+        }
+
+        if (profileData.allocationVectorProducers.size > 0) {
+            const producers = [...profileData.allocationVectorProducers];
+            const vectors = allocationVectorsByProducer.get(producers[0]);
+
+            if (producers.length > 1) {
+                // the order of concatenation across producers is unknown
+                diagnose('warn', 'Ignoring allocation data with metadata vectors of several producers', { pid, tid, producers });
+                allocationChunks = [];
+                allocationGcs = [];
+            } else if (vectors === undefined) {
+                diagnose('warn', 'Ignoring allocation data with vectors missing in metadata', { pid, tid, producers });
+                allocationChunks = [];
+                allocationGcs = [];
+            } else {
+                // Vectors of a producer stand for the concatenation of its chunk vectors (the chunks
+                // contribute empty vectors), while dictionaries remain in the chunks
+                allocationChunks = [vectors.samples, ...allocationChunks];
+                allocationGcs = [vectors.gc];
+            }
         }
 
         const ids = buildChunkedVector(allocationChunks, 'ids', Uint32Array);
@@ -849,6 +890,53 @@ function extractCompilations(
     thread.isolate = conflictingIsolates ? null : isolate;
 
     return records;
+}
+
+function groupAllocationVectorsByProducer(entries: AllocationVectorEntry[] = []) {
+    const namedVectorsByProducer = new Map<string, Map<string, AllocationVectorEntry['data']>>();
+    const vectorsByProducer = new Map<string, { samples: AllocationSamples; gc: AllocationGc }>();
+
+    for (const { pid, tid, name, data } of entries) {
+        const producer = `${pid}:${tid}`;
+        let namedVectors = namedVectorsByProducer.get(producer);
+
+        if (namedVectors === undefined) {
+            namedVectorsByProducer.set(producer, namedVectors = new Map());
+        }
+
+        namedVectors.set(name, data);
+    }
+
+    for (const [producer, namedVectors] of namedVectorsByProducer) {
+        const samples: AllocationSamples = {};
+        const gc: AllocationGc = {};
+
+        for (const key of ['ids', ...unsignedAllocationKeys] as const) {
+            const data = namedVectors.get(`allocationSamples.${key}`);
+
+            if (data !== undefined) {
+                samples[key] = decodeChunkVector(data, Uint32Array);
+            }
+        }
+
+        for (const key of signedAllocationKeys) {
+            const data = namedVectors.get(`allocationSamples.${key}`);
+
+            if (data !== undefined) {
+                samples[key] = decodeChunkVector(data, Int32Array);
+            }
+        }
+
+        for (const [name, data] of namedVectors) {
+            if (name.startsWith('allocationGc.')) {
+                gc[name.slice('allocationGc.'.length)] = decodeChunkVector(data, Uint32Array);
+            }
+        }
+
+        vectorsByProducer.set(producer, { samples, gc });
+    }
+
+    return vectorsByProducer;
 }
 
 function appendCpuProfileChunks(profile: V8CpuProfile, chunks: ChromiumTraceProfileChunkEventData[]) {
