@@ -133,8 +133,17 @@ export function createMemlineAllocationTypeAttribute(
             return name.replace(/_TYPE$/, '');
         });
 
+    let prevType = -1;
+    let prevTypeIndex = 0;
+
+    // Consecutive allocations often share a type, so the map is consulted only on value changes
     for (let i = 0; i < allocationTypeVector.length; i++) {
-        allocationTypeVector[i] = map.get(allocationTypeVector[i]) || 0;
+        if (allocationTypeVector[i] !== prevType) {
+            prevType = allocationTypeVector[i];
+            prevTypeIndex = map.get(prevType) || 0;
+        }
+
+        allocationTypeVector[i] = prevTypeIndex;
     }
 
     return {
@@ -151,13 +160,23 @@ export function createMemlineGcEpochAttribute(
         return null;
     }
 
-    const epochs = new Set<number>(_cpuproAllocationGc);
-    const sortedEpochs = [...epochs].sort((a, b) => a - b);
-    const epochToIndex = new Map<number, number>();
-
     const allocationGcEpochs = asUint32Array(_cpuproAllocationGc);
     const allocationGcEpochDict: GcEpochDictEntry[] = [];
+    const epochToIndex = new Map<number, number>();
+    const epochs = new Set<number>();
     let prevEpochId = -1;
+    let prevEpoch = -1;
+
+    // Allocations dying in the same GC form long runs, so Set/Map are consulted
+    // only on value changes rather than for every allocation
+    for (let i = 0; i < allocationGcEpochs.length; i++) {
+        if (allocationGcEpochs[i] !== prevEpoch) {
+            prevEpoch = allocationGcEpochs[i];
+            epochs.add(prevEpoch);
+        }
+    }
+
+    const sortedEpochs = [...epochs].sort((a, b) => a - b);
 
     for (const epoch of sortedEpochs) {
         const currentEpochId = epoch >>> 2;
@@ -181,8 +200,16 @@ export function createMemlineGcEpochAttribute(
         prevEpochId = currentEpochId || prevEpochId;
     }
 
+    let prevEpochIndex = 0;
+    prevEpoch = -1;
+
     for (let i = 0; i < allocationGcEpochs.length; i++) {
-        allocationGcEpochs[i] = epochToIndex.get(allocationGcEpochs[i])!;
+        if (allocationGcEpochs[i] !== prevEpoch) {
+            prevEpoch = allocationGcEpochs[i];
+            prevEpochIndex = epochToIndex.get(prevEpoch)!;
+        }
+
+        allocationGcEpochs[i] = prevEpochIndex;
     }
 
     return {
@@ -238,8 +265,17 @@ export function createMemlineAllocationSpaceAttribute(
             };
         });
 
+    let prevSpace = -1;
+    let prevSpaceIndex = 0;
+
+    // Consecutive allocations mostly share a space, so the map is consulted only on value changes
     for (let i = 0; i < allocationSpaces.length; i++) {
-        allocationSpaces[i] = map.get(allocationSpaces[i]) || 0;
+        if (allocationSpaces[i] !== prevSpace) {
+            prevSpace = allocationSpaces[i];
+            prevSpaceIndex = map.get(prevSpace) || 0;
+        }
+
+        allocationSpaces[i] = prevSpaceIndex;
     }
 
     return {
