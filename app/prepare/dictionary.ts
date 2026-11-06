@@ -34,6 +34,7 @@ import {
     getScriptOffsetFromLineColumn,
     isScriptTopLevelOffset
 } from './misc/script-function-resolution.js';
+import type { FunctionRange } from './misc/parse-script-source-ranges.js';
 
 const callFrameKindPrefixes: [prefix: string, kind: CpuProCallFrameKind][] = [
     ['(builtin) ', 'builtin'],
@@ -309,6 +310,25 @@ export class Dictionary {
         return callFrameIndex;
     }
 
+    resolveFunctionRangeCallFrame(script: CpuProScript, functionRange: FunctionRange): CpuProCallFrame {
+        const lineNumber = functionRange.callFrameStartLine - 1;
+        const columnNumber = functionRange.callFrameStartColumn;
+        const callFramesByFunctionName = this.#resolveCallFramesByScriptLineColumn(script, lineNumber, columnNumber);
+        const firstFunctionName = callFramesByFunctionName.keys().next().value;
+
+        return this.callFrames[this.#resolveScriptCallFrameIndex({
+            scriptId: -1,
+            url: script.url,
+            functionName: callFramesByFunctionName.has(functionRange.name)
+                ? functionRange.name
+                : firstFunctionName || functionRange.name || '',
+            lineNumber,
+            columnNumber,
+            start: functionRange.callFrameStart,
+            end: functionRange.end
+        }, script)];
+    }
+
     resolveLocationCallFrame(
         script: CpuProScript,
         scriptOffset: number,
@@ -321,22 +341,7 @@ export class Dictionary {
             const functionRange = getFunctionAtScriptOffset(script, scriptOffset);
 
             if (functionRange !== null) {
-                const lineNumber = functionRange.callFrameStartLine - 1;
-                const columnNumber = functionRange.callFrameStartColumn;
-                const callFramesByFunctionName = this.#resolveCallFramesByScriptLineColumn(script, lineNumber, columnNumber);
-                const firstFunctionName = callFramesByFunctionName.keys().next().value;
-
-                return this.callFrames[this.#resolveScriptCallFrameIndex({
-                    scriptId: -1,
-                    url: script.url,
-                    functionName: callFramesByFunctionName.has(functionRange.name)
-                        ? functionRange.name
-                        : firstFunctionName || functionRange.name || '',
-                    lineNumber,
-                    columnNumber,
-                    start: functionRange.callFrameStart,
-                    end: functionRange.end
-                }, script)];
+                return this.resolveFunctionRangeCallFrame(script, functionRange);
             }
 
             for (const callFrame of script.callFrames) {

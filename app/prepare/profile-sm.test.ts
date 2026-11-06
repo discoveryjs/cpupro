@@ -1,43 +1,46 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { SourceMapGenerator } from 'source-map-js';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { createSampledTreeSet } from './computations/sampled-tree-set.js';
 import { Population, PopulationFiltered } from './computations/population.js';
 import { createLineBreakdown } from './lines/breakdown.js';
 import { noopWorkHandler } from './misc/work.js';
-import { getFunctionAtScriptOffset } from './misc/script-function-resolution.js';
+import { SourceMapping } from './preprocessing/source-mapping.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
+import * as scriptFunctions from './misc/script-function-resolution.js';
 
-test('source-mapped frames retain source declaration ends when mappings point at names', async () => {
+// Function ranges of original scripts are parsed on demand instead of parse workers
+vi.spyOn(scriptFunctions, 'prepareScriptSources').mockResolvedValue(undefined);
+
+test('a source-mapped breakdown attributes generated functions to the original functions', async () => {
     const { profile, dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true, noSourceMap: true });
     const compiled = scriptsMap.get(1)!;
     const source = 'function first() { return 1; }\nfunction second() { return 2; }';
     const generator = new SourceMapGenerator({ file: 'compiled.js' });
 
     generator.setSourceContent('original.js', source);
+    // the generated functions are mapped to the names of the original functions
     for (const [column, line] of [[0, 1], [20, 2]]) {
         generator.addMapping({ generated: { line: 1, column }, original: { line, column: 9 }, source: 'original.js' });
     }
     compiled.sourceMap = JSON.parse(generator.toString());
 
-    // Function ranges of the original script are parsed before source mapping, as source preparation does
-    const original = scriptsMap.resolveOriginalScript('original.js', source, compiled);
-    getFunctionAtScriptOffset(original, 0);
-
     const line = profile.timeline!;
-    await createSourceMappedBreakdown('call-stack-sm', line, dictionary, scriptsMap, line.breakdowns[0], null, noopWorkHandler);
-    const first = compiled.callFrames.find(frame => frame.name === 'first')!.__originalCallFrame!;
-    const second = compiled.callFrames.find(frame => frame.name === 'second')!.__originalCallFrame!;
+    const originalLocations = await new SourceMapping(dictionary).mapLocations();
+    const mapped = await createSourceMappedBreakdown('call-stack-sm', line, line.breakdowns[0], dictionary, originalLocations, noopWorkHandler);
+    const callFrames = mapped!.callFrames.all.dict.entries
+        .filter(({ entry }) => entry.script?.originalFor === compiled)
+        .map(({ entry, selfValue }) => [entry.name, entry.start, entry.end, selfValue]);
 
-    assert.equal(first.script, original);
-    assert.equal(first.start, source.indexOf('first'));
-    assert.equal(first.end, source.indexOf('\n'));
-    assert.equal(second.end, source.length);
+    assert.deepEqual(callFrames, [
+        ['first', source.indexOf('('), source.indexOf('\n'), 20],
+        ['second', source.lastIndexOf('('), source.length, 10]
+    ]);
 });
 
 test('a source-mapped breakdown shares the populations of its original breakdown and keeps sparse sample IDs', async () => {
-    const { profile, dictionary, scriptsMap } = await createProfileFixture();
+    const { profile, dictionary, scriptsMap, sourceMapping } = await createProfileFixture();
     const line = profile.memline!;
     // Sample ID 0 has no events
     const viewport = new PopulationFiltered(new Population(new Uint32Array([1, 1]), new Uint32Array([16, 32])));
@@ -52,7 +55,7 @@ test('a source-mapped breakdown shares the populations of its original breakdown
     const trees = await createSampledTreeSet(dictionary, source, noopWorkHandler);
     const original = await createLineBreakdown('extra', line, population, viewport, trees, noopWorkHandler);
     const breakdowns = line.breakdowns.slice();
-    const mapped = await createSourceMappedBreakdown('extra-sm', line, dictionary, scriptsMap, original, null, noopWorkHandler);
+    const mapped = await createSourceMappedBreakdown('extra-sm', line, original, dictionary, await sourceMapping.mapLocations(), noopWorkHandler);
 
     assert.ok(mapped);
     assert.deepEqual(line.breakdowns, breakdowns);

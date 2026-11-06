@@ -10,7 +10,8 @@ import { ProfileLineType } from './prepare/lines/types.js';
 import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
 import { createWorkHandler } from './prepare/misc/work.js';
-import { OriginalScriptsMap, ProfileScriptsMap } from './prepare/preprocessing/scripts.js';
+import { ProfileScriptsMap } from './prepare/preprocessing/scripts.js';
+import { SourceMapping } from './prepare/preprocessing/source-mapping.js';
 import { linkThreadScripts } from './prepare/preprocessing/script-compilation.js';
 import { terminateParseWorkerPool } from './prepare/misc/script-function-resolution.js';
 import { now, perfMeasure } from './prepare/misc/time-utils.js';
@@ -78,11 +79,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             ? diagnose.withScope(`Session ${sessionIndex + 1}/${profilingDataset.sessions.length}`)
             : diagnose;
         const dict = new Dictionary(sessionDiagnose);
-        const originalScripts = new OriginalScriptsMap(dict);
+        const sourceMapping = new SourceMapping(dict, rawSession.ownership ?? null, sessionDiagnose);
 
         // Seed owners from session ownership metadata (if any) so the dictionary
         // contains real area names before modules are resolved. Real per-module
-        // attribution is wired separately.
+        // attribution is applied to original scripts by source mapping.
         if (rawSession.ownership) {
             for (const area of rawSession.ownership.areas) {
                 dict.resolveOwner(area);
@@ -119,18 +120,16 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             const profileDiagnose = sessionDiagnose.withScope(`Thread ${thread.pid}:${thread.tid}`);
             const scriptsMap = new ProfileScriptsMap(
                 dict,
-                originalScripts,
                 profileData._scripts,
                 profileDiagnose
             );
             const profile = await work.measure('create profile', () => createProfile(profileData, {
                 dictionary: dict,
-                originalScripts,
+                sourceMapping,
                 scriptsMap,
                 diagnose: profileDiagnose,
                 runtime: null,
                 compilations: thread.compilations,
-                ownership: rawSession.ownership ?? null,
                 work: sessionProfiles.length > 1
                     ? runSessionTask.withPrefix(`Profile ${i + 1}/${sessionProfiles.length}`)
                     : runSessionTask

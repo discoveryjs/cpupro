@@ -1,6 +1,7 @@
 import { SourceMapGenerator } from 'source-map-js';
 import { Dictionary } from '../../app/prepare/dictionary.js';
-import { OriginalScriptsMap, ProfileScriptsMap } from '../../app/prepare/preprocessing/scripts.js';
+import { ProfileScriptsMap } from '../../app/prepare/preprocessing/scripts.js';
+import { SourceMapping } from '../../app/prepare/preprocessing/source-mapping.js';
 import { createProfile } from '../../app/prepare/profile.mjs';
 import type { V8CpuProfile } from '../../app/prepare/types.js';
 import { noopWorkHandler } from '../../app/prepare/misc/work.js';
@@ -28,7 +29,7 @@ export type ProfileFixtureOptions = {
 
 export async function createProfileFixture(options: ProfileFixtureOptions = {}) {
     const dictionary = new Dictionary();
-    const originalScripts = new OriginalScriptsMap(dictionary);
+    const sourceMapping = new SourceMapping(dictionary);
     const generator = new SourceMapGenerator({ file: 'compiled.js' });
     for (const column of [0, 10, 20]) {
         generator.addMapping({
@@ -38,7 +39,7 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
         });
     }
     const scripts = [{ id: 1, url: '/compiled.js', source: '', sourceMap: options.noSourceMap ? null : JSON.parse(generator.toString()) }];
-    const scriptsMap = new ProfileScriptsMap(dictionary, originalScripts, scripts);
+    const scriptsMap = new ProfileScriptsMap(dictionary, scripts);
     for (const column of [10, 20]) {
         dictionary.resolveLocationIndex(null, scriptsMap.get(1), column, 0, column);
     }
@@ -74,8 +75,8 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
         }
     }
 
-    const profile = await createProfile(data, { dictionary, originalScripts, work: noopWorkHandler });
-    return { profile, dictionary, scriptsMap };
+    const profile = await createProfile(data, { dictionary, sourceMapping, work: noopWorkHandler });
+    return { profile, dictionary, scriptsMap, sourceMapping };
 }
 
 export async function createLineFixture({

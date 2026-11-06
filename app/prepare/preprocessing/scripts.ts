@@ -5,34 +5,6 @@ import { createLineBoundaries } from '../misc/line-boundaries.js';
 import { isArray } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
 import { isInt32Vector } from '../misc/utils.js';
 
-export class OriginalScriptsMap {
-    #scriptsByUrl: Map<string, CpuProScript[]>;
-    #nextScriptId: number = -1;
-
-    constructor(public dict: Dictionary) {
-        this.#scriptsByUrl = new Map();
-    }
-
-    resolveScript(url: string, source: string | null, from: CpuProScript | null = null): CpuProScript {
-        const scripts = this.#scriptsByUrl.get(url);
-        let script = scripts?.find(s => s.source === source && s.originalFor === from);
-
-        if (!script) {
-            script = createScript(this.#nextScriptId--, url, source);
-            script.module = this.dict.resolveModule(script);
-            script.originalFor = from;
-
-            if (scripts) {
-                scripts.push(script);
-            } else {
-                this.#scriptsByUrl.set(url, [script]);
-            }
-        }
-
-        return script;
-    }
-}
-
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
     diagnose: Diagnose;
@@ -40,11 +12,9 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     #scriptIdFromString: Map<string, number>;
     #scriptIndexByUrl: Map<string, number[]>;
     #scriptByUrl: Map<string, CpuProScript[]>;
-    #originalScripts: OriginalScriptsMap;
 
     constructor(
         dict: Dictionary,
-        originalScripts: OriginalScriptsMap,
         scripts: V8CpuProfileScript[] | null = null,
         diagnose: Diagnose = dict.diagnose
     ) {
@@ -54,7 +24,6 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         this.#scriptIdFromString = new Map();
         this.#scriptIndexByUrl = new Map();
         this.#scriptByUrl = this.#createScriptByUrlMap(dict.scripts);
-        this.#originalScripts = originalScripts || new OriginalScriptsMap(dict);
 
         this.#addScripts(scripts);
     }
@@ -152,17 +121,6 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         }
 
         return seed;
-    }
-
-    resolveOriginalScript(url: string, source: string | null, from: CpuProScript | null = null): CpuProScript {
-        const script = this.#originalScripts.resolveScript(url, source, from);
-
-        if (!this.#scriptById.has(script.id)) {
-            this.#scriptById.set(script.id, script);
-            this.dict.scripts.push(script);
-        }
-
-        return script;
     }
 
     resolveScript(scriptId: number, url?: string | null, source?: string | null) {

@@ -3,7 +3,7 @@ import { test, vi } from 'vitest';
 import jora from 'jora';
 import * as scriptFunctions from '../prepare/misc/script-function-resolution.js';
 import { methods } from '../jora/index.mjs';
-import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../prepare/preprocessing/scripts.js';
+import { createScript, ProfileScriptsMap } from '../prepare/preprocessing/scripts.js';
 import { Dictionary } from '../prepare/dictionary.js';
 import { processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
@@ -30,7 +30,7 @@ const list = async context => query(page.content.data)(await query(prepare.data)
 
 test('scripts page includes inactive source and excludes originals by default without CPU metric dependence', async () => {
     const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [
+    const scripts = new ProfileScriptsMap(dictionary, [
         { id: 1, url: 'active.js', source: 'function active() {}' },
         { id: 2, url: 'inactive.js', source: 'function idle() {}' }
     ]);
@@ -202,7 +202,7 @@ test('Storage and UTF chars details scan the selected source and share occurrenc
 
 test('preparation stage parses only listed scripts and resolves to the same entries', async () => {
     const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [
+    const scripts = new ProfileScriptsMap(dictionary, [
         { id: 1, url: 'listed.js', source: 'function listed() {}' },
         { id: 2, url: 'other.js', source: 'function other() {}' }
     ]);

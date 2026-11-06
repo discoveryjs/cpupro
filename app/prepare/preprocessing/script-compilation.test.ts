@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { OriginalScriptsMap, ProfileScriptsMap } from './scripts.js';
+import { ProfileScriptsMap } from './scripts.js';
 import { linkThreadScripts, prepareCompilationSubjects, processScriptCompilation } from './script-compilation.js';
 import { createProfileSession } from '../profile-session.mjs';
 import { extractFromChromiumPerformanceProfile } from '../formats/chromium-performance-profile.js';
@@ -95,12 +95,10 @@ test('thread script links retain local IDs and isolate events even when Dictiona
     ]));
     const before = structuredClone(raw.threads.map(thread => thread.scripts));
     const dictionary = new Dictionary();
-    const originals = new OriginalScriptsMap(dictionary);
     const { profiles } = createProfileSession(raw, dictionary);
-    const maps = profiles.map(entry => new ProfileScriptsMap(dictionary, originals, entry.profile._scripts));
+    const maps = profiles.map(entry => new ProfileScriptsMap(dictionary, entry.profile._scripts));
     const shared = maps[0].get(7)!;
     parseScriptFixture(shared);
-    const original = maps[0].resolveOriginalScript('only-first.ts', '', shared);
 
     profiles.forEach((entry, index) => linkThreadScripts(entry.thread, maps[index]));
     linkThreadScripts(profiles[0].thread, maps[0]);
@@ -114,7 +112,6 @@ test('thread script links retain local IDs and isolate events even when Dictiona
     assert.equal(second[0].compilation!.states[1], 1);
     assert.deepEqual(first.map(entry => entry.url), ['shared.js', 'thread-1.js']);
     assert.deepEqual(second.map(entry => entry.url), ['shared.js', 'thread-2.js']);
-    assert.ok(first.every(entry => entry.script !== original));
     assert.equal('compilation' in shared, false);
     assert.deepEqual(raw.threads.map(thread => thread.scripts), before);
 });

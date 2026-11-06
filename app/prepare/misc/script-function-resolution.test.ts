@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { Dictionary } from '../dictionary.js';
-import { createScript, OriginalScriptsMap, ProfileScriptsMap } from '../preprocessing/scripts.js';
+import { createScript, ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRanges } from './parse-script-source-ranges.js';
 import { findFunctionAtLineColumn, findFunctionAtPosition, getFunctionAtScriptOffset, getFunctionAtSourceLineColumn, isScriptTopLevelOffset, matchCallFrameIdentity, prepareScriptSources } from './script-function-resolution.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
@@ -324,7 +324,7 @@ test.each([
     try {
         const source = 'globalThis.first = 1;\nglobalThis.second = 2;' + suffix;
         const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{
+        const scripts = new ProfileScriptsMap(dictionary, [{
             id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
         }]);
         const script = scripts.get(1)!;
@@ -545,7 +545,7 @@ test('preserves a known frame before considering a parsed top-level fallback', (
     try {
         const source = 'globalThis.value = 1;';
         const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 1, url: 'fixture.js', source }]);
+        const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source }]);
         const script = scripts.get(1)!;
         const known = dictionary.resolveCallFrame({
             scriptId: 1, url: 'fixture.js', functionName: 'provided', lineNumber: 0, columnNumber: 5, start: 5, end: source.length
@@ -631,7 +631,7 @@ test.each([null, '', 'class Broken {'])('requires parsed class evidence for a di
 
     try {
         const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 1, url: 'fixture.js', source: source! }]);
+        const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source: source! }]);
         const script = scripts.get(1)!;
         const frame = dictionary.resolveCallFrame({
             scriptId: 1,
@@ -661,7 +661,7 @@ test('rejects a script frame and a truncated class frame at the constructor posi
     try {
         const source = 'class Base {}';
         const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 1, url: 'fixture.js', source }]);
+        const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source }]);
         const script = scripts.get(1)!;
         const identity = { script, start: 0, end: 0, line: 0, column: 0 };
         const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
@@ -683,7 +683,7 @@ test('compares local identity coordinates and rejects unknown or malformed posit
     try {
         const source = 'class Base {}';
         const dictionary = new Dictionary();
-        const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{
+        const scripts = new ProfileScriptsMap(dictionary, [{
             id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
         }]);
         const script = scripts.get(1)!;

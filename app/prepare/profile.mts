@@ -1,7 +1,6 @@
 import type { Model } from '@discoveryjs/discovery';
 import type { CpuProCallFrame, CpuProCompilationRecord, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
 import type { ProfileLine } from './lines/types.js';
-import type { Ownership } from './formats/types.js';
 import { convertToInt32Array, convertToUint32Array, createInt32Progression } from './misc/utils.js';
 import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis, enumerateLongTimeDeltas, LongTimeDeltas } from './preprocessing/time-deltas.js';
 import { processMemoryAllocations } from './preprocessing/memory-allocations.mjs';
@@ -14,7 +13,8 @@ import { resolveCompilationCallFrames } from './preprocessing/compilation-events
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createSampledTreeSet } from './computations/sampled-tree-set.js';
-import { collectProfileUsedScriptIds, OriginalScriptsMap, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
+import { collectProfileUsedScriptIds, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
+import { SourceMapping } from './preprocessing/source-mapping.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
@@ -33,8 +33,7 @@ export type CreateProfileOptions = {
     compilations: CpuProCompilationRecord[] | null;
     dictionary: Dictionary;
     scriptsMap: ProfileScriptsMap;
-    originalScripts: OriginalScriptsMap;
-    ownership: Ownership | null;
+    sourceMapping: SourceMapping;
     runtime: RuntimeCode | null;
     work: WorkHandler;
     diagnose: Diagnose;
@@ -90,15 +89,13 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const {
         diagnose = diagnoseToConsole,
         dictionary = new Dictionary(diagnose),
-        originalScripts = new OriginalScriptsMap(dictionary),
+        sourceMapping = new SourceMapping(dictionary, null, diagnose),
         scriptsMap: profileScriptsMap = new ProfileScriptsMap(
             dictionary,
-            originalScripts,
             data._scripts,
             diagnose
         ),
         runtime = null,
-        ownership = null,
         compilations = null,
         work = noopWorkHandler
     } = options || {};
@@ -402,21 +399,23 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         });
     }
 
-    for (const line of lines) {
-        for (const breakdown of line.breakdowns.slice()) {
-            const sourceMappedBreakdown = await createSourceMappedBreakdown(
-                `${breakdown.kind}-sm`,
-                line,
-                dictionary,
-                profileScriptsMap,
-                breakdown,
-                ownership,
-                work,
-                diagnose
-            );
+    const originalLocations = await work('process source maps', () => sourceMapping.mapLocations());
 
-            if (sourceMappedBreakdown) {
-                line.breakdowns.push(sourceMappedBreakdown);
+    for (const line of lines) {
+        if (sourceMapping.hasSourceMaps) {
+            for (const breakdown of line.breakdowns.slice()) {
+                const sourceMappedBreakdown = await createSourceMappedBreakdown(
+                    `${breakdown.kind}-sm`,
+                    line,
+                    breakdown,
+                    dictionary,
+                    originalLocations,
+                    work
+                );
+
+                if (sourceMappedBreakdown !== null) {
+                    line.breakdowns.push(sourceMappedBreakdown);
+                }
             }
         }
 

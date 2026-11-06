@@ -13,7 +13,7 @@ import {
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute
 } from '../lines/memline-attributes.mjs';
-import { collectProfileUsedScriptIds, OriginalScriptsMap, ProfileScriptsMap } from './scripts.js';
+import { collectProfileUsedScriptIds, ProfileScriptsMap } from './scripts.js';
 import { prepareCompilationRecords, resolveCompilationCallFrames } from './compilation-events.js';
 import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
 
@@ -166,7 +166,7 @@ test('consecutive allocation ids are located by offset without scanning or searc
 test('call frames resolve exact compilation bounds without changing owner identities', () => {
     const records: CpuProCompilationRecord[] = [record({ start: 20, end: 24 }), record({ start: 21, end: 24 }), record({ scriptId: null, start: null }), record({ scriptId: 99 })];
     const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source: 'const run = function() {};' }]);
+    const scripts = new ProfileScriptsMap(dictionary, [{ id: 7, url: 'fixture.js', source: 'const run = function() {};' }]);
     const named = dictionary.resolveCallFrame({
         scriptId: 7, url: 'fixture.js', functionName: 'runtimeName', lineNumber: 0, columnNumber: 20, start: 20, end: 24
     }, scripts);
@@ -189,7 +189,7 @@ test('call frames resolve exact compilation bounds without changing owner identi
 test('compilation identity bypasses sampled location frames and preserves default constructors', () => {
     const source = 'function outer() { const inner = () => 1; } class Empty {}';
     const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source }]);
+    const scripts = new ProfileScriptsMap(dictionary, [{ id: 7, url: 'fixture.js', source }]);
     const script = scripts.get(7)!;
     const start = source.indexOf('() =>');
     const end = source.indexOf(';');
@@ -218,7 +218,7 @@ test('compilation identity bypasses sampled location frames and preserves defaul
 test('repeated compilation stages resolve source coordinates once per identity', () => {
     const source = 'function run() {}';
     const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, new OriginalScriptsMap(dictionary), [{ id: 7, url: 'fixture.js', source }]);
+    const scripts = new ProfileScriptsMap(dictionary, [{ id: 7, url: 'fixture.js', source }]);
     const records: CpuProCompilationRecord[] = Array.from({ length: 10000 }, (_, index) => record({
         name: index % 2 ? 'CompileIgnition' : 'PreParse', start: source.indexOf('('), end: source.length
     }));
