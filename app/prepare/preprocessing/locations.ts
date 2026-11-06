@@ -305,6 +305,13 @@ export function createVectorLocations(
     // let prevContextInfo = 0;
     let prevLocationIndex = -1;
     let nodeIndex = 0;
+    // Allocation locations change far more often than they are new (e.g. 17.8M changes vs 312K distinct
+    // script offsets over 34M allocations), so location indices are kept per script to avoid
+    // the generic dictionary resolution on every change
+    const locationIndexByScript = new Map<CpuProScript | null, Map<number, number>>();
+    let prevScriptLocationIndex = new Map<number, number>();
+
+    locationIndexByScript.set(prevScript, prevScriptLocationIndex);
 
     // root node (unknown call frame, self-parent, unknown location)
     locationIndexToNodeIndex[1] = generatedNodes.addNode(1, 0, 1);
@@ -322,6 +329,15 @@ export function createVectorLocations(
             prevScriptOffset = scriptOffset;
             prevContextInfoValue = contextInfoValue;
             locationIndex = -1;
+
+            const scriptLocationIndex = locationIndexByScript.get(prevScript);
+
+            if (scriptLocationIndex !== undefined) {
+                prevScriptLocationIndex = scriptLocationIndex;
+            } else {
+                prevScriptLocationIndex = new Map();
+                locationIndexByScript.set(prevScript, prevScriptLocationIndex);
+            }
         } else if (scriptOffset !== prevScriptOffset) {
             prevScriptOffset = scriptOffset;
             prevContextInfoValue = contextInfoValue;
@@ -334,11 +350,16 @@ export function createVectorLocations(
         if (locationIndex === -1) {
             if (scriptId !== 0) {
                 // Normal location in a script
-                locationIndex = dictionary.resolveLocationIndex(
-                    null,
-                    prevScript,
-                    scriptOffset
-                );
+                locationIndex = prevScriptLocationIndex.get(scriptOffset) ?? -1;
+
+                if (locationIndex === -1) {
+                    locationIndex = dictionary.resolveLocationIndex(
+                        null,
+                        prevScript,
+                        scriptOffset
+                    );
+                    prevScriptLocationIndex.set(scriptOffset, locationIndex);
+                }
             } else if (contextInfoValue !== 0) {
                 // VM state or builtin context info
                 locationIndex = dictionary.resolveLocationIndex(
