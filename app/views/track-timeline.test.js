@@ -15,6 +15,8 @@ test('label thresholds reuse full and first-grapheme widths without ellipsis-onl
 
     assert.equal(labels.fit(ctx, 'WXYZ', 11), '');
     assert.equal(labels.fit(ctx, 'WXYZ', 12), 'W\u2026');
+    assert.equal(labels.fit(ctx, 'WXYZ', 18), 'WX\u2026');
+    assert.equal(labels.fit(ctx, 'WXYZ', 23), 'WX\u2026');
     assert.equal(labels.fit(ctx, 'WXYZ', 24), 'WXYZ');
     const calls = ctx.measureText.mock.calls.length;
     assert.equal(labels.fit(ctx, 'WXYZ', 11), '');
@@ -22,6 +24,7 @@ test('label thresholds reuse full and first-grapheme widths without ellipsis-onl
     assert.equal(ctx.measureText.mock.calls.length, calls);
     assert.equal(labels.fit(ctx, 'W', 6), 'W');
     assert.equal(labels.fit(ctx, 'W', 5), '');
+    assert.equal(labels.fit(ctx, '', 24), '');
     labels.clear();
     labels.fit(ctx, 'WXYZ', 11);
     assert.ok(ctx.measureText.mock.calls.length > calls);
@@ -44,9 +47,10 @@ test('render index progressively reveals dense spans without changing their iden
     const index = new SpanIndex(Object.freeze(spans));
     const counts = [];
 
-    for (const minDuration of [256, 32, 8, 2, 0]) {
+    // The view ends exactly at the last span: nodes reaching it are still fully visible
+    for (const minDuration of [256, 32, 31, 8, 2, 0]) {
         const visible = [];
-        index.forEachVisible(0, 128, minDuration, (span, start, end) => {
+        index.forEachVisible(0, 127, minDuration, (span, start, end) => {
             visible.push(span);
             assert.equal(span.start, start);
             assert.ok(end >= span.end);
@@ -58,7 +62,8 @@ test('render index progressively reveals dense spans without changing their iden
         }
     }
 
-    assert.deepEqual(counts, [1, 4, 16, 64, 64]);
+    // A 16-span node extends exactly 31: collapsing requires a strictly shorter extent
+    assert.deepEqual(counts, [1, 4, 8, 16, 64, 64]);
 });
 
 test('render index preserves large spans, gaps, points and partially visible ranges', () => {
@@ -75,6 +80,7 @@ test('render index preserves large spans, gaps, points and partially visible ran
     const point = [];
     index.forEachVisible(100, 101, 1, span => point.push(span));
     assert.ok(point.includes(spans[1]));
+    index.forEachVisible(50, 50, 1, () => assert.fail('Empty view'));
     new SpanIndex([]).forEachVisible(0, 1, 1, () => assert.fail('Empty track'));
 });
 
@@ -118,17 +124,19 @@ function referenceLayout(spans) {
     return tracks.map(track => track.sort((left, right) => left.start - right.start));
 }
 
-function assertLayout(spans) {
-    const original = spans.slice();
-    const expected = referenceLayout(spans);
-    const actual = [...layoutSpans(spans)].filter(track => track !== null);
-
+function assertTracks(actual, expected) {
     assert.deepEqual(actual, expected);
     for (let trackIndex = 0; trackIndex < actual.length; trackIndex++) {
         for (let index = 0; index < actual[trackIndex].length; index++) {
             assert.equal(actual[trackIndex][index], expected[trackIndex][index]);
         }
     }
+}
+
+function assertLayout(spans) {
+    const original = spans.slice();
+
+    assertTracks([...layoutSpans(spans)].filter(track => track !== null), referenceLayout(spans));
     assert.deepEqual(spans, original);
 }
 
@@ -177,22 +185,38 @@ test('nested layout keeps stable ties and falls back without publishing a partia
     ]);
 });
 
-test('deep nesting requires linear checkpoints after sorting', () => {
-    const spans = Array.from({ length: 10000 }, (_, index) => ({ start: index, end: 20000 - index }));
-    let checkpoints = 0;
-    let trackIndex = 0;
+test('deep nesting requires linear checkpoints after sorting, also below sparse crossings', () => {
+    const nest = (start, depth) => Array.from({ length: depth }, (_, index) => ({ start: start + index, end: start + 2 * depth - index }));
+    const nested = nest(0, 10000);
+    const roots = [{ start: 0, end: 100 }, { start: 50, end: 150 }];
+    const sparse = nest(200, 3000);
+    const sharedEnd = Array.from({ length: 3000 }, (_, index) => ({ start: 200 + index, end: 6200 }));
+    const buried = [{ start: 0, end: 10 }, { start: 5, end: 100000 }];
+    const underBuried = nest(20, 3000);
 
-    for (const track of layoutSpans(spans)) {
-        if (track === null) {
-            checkpoints++;
-        } else {
-            assert.equal(track.length, 1);
-            assert.equal(track[0], spans[trackIndex++]);
+    for (const [spans, expected] of [
+        [nested, nested.map(span => [span])],
+        // Only the crossing roots form the core; the nest is placed chronologically from its parent's track
+        [[...roots, ...sparse], [[roots[0], sparse[0]], [roots[1], sparse[1]], ...sparse.slice(2).map(span => [span])]],
+        // Equal ends are containment, not crossings
+        [[...roots, ...sharedEnd], [[roots[0], sharedEnd[0]], [roots[1], sharedEnd[1]], ...sharedEnd.slice(2).map(span => [span])]],
+        // The first root expires inside the active stack before the nest starts under the second one
+        [[...buried, ...underBuried], [[buried[1]], [buried[0], underBuried[0]], ...underBuried.slice(1).map(span => [span])]]
+    ]) {
+        const tracks = [];
+        let checkpoints = 0;
+
+        for (const track of layoutSpans(spans)) {
+            if (track === null) {
+                checkpoints++;
+            } else {
+                tracks.push(track);
+            }
         }
-    }
 
-    assert.equal(trackIndex, spans.length);
-    assert.ok(checkpoints < 30);
+        assertTracks(tracks, expected);
+        assert.ok(checkpoints < 30);
+    }
 });
 
 test('mixed layout fixes crossing ancestors before placing nested descendants', () => {
@@ -216,6 +240,9 @@ test('crossing core includes containing ancestors and preserves original equal-d
         [[40, 90], [0, 50], [10, 15], [45, 46], [70, 80], [75, 76]],
         [[0, 10], [5, 20], [11, 12], [13, 15], [19, 25], [21, 22]],
         [[0, 0], [0.0001, 0.0003], [0.0002, 0.0002], [0.002, 0.004]],
+        // Corrected ends of all three round to 8.0005: the last start is nested only numerically,
+        // yet outranks the lowest-priority ancestor at the bottom of the stack
+        [[7.999500000000001, 8.0005], [7.999500000000001, 8.001500000000002], [7.9995, 8]],
         [[0, 2], [1, 5], [4, 10]]
     ]) {
         const spans = coordinates.map(([start, end]) => Object.freeze({ start, end }));
@@ -508,6 +535,8 @@ test('lays out small groups in one batch and reuses their tracks after collapse'
         assert.equal(timeline.groups[0].collapsed, collapsed);
         assert.equal(timeline.groups[0].tracks[0], tracks[0]);
         assert.equal(timeline.groups[1].tracks[0], tracks[1]);
+        assert.equal(timeline.tracks.includes(tracks[0]), !collapsed);
+        assert.equal(timeline.tracks.at(-1), tracks[1]);
     }
     timeline.destroy();
 });
@@ -534,6 +563,7 @@ test('yields within a group and discards pending layout on replacement or destro
     timeline.setSpans(spans);
     flush();
     const pendingLayout = timeline.groups[0].layout;
+    timeline.setSelection([{ start: 10, end: 20 }]);
     assert.equal(pending(), true);
     timeline.destroy();
     assert.equal(pendingLayout.next().done, true);
@@ -593,10 +623,24 @@ test('bounds include collapsed and pending groups and handle empty data', () => 
     assert.equal(timeline.maxX, 300);
     assert.equal(timeline.groups[0].layout, null);
     assert.equal(timeline.groups[0].tracks.length, 0);
+    timeline.setSpans([{ name: 'Earlier', spans: [{ start: -50, end: 300 }] }]);
+    assert.deepEqual([timeline.minX, timeline.maxX], [-50, 300]);
     timeline.setSpans([]);
     flush();
-    assert.ok(Number.isFinite(timeline.pxPerMs) && timeline.pxPerMs > 0);
+    assert.deepEqual([timeline.minX, timeline.maxX, timeline.pxPerMs], [0, 1, 1000]);
     timeline.destroy();
+
+    // A missing bound comes from the spans; an empty range is widened to one unit
+    for (const [minX, maxX, spans, expected] of [
+        [50, undefined, [{ start: 120, end: 180 }], [50, 180]],
+        [undefined, 300, [], [299, 300]],
+        [undefined, undefined, [{ start: 150, end: 150 }], [150, 151]]
+    ]) {
+        const { timeline } = createCanvasTimeline({ minX, maxX, spans });
+
+        assert.deepEqual([timeline.minX, timeline.maxX], expected);
+        timeline.destroy();
+    }
 });
 
 test('renders only visible tracks and keeps group intervals when the title is offscreen', () => {
@@ -615,7 +659,81 @@ test('renders only visible tracks and keeps group intervals when the title is of
     ));
     assert.equal(timeline.hitTest(200, 35), spans[5]);
     assert.equal(timeline.hitTest(200, 45), null);
+
+    // The next track begins exactly at the bottom edge of the content area
+    timeline.handleVerticalScroll(4);
+    flush();
+    assert.deepEqual(timeline.getVisibleTrackRange(), { start: 6, end: 10 });
+    assert.equal(renderTrack.mock.calls.length, 4);
     timeline.destroy();
+});
+
+test('renders global intervals in z-order and skips those outside the viewport', () => {
+    const { timeline, base, flush } = createCanvasTimeline({ intervals: [
+        { start: 50, end: 90, color: '#a' },
+        { start: 140, end: 160, color: '#b', zIndex: 1 },
+        { start: 130, end: 170, color: '#c' },
+        { start: 150, end: 150, color: '#d' },
+        { offset: 120 }
+    ] });
+    const ctx = base.context;
+    const draws = [];
+
+    // Intervals span the 90px above the minimap; lines start at the top edge
+    ctx.fillRect = vi.fn((x, y, width, height) => {
+        if (height === 90) {
+            draws.push([ctx.fillStyle, x, width]);
+        }
+    });
+    ctx.moveTo = (x, y) => {
+        if (y === 0) {
+            draws.push([ctx.strokeStyle, x]);
+        }
+    };
+    timeline.setSelection(null);
+    flush();
+
+    assert.deepEqual(draws, [['#888', 200.5], ['#c', 300, 400], ['#d', 500.5], ['#b', 400, 200]]);
+    timeline.destroy();
+});
+
+test('group titles toggle and render only between the ruler and the minimap', () => {
+    const names = ['First', 'Second', 'Third'];
+    const open = scrollY => {
+        const result = createCanvasTimeline({ groups: true, spans: names.map((name, index) => ({
+            name, spans: [{ start: 120 + index * 10, end: 180 - index * 10 }]
+        })) });
+
+        result.timeline.handleVerticalScroll(scrollY);
+        result.flush();
+        return result;
+    };
+
+    // Titles start at offsets 0, 41 and 82; scrolled by 41 they occupy y -11..13, 30..54 and 71..95
+    for (const [y, toggled] of [[10, []], [30, ['Second']], [54, []], [60, []], [89, ['Third']], [90, []]]) {
+        const { timeline } = open(41);
+
+        assert.equal(timeline.handleGroupTitleClick(10, y), toggled.length > 0);
+        assert.deepEqual(timeline.groups.filter(group => group.collapsed).map(group => group.name), toggled);
+        timeline.destroy();
+    }
+
+    // The first group ends at offset 40 and the third starts at 82: they touch the content edges at these scrolls
+    for (const [scrollY, expected] of [[40, ['Second', 'Third']], [22, ['First', 'Second']]]) {
+        const { timeline, base, flush } = open(scrollY);
+        const titles = [];
+
+        base.context.fillText = text => {
+            if (names.includes(text)) {
+                titles.push(text);
+            }
+        };
+        timeline.setSelection(null);
+        flush();
+
+        assert.deepEqual(titles, expected);
+        timeline.destroy();
+    }
 });
 
 test('does not redraw completed tracks while the next layout chunk is unpublished', () => {
@@ -639,10 +757,65 @@ test('clamps vertical position when replacement spans use the same time bounds',
     timeline.handleVerticalScroll(200);
     flush();
     assert.equal(timeline.scrollY, 200);
+    // 20 tracks of 16px extend 260px beyond the 60px content area
+    timeline.handleVerticalScroll(1000);
+    flush();
+    assert.equal(timeline.scrollY, 260);
     timeline.setSpans([{ start: 120, end: 180 }]);
     flush();
     assert.equal(timeline.scrollY, 0);
     assert.deepEqual(timeline.getVisibleTrackRange(), { start: 0, end: 1 });
+    timeline.destroy();
+});
+
+test('hover reports changes once, highlights the displayed rectangle and resets on replacement or leave', () => {
+    const onHover = vi.fn();
+    const { timeline, overlay, flush } = createCanvasTimeline({ onHover });
+    const [span] = timeline.tracks[0].spans;
+    const other = { start: 150, end: 160 };
+    const move = (clientX, clientY) => overlay.listeners.get('pointermove')({ clientX, clientY, stopPropagation() {} });
+
+    move(300, 35);
+    move(310, 40);
+    assert.deepEqual(overlay.context.fillRect.mock.calls, [[200, 30, 600, 15]]);
+    assert.deepEqual(overlay.context.strokeRect.mock.calls, [[200.5, 30.5, 599, 14]]);
+
+    move(300, 60);
+    timeline.setSpans([span]);
+    flush();
+    move(300, 35);
+    timeline.setSpans([other]);
+    flush();
+    move(550, 35);
+    overlay.listeners.get('pointerleave')({});
+
+    assert.deepEqual(onHover.mock.calls.map(([hovered]) => hovered), [span, null, span, null, other, null]);
+    timeline.destroy();
+});
+
+test('hit testing follows pixel edges of the displayed rectangles and the content area', () => {
+    const fillers = Array.from({ length: 6 }, () => ({ start: 100, end: 200 }));
+    const wide = { start: 110, end: 130 };
+    const narrow = { start: 150, end: 150.2 };
+    const last = { start: 190, end: 200 };
+    const { timeline } = createCanvasTimeline({ spans: [...fillers, wide, narrow, last] }, 150);
+
+    // Six full-width fillers take tracks 0-5; track 6 occupies y 126-141 and is cut by the minimap at y 140
+    for (const [x, y, expected] of [
+        [0, 30, fillers[0]],
+        [100, 126, wide],
+        [100, 139, wide],
+        [100, 140, null],
+        [299, 126, wide],
+        [300, 126, null],
+        // Rectangles narrower than 5px extend 2px, up to the next rectangle
+        [503, 126, narrow],
+        [504, 126, null],
+        [520, 126, null],
+        [999, 126, last]
+    ]) {
+        assert.equal(timeline.hitTest(x, y), expected, `${x}, ${y}`);
+    }
     timeline.destroy();
 });
 
@@ -688,8 +861,27 @@ test('wheel zoom can resolve microsecond spans in a minute-long profile', () => 
     flush();
     assert.equal(timeline.trackImages.get(track).spans.length, 3);
     assert.ok(timeline.pxPerMs > 1);
-    assert.ok(Number.isFinite(timeline.pxPerMs));
+
+    // Zoom stops where a pixel still resolves distinct coordinates at the far bound
+    timeline.handleZoom(-1000000, 0);
+    assert.equal(timeline.pxPerMs, 1 / (Number.EPSILON * 60000000));
     timeline.destroy();
+});
+
+test('ruler labels count from the lower bound unless absolute and include the last tick', () => {
+    for (const [ruler, expected] of [
+        ['relative', ['0ms', '10ms', '20ms', '30ms', '40ms', '50ms', '60ms', '70ms', '80ms', '90ms', '100ms']],
+        ['absolute', ['100ms', '110ms', '120ms', '130ms', '140ms', '150ms', '160ms', '170ms', '180ms', '190ms', '200ms']]
+    ]) {
+        const { timeline, base } = createCanvasTimeline({ ruler });
+        const labels = [];
+
+        base.context.fillText = text => labels.push(text);
+        timeline.renderRuler(base.context);
+
+        assert.deepEqual(labels, expected);
+        timeline.destroy();
+    }
 });
 
 test('relative ruler visits only visible ticks at deep zoom far from the origin', () => {
@@ -706,15 +898,14 @@ test('relative ruler visits only visible ticks at deep zoom far from the origin'
 });
 
 test('minimum markers align with device pixels and keep original click ranges', () => {
-    const spans = [{ start: 0.26, end: 0.26 }, { start: 0.4, end: 0.41 }, { start: 4, end: 4 }];
+    const spans = [{ start: 0.26, end: 0.26 }, { start: 0.4, end: 0.41 }, { start: 3.4, end: 3.4 }];
     const onClick = vi.fn();
-    const { timeline, overlay } = createCanvasTimeline({ spans, minX: 0, maxX: 2000, onClick }, 100, 2);
+    const { timeline, base, overlay } = createCanvasTimeline({ spans, minX: 0, maxX: 2000, onClick }, 100, 2);
     const image = timeline.trackImages.get(timeline.tracks[0]);
 
-    assert.equal(image.positions[0], 0);
-    for (const position of image.positions) {
-        assert.ok(Number.isInteger(position * 2));
-    }
+    // At 0.5px/ms the first two spans share one marker; 3.4ms (x = 1.7) aligns down to the half-pixel grid
+    assert.equal(base.width, 2000);
+    assert.deepEqual(image.positions, [0, 1, 1.5, 2.5]);
     const pointer = { button: 0, clientX: 0.5, clientY: 35, stopPropagation() {} };
     overlay.listeners.get('pointerdown')(pointer);
     overlay.listeners.get('pointerup')(pointer);
@@ -732,19 +923,37 @@ test('small complete labels render below 20px and font loading invalidates metri
     const span = timeline.tracks[0].spans[0];
 
     timeline.renderSpan(ctx, span, 0, 0, 13);
-    assert.equal(ctx.fillText.mock.calls[0][0], 'X');
+    assert.deepEqual(ctx.fillText.mock.calls[0], ['X', 3, 8.5]);
     assert.equal(ctx.measureText.mock.calls.length, 0);
     timeline.renderSpan(ctx, span, 0, 0, 11);
     assert.equal(ctx.fillText.mock.calls.length, 1);
 
+    assert.equal(timeline.hitTest(205, 35), span);
     fonts.dispatchEvent(new Event('loadingdone'));
     assert.equal(timeline.trackImages.size, 0);
+    assert.equal(timeline.hitTest(205, 35), null);
     timeline.renderSpan(ctx, span, 0, 0, 13);
     assert.equal(ctx.measureText.mock.calls.length, 1);
     flush();
+    assert.equal(timeline.hitTest(205, 35), span);
     timeline.destroy();
     fonts.dispatchEvent(new Event('loadingdone'));
     assert.equal(pending(), false);
+});
+
+test('fills spans with their own color or a stable hue of their text', () => {
+    const { timeline, base } = createCanvasTimeline();
+    const ctx = base.context;
+    const fills = [];
+    ctx.fillRect = () => fills.push(ctx.fillStyle);
+
+    for (const span of [{ text: 'XY' }, { text: 'XY', color: '#123' }, {}]) {
+        timeline.renderSpan(ctx, { start: 120, end: 121, ...span }, 0, 0, 4);
+    }
+
+    // 'XY' hashes to 88 * 31 + 89 = 2817, i.e. hue 297
+    assert.deepEqual(fills, ['hsl(297, 30%, 40%, 80%)', '#123', 'hsl(0, 30%, 40%, 80%)']);
+    timeline.destroy();
 });
 
 test('repaints reusable track canvases and hit buffers when horizontal coordinates change', () => {
@@ -785,12 +994,16 @@ test('repaints reusable track canvases and hit buffers when horizontal coordinat
     assert.equal(image.positions.length, 0);
     assert.equal(timeline.hitTest(300, 60), null);
 
-    timeline.width = 800;
-    timeline.dpr = 2;
-    timeline.setSelection(null);
-    flush();
-    assert.equal(image.canvas.width, 1600);
-    assert.equal(image.canvas.height, 30);
+    // Width or DPR alone resizes the bitmap; a hidden, zero-width timeline draws no empty bitmap
+    for (const [width, dpr, bitmap, draws] of [[800, 1, [800, 15], 2], [800, 2, [1600, 30], 2], [0, 2, [0, 30], 0]]) {
+        timeline.width = width;
+        timeline.dpr = dpr;
+        base.context.drawImage.mockClear();
+        timeline.setSelection(null);
+        flush();
+        assert.deepEqual([image.canvas.width, image.canvas.height], bitmap);
+        assert.equal(base.context.drawImage.mock.calls.length, draws);
+    }
     assert.equal(createCanvas.mock.calls.length, 0);
     timeline.setSpans([]);
     assert.equal(timeline.trackImages.size, 0);
@@ -815,8 +1028,28 @@ test('renders external multi-range selection on the overlay and minimap without 
     timeline.destroy();
 });
 
+test('a wheel gesture keeps its action until it pauses or its delta grows', () => {
+    const now = vi.spyOn(Date, 'now');
+    const { timeline, overlay } = createCanvasTimeline();
+    const wheel = (time, deltaX, deltaY) => {
+        now.mockReturnValue(time);
+        overlay.listeners.get('wheel')({ clientX: 500, deltaX, deltaY, shiftKey: false, preventDefault() {} });
+        return [timeline.pxPerMs, timeline.offsetMs];
+    };
+
+    const [zoomedScale, zoomedOffset] = wheel(1000, 0, -100);
+    assert.deepEqual(wheel(1050, 30, 0), [zoomedScale, zoomedOffset]);
+
+    const [scale, offset] = wheel(1100, 0, -100);
+    assert.ok(scale > zoomedScale);
+    assert.deepEqual(wheel(1400, 30, 0), [scale, offset + 30 / scale]);
+    now.mockRestore();
+    timeline.destroy();
+});
+
 test('renders the same absolute selection after local zoom and pan', () => {
-    const { timeline, base, overlay, flush } = createCanvasTimeline();
+    const onClick = vi.fn();
+    const { timeline, base, overlay, flush } = createCanvasTimeline({ onClick });
     const selection = [{ start: 120, end: 180 }];
     overlay.listeners.get('wheel')({
         clientX: 500, deltaX: 0, deltaY: -300, shiftKey: false, preventDefault() {}
@@ -834,8 +1067,9 @@ test('renders the same absolute selection after local zoom and pan', () => {
     overlay.listeners.get('pointermove')({ ...pointer, clientX: 600 });
     overlay.listeners.get('pointerup')({ ...pointer, clientX: 600 });
     flush();
-    assert.ok(overlay.context.fillRect.mock.calls[0][0] > start);
+    assert.equal(Math.round(overlay.context.fillRect.mock.calls[0][0] - start), 100);
     assert.deepEqual(base.context.fillRect.mock.calls.at(-1), [200, 90, 600, 10]);
     assert.deepEqual(selection, [{ start: 120, end: 180 }]);
+    assert.equal(onClick.mock.calls.length, 0);
     timeline.destroy();
 });
