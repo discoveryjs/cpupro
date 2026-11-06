@@ -4,6 +4,7 @@ import { SourceMapGenerator } from 'source-map-js';
 import { Dictionary } from '../dictionary.js';
 import { ProfileScriptsMap } from './scripts.js';
 import { SourceMapping } from './source-mapping.js';
+import type { CpuProLocation } from '../types.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 
 // Function ranges of original scripts are parsed on demand instead of parse workers
@@ -99,6 +100,29 @@ test('maps only locations added since the previous call and reuses original scri
     assert.equal(second.length, dictionary.locations.length);
     assert.deepEqual([...second.subarray(0, first.length)], [...first]);
     assert.equal(dictionary.scripts.length, scriptsCount);
+    assert.deepEqual([original.script!.url, original.line, original.column, original.callFrame.name], ['a.js', 1, 37, 'inner']);
+});
+
+test('original scripts looked up in advance are registered on mapping in the same order', async () => {
+    const single = createFixture();
+    const singleLocations = await new SourceMapping(single.dictionary).mapLocations();
+    const { dictionary, generatedScript, generatedFunction, generatedLocations } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
+    const scriptsCount = dictionary.scripts.length;
+
+    sourceMapping.prepareLocations();
+    assert.equal(dictionary.scripts.length, scriptsCount);
+
+    const added = dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, 25);
+    const originalLocations = await sourceMapping.mapLocations();
+    const original = dictionary.locations[originalLocations[added]];
+
+    assert.deepEqual(dictionary.scripts.map(script => [script.id, script.url]), single.dictionary.scripts.map(script => [script.id, script.url]));
+    const describe = ({ script, line, column, callFrame }: CpuProLocation) => [script!.id, line, column, callFrame.name];
+    assert.deepEqual(
+        generatedLocations.map(index => describe(dictionary.locations[originalLocations[index]])),
+        single.generatedLocations.map(index => describe(single.dictionary.locations[singleLocations[index]]))
+    );
     assert.deepEqual([original.script!.url, original.line, original.column, original.callFrame.name], ['a.js', 1, 37, 'inner']);
 });
 

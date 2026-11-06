@@ -319,6 +319,9 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         lines.push(timeline);
     }
 
+    // Original sources of the locations known so far are parsed while the memline is created
+    await work('prepare source maps', () => sourceMapping.prepareLocations());
+
     // Create memline from allocation data if present (combined profile)
     const memline = await createMemline(
         data,
