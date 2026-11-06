@@ -98,6 +98,13 @@ type AllocationSamples = {
 type AllocationGc = {
     [key: string]: TraceAllocationIdVector | string;
 };
+// Allocation vectors after prepareChunkVectors() decoded them in place
+type DecodedAllocationSamples = {
+    [Key in keyof AllocationSamples]: Exclude<AllocationSamples[Key], string>;
+};
+type DecodedAllocationGc = {
+    [key: string]: Exclude<AllocationGc[string], string>;
+};
 const signedAllocationKeys = ['scriptIds', 'scriptOffsets'] as const;
 const unsignedAllocationKeys = ['sizes', 'contextInfo', 'types', 'spaces', 'codeTypes', 'gc'] as const;
 type CompilationAllocationEventData = {
@@ -134,8 +141,8 @@ type ChromiumTraceProfileData = {
     samples: number;
     hasLineColumns: boolean;
     hasAllocationsMapping: boolean;
-    allocationChunks: AllocationSamples[];
-    allocationGcs: AllocationGc[];
+    allocationChunks: DecodedAllocationSamples[];
+    allocationGcs: DecodedAllocationGc[];
     // producers of allocation chunks whose vectors are stored in metadata
     allocationVectorProducers: Set<string>;
 }
@@ -630,11 +637,11 @@ export function extractFromChromiumPerformanceProfile(
                 }
 
                 if (allocationSamples) {
-                    profileData.allocationChunks.push(allocationSamples);
+                    profileData.allocationChunks.push(allocationSamples as DecodedAllocationSamples);
                 }
 
                 if (allocationGc) {
-                    profileData.allocationGcs.push(allocationGc);
+                    profileData.allocationGcs.push(allocationGc as DecodedAllocationGc);
                 }
 
                 if (endTime && endTime > profileData.endTime) {
@@ -894,7 +901,7 @@ function extractCompilations(
 
 function groupAllocationVectorsByProducer(entries: AllocationVectorEntry[] = []) {
     const namedVectorsByProducer = new Map<string, Map<string, AllocationVectorEntry['data']>>();
-    const vectorsByProducer = new Map<string, { samples: AllocationSamples; gc: AllocationGc }>();
+    const vectorsByProducer = new Map<string, { samples: DecodedAllocationSamples; gc: DecodedAllocationGc }>();
 
     for (const { pid, tid, name, data } of entries) {
         const producer = `${pid}:${tid}`;
@@ -908,8 +915,8 @@ function groupAllocationVectorsByProducer(entries: AllocationVectorEntry[] = [])
     }
 
     for (const [producer, namedVectors] of namedVectorsByProducer) {
-        const samples: AllocationSamples = {};
-        const gc: AllocationGc = {};
+        const samples: DecodedAllocationSamples = {};
+        const gc: DecodedAllocationGc = {};
 
         for (const key of ['ids', ...unsignedAllocationKeys] as const) {
             const data = namedVectors.get(`allocationSamples.${key}`);
@@ -1057,7 +1064,7 @@ function decodeChunkVector<Vector extends Int32Array | Uint32Array>(
 }
 
 function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Array>(
-    chunks: AllocationSamples[],
+    chunks: DecodedAllocationSamples[],
     key: 'ids' | typeof signedAllocationKeys[number] | typeof unsignedAllocationKeys[number],
     VectorType: { new(length: number): Vector },
     totalLength: number = 0
@@ -1067,7 +1074,7 @@ function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Arr
     }
 
     // A vector supplied whole by a single chunk (e.g. by jsonxl) is adopted instead of copied
-    let wholeVector: AllocationSamples[typeof key] = undefined;
+    let wholeVector: DecodedAllocationSamples[typeof key] = undefined;
     let nonEmptyChunks = 0;
 
     for (const chunk of chunks) {
@@ -1091,13 +1098,7 @@ function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Arr
 
     if (totalLength === 0) {
         for (const chunk of chunks) {
-            const values = chunk[key];
-
-            if (typeof values === 'string') {
-                totalLength += countNumericArrayValues(values);
-            } else if (values !== undefined) {
-                totalLength += values.length;
-            }
+            totalLength += chunk[key]!.length;
         }
     }
 
@@ -1105,12 +1106,7 @@ function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Arr
     let offset = 0;
 
     for (const chunk of chunks) {
-        const source = chunk[key];
-        const values = typeof source === 'string' ? JSON.parse(source) as number[] : source;
-
-        if (values === undefined) {
-            throw new TypeError(`Missing allocation vector ${key} in ProfileChunk`);
-        }
+        const values = chunk[key]!;
 
         vector.set(values, offset);
         offset += values.length;
@@ -1119,26 +1115,9 @@ function buildChunkedVector<Vector extends Int32Array | Uint32Array | Float64Arr
     return vector.length ? vector : undefined;
 }
 
-function countNumericArrayValues(source: string): number {
-    let count = 0;
-    let hasValue = false;
-
-    for (let index = 0; index < source.length; index++) {
-        const code = source.charCodeAt(index);
-
-        if (code === 44) {
-            count++;
-        } else if (code > 32 && code !== 91 && code !== 93) {
-            hasValue = true;
-        }
-    }
-
-    return hasValue ? count + 1 : 0;
-}
-
 function buildChunkedMap(
     vector: Uint32Array | undefined,
-    chunks: AllocationSamples[],
+    chunks: DecodedAllocationSamples[],
     key: 'typesDict' | 'spacesDict' | 'builtinsDict' | 'vmStatesDict' | 'codeTypesDict'
 ): Record<string, string> | undefined {
     if (!vector || vector.length === 0) {
@@ -1187,7 +1166,7 @@ function updateAllocationsGc(
     diagnose: Diagnose,
     allocationIds: Float64Array | Uint32Array | undefined,
     allocationIdsOrder: V8CpuProfile['_cpuproAllocationIdsOrder'],
-    allocationGcChunks: AllocationGc[],
+    allocationGcChunks: DecodedAllocationGc[],
     allocationGcs: Uint32Array | undefined
 ): Uint32Array | undefined {
     if (!allocationGcChunks.length || !allocationIds) {
@@ -1205,9 +1184,8 @@ function updateAllocationsGc(
         const lastId = allocationIds[allocationIds.length - 1];
 
         for (const allocationGc of allocationGcChunks) {
-            for (const [key, value] of Object.entries(allocationGc)) {
+            for (const [key, gcIds] of Object.entries(allocationGc)) {
                 const gc = parseInt(key);
-                const gcIds = typeof value === 'string' ? JSON.parse(value) : value;
 
                 for (let i = 0; i < gcIds.length; i++) {
                     const id = gcIds[i];
@@ -1241,9 +1219,8 @@ function updateAllocationsGc(
         }
 
         for (const allocationGc of allocationGcChunks) {
-            for (const [key, value] of Object.entries(allocationGc)) {
+            for (const [key, gcIds] of Object.entries(allocationGc)) {
                 const gc = parseInt(key);
-                const gcIds = typeof value === 'string' ? JSON.parse(value) : value;
 
                 for (let i = 0; i < gcIds.length; i++) {
                     const index = idToIndexMap.get(gcIds[i]);
