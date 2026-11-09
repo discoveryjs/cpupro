@@ -79,6 +79,12 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
     return { profile, dictionary, scriptsMap, sourceMapping };
 }
 
+// Values of a line of the length with many events per unit, e.g. for zooming that stops at a number of events:
+// zero-weight events at the start of each unit followed by an event of the unit
+export function denseValues(length: number, eventsPerUnit = 100) {
+    return Uint32Array.from({ length: length * eventsPerUnit }, (_, index) => index % eventsPerUnit === eventsPerUnit - 1 ? 1 : 0);
+}
+
 export async function createLineFixture({
     type = 'timeline', origin = 0, before = 0, after = 0,
     values = new Uint32Array([10, 10, 5]),

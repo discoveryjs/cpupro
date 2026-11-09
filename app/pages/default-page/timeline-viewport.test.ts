@@ -15,7 +15,6 @@ import { histAllocationLifespan } from './hist-allocation-lifespan.js';
 import { histAllocationGcs } from './hist-allocation-gcs.js';
 import { histAllocationCodeType } from './hist-allocation-code-type.js';
 import { viewportShare } from './scope-values.js';
-import { setLineZoom } from '../../jora/viewport.js';
 import { categoriesFractionBars } from './categories-fraction-bar.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 import * as lineWindow from '../../views/misc/line-window.js';
@@ -768,8 +767,9 @@ test('heap totals, used heap stats and its scale follow the line viewport rather
     assert.deepEqual(scoped, { minTotal: 110, maxTotal: 130, newTotal: 20, deleteTotal: 10 });
     assert.deepEqual(scopedHeap, { min: 200, max: 500, maxY: 600, up: 300, down: 100 });
 
-    // The zoom and the window it derives don't change them
-    setLineZoom(line, parent.data.profiles, { start: 12, end: 14 });
+    // The zoom and the window it derives don't change them (a zoom set directly, zooming in this sparse line stops
+    // at the whole viewport)
+    line.zoom.selection.setRange(12, 14);
     assert.notDeepEqual(methods.lineWindow(line, parent.data.profiles), methods.lineViewport(line, parent.data.profiles));
     assert.deepEqual(heapTotals(), scoped);
     assert.deepEqual(usedHeap(), scopedHeap);

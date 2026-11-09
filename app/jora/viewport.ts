@@ -1,9 +1,14 @@
 import { validateRange, type Range } from '../prepare/computations/coordinates.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
+import { lowerBound } from '../prepare/computations/misc.js';
 
 type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'axisStart' | 'axisEnd' | 'viewport'>;
 type WindowLine = ViewportLine & Pick<ProfileLine, 'window'>;
-type ZoomLine = ViewportLine & Pick<ProfileLine, 'zoom'>;
+type ZoomLine = ViewportLine & Pick<ProfileLine, 'zoom' | 'breakdowns'>;
+
+// Zooming in stops where a zoom holds this many events (samples, allocations) at the average density of the viewport,
+// so the deepest zoom still has an event per column of a histogram on average; denser data zooms in deeper
+const ZOOM_MIN_EVENTS = 500;
 
 export function lineExtent(line: Pick<ProfileLine, 'range'>) {
     const { frame, extent } = line.range;
@@ -71,11 +76,37 @@ export function subscribeLineZoom(line: Pick<ProfileLine, 'viewport' | 'zoom'>, 
     };
 }
 
-// Requests a zoom moved inside the viewport, the length of the viewport or more is no request
+// The shortest zoom of a line: the length holding ZOOM_MIN_EVENTS events at the average density of the viewport
+export function lineZoomMinLength(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[] = []) {
+    const scope = lineViewport(line, profiles);
+    const [range] = line.range.frame.rebase([scope]);
+    const { cumulative } = line.breakdowns[0].population;
+    const events = lowerBound(cumulative, range.end) - lowerBound(cumulative, range.start);
+
+    return (scope.end - scope.start) * Math.min(1, ZOOM_MIN_EVENTS / events);
+}
+
+// Requests a zoom moved inside the viewport, the length of the viewport or more is no request. A zoom shorter
+// than the shortest one stops at it, scaling the current zoom around the point the request scales it around
 export function setLineZoom(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[], range: Range) {
     const scope = lineViewport(line, profiles);
-    const length = range.end - range.start;
-    const start = Math.min(Math.max(range.start, scope.start), scope.end - length);
+    const minLength = lineZoomMinLength(line, profiles);
+    let { start: requestStart, end: requestEnd } = range;
+
+    if (requestEnd - requestStart < minLength) {
+        const current = lineZoom(line, profiles);
+        const scale = (requestEnd - requestStart) / (current.end - current.start);
+        const anchor = scale < 1
+            ? (requestStart - scale * current.start) / (1 - scale)
+            : (requestStart + requestEnd) / 2;
+        const ratio = minLength / (current.end - current.start);
+
+        requestStart = anchor + (current.start - anchor) * ratio;
+        requestEnd = anchor + (current.end - anchor) * ratio;
+    }
+
+    const length = requestEnd - requestStart;
+    const start = Math.min(Math.max(requestStart, scope.start), scope.end - length);
 
     if (length >= scope.end - scope.start) {
         line.zoom.selection.resetRange();
@@ -127,6 +158,7 @@ export const methods = {
     lineViewport,
     lineViewportBounds,
     lineZoom,
+    lineZoomMinLength,
     lineWindow,
     viewportRange
 };

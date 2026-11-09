@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createRulerHarness } from '../../test/helpers/ruler.js';
-import { createProfileFixture } from '../../test/fixtures/profile.js';
+import { createLineFixture, createProfileFixture, denseValues } from '../../test/fixtures/profile.js';
 import { resolveScopeProfileLine } from '../jora/profile.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 import { createState, rangeToSegments } from './ruler-range.js';
@@ -210,7 +210,7 @@ test.each(minimumResizeCases)(
 );
 
 test('zoom moves the line zoom within the viewport and follows its changes', async () => {
-    const { profile } = await createProfileFixture();
+    const { profile } = await createLineFixture({ values: denseValues(100) });
     const other = await createProfileFixture({ startTime: -20 });
     const line = profile.timeline;
     const harness = createRulerHarness();

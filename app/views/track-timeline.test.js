@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, test, vi } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
-import { createLineFixture } from '../../test/fixtures/profile.js';
+import { createLineFixture, denseValues } from '../../test/fixtures/profile.js';
 import { TrackTimeline as CanvasTrackTimeline } from './track-timeline/index.js';
 import { layoutSpans } from './track-timeline/layout.js';
 import { SpanIndex } from './track-timeline/span-index.js';
@@ -337,7 +337,7 @@ test.skipIf(!process.env.CPUPRO_TRACK_TIMELINE_FIXTURE)('layout matches the real
 afterEach(() => vi.unstubAllGlobals());
 
 async function renderTimeline(config = {}, scopeViewport) {
-    const { line: scopeLine } = await createLineFixture({ origin: 125, values: new Uint32Array([50]), before: 5, after: 5 });
+    const { line: scopeLine } = await createLineFixture({ origin: 125, values: denseValues(50), before: 5, after: 5 });
     const { selection } = scopeLine.range;
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const context = { scopeLine, scopeViewport, data: { profiles: [

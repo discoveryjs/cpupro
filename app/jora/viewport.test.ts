@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import jora from 'jora';
 import { methods, binningRange, setLineZoom, subscribeLineZoom } from './viewport.js';
-import { createLineFixture } from '../../test/fixtures/profile.js';
+import { createLineFixture, denseValues } from '../../test/fixtures/profile.js';
 
 const query = jora.setup({ methods });
 
@@ -89,7 +89,7 @@ test('viewport bounds are the viewport without a request, also with the common t
 });
 
 test('the zoom is displayed within the viewport, requests are kept within it and the whole viewport is no request', async () => {
-    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+    const { line } = await createLineFixture({ origin: 100, values: denseValues(100) });
     const other = await createLineFixture({ origin: 50, values: new Uint32Array([200]) });
     const profiles = [other.profile];
     let changes = 0;
@@ -125,4 +125,34 @@ test('the zoom is displayed within the viewport, requests are kept within it and
     line.zoom.selection.setRange(120, 140);
     assert.equal(changes, 9);
     line.zoom.resetRange();
+});
+
+test('zooming in stops at the length holding 500 events at the average density of the viewport, around the request', async () => {
+    // A dense half of 100 events per unit and a sparse half of an event per unit
+    const values = new Uint32Array([...denseValues(50), ...denseValues(50, 1)]);
+    const { line } = await createLineFixture({ values });
+    const minLength = query('lineZoomMinLength()');
+
+    assert.equal(minLength(line), 100 * 500 / 5050);
+    line.viewport.selection.setRange(0, 50);
+    assert.equal(minLength(line), 5);
+
+    // The current zoom scales around the point the request scales it around, until the shortest zoom
+    setLineZoom(line, [], { start: 10, end: 30 });
+    setLineZoom(line, [], { start: 14.5, end: 16.5 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: 13.75, end: 18.75 }]);
+    setLineZoom(line, [], { start: 15, end: 16 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: 13.75, end: 18.75 }]);
+    // Panning at the shortest zoom keeps it
+    setLineZoom(line, [], { start: 20, end: 25 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: 20, end: 25 }]);
+
+    // Sparse data zooms in less, and not at all with fewer events than that in the viewport
+    line.viewport.selection.setRange(0, 60);
+    assert.equal(minLength(line), 60 * 500 / 5010);
+    line.viewport.selection.setRange(50, 100);
+    assert.equal(minLength(line), 50);
+    setLineZoom(line, [], { start: 60, end: 70 });
+    assert.equal(line.zoom.selection.ranges, null);
+    line.viewport.resetRange();
 });
