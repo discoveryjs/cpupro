@@ -10,6 +10,7 @@ const { histAllocationSpaces } = require('./default-page/hist-allocation-spaces.
 const { histAllocationTypes } = require('./default-page/hist-allocation-types.js');
 const { histCodes } = require('./default-page/hist-codes.js');
 const { histHeapTotal } = require('./default-page/hist-heap-total.js');
+const { withLineWindow, withLineWindowValue, lineWindowHistogram } = require('../views/misc/line-window.js');
 const { pageIndicators } = require('./default-page/page-indicators.js');
 const { hierarchicalComponentsTables } = require('./default-page/tables.js');
 const { userTimingsTimeline } = require('./default-page/user-timings-timeline.js');
@@ -46,20 +47,13 @@ function toggleFullPageFlamechart(fullpageMode) {
     }, 10);
 }
 
-// Bins are computed for a window of the line viewport, zooming and panning within it only change their display.
-// The window part is rendered again when the window population changes, other parts follow the viewport.
-const categoriesTimelineWindow = {
-    view: 'context',
-    context: `
-        $window: scopeLine().lineWindow(#.data.profiles);
-        { ...#, scopeViewport: $window, binCount: 2000.binCount($window) }
-    `,
+// Bins are computed for a window of the line viewport, the views showing them follow its changes
+const categoriesTimelineWindow = withLineWindow({
+    className: 'category-timelines-window',
     data: `
         $scopeBreakdown: scopeBreakdown();
         $scopeLine: $scopeBreakdown.line;
-        $binCount: #.binCount;
         $totalValue: $scopeLine.axisTotal;
-        $categoryBins: $scopeBreakdown.categories.all.nodes.binTreeSamples($binCount);
 
         {
             line: $scopeLine,
@@ -68,14 +62,9 @@ const categoriesTimelineWindow = {
                 .[totalValue and (entry.name != 'root' or selfValue)]
                 .sort(entry.name.order() asc).({
                 $category: entry;
-                $bins: $categoryBins[=>entry = $category];
 
                 $category,
                 $totalValue,
-                $binCount,
-                binSize: (scopeViewport().end - scopeViewport().start) / $binCount,
-                bins: $bins.bins,
-                nestedPresence: $bins.nestedPresence,
                 color: $category.name.color(),
                 href: $category.marker("category").href
             })
@@ -84,8 +73,7 @@ const categoriesTimelineWindow = {
     content: [
         {
             view: 'line-ruler',
-            range: '=scopeViewport()',
-            segments: '=#.binCount',
+            window: '=#.lineWindow',
             zoom: true,
             rangeManager: '=line.range.selection',
             details: {
@@ -222,7 +210,10 @@ const categoriesTimelineWindow = {
                 $totals: scopeBreakdown() | categories.dimensionSampleTotals(populationViewport);
                 { totals: $totals, total: $totals.sum(=> value) }
             `,
-            content: {
+            content: withLineWindowValue('categoryBins', `{
+                binSize: (scopeViewport().end - scopeViewport().start) / #.binCount,
+                bins: scopeBreakdown().categories.all.nodes.binTreeSamples(#.binCount)
+            }`, {
                 view: 'list',
                 className: 'category-timelines-list',
                 data: 'samples',
@@ -251,18 +242,20 @@ const categoriesTimelineWindow = {
                                 `
                             }
                         },
-                        {
-                            view: 'line-histogram',
-                            zoom: true,
+                        lineWindowHistogram('categoryBins', `
+                            $category: category;
+                            $window: #.categoryBins.value;
+                            { ...$window.bins[=> entry = $category], binSize: $window.binSize, color }
+                        `, {
                             bins: '=bins',
                             max: '=binSize',
                             binsMax: true,
                             presence: '=nestedPresence',
                             color: '=color'
-                        }
+                        })
                     ]
                 }
-            }
+            })
         },
 
         {
@@ -279,12 +272,9 @@ const categoriesTimelineWindow = {
                 },
                 'html:` <span style=\"color: #888\">(debug)</span>`'
             ],
-            content: {
+            content: withLineWindowValue('mappingBins', '$.(binLineToAxisLine(null, scopeLine(), #.binCount)[0])', {
                 view: 'switch',
-                data: `$.({
-                    ...binLineToAxisLine(null, scopeLine(), #.binCount)[0],
-                    color: "#65b4fda0"
-                })`,
+                data: '#.mappingBins.value.({ entry, step })',
                 content: [
                     { when: '$', content: [{
                         view: 'list',
@@ -303,16 +293,14 @@ const categoriesTimelineWindow = {
                                     className: 'total-percent',
                                     content: 'text:"–"'
                                 },
-                                {
-                                    view: 'line-histogram',
-                                    zoom: true,
+                                lineWindowHistogram('mappingBins', '$entry: entry; #.mappingBins.value[=> entry = $entry]', {
                                     bins: '=bins',
                                     max: '=max',
                                     scale: '=step ? "linear" : "sqrt"',
                                     binsMax: true,
                                     presence: '=totalValueBins',
-                                    color: '=color'
-                                }
+                                    color: '#65b4fda0'
+                                })
                             ]
                         }
                     }] },
@@ -322,7 +310,7 @@ const categoriesTimelineWindow = {
                         content: 'md:"The profile does not contain the necessary data. Use [V8 log](https://v8.dev/docs/profile) (raw or [preprocessed](https://v8.dev/docs/profile#web-ui-for---prof)) to enable the feature."'
                     } }
                 ]
-            }
+            })
         },
         histCodes,
         histHeapTotal,
@@ -332,18 +320,13 @@ const categoriesTimelineWindow = {
         histAllocationCodeType,
         histAllocationSpaces
     ]
-};
+});
 
 const categoriesTimeline = {
     view: 'block',
     className: 'category-timelines',
     content: [
-        {
-            view: 'update-on-line-metrics-changes',
-            className: 'category-timelines-window',
-            metrics: '=scopeBreakdown().populationWindow',
-            content: categoriesTimelineWindow
-        },
+        categoriesTimelineWindow,
         {
             view: 'line-intervals',
             className: 'events-x',

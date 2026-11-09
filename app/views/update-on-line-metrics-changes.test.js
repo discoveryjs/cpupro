@@ -280,3 +280,46 @@ test('shares a value computed once per change of its metrics among nested reader
     element.onDestroy();
     assert.equal(listeners.size, 0);
 });
+
+test('a line metrics value may be computed in a context given by a query at the time of computing', async () => {
+    const listeners = new Set();
+    const source = {
+        subscribe(callback) {
+            listeners.add(callback);
+            return () => listeners.delete(callback);
+        }
+    };
+    const queries = [];
+    let window = 'first';
+    const views = loadViews({
+        requestAnimationFrame() {},
+        cancelAnimationFrame() {},
+        debounce: callback => callback,
+        query: (query, data, context) => {
+            queries.push([query, data, context]);
+            return query === 'window' ? { window } : [query, context.window];
+        }
+    });
+    const data = {};
+    const context = { scope: 'section' };
+    let rendered = null;
+    const host = {
+        render(el, content, renderData, renderContext) {
+            rendered = renderContext;
+        }
+    };
+
+    await views['line-metrics-value'].call(host, {}, { name: 'bins', metrics: source, valueContext: 'window', value: 'bins', content: 'list' }, data, context);
+    assert.deepEqual(rendered.bins.value, ['bins', 'first']);
+    assert.deepEqual(queries, [['window', data, context], ['bins', data, { window: 'first' }]]);
+
+    window = 'second';
+    assert.deepEqual(rendered.bins.value, ['bins', 'first']);
+
+    for (const callback of [...listeners]) {
+        callback();
+    }
+
+    assert.deepEqual(rendered.bins.value, ['bins', 'second']);
+    assert.equal(queries.length, 4);
+});

@@ -1,4 +1,5 @@
 import { sessionExpandState } from '../common.js';
+import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
 import { viewportShare, viewportShareText, withViewportAttributeTotals } from './viewport-attribute-totals.js';
 
 export const histAllocationCodeType = withViewportAttributeTotals('allocationCodeType', {
@@ -38,13 +39,9 @@ export const histAllocationCodeType = withViewportAttributeTotals('allocationCod
             ]
         }
     ],
-    content: {
+    content: withLineWindowValue('attributeBins', '"allocationCodeType".binAllocationAttribute(#.binCount)', {
         view: 'list',
         className: 'category-timelines-list',
-        data: `
-            $bins: "allocationCodeType".binAllocationAttribute(#.binCount);
-            .($track: $bins[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step })
-        `,
         item: {
             view: 'link',
             className: 'category-timelines-item',
@@ -60,16 +57,14 @@ export const histAllocationCodeType = withViewportAttributeTotals('allocationCod
                     className: 'total-percent',
                     content: viewportShareText()
                 },
-                {
-                    view: 'line-histogram',
-                    zoom: true,
+                lineWindowHistogram('attributeBins', '$track: #.attributeBins.value[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step }', {
                     bins: '=bins',
                     max: '=max',
                     binsMax: true,
                     scale: '=step ? "linear" : "sqrt"',
                     color: '=color'
-                }
+                })
             ]
         }
-    }
+    })
 });

@@ -48,6 +48,7 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
         multiple = true,
         rangeManager,
         zoom = false,
+        window,
         selection,
         details,
         onInit,
@@ -60,9 +61,18 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
     // Zoom moves the line viewport within its bounds and the ruler follows the viewport
     const profiles = context.data?.profiles;
     const bounds = zoom ? lineViewportBounds(scopeLine, profiles) : null;
-    // With zoom the range and segments describe a grid of bins and the ruler segments are their columns
-    const grid = zoom && segments ? createState(range, segments) : null;
-    const gridCount = grid?.segments ? grid.segments.length - 1 : 0;
+    // With zoom the range and segments describe a grid of bins and the ruler segments are their columns.
+    // A window value gives the grid of the current line window instead, its range and number of bins
+    let grid = zoom && segments ? createState(range, segments) : null;
+    let gridWindow = null;
+    const readGrid = () => {
+        if (window && window.value !== gridWindow) {
+            gridWindow = window.value;
+            grid = createState(gridWindow.scopeViewport, gridWindow.binCount);
+        }
+
+        return grid?.segments ? grid : null;
+    };
     // Labels count from the start of the ruler, which is the viewport bounds for a zoomed one,
     // as line coordinates may be absolute timestamps
     const origin = zoom ? bounds.start : createState(range).range.start;
@@ -73,8 +83,12 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
         view: 'ruler',
         range: zoom ? lineViewport(scopeLine, profiles) : range,
         bounds,
-        segments: gridCount > 0
-            ? (range, width) => gridColumns({ range: grid.range, count: gridCount }, range, width)
+        segments: readGrid() !== null
+            ? (range, width) => {
+                const { range: gridRange, segments: gridSegments } = readGrid();
+
+                return gridColumns({ range: gridRange, count: gridSegments.length - 1 }, range, width);
+            }
             : segments,
         multiple,
         selection: rangeManager ? readSelection() : selection,
@@ -89,11 +103,14 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
             view: 'context',
             context(data, context) {
                 const { ruler, detail } = context;
-                const { range, segments } = gridCount > 0 ? grid : ruler;
+                const grid = readGrid();
+                const { range, segments } = grid ?? ruler;
                 const indices = rangeToSegments(detail, segments);
 
                 return {
                     ...context,
+                    // Details of a grid query its bins and range
+                    ...grid && { scopeViewport: grid.range, binCount: segments.length - 1 },
                     duration: ruler.length,
                     timeStart: detail.start - range.start,
                     timeEnd: detail.end - range.start,

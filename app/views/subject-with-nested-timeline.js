@@ -1,68 +1,61 @@
 const { resolveScopeProfileLine } = require('../jora/profile.ts');
+const { withLineWindow, withLineWindowValue, lineWindowHistogram } = require('./misc/line-window.js');
 
-// Bins are computed for a window of the line viewport, zooming within it only changes their display
-discovery.view.define('subject-with-nested-timeline', {
-    view: 'update-on-line-metrics-changes',
-    metrics: '=scopeBreakdown().populationWindow',
-    content: {
-        view: 'context',
-        context: `
-            $window: scopeBreakdown().line.lineWindow(#.data.profiles);
-            { ...#, scopeViewport: $window, binCount: 2000.binCount($window) }
-        `,
-        data: `
-            $scopeBreakdown: scopeBreakdown();
-            $scopeLine: $scopeBreakdown.line;
-            $profile: $scopeLine.profile;
-            $subject;
-            $tree;
-            $subtree: $tree.subtreeSamples($subject);
-            $getCategory: $subject.marker('category') ? =>$ : =>category;
-            $totalValue: $scopeLine.axisTotal;
-            $viewport: scopeViewport();
-            $duration: $viewport.end - $viewport.start;
-            $binCount: #.binCount;
-            $binSize: $duration / $binCount;
-            $binSamples: $binCount.countSamples();
-            $totalValueBins: $subtree.mask.binCallsFromMask($binCount, $scopeBreakdown);
+// Bins are computed for a window of the line viewport, the views showing them follow its changes
+discovery.view.define('subject-with-nested-timeline', withLineWindow({
+    data: `
+        $scopeBreakdown: scopeBreakdown();
+        $scopeLine: $scopeBreakdown.line;
+        $subject;
+        $tree;
+        $subtree: $tree.subtreeSamples($subject);
+        $getCategory: $subject.marker('category') ? =>$ : =>category;
 
-            {
-                $profile,
-                $scopeLine,
-                $scopeBreakdown,
-                $subject,
-                $subtree,
-                bins: $tree.binCalls($subject, $binCount),
-                $binCount,
+        {
+            profile: $scopeLine.profile,
+            $scopeLine,
+            $scopeBreakdown,
+            $subject,
+            $tree,
+            $subtree,
+            totalValue: $scopeLine.axisTotal,
+            color: $subject.$getCategory().name.color(),
+            nested: $subtree.entries.($getCategory()).sort(id asc).({ category: $, color: name.color() })
+        }
+    `,
+    content: withLineWindowValue('subjectBins', `
+        $viewport: scopeViewport();
+        $binCount: #.binCount;
+        $binSize: ($viewport.end - $viewport.start) / $binCount;
+        $totalValueBins: subtree.mask.binCallsFromMask($binCount, scopeBreakdown);
+        $metricsSource: scopeLine.primaryBreakdown().categories.all.nodes;
+        $selector: subtree.sampleSelector;
+
+        {
+            $binSize,
+            binSamples: $binCount.countSamples(),
+            $totalValueBins,
+            bins: tree.binCalls(subject, $binCount),
+            nested: nested.({
+                $category: category;
+
+                ...,
                 $binSize,
-                $binSamples,
-                $totalValue,
-                $duration,
-                $totalValueBins,
-                color: $subject.$getCategory().name.color(),
-                nested: (
-                    $metricsSource: $scopeLine.primaryBreakdown().categories.all.nodes;
-                    $selector: $subtree.sampleSelector;
-                    $subtree.entries.($getCategory()).sort(id asc).({
-                        $category: $;
-                        $category,
-                        color: name.color(),
-                        $binSize,
-                        bins: $metricsSource.binCalls(=>$=$category and $selector($$), $binCount),
-                        $totalValueBins
-                    })
-                )
-            }
-        `,
-        content: [
-            {
-                view: 'line-ruler',
-                labels: 'top',
-                range: '=scopeViewport()',
-                segments: '=binCount',
-                zoom: true,
-                rangeManager: '=scopeLine.range.selection',
-                details: [
+                bins: $metricsSource.binCalls(=>$=$category and $selector($$), $binCount),
+                $totalValueBins
+            })
+        }
+    `, [
+        {
+            view: 'line-ruler',
+            labels: 'top',
+            window: '=#.lineWindow',
+            zoom: true,
+            rangeManager: '=scopeLine.range.selection',
+            details: {
+                view: 'context',
+                data: '{ ..., ...#.subjectBins.value }',
+                content: [
                     {
                         view: 'block',
                         className: 'timeline-segment-info',
@@ -94,13 +87,21 @@ discovery.view.define('subject-with-nested-timeline', {
                         }
                     }
                 ]
-            },
-            {
-                view: 'line-intervals',
-                className: 'function-codes',
-                when: 'scopeLine.type = "timeline"',
-                zoom: true,
-                data: `
+            }
+        },
+        // Ends of code ticks are rounded to bins of the window
+        {
+            view: 'update-on-line-metrics-changes',
+            metrics: '=#.lineWindow',
+            content: {
+                view: 'context',
+                context: '#.lineWindow.value',
+                content: {
+                    view: 'line-intervals',
+                    className: 'function-codes',
+                    when: 'scopeLine.type = "timeline"',
+                    zoom: true,
+                    data: `
                     $totalValue: profile.timeline.axisTotal;
                     $axisStart: scopeLine.axisStart;
                     $type: subject.marker().type;
@@ -124,76 +125,71 @@ discovery.view.define('subject-with-nested-timeline', {
                         })
                         | .({ ..., start: $axisStart + tm, end: $axisStart + tm + duration })
                 `,
-                whenData: true,
-                itemConfig: {
-                    view: 'block',
-                    className: 'tick',
-                    tooltip: {
-                        className: 'subject-with-nested-timeline__code-segment-tooltip',
-                        content: [
-                            'code-tier-badge:code.tier',
-                            'html:code | `<span style=\"color:${tier.color()[:-2]+`d0`}\">${tier}</span><br>`',
-                            'text:`Duration: ${duration.ms()}`',
-                            { view: 'block', when: 'code.segments.size() > 1', content: [
-                                'text:`Segment ${code.segments.indexOf(segment) + 1} of ${code.segments.size()}`',
-                                'html:"<br>"',
-                                'text:`All segments duration: ${code.segments.sum(=> duration).ms()}`'
-                            ] }
-                        ]
-                    },
-                    postRender(el, _, data, context) {
-                        const { start, end, tierColor } = data;
-                        const { range } = resolveScopeProfileLine(null, context);
+                    whenData: true,
+                    itemConfig: {
+                        view: 'block',
+                        className: 'tick',
+                        tooltip: {
+                            className: 'subject-with-nested-timeline__code-segment-tooltip',
+                            content: [
+                                'code-tier-badge:code.tier',
+                                'html:code | `<span style=\"color:${tier.color()[:-2]+`d0`}\">${tier}</span><br>`',
+                                'text:`Duration: ${duration.ms()}`',
+                                { view: 'block', when: 'code.segments.size() > 1', content: [
+                                    'text:`Segment ${code.segments.indexOf(segment) + 1} of ${code.segments.size()}`',
+                                    'html:"<br>"',
+                                    'text:`All segments duration: ${code.segments.sum(=> duration).ms()}`'
+                                ] }
+                            ]
+                        },
+                        postRender(el, _, data, context) {
+                            const { start, end, tierColor } = data;
+                            const { range } = resolveScopeProfileLine(null, context);
 
-                        el.style.setProperty('--tier-color', 'rgb(' + tierColor + ', .68)');
-                        el.addEventListener('click', () => {
-                            range.selection.setRange(start, end);
-                        });
+                            el.style.setProperty('--tier-color', 'rgb(' + tierColor + ', .68)');
+                            el.addEventListener('click', () => {
+                                range.selection.setRange(start, end);
+                            });
+                        }
                     }
                 }
-            },
-            {
-                view: 'block',
-                className: 'self-time',
-                content: {
-                    view: 'line-histogram',
-                    zoom: true,
-                    bins: '=bins',
-                    presence: '=totalValueBins',
-                    max: '=binSize',
-                    binsMax: true,
-                    color: '=color',
-                    height: 31
-                }
-            },
-            {
-                view: 'block',
-                className: 'nested-time',
-                content: {
-                    view: 'line-histogram',
-                    zoom: true,
-                    bins: '=totalValueBins',
-                    max: '=binSize',
-                    binsMax: true,
-                    color: '=nested.size() > 1 ? color : nested[].color',
-                    height: 30
-                }
-            },
-            {
-                view: 'list',
-                className: 'nested-work',
-                data: 'nested',
-                whenData: 'size() > 1',
-                item: {
-                    view: 'line-histogram',
-                    zoom: true,
-                    bins: '=bins',
-                    max: '=binSize',
-                    binsMax: true,
-                    color: '=color',
-                    height: 20
-                }
             }
-        ]
-    }
-});
+        },
+        {
+            view: 'block',
+            className: 'self-time',
+            content: lineWindowHistogram('subjectBins', '{ ..., ...#.subjectBins.value }', {
+                bins: '=bins',
+                presence: '=totalValueBins',
+                max: '=binSize',
+                binsMax: true,
+                color: '=color',
+                height: 31
+            })
+        },
+        {
+            view: 'block',
+            className: 'nested-time',
+            content: lineWindowHistogram('subjectBins', '{ ..., ...#.subjectBins.value }', {
+                bins: '=totalValueBins',
+                max: '=binSize',
+                binsMax: true,
+                color: '=nested.size() > 1 ? color : nested[].color',
+                height: 30
+            })
+        },
+        {
+            view: 'list',
+            className: 'nested-work',
+            data: 'nested',
+            whenData: 'size() > 1',
+            item: lineWindowHistogram('subjectBins', '$category: category; #.subjectBins.value.nested[=> category = $category]', {
+                bins: '=bins',
+                max: '=binSize',
+                binsMax: true,
+                color: '=color',
+                height: 20
+            })
+        }
+    ])
+}));

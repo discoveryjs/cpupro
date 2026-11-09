@@ -73,16 +73,17 @@ discovery.view.define('update-on-line-metrics-changes', function(el, config, dat
 
 // Shares a value computed from line metrics with nested views: they read it as `#.<name>.value` and follow its
 // changes as metrics of `update-on-line-metrics-changes`. The value query is evaluated on the first read after
-// a change, once for all readers, e.g. viewport totals for the labels of every row of a section
+// a change, once for all readers, e.g. viewport totals for the labels of every row of a section. A valueContext
+// query gives the context of the value query at that time, e.g. of the line window histograms are computed for
 discovery.view.define('line-metrics-value', function(el, config, data, context) {
-    const { name, metrics = data, value, content } = config;
+    const { name, metrics = data, value, valueContext, content } = config;
     const sources = Array.isArray(metrics) ? metrics : [metrics];
     let current = null;
     let stale = true;
     const shared = {
         get value() {
             if (stale) {
-                current = discovery.query(value, data, context);
+                current = discovery.query(value, data, valueContext ? discovery.query(valueContext, data, context) : context);
                 stale = false;
             }
 

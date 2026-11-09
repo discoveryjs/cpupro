@@ -1,27 +1,31 @@
 import { sessionExpandState } from '../common.js';
+import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
 
-export const histHeapTotal = {
+// Heap sizes are binned for the line window, the values derived from them follow it
+export const histHeapTotal = withLineWindowValue('heapBins', `
+    scopeProfile().heap | events ? {
+        $totalHeapSize: events.binHeapTotal(#.binCount, capacity);
+        $new: events.binHeapEvents("new", #.binCount);
+        $delete: events.binHeapEvents("delete", #.binCount);
+
+        $totalHeapSize,
+        minTotal: $totalHeapSize.min(),
+        maxTotal: $totalHeapSize.max(),
+        $new,
+        newTotal: $new.sum(),
+        $delete,
+        deleteTotal: $delete.sum(),
+        maxNewDelete: [$new.max(), $delete.max()].max()
+    }
+`, {
     view: 'expand',
     when: '#.primaryLineType != "memline"',
     ...sessionExpandState('default-timelines-heap', false, '$'),
     data: `
         $profile: scopeProfile();
-        $binCount: #.binCount;
         $profile.heap | events ? {
-            $totalHeapSize: events.binHeapTotal($binCount, capacity);
-            $new: events.binHeapEvents("new", $binCount);
-            $delete: events.binHeapEvents("delete", $binCount);
-
             available,
-            extent: $profile.timeline.timestampExtent(events[-1].tm, 0),
-            $totalHeapSize,
-            minTotal: $totalHeapSize.min(),
-            maxTotal: $totalHeapSize.max(),
-            $new,
-            newTotal: $new.sum(),
-            $delete,
-            deleteTotal: $delete.sum(),
-            maxNewDelete: [$new.max(), $delete.max()].max()
+            extent: $profile.timeline.timestampExtent(events[-1].tm, 0)
         }
     `,
     className: '=no $ ? "unavailable"',
@@ -46,7 +50,7 @@ export const histHeapTotal = {
             {
                 view: 'list',
                 className: 'category-timings-list with-from',
-                data: `[
+                data: `#.heapBins.value | [
                     { $selection: totalHeapSize[#.binStart:#.binEnd]; name: 'Total size', value: $selection.max(), from: $selection.min(), total: maxTotal },
                     { name: 'Allocated', value: new[#.binStart:#.binEnd].sum(), total: newTotal },
                     { name: 'Released', value: delete[#.binStart:#.binEnd].sum(), total: deleteTotal }
@@ -80,7 +84,20 @@ export const histHeapTotal = {
             } }
         ]
     }
-};
+});
+
+// Values of the window bins shown with the data of the section, rendered again when they change
+function withHeapBins(content) {
+    return {
+        view: 'update-on-line-metrics-changes',
+        metrics: '=#.heapBins',
+        content: {
+            view: 'context',
+            data: '{ ..., ...#.heapBins.value }',
+            content
+        }
+    };
+}
 
 function histHeapTotalHeader() {
     return {
@@ -88,7 +105,7 @@ function histHeapTotalHeader() {
         content: [
             { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
             { content: [
-                { view: 'block', className: 'labeled-value-groups', content: [
+                withHeapBins({ view: 'block', className: 'labeled-value-groups', content: [
                     { view: 'block', className: 'labeled-value-group', content: [
                         {
                             view: 'labeled-value',
@@ -127,7 +144,7 @@ function histHeapTotalHeader() {
                             value: 'text-numeric:deleteTotal.bytes()'
                         }
                     ] }
-                ] }
+                ] })
             ] }
         ]
     };
@@ -148,14 +165,12 @@ function histHeapTotalBody() {
                 {
                     view: 'block',
                     className: 'total-value',
-                    content: [
+                    content: withHeapBins([
                         'text-with-unit{ value: maxTotal.bytes(false), unit: true }',
                         'text-with-unit{ value: minTotal.bytes(), unit: true }'
-                    ]
+                    ])
                 },
-                {
-                    view: 'line-histogram',
-                    zoom: true,
+                lineWindowHistogram('heapBins', '{ ..., ...#.heapBins.value }', {
                     className: 'mem-bins',
                     height: 36,
                     extent: '=extent',
@@ -164,7 +179,7 @@ function histHeapTotalBody() {
                     // max: '=max() | $ < 20_000_000 ?: 20_000_000',
                     binsMax: true,
                     color: '#5b88c6'
-                }
+                })
             ]
         },
         {
@@ -181,18 +196,16 @@ function histHeapTotalBody() {
                 {
                     view: 'block',
                     className: 'total-value',
-                    content: 'text-with-unit{ value: newTotal.bytes(false), unit: true }'
+                    content: withHeapBins('text-with-unit{ value: newTotal.bytes(false), unit: true }')
                 },
-                {
-                    view: 'line-histogram',
-                    zoom: true,
+                lineWindowHistogram('heapBins', '{ ..., ...#.heapBins.value }', {
                     className: 'mem-bins',
                     extent: '=extent',
                     bins: '=new',
                     max: '=maxNewDelete',
                     binsMax: true,
                     color: '#bf8354'
-                }
+                })
             ]
         },
         {
@@ -208,18 +221,16 @@ function histHeapTotalBody() {
                 {
                     view: 'block',
                     className: 'total-value',
-                    content: 'text-with-unit{ value: deleteTotal.bytes(false), unit: true }'
+                    content: withHeapBins('text-with-unit{ value: deleteTotal.bytes(false), unit: true }')
                 },
-                {
-                    view: 'line-histogram',
-                    zoom: true,
+                lineWindowHistogram('heapBins', '{ ..., ...#.heapBins.value }', {
                     className: 'mem-bins heap-delete-chunks',
                     extent: '=extent',
                     bins: '=delete',
                     max: '=maxNewDelete',
                     binsMax: true,
                     color: '#80a556'
-                }
+                })
             ]
         }
     ];

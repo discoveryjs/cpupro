@@ -1,38 +1,41 @@
 import { sessionExpandState } from '../common.js';
+import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
 
-export const histCodes = {
+// Code states are binned for the line window, the values derived from them follow it. Tier rows are the tiers
+// of the codes, so they don't depend on the window
+export const histCodes = withLineWindowValue('codeBins', `
+    scopeProfile() | codes |? {
+        $codes: sort(tm asc);
+        $totalBins: $codes.binScriptFunctionCodesTotal(#.binCount);
+
+        compilationBins: $codes.binScriptFunctionCodes(#.binCount),
+        totalBins: $totalBins.fnCount,
+        maxTotal: $totalBins.fnCount.max(),
+        byTier: $totalBins.byTier.({ name: $[0], bins: $[1] })
+    }
+`, {
     view: 'expand',
     when: '#.primaryLineType != "memline"',
     ...sessionExpandState('default-code-tiers', false, '$'),
     data: `
         $profile: scopeProfile();
-        $binCount: #.binCount;
         $profile | codes |? {
             $countByTopTier: $profile.codesByCallFrame.group(=> topTier).({ tier: key, count: value.size() });
             $codes: sort(tm asc);
-            $totalBins: $codes.binScriptFunctionCodesTotal($binCount);
-            $maxTotal: $totalBins.fnCount.max();
-            $byTierBins: $totalBins.byTier.({
-                $tier: $[0];
-                $bins: $[1];
-
-                name: $tier,
-                color: $tier.color(),
-                $bins,
-                max: $bins.max(),
-                $maxTotal,
-                maxTier: $countByTopTier[=> tier = $tier].count or 0
-            }).[max];
+            $tiers: $codes.tier;
 
             $countByTopTier,
             extent: $profile.timeline.timestampExtent($codes[-1].tm),
             compilations: $codes,
-            compilationBins: $codes.binScriptFunctionCodes($binCount),
-            totalBins: $totalBins.fnCount,
             totalColor: '#7fb2f7a0',
             codesTotalColor: "compilation".color(),
-            byTier: $byTierBins,
-            byTierMax: $maxTotal
+            byTier: #.codeBins.value.byTier.name.[$ in $tiers].({
+                $tier: $;
+
+                name: $tier,
+                color: $tier.color(),
+                maxTier: $countByTopTier[=> tier = $tier].count or 0
+            })
         }
     `,
     className: '=no $ ? "unavailable"',
@@ -58,10 +61,19 @@ export const histCodes = {
                 view: 'list',
                 className: 'category-timings-list with-from',
                 data: `
-                    $maxTotal: totalBins[#.binStart:#.binEnd].max();
+                    $window: #.codeBins.value;
+                    $maxTotal: $window.totalBins[#.binStart:#.binEnd].max();
 
-                    byTier.({ $bins: bins[#.binStart:#.binEnd]; ..., value: $bins.max(), from: $bins.min(), $maxTotal }) + {
-                        $bins: totalBins[#.binStart:#.binEnd];
+                    byTier.({
+                        $tier: name;
+                        $bins: $window.byTier[=> name = $tier].bins[#.binStart:#.binEnd];
+
+                        ...,
+                        value: $bins.max(),
+                        from: $bins.min(),
+                        $maxTotal
+                    }) + {
+                        $bins: $window.totalBins[#.binStart:#.binEnd];
 
                         name: "Total",
                         value: $bins.max(),
@@ -99,7 +111,7 @@ export const histCodes = {
             } }
         ]
     }
-};
+});
 
 function histFunctionCodesHeader() {
     return {
@@ -123,14 +135,18 @@ function histFunctionCodesHeader() {
                         }
                     ] },
                     {
-                        view: 'inline-list',
-                        className: 'labeled-value-group',
-                        data: 'byTier',
-                        itemConfig: {
-                            view: 'labeled-value',
-                            color: '=color',
-                            text: '=name',
-                            value: 'text:100 * maxTier / maxTotal | `${toFixed(2)}%`'
+                        view: 'update-on-line-metrics-changes',
+                        metrics: '=#.codeBins',
+                        content: {
+                            view: 'inline-list',
+                            className: 'labeled-value-group',
+                            data: 'byTier',
+                            itemConfig: {
+                                view: 'labeled-value',
+                                color: '=color',
+                                text: '=name',
+                                value: 'text:100 * maxTier / #.codeBins.value.maxTotal | `${toFixed(2)}%`'
+                            }
                         }
                     }
                 ] }
@@ -156,13 +172,11 @@ function histFunctionCodesBody() {
                     className: 'total-value',
                     content: 'text-numeric:compilations.size()'
                 },
-                {
-                    view: 'line-histogram',
-                    zoom: true,
+                lineWindowHistogram('codeBins', '{ extent, bins: #.codeBins.value.compilationBins }', {
                     extent: '=extent',
-                    bins: '=compilationBins',
+                    bins: '=bins',
                     color: '="compilation".color()'
-                }
+                })
             ]
         },
         {
@@ -180,13 +194,11 @@ function histFunctionCodesBody() {
                     className: 'total-value',
                     content: 'text-numeric:compilations.callFrame.size()'
                 },
-                {
-                    view: 'line-histogram',
-                    zoom: true,
+                lineWindowHistogram('codeBins', '{ extent, bins: #.codeBins.value.totalBins, totalColor }', {
                     extent: '=extent',
-                    bins: '=totalBins',
+                    bins: '=bins',
                     color: '=totalColor'
-                }
+                })
             ]
         },
         {
@@ -206,17 +218,23 @@ function histFunctionCodesBody() {
                     {
                         view: 'block',
                         className: 'total-percent',
-                        content: 'text:100 * maxTier / maxTotal | toFixed(2)'
+                        content: {
+                            view: 'update-on-line-metrics-changes',
+                            metrics: '=#.codeBins',
+                            content: 'text:100 * maxTier / #.codeBins.value.maxTotal | toFixed(2)'
+                        }
                     },
-                    {
-                        view: 'line-histogram',
-                        zoom: true,
+                    lineWindowHistogram('codeBins', `
+                        $tier: name;
+                        $window: #.codeBins.value;
+                        { ..., bins: $window.byTier[=> name = $tier].bins, maxTotal: $window.maxTotal }
+                    `, {
                         extent: '=extent',
                         bins: '=bins',
                         max: '=maxTotal',
                         binsMax: true,
                         color: '=color'
-                    }
+                    })
                 ]
             }
         }

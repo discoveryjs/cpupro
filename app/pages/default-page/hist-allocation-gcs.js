@@ -1,4 +1,5 @@
 import { sessionExpandState } from '../common.js';
+import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
 import { viewportShareText, withViewportAttributeTotals } from './viewport-attribute-totals.js';
 
 export const histAllocationGcs = withViewportAttributeTotals('allocationGcEpoch', {
@@ -47,13 +48,9 @@ export const histAllocationGcs = withViewportAttributeTotals('allocationGcEpoch'
             ]
         }
     ],
-    content: {
+    content: withLineWindowValue('attributeBins', '"allocationGcEpoch".binAllocationAttribute(#.binCount)', {
         view: 'list',
         className: 'category-timelines-list',
-        data: `
-            $bins: "allocationGcEpoch".binAllocationAttribute(#.binCount);
-            .($track: $bins[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step })
-        `,
         item: {
             view: 'link',
             className: 'category-timelines-item',
@@ -69,16 +66,14 @@ export const histAllocationGcs = withViewportAttributeTotals('allocationGcEpoch'
                     className: 'total-percent',
                     content: viewportShareText()
                 },
-                {
-                    view: 'line-histogram',
-                    zoom: true,
+                lineWindowHistogram('attributeBins', '$track: #.attributeBins.value[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step }', {
                     bins: '=bins',
                     max: '=max',
                     binsMax: true,
                     scale: '=step ? "linear" : "sqrt"',
                     color: '=entry.type = "none" ? "alive".color() : entry.type = "minor" ? "short-lived".color() : "long-lived".color()'
-                }
+                })
             ]
         }
-    }
+    })
 });

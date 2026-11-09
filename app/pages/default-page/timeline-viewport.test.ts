@@ -17,6 +17,7 @@ import { histAllocationCodeType } from './hist-allocation-code-type.js';
 import { viewportShare } from './viewport-attribute-totals.js';
 import { categoriesFractionBars } from './categories-fraction-bar.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
+import * as lineWindow from '../../views/misc/line-window.js';
 
 const methods = {
     ...appMethods,
@@ -27,7 +28,7 @@ const methods = {
 
 const detailRenders = [];
 const { timeline, section } = evaluateModule(new URL('../default.js', import.meta.url), {
-    require: () => ({ supportedFormats: [], sessionExpandState: () => ({}), chartUsedHeap, userTimingsTimeline }),
+    require: () => ({ supportedFormats: [], sessionExpandState: () => ({}), chartUsedHeap, userTimingsTimeline, ...lineWindow }),
     discovery: {
         nav: { primary: { append() {} } },
         page: { define() {} },
@@ -38,6 +39,12 @@ const { timeline, section } = evaluateModule(new URL('../default.js', import.met
     }
 }, '({ timeline: categoriesTimelineWindow, section: categoriesTimeline })');
 const query = jora.setup({ methods: { ...methods, marker: () => ({ href: '#' }) } });
+// The context of the line window the timelines are computed for, as they get it from `#.lineWindow`
+const windowContext = (data, parent, evaluate = query) => {
+    const value = evaluate(timeline.value)(data, parent);
+
+    return { ...value, lineWindow: { value } };
+};
 
 test('tooltip dispatch selects one section and uses its current local data and scope', () => {
     const renderDetails = timeline.content[0].details.content[1].content.at(-1);
@@ -45,11 +52,11 @@ test('tooltip dispatch selects one section and uses its current local data and s
     const renderer = { render: renderDetails };
     calls.length = 0;
     const heap = {
-        config: histHeapTotal,
+        config: histHeapTotal.content,
         data: { revision: 1 },
         context: { scopeProfile: 'heap-profile', scopeLine: 'heap-line', scopeBreakdown: 'heap-breakdown' }
     };
-    const codes = { config: histCodes, data: { revision: 2 }, context: { scopeLine: 'code-line' } };
+    const codes = { config: histCodes.content, data: { revision: 2 }, context: { scopeLine: 'code-line' } };
     const target = { views: [heap, { config: {}, data: null, context: {} }] };
     const detail = { start: 20, end: 30 };
     const context = {
@@ -65,7 +72,7 @@ test('tooltip dispatch selects one section and uses its current local data and s
 
     renderDetails.call(renderer, null, {}, {}, context);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0][1], histHeapTotal.rulerDetails);
+    assert.equal(calls[0][1], histHeapTotal.content.rulerDetails);
     assert.equal(calls[0][2], heap.data);
     assert.equal(calls[0][3].detail, detail);
     assert.equal(calls[0][3].scopeProfile, 'heap-profile');
@@ -75,7 +82,7 @@ test('tooltip dispatch selects one section and uses its current local data and s
     target.views = [heap, codes];
     renderDetails.call(renderer, null, {}, {}, context);
     assert.equal(calls.length, 2);
-    assert.equal(calls[1][1], histCodes.rulerDetails);
+    assert.equal(calls[1][1], histCodes.content.rulerDetails);
     assert.equal(calls[1][2], codes.data);
     assert.equal(calls[1][3].scopeLine, 'code-line');
 
@@ -167,10 +174,17 @@ test.each([
                         value: lineTotals[index]
                     }))));
 
-                    // Histograms bin the scope viewport, i.e. the window
-                    const content = tracked(expand.content.data)(rows, context);
+                    // Histograms bin the line window once for all rows, each row reads its track
+                    const windowBins = expand.content;
+                    const binsValue = tracked(windowBins.value)(rows, query(windowBins.valueContext)(rows, { lineWindow: { value: context } }));
+                    const histogram = windowBins.content.item.content.at(-1);
+                    const content = rows.map(row => query(histogram.content.data)(row, { ...context, [windowBins.name]: { value: binsValue } }));
                     const bins = methods.binLineToAxisLine.call({ context }, source, attribute, line, context.binCount);
 
+                    assert.equal(windowBins.view, 'line-metrics-value');
+                    assert.equal(windowBins.metrics, '=#.lineWindow');
+                    assert.equal(histogram.view, 'update-on-line-metrics-changes');
+                    assert.equal(histogram.metrics, `=#.${windowBins.name}`);
                     assert.deepEqual(calls, [[name, 7]]);
                     assert.deepEqual(content.map(row => row.entry), rows.map(row => row.entry));
                     assert.deepEqual(content.map(row => [row.value, row.bins, row.max, row.step]), rows.map(row =>
@@ -224,7 +238,7 @@ test('category rows keep the whole-line set and label shares of the viewport and
     const breakdown = line.breakdowns[0];
     const parent = { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles: [profile] } };
     const hub = timeline.content.find(view => view?.view === 'line-metrics-value');
-    const share = hub.content.item.content[1].content;
+    const share = hub.content.content.item.content[1].content;
     const bar = query(categoriesFractionBars.content.data);
     // Accepted events clipped to the viewport coverage, by category
     const totals = () => {
@@ -247,7 +261,7 @@ test('category rows keep the whole-line set and label shares of the viewport and
 
         return result;
     };
-    const fullRows = query(timeline.data)(profile, query(timeline.context)(profile, parent)).samples.map(row => row.category);
+    const fullRows = query(timeline.data)(profile, windowContext(profile, parent)).samples.map(row => row.category);
 
     assert.equal(hub.name, 'viewportCategories');
     assert.equal(share.view, 'update-on-line-metrics-changes');
@@ -262,7 +276,7 @@ test('category rows keep the whole-line set and label shares of the viewport and
 
         line.filters.get('category')!.setSelection('exclude', [...excluded]);
 
-        const context = query(timeline.context)(profile, parent);
+        const context = windowContext(profile, parent);
         const panel = query(timeline.data)(profile, context);
         const value = query(hub.value)(panel, context);
         const expected = totals();
@@ -465,17 +479,24 @@ test('mapping bins belong to expanded content rather than the parent panel query
             }
         }
     });
-    const context = tracked(timeline.context)(profile, { primaryProfile: profile, primaryLineType: 'timeline' });
+    const context = windowContext(profile, { primaryProfile: profile, primaryLineType: 'timeline' });
     const panel = tracked(timeline.data)(profile, context);
 
     assert.equal(mappings, 0);
 
     const mapping = timeline.content.find(view => view?.view === 'expand');
     const data = tracked(mapping.data)(panel, context);
-    const rows = tracked(mapping.content.data)(data, context);
+    const bins = mapping.content;
+
+    assert.equal(mappings, 0);
+
+    const value = tracked(bins.value)(data, query(bins.valueContext)(data, context));
+    const rows = query(bins.content.data)(data, { ...context, [bins.name]: { value } });
+    const histogram = bins.content.content[0].content[0].item.content.at(-1);
 
     assert.equal(mappings, profile.lines.length);
     assert.equal(rows.length, profile.lines.length);
+    assert.deepEqual(rows.map(row => query(histogram.content.data)(row, { ...context, [bins.name]: { value } })), value);
 });
 
 test('sections own their queries without eager parent calls and retain source coverage', async () => {
@@ -505,7 +526,7 @@ test('sections own their queries without eager parent calls and retain source co
         codesByCallFrame: [callFrameCodes]
     });
     profile.heap = { available: 200, capacity: 100, events: [{ tm: 60, event: 'new', size: 10, address: '0x1' }] };
-    const context = tracked(timeline.context)(profile, {
+    const context = windowContext(profile, {
         primaryProfile: profile, primaryLineType: 'timeline',
         data: { profiles: [profile, other.profile] }
     });
@@ -513,11 +534,14 @@ test('sections own their queries without eager parent calls and retain source co
 
     assert.deepEqual(calls, []);
 
-    const heap = tracked(histHeapTotal.data)(panel, context);
+    // Bins are computed once by values of the line window, rows and their extents don't need them
+    const heap = tracked(histHeapTotal.content.data)(panel, context);
+    const heapBins = tracked(histHeapTotal.value)(panel, query(histHeapTotal.valueContext)(panel, context));
 
     assert.deepEqual(calls, ['heap']);
 
-    const codes = tracked(histCodes.data)(panel, context);
+    const codeBins = tracked(histCodes.value)(panel, query(histCodes.valueContext)(panel, context));
+    const codes = tracked(histCodes.content.data)(panel, { ...context, codeBins: { value: codeBins } });
 
     assert.deepEqual(calls, ['heap', 'codes']);
     assert.equal(codes.compilations.length, 2);
@@ -526,47 +550,55 @@ test('sections own their queries without eager parent calls and retain source co
 
     assert.equal(panel.line, profile.timeline);
     assert.deepEqual(heap.extent, { start: 0, end: 60 });
-    assert.equal(heap.newTotal, 10);
-    const heapRows = histHeapTotal.content.content[0].content;
+    assert.equal(heapBins.newTotal, 10);
+    const heapRows = histHeapTotal.content.content.content[0].content;
     assert.ok(Array.isArray(heapRows));
     for (const row of heapRows) {
-        const histogram = row.content.at(-1)!;
+        const histogram = row.content.at(-1)!.content;
+        const data = query(histogram.data)(heap, { ...context, heapBins: { value: heapBins } });
         assert.ok(histogram.extent);
-        assert.equal(query(histogram.extent.slice(1))(heap, context), heap.extent);
+        assert.equal(query(histogram.extent.slice(1))(data, context), heap.extent);
+        assert.ok([heapBins.totalHeapSize, heapBins.new, heapBins.delete].includes(query(histogram.bins.slice(1))(data, context)));
     }
 });
 
 test('passes code coverage explicitly to each histogram without a context override', () => {
     const extent = { start: 10, end: 90 };
-    const data = { extent, byTier: [{ name: 'Ignition', bins: [0, 1, 0] }] };
-    const codeRows = histCodes.content.content[0].content;
+    const data = { extent, byTier: [{ name: 'Ignition' }] };
+    const codeBins = { compilationBins: [1], totalBins: [2], maxTotal: 2, byTier: [{ name: 'Ignition', bins: [0, 1, 0] }] };
+    const context = { codeBins: { value: codeBins } };
+    const codeRows = histCodes.content.content.content[0].content;
     assert.ok(Array.isArray(codeRows));
     const [codes, functions, tiers] = codeRows;
-    for (const row of [codes, functions]) {
-        const histogram = row.content!.at(-1)!;
+    for (const [row, bins] of [[codes, codeBins.compilationBins], [functions, codeBins.totalBins]]) {
+        const histogram = row.content!.at(-1)!.content;
+        const rowData = query(histogram.data)(data, context);
         assert.ok(histogram.extent);
-        assert.equal(query(histogram.extent.slice(1))(data), extent);
+        assert.equal(query(histogram.extent.slice(1))(rowData), extent);
+        assert.equal(query(histogram.bins.slice(1))(rowData), bins);
     }
     const rows = query(tiers.data!)(data);
-    const histogram = tiers.item!.content.at(-1)!;
+    const histogram = tiers.item!.content.at(-1)!.content;
+    const rowData = query(histogram.data)(rows[0], context);
     assert.ok(histogram.extent);
-    assert.equal(query(histogram.extent.slice(1))(rows[0]), extent);
-    assert.equal(data.byTier[0].bins, rows[0].bins);
+    assert.equal(query(histogram.extent.slice(1))(rowData), extent);
+    assert.equal(rowData.bins, codeBins.byTier[0].bins);
+    assert.equal(rowData.maxTotal, codeBins.maxTotal);
 });
 
 test.each([100, 1000])('shares viewport coordinates while details count actual events for duration=%i', async duration => {
     const origin = 1000;
     const { profile, line } = await createLineFixture({ origin: origin + duration * 0.2, values: new Uint32Array([duration * 0.6]) });
     const other = await createLineFixture({ origin, values: new Uint32Array([duration]) });
-    const context = query(timeline.context)({}, {
+    const context = windowContext({}, {
         primaryProfile: profile, primaryLineType: 'timeline',
         data: { profiles: [other.profile, profile] }
     });
     const viewport = query('scopeViewport()')({}, context);
     assert.deepEqual(viewport, { start: origin, end: origin + duration });
     const ruler = timeline.content[0];
-    assert.deepEqual(query(ruler.range.slice(1))({}, context), viewport);
-    const binCount = query(ruler.segments.slice(1))({}, context);
+    assert.equal(query(ruler.window.slice(1))({}, context), context.lineWindow);
+    const binCount = context.binCount;
     assert.equal(binCount, Math.min(2000, duration));
     assert.equal(ruler.zoom, true);
     const range = query(ruler.rangeManager.slice(1))({ line }, context);
@@ -611,7 +643,7 @@ test('profile time charts keep their viewport and selection owner when the prima
     assert.equal(charts.content[1], userTimingsTimeline);
 
     for (const selectedLine of [timeLine, memline]) {
-        const parentContext = query(timeline.context)({}, {
+        const parentContext = windowContext({}, {
             primaryProfile: profile, primaryLineType: selectedLine.type,
             scopeLine: selectedLine, scopeBreakdown: { line: selectedLine },
             data: { profiles: [other.profile, profile] }
@@ -644,7 +676,7 @@ test('profile time charts keep their viewport and selection owner when the prima
     }
 });
 
-test('only bins and their ruler are rendered again for the line window, GC events and time charts follow the viewport', async () => {
+test('values of the line window follow it without rendering the section again, GC events and time charts follow the viewport', async () => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
     const other = await createLineFixture({ values: new Uint32Array([100]) });
     const parent = {
@@ -657,21 +689,28 @@ test('only bins and their ruler are rendered again for the line window, GC event
     line.viewport.selection.setRange(15, 25);
 
     const [windowPart, events, charts] = section.content;
-    const context = query(timeline.context)(profile, parent);
+    const context = windowContext(profile, parent);
     const panel = query(timeline.data)(profile, context);
     const ruler = timeline.content[0];
     const window = methods.lineWindow(line, parent.data.profiles);
+    const categoryBins = timeline.content.find(view => view?.name === 'viewportCategories').content;
 
-    assert.equal(windowPart.view, 'update-on-line-metrics-changes');
+    assert.equal(windowPart, timeline);
+    assert.equal(windowPart.view, 'line-metrics-value');
+    assert.equal(windowPart.name, 'lineWindow');
     assert.equal(windowPart.className, 'category-timelines-window');
     assert.equal(query(windowPart.metrics.slice(1))(profile, parent), line.breakdowns[0].populationWindow);
-    assert.equal(windowPart.content, timeline);
     assert.deepEqual(query('scopeViewport()')(panel, context), window);
     assert.notDeepEqual(window, { start: 15, end: 25 });
     assert.ok(window.start <= 15 && window.end >= 25);
-    assert.deepEqual(query(ruler.range.slice(1))(panel, context), window);
+    assert.equal(query(ruler.window.slice(1))(panel, context), context.lineWindow);
     assert.equal(ruler.zoom, true);
-    assert.equal(panel.samples[0].bins.length, context.binCount);
+    assert.equal(categoryBins.name, 'categoryBins');
+    assert.equal(categoryBins.metrics, '=#.lineWindow');
+    assert.equal(query(categoryBins.value)(panel, query(categoryBins.valueContext)(panel, context)).bins[0].bins.length, context.binCount);
+    // Histograms place their bins over the window they are computed for
+    const histogram = categoryBins.content.item.content.at(-1).content;
+    assert.deepEqual(query(histogram.viewport.slice(1))(panel.samples[0], context), window);
     assert.equal(context.binCount, Math.min(2000, Math.floor(window.end - window.start)));
 
     // Rendered once for the viewport bounds, they display the viewport within them

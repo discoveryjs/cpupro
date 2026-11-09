@@ -319,6 +319,61 @@ test('zoom with a grid of bins segments the ruler by columns of bins and details
     line.viewport.resetRange();
 });
 
+test('a window value gives the grid of a zoomed ruler as it changes, and the scope of its details', async () => {
+    const { profile } = await createProfileFixture();
+    const line = profile.timeline;
+    const harness = createRulerHarness((el, details, data, scope) => {
+        detailsContext = details.context(data, scope);
+    });
+    const element = harness.createElement('ruler');
+    const context = { primaryProfile: profile, primaryLineType: 'timeline', scopeViewport: 'outer' };
+    const bounds = lineViewportBounds(line);
+    let value = { scopeViewport: { start: bounds.start, end: bounds.start + 32 }, binCount: 64 };
+    const window = {
+        get value() {
+            return value;
+        }
+    };
+    let detailsContext;
+    let api;
+
+    element.width = 8;
+    harness.createElement('parent').appendChild(element);
+    line.viewport.selection.setRange(bounds.start + 3, bounds.start + 19);
+    renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
+        element, { window, zoom: true, details: { view: 'struct' }, onInit: instance => {
+            api = instance;
+        } }, null, context);
+    harness.setActive(element);
+
+    // Columns of 4 of the 32 bins across 8 pixels, as with a grid of a range and segments
+    assert.deepEqual(Array.from(api.state.segments), [3, 4, 8, 12, 16, 19].map(offset => bounds.start + offset));
+    harness.move({ x: 1.5, y: 5 });
+    harness.showTooltip();
+    assert.deepEqual([detailsContext.segmentStart, detailsContext.segmentEnd], [8, 15]);
+    assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [4, 8]);
+    assert.deepEqual(detailsContext.scopeViewport, value.scopeViewport);
+    assert.equal(detailsContext.binCount, 64);
+
+    // A new window with the viewport moving into it: segments and details follow the new grid,
+    // 8 of its 16 bins across 8 pixels merge by 2
+    value = { scopeViewport: { start: bounds.start + 16, end: bounds.start + 32 }, binCount: 16 };
+    line.viewport.selection.setRange(bounds.start + 18, bounds.start + 26);
+    assert.deepEqual(Array.from(api.state.segments), [18, 20, 22, 24, 26].map(offset => bounds.start + offset));
+    harness.move({ x: 2.5, y: 5 });
+    harness.showTooltip();
+    assert.deepEqual([detailsContext.segmentStart, detailsContext.segmentEnd], [4, 5]);
+    assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [4, 6]);
+    assert.deepEqual(detailsContext.scopeViewport, value.scopeViewport);
+    assert.equal(detailsContext.binCount, 16);
+
+    // Panning within the window keeps its grid
+    line.viewport.selection.setRange(bounds.start + 19, bounds.start + 27);
+    assert.deepEqual(Array.from(api.state.segments), [19, 20, 22, 24, 26, 27].map(offset => bounds.start + offset));
+    harness.destroy(element);
+    line.viewport.resetRange();
+});
+
 test('labels and detail labels of a zoomed ruler count from the viewport bounds start, absolute timestamps too', async () => {
     const { profile } = await createProfileFixture({ startTime: 456_706_000_000 });
     const line = profile.timeline;
