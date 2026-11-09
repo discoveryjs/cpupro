@@ -58,6 +58,17 @@ test('batches prepared predicates, ignores identical inputs and keeps event and 
     assert.equal(applications, 2);
     assert.deepEqual([...mask], [0, 0, 0]);
     assert.equal(acceptsEvent, null);
+
+    // A nested batch defers its updates to the outermost one
+    executor.batch(() => {
+        executor.batch(() => {
+            executor.set(active);
+        });
+        executor.set({ ...second, accepts: Uint8Array.of(1, 1, 0, 0) });
+    });
+    assert.equal(applications, 3);
+    assert.deepEqual([...mask], [0, 1, 0]);
+    assert.deepEqual(Array.from(acceptsEvent!.values, value => acceptsEvent!.accepts[value]), [1, 1, 0, 0]);
 });
 
 test.each(['sample', 'event'] as const)('preserves prepared %s acceptance when resetting raw mask and range', domain => {

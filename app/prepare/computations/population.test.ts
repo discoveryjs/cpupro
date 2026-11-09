@@ -208,6 +208,93 @@ describe('PopulationFiltered', () => {
         assert.deepEqual([...filtered.values], [10, 20, 0]);
     });
 
+    test.each([
+        { name: 'index start', constrain: (filtered: PopulationFiltered) => filtered.setIndexRange(1, null), values: [0, 20, 30, 40], totals: [30, 60], counts: [1, 2] },
+        { name: 'index end', constrain: (filtered: PopulationFiltered) => filtered.setIndexRange(null, 2), values: [10, 20, 0, 0], totals: [10, 20], counts: [1, 1] },
+        { name: 'value minimum', constrain: (filtered: PopulationFiltered) => filtered.setValueRange(20, null), values: [0, 20, 30, 40], totals: [30, 60], counts: [1, 2] },
+        { name: 'value maximum', constrain: (filtered: PopulationFiltered) => filtered.setValueRange(null, 30), values: [10, 20, 0, 0], totals: [10, 20], counts: [1, 1] }
+    ])('applies a lone $name without coordinate ranges to aggregates and values', ({ constrain, values, totals, counts }) => {
+        const population = new Population(new Uint32Array([0, 1, 0, 1]), new Uint32Array([10, 20, 30, 40]));
+        const filtered = new PopulationFiltered(population);
+
+        constrain(filtered);
+
+        assert.deepEqual([...filtered.samplesTotal], totals);
+        assert.deepEqual([...filtered.samplesCount], counts);
+        assert.deepEqual(filtered.sink, { count: 0, total: 0 });
+        assert.deepEqual(filtered.boundaryCuts, []);
+        assert.equal(filtered.rangeSamples, null);
+        assert.deepEqual([...filtered.values], values);
+    });
+
+    test.each([
+        { start: null, end: 25 },
+        { start: 5, end: null }
+    ])('resets the coordinate range by a null endpoint: [$start, $end)', ({ start, end }) => {
+        const population = new Population(new Uint32Array([0, 1]), new Uint32Array([10, 20]));
+        const filtered = new PopulationFiltered(population);
+        filtered.setRange(5, 25);
+
+        filtered.setRange(start, end);
+
+        assert.equal(filtered.ranges, null);
+        assert.equal(filtered.rangeSamples, null);
+        assert.deepEqual(filtered.values, population.values);
+        assert.deepEqual(filtered.samplesTotal, population.samplesTotal);
+    });
+
+    test.each([
+        { name: 'no constraints', constrain: () => {}, acceptsByFilters: true },
+        { name: 'a coordinate range', constrain: (filtered: PopulationFiltered) => filtered.setRange(5, 65), acceptsByFilters: true },
+        { name: 'a registered sample filter', constrain: (filtered: PopulationFiltered) => filtered.filter.set({ key: 'sample', domain: 'sample', size: 2, accepts: Uint8Array.of(1, 0) }), acceptsByFilters: true },
+        { name: 'a registered event filter', constrain: (filtered: PopulationFiltered) => filtered.filter.set({ key: 'event', domain: 'event', size: 4, accepts: Uint8Array.of(1, 0, 1, 0) }), acceptsByFilters: true },
+        { name: 'a raw mask bit', constrain: (filtered: PopulationFiltered) => filtered.updateMask(mask => {
+            mask[1] |= 0x80000000;
+        }), acceptsByFilters: false },
+        { name: 'a reset raw mask', constrain: (filtered: PopulationFiltered) => {
+            filtered.updateMask(mask => {
+                mask[1] |= 0x80000000;
+            });
+            filtered.resetMask();
+        }, acceptsByFilters: true },
+        { name: 'an index start', constrain: (filtered: PopulationFiltered) => filtered.setIndexRange(1, null), acceptsByFilters: false },
+        { name: 'an index end', constrain: (filtered: PopulationFiltered) => filtered.setIndexRange(null, 3), acceptsByFilters: false },
+        { name: 'a value minimum', constrain: (filtered: PopulationFiltered) => filtered.setValueRange(20, null), acceptsByFilters: false },
+        { name: 'a value maximum', constrain: (filtered: PopulationFiltered) => filtered.setValueRange(null, 40), acceptsByFilters: false }
+    ])('event acceptance follows from registered filters alone under $name: $acceptsByFilters', ({ constrain, acceptsByFilters }) => {
+        const filtered = new PopulationFiltered(new Population(new Uint32Array([0, 1, 0, 1]), new Uint32Array([10, 20, 30, 40])));
+
+        constrain(filtered);
+
+        assert.equal(filtered.acceptsByFilters, acceptsByFilters);
+    });
+
+    test('reads single events of compiled destinations and values without records', () => {
+        const population = new Population(new Uint32Array([0, 1, 0, 1]), new Uint32Array([10, 20, 30, 40]));
+        const filtered = new PopulationFiltered(population);
+        const readEvents = () => {
+            const reader = filtered.eventReader();
+            const destinations: number[] = [];
+            const values: number[] = [];
+
+            for (let index = 0; index < population.values.length; index++) {
+                destinations.push(reader.destination(index));
+                values.push(reader.value(index));
+            }
+
+            return { destinations, values };
+        };
+
+        assert.deepEqual(readEvents(), { destinations: [0, 1, 0, 1], values: [10, 20, 30, 40] });
+
+        filtered.updateMask(mask => {
+            mask[1] = 1;
+        });
+        filtered.setRange(15, 65);
+
+        assert.deepEqual(readEvents(), { destinations: [0, 2, 0, 2], values: [0, 20, 30, 40] });
+    });
+
     test('produces the same result for every constraint ordering and reset ordering', () => {
         const population = new Population(new Uint32Array([0, 1, 0, 2]), new Uint32Array([10, 20, 30, 40]));
         const operations = [

@@ -9,6 +9,10 @@ test('derives ranges from full source values and updates when only source covera
     assert.deepEqual([...viewport.values], [100]);
     assert.deepEqual([...viewport.samplesTotal], [40]);
     const selection = new PopulationFiltered(viewport);
+    assert.deepEqual(selection.ranges, [{ start: 20, end: 60 }]);
+    assert.equal(selection.rangeSamples, 1);
+    assert.deepEqual(selection.boundaryCuts, [{ index: 0, value: 60 }]);
+    assert.deepEqual([...selection.samplesTotal], [40]);
     selection.setRange(50, 80);
     assert.deepEqual([...selection.values], [100]);
     assert.deepEqual([...selection.samplesTotal], [10]);
@@ -169,6 +173,13 @@ test('materializes disjoint intervals without filling gaps or double-counting bo
     filtered.setValueRange(20, null);
     assert.deepEqual([...values], [0, 0, 0]);
     assert.equal(filtered.rangeSamples, 1);
+    // The minimum value is accepted inside an interval (event 1) and at an interval edge
+    filtered.setRanges([{ start: 2, end: 4 }, { start: 5, end: 35 }]);
+    assert.deepEqual([...values], [0, 20, 30]);
+    assert.deepEqual([...filtered.samplesTotal], [5, 20]);
+    filtered.setRanges([{ start: 12, end: 14 }, { start: 35, end: 40 }]);
+    assert.deepEqual([...values], [0, 20, 30]);
+    assert.deepEqual([...filtered.samplesTotal], [5, 2]);
     filtered.resetValueRange();
     filtered.setRanges([{ start: -2, end: 5 }, { start: 40, end: 100 }]);
     filtered.updateMask(mask => {
