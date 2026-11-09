@@ -249,22 +249,22 @@
     overflow: hidden;
 }
 
-.page-default :is(.category-timelines, .category-timelines-window) > .view-expand {
+.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand {
     display: contents;
 }
-.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .header {
+.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .header {
     grid-column: 1/4;
     position: relative;
     z-index: 1;
     margin-top: 1px;
 }
-.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .header > .header-content {
+.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .header > .header-content {
     display: flex;
 }
-.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .content {
+.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .content {
     display: contents;
 }
-.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .content > .category-timelines-item:first-child > * {
+.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .content > .category-timelines-item:first-child > * {
     margin-top: 1px;
 }
 .page-default .category-timelines > .view-expand .view-cpupro-chart {

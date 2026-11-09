@@ -1,12 +1,9 @@
 import { sessionExpandState } from '../common.js';
+import { viewportShare, viewportShareText, withViewportAttributeTotals } from './viewport-attribute-totals.js';
 
-export const histAllocationCodeType = {
+export const histAllocationCodeType = withViewportAttributeTotals('allocationCodeType', {
     view: 'expand',
-    data: `
-        $expanded: "getSessionSetting".callAction("cpupro-default-allocation-code-types", false);
-        $binCount: $expanded ? #.binCount : 1;
-        "allocationCodeType".binAllocationAttribute($binCount).[value].sort(name.order() asc)
-    `,
+    data: '"allocationCodeType".allocationAttributeRows().[value].sort(name.order() asc)',
     whenData: true,
     ...sessionExpandState('default-allocation-code-types', false, '$'),
     header: [
@@ -22,13 +19,18 @@ export const histAllocationCodeType = {
                 { content: [
                     { view: 'block', className: 'labeled-value-groups', content: [
                         {
-                            view: 'inline-list',
-                            className: 'labeled-value-group',
-                            itemConfig: {
-                                view: 'labeled-value',
-                                color: '=color',
-                                text: '=entry',
-                                value: 'text:100 * value / total | `${toFixed(2)}%`'
+                            view: 'update-on-line-metrics-changes',
+                            metrics: '=#.viewportTotals',
+                            debounce: true,
+                            content: {
+                                view: 'inline-list',
+                                className: 'labeled-value-group',
+                                itemConfig: {
+                                    view: 'labeled-value',
+                                    color: '=color',
+                                    text: '=entry',
+                                    value: `text:${viewportShare} | \`\${toFixed(2)}%\``
+                                }
                             }
                         }
                     ] }
@@ -40,8 +42,8 @@ export const histAllocationCodeType = {
         view: 'list',
         className: 'category-timelines-list',
         data: `
-            $[].bins.size() = #.binCount ? $
-                : "allocationCodeType".binAllocationAttribute(#.binCount).[value].sort(name.order() asc)
+            $bins: "allocationCodeType".binAllocationAttribute(#.binCount);
+            .($track: $bins[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step })
         `,
         item: {
             view: 'link',
@@ -56,7 +58,7 @@ export const histAllocationCodeType = {
                 {
                     view: 'block',
                     className: 'total-percent',
-                    content: 'text:100 * value / total | toFixed(2)'
+                    content: viewportShareText()
                 },
                 {
                     view: 'line-histogram',
@@ -70,4 +72,4 @@ export const histAllocationCodeType = {
             ]
         }
     }
-};
+});

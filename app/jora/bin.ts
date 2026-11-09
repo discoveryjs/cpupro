@@ -6,7 +6,7 @@ import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepar
 import { makeSamplesMask } from './call-tree.js';
 import { sampleRange } from './samples.js';
 import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
-import { binningRange, rangeBins, timestampExtent } from './viewport.js';
+import { binningRange, lineViewport, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
 import { findCumulativeBoundary, type EventReader, type PopulationFiltered } from '../prepare/computations/population.js';
 import { lowerBound } from '../prepare/computations/misc.js';
@@ -15,6 +15,32 @@ import type { BinRecords, EventSignatures, RangeRecords } from '../prepare/lines
 
 function getCallStackPopulation(line: ProfileLine) {
     return line.breakdowns.find(tree => tree.kind === 'call-stack')!.population;
+}
+
+function attributeEntryColor(entry: ProfileLineAttribute['dict'][number]) {
+    if (typeof entry === 'string') {
+        return typeColor[entry];
+    }
+
+    return entry && 'color' in entry ? entry.color : 'green';
+}
+
+// Totals of the attribute's values over the whole line, regardless of the viewport and filters
+function lineAttributeTotals(line: ProfileLine, attribute: ProfileLineAttribute) {
+    const signatureValues = line.signatures?.valuesOf(attribute.values) ?? null;
+
+    if (signatureValues === null) {
+        return line.breakdowns[0].population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+    }
+
+    const signatureTotals = line.signatures!.totals(line.values);
+    const totals = new Float64Array(attribute.dict.length);
+
+    for (let signature = 0; signature < signatureTotals.length; signature++) {
+        totals[signatureValues[signature]] += signatureTotals[signature];
+    }
+
+    return totals;
 }
 
 function timestampBins(line: ProfileLine, viewport: Range | null, count: number, lastTime: number, origin = line.axisStart) {
@@ -896,6 +922,35 @@ export const methods = {
             : [];
     },
 
+    // Rows of an allocation attribute in dictionary order with their totals over the whole line: unlike bins,
+    // they don't depend on the viewport or filters, so their set and order are kept while zooming
+    allocationAttributeRows(name: ProfileLineAttribute['name']) {
+        const line = resolveScopeProfileLine('memline', this.context);
+        const attribute = line?.attributes.find(attribute => attribute.name === name);
+
+        if (!line || !attribute) {
+            return [];
+        }
+
+        const totals = lineAttributeTotals(line, attribute);
+
+        return attribute.dict.map((entry, index) => ({
+            index,
+            entry,
+            color: attributeEntryColor(entry),
+            value: totals[index]
+        }));
+    },
+
+    // A single bin of an allocation attribute over the scope line viewport, rather than the scope viewport
+    // (e.g. the window of histogram data)
+    viewportAllocationAttribute(name: ProfileLineAttribute['name']) {
+        const line = resolveScopeProfileLine(null, this.context);
+        const scopeViewport = line ? lineViewport(line, this.context.data?.profiles) : null;
+
+        return methods.binAllocationAttribute.call({ ...this, context: { ...this.context, scopeViewport } }, name, 1);
+    },
+
     binTreeSamples(treeMetrics: SampledTree<unknown>, n = 500, breakdown?: ProfileLineBreakdown | string) {
         const resolved = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
         const { total, skip } = binningRange(resolved.line, resolveScopeViewport(null, this.context), n);
@@ -1133,17 +1188,10 @@ export const methods = {
 
         return tracks.map(({ bins, value }, index) => {
             const entry = attribute ? attribute.dict[index] : null;
-            let color = 'green';
-
-            if (typeof entry === 'string') {
-                color = typeColor[entry];
-            } else if (entry && 'color' in entry) {
-                color = entry.color;
-            }
 
             return {
                 entry: entry ?? valuesLine.type,
-                color,
+                color: attribute ? attributeEntryColor(entry!) : 'green',
                 value,
                 max,
                 total: valuesLine.axisTotal,

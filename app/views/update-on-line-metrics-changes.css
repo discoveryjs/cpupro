@@ -1,3 +1,4 @@
-.view-update-on-line-metrics-changes {
+.view-update-on-line-metrics-changes,
+.view-line-metrics-value {
     display: contents;
 }

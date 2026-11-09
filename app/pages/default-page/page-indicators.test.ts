@@ -43,3 +43,50 @@ test('selection indicators measure the union within line coverage in time or byt
         assert.equal(visible({}, context), false);
     }
 });
+
+test('profile indicators follow the viewport and filters', async () => {
+    const { profile } = await createProfileFixture();
+    const formatQuery = jora.setup({ methods: { ...methods, formatValue: (value: number) => value } });
+    const [, metrics, tree] = pageIndicators.content;
+    const indicators = [...metrics.content, ...tree.content].filter(indicator => indicator.content);
+    const titles = indicators.map(indicator => indicator.title);
+
+    assert.deepEqual(titles, ['="axis".metricName()', 'Samples', 'Call tree nodes', 'Call frames']);
+
+    for (const line of [profile.timeline!, profile.memline!]) {
+        const breakdown = line.breakdowns[0];
+        const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
+        const read = () => indicators.map(({ content }) => {
+            assert.equal(content.view, 'update-on-line-metrics-changes');
+            assert.equal(content.debounce, true);
+
+            const data = query(content.data)(profile, context);
+
+            assert.equal(query(content.metrics.slice(1))(data, context), breakdown.populationViewport);
+
+            return formatQuery(content.content.value.slice(1))(data, context);
+        });
+        const full = read();
+
+        assert.deepEqual(full, [
+            line.axisTotal,
+            line.values.filter(value => value > 0).length,
+            breakdown.callFrames!.tree.nodes.length,
+            breakdown.callFrames!.tree.dictionary.length
+        ]);
+
+        const extent = methods.lineExtent(line);
+        line.viewport.selection.setRange(extent.start, extent.start + 1);
+        const narrow = read();
+
+        assert.equal(narrow[0], 1);
+        assert.equal(narrow[1], 1);
+        assert.ok(narrow[2] < full[2] && narrow[3] < full[3]);
+
+        line.viewport.selection.resetRange();
+        (line.filters.get('category') as SetAttributeFilter).setSelection('include', []);
+        assert.deepEqual(read(), [0, 0, 0, 0]);
+        (line.filters.get('category') as SetAttributeFilter).setSelection('exclude', []);
+        assert.deepEqual(read(), full);
+    }
+});

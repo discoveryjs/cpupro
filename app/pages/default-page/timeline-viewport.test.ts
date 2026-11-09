@@ -14,6 +14,8 @@ import { histAllocationSpaces } from './hist-allocation-spaces.js';
 import { histAllocationLifespan } from './hist-allocation-lifespan.js';
 import { histAllocationGcs } from './hist-allocation-gcs.js';
 import { histAllocationCodeType } from './hist-allocation-code-type.js';
+import { viewportShare } from './viewport-attribute-totals.js';
+import { categoriesFractionBars } from './categories-fraction-bar.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 
 const methods = {
@@ -90,12 +92,12 @@ test('tooltip dispatch selects one section and uses its current local data and s
 });
 
 test.each([
-    [histAllocationTypes, 'allocationType', '$.[value].sort(value desc)', 'cpupro-default-allocation-types'],
-    [histAllocationSpaces, 'allocationSpace', '$.[value].sort(name.order() asc)', 'cpupro-default-allocation-spaces'],
-    [histAllocationLifespan, 'allocationLifespan', '$.[value].sort(name.order() asc)', 'cpupro-default-allocation-lifespans'],
-    [histAllocationGcs, 'allocationGcEpoch', '$.sort(name.order() asc)', 'cpupro-default-allocation-gcs'],
-    [histAllocationCodeType, 'allocationCodeType', '$.[value].sort(name.order() asc)', 'cpupro-default-allocation-code-types']
-] as const)('allocation section %# owns only its attribute query', async (section, name, order, stateKey) => {
+    [histAllocationTypes, 'allocationType', '$.[value].sort(value desc)'],
+    [histAllocationSpaces, 'allocationSpace', '$.[value].sort(name.order() asc)'],
+    [histAllocationLifespan, 'allocationLifespan', '$.[value].sort(name.order() asc)'],
+    [histAllocationGcs, 'allocationGcEpoch', '$.sort(name.order() asc)'],
+    [histAllocationCodeType, 'allocationCodeType', '$.[value].sort(name.order() asc)']
+] as const)('allocation section %# keeps whole-line rows, bins the window and labels the viewport', async (section, name, order) => {
     const { profile } = await createProfileFixture();
     const source = profile.memline!;
     const values = new Uint32Array([0, 1, 0, 1]);
@@ -107,119 +109,204 @@ test.each([
         { name: 'allocationCodeType', values: new Uint8Array(values), dict: ['Ignition', 'Sparkplug'] }
     ];
     const attribute = source.attributes.find(attribute => attribute.name === name)!;
+    const lineTotals = attribute.dict.map((_, index) =>
+        source.values.reduce((total, value, event) => total + (attribute.values[event] === index ? value : 0), 0)
+    );
     const calls = [];
     const tracked = jora.setup({
         methods: {
             ...methods,
             marker: () => ({ href: '#' }),
             binAllocationAttribute(...args) {
-                calls.push(args[0]);
+                calls.push(args.slice(0, 2));
                 return methods.binAllocationAttribute.apply(this, args);
             }
         }
     });
     const orderRows = query(order);
+    const expand = section.content;
+
+    assert.equal(section.view, 'line-metrics-value');
+    assert.equal(expand.view, 'expand');
 
     for (const line of profile.lines) {
         for (const breakdown of line.breakdowns) {
-            let expanded = false;
-            const context = {
-                scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown, binCount: 7, attribute,
-                actions: {
-                    getSessionSetting(key, fallback) {
-                        assert.equal(key, stateKey);
-                        assert.equal(fallback, false);
-                        return expanded;
+            const data = { profiles: [profile] };
+            const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown, binCount: 7, data };
+            const extent = methods.lineExtent(line);
+            const length = extent.end - extent.start;
+
+            for (const viewport of [null, [0.1, 0.6], [0.5, 1]]) {
+                for (const filtered of [false, true]) {
+                    if (viewport === null) {
+                        line.viewport.selection.resetRange();
+                    } else {
+                        line.viewport.selection.setRange(extent.start + viewport[0] * length, extent.start + viewport[1] * length);
+                    }
+
+                    for (const population of [breakdown.populationViewport, breakdown.populationWindow]) {
+                        population.filter.set({
+                            key: 'test',
+                            domain: 'event',
+                            size: line.values.length,
+                            accepts: Uint8Array.from({ length: line.values.length }, (_, index) => Number(!filtered || index % 2 === 0))
+                        });
+                    }
+
+                    calls.length = 0;
+
+                    // Rows don't follow the viewport, the window or filters
+                    const rows = tracked(expand.data)({}, context);
+
+                    assert.deepEqual(calls, []);
+                    assert.deepEqual(rows.map(row => row.value), orderRows(rows).map(row => lineTotals[row.index]));
+                    assert.deepEqual(rows, orderRows(attribute.dict.map((entry, index) => ({
+                        index,
+                        entry,
+                        color: methods.binLineToAxisLine.call({ context }, source, attribute, line, 1)[index].color,
+                        value: lineTotals[index]
+                    }))));
+
+                    // Histograms bin the scope viewport, i.e. the window
+                    const content = tracked(expand.content.data)(rows, context);
+                    const bins = methods.binLineToAxisLine.call({ context }, source, attribute, line, context.binCount);
+
+                    assert.deepEqual(calls, [[name, 7]]);
+                    assert.deepEqual(content.map(row => row.entry), rows.map(row => row.entry));
+                    assert.deepEqual(content.map(row => [row.value, row.bins, row.max, row.step]), rows.map(row =>
+                        [row.value, bins[row.index].bins, bins[row.index].max, bins[row.index].step]
+                    ));
+
+                    // Labels are shares of the viewport totals, regardless of the scope viewport
+                    const tracks = methods.binLineToAxisLine.call({
+                        context: { ...context, scopeViewport: methods.lineViewport(line, data.profiles) }
+                    }, source, attribute, line, 1);
+                    const expected = tracks.map(row => row.value);
+                    const shares = tracked(section.value)(rows, { ...context, scopeViewport: { start: -100, end: 1000 } });
+                    const total = expected.reduce((sum, value) => sum + value, 0);
+
+                    assert.deepEqual(shares, { tracks, total });
+                    assert.ok(viewport !== null || filtered || total > 0);
+
+                    for (const row of rows) {
+                        assert.equal(
+                            query(viewportShare)(row, { viewportTotals: { value: shares } }),
+                            total ? 100 * expected[row.index] / total : 0
+                        );
                     }
                 }
-            };
-            for (const ranges of [null, [], [{ start: 5, end: 15 }, { start: 25, end: 35 }]]) {
-                breakdown.populationViewport.filter.set({
-                    key: 'test',
-                    domain: 'event',
-                    size: line.values.length,
-                    accepts: Uint8Array.from({ length: line.values.length }, (_, index) => Number(ranges === null || index % 2 === 0))
-                });
-                breakdown.populationViewport.setRanges(ranges);
-                calls.length = 0;
-                expanded = false;
-                const panel = tracked(timeline.data)(profile, context);
-
-                assert.deepEqual(calls, []);
-
-                const data = tracked(section.data)(panel, context);
-                const contentData = 'data' in section.content ? section.content.data : null;
-                const expected = methods.binLineToAxisLine.call({ context }, source, attribute, line, context.binCount);
-
-                assert.deepEqual(calls, [name]);
-
-                const actual = contentData && data.length ? tracked(contentData)(data, context) : data;
-                assert.deepEqual(actual, orderRows(expected));
-                assert.ok(data.every(row => row.bins.length === 1));
-
-                calls.length = 0;
-                expanded = true;
-                const open = tracked(section.data)(panel, context);
-                const content = open.length ? tracked(contentData)(open, context) : open;
-
-                assert.deepEqual(calls, [name]);
-                assert.equal(content, open);
-                assert.deepEqual(open, actual);
             }
+
+            line.viewport.selection.resetRange();
+            breakdown.populationViewport.filter.remove('test');
+            breakdown.populationWindow.filter.remove('test');
         }
     }
 
     source.attributes = [];
-    calls.length = 0;
-    const context = { scopeProfile: profile, scopeLine: source, binCount: 7 };
-    assert.deepEqual(tracked(section.data)({}, context), []);
+    assert.deepEqual(tracked(expand.data)({}, { scopeProfile: profile, scopeLine: source }), []);
     const { profile: cpuProfile } = await createProfileFixture({ cpuOnly: true });
-    assert.deepEqual(tracked(section.data)({}, { scopeProfile: cpuProfile }), []);
-    assert.deepEqual(calls, [name, name]);
+    assert.deepEqual(tracked(expand.data)({}, { scopeProfile: cpuProfile }), []);
+    assert.deepEqual(tracked(section.value)({}, { scopeProfile: cpuProfile }), { tracks: [], total: 0 });
 });
 
-test('GC uses a static state query and expands before the persisted state is updated', async () => {
+test('category rows keep the whole-line set and label shares of the viewport and filters', async () => {
+    const { profile } = await createProfileFixture({ cpuOnly: true });
+    const line = profile.timeline!;
+    const breakdown = line.breakdowns[0];
+    const parent = { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles: [profile] } };
+    const hub = timeline.content.find(view => view?.view === 'line-metrics-value');
+    const share = hub.content.item.content[1].content;
+    const bar = query(categoriesFractionBars.content.data);
+    // Accepted events clipped to the viewport coverage, by category
+    const totals = () => {
+        const { samples, sinkId, ranges, population } = breakdown.populationViewport;
+        const { tree, sampleToNode } = breakdown.categories!;
+        const result = new Map();
+
+        for (let event = 0; event < line.values.length; event++) {
+            const start = population.cumulative[event];
+            const end = start + line.values[event];
+            const overlap = (ranges ?? [{ start, end }])
+                .reduce((sum, range) => sum + Math.max(0, Math.min(end, range.end) - Math.max(start, range.start)), 0);
+
+            if (samples[event] !== sinkId && overlap > 0) {
+                const category = tree.dictionary[tree.nodes[sampleToNode[samples[event]]]];
+
+                result.set(category, (result.get(category) || 0) + overlap);
+            }
+        }
+
+        return result;
+    };
+    const fullRows = query(timeline.data)(profile, query(timeline.context)(profile, parent)).samples.map(row => row.category);
+
+    assert.equal(hub.name, 'viewportCategories');
+    assert.equal(share.view, 'update-on-line-metrics-changes');
+    assert.equal(categoriesFractionBars.view, 'update-on-line-metrics-changes');
+
+    for (const [viewport, excluded] of [[null, []], [[10, 25], []], [[10, 25], ['script']], [[35, 40], ['script']]] as const) {
+        if (viewport === null) {
+            line.viewport.selection.resetRange();
+        } else {
+            line.viewport.selection.setRange(...viewport);
+        }
+
+        line.filters.get('category')!.setSelection('exclude', [...excluded]);
+
+        const context = query(timeline.context)(profile, parent);
+        const panel = query(timeline.data)(profile, context);
+        const value = query(hub.value)(panel, context);
+        const expected = totals();
+        const total = [...expected.values()].reduce((sum, value) => sum + value, 0);
+
+        assert.deepEqual(panel.samples.map(row => row.category), fullRows);
+        assert.equal(value.total, total);
+        assert.deepEqual(new Map(value.totals.filter(row => row.value > 0).map(row => [row.entry, row.value])), expected);
+
+        for (const row of panel.samples) {
+            const percent = total ? 100 * (expected.get(row.category) || 0) / total : 0;
+
+            assert.equal(query(share.content.slice('text:'.length))(row, { ...context, viewportCategories: { value } }), percent.toFixed(2));
+        }
+
+        const order = breakdown.categories!.all.dict.entries.filter(entry => entry.selfValue).sort((a, b) => b.selfValue - a.selfValue);
+
+        assert.deepEqual(bar(profile, context), order.map(({ entry }) => ({
+            text: entry.name,
+            color: query('name.color()')(entry),
+            value: expected.get(entry) || 0,
+            total
+        })));
+    }
+
+    line.viewport.selection.resetRange();
+    line.filters.get('category')!.setSelection('exclude', []);
+});
+
+test('GC header groups viewport shares by collection type', async () => {
     const { profile } = await createProfileFixture();
     const source = profile.memline!;
     source.attributes = [{
         name: 'allocationGcEpoch',
-        values: new Uint32Array([0, 1, 1, 0]),
-        dict: [{ type: 'none', epoch: 0, color: 'red' }, { type: 'minor', epoch: 1, color: 'blue' }]
+        values: new Uint32Array([0, 1, 2, 0]),
+        dict: [
+            { type: 'none', epoch: 0, color: 'red' },
+            { type: 'minor', epoch: 1, color: 'blue' },
+            { type: 'minor', epoch: 2, color: 'blue' }
+        ]
     }];
-    const calls = [];
-    let expanded = false;
-    const tracked = jora.setup({
-        methods: {
-            ...methods,
-            binAllocationAttribute(...args) {
-                calls.push(args[1]);
-                return appMethods.binAllocationAttribute.apply(this, args);
-            }
-        }
-    });
-    const context = {
-        scopeProfile: profile, scopeLine: source, scopeBreakdown: source.breakdowns[0], binCount: 7,
-        actions: {
-            getSessionSetting(name, fallback) {
-                assert.equal(name, 'cpupro-default-allocation-gcs');
-                assert.equal(fallback, false);
-                return expanded;
-            }
-        }
-    };
-    const summary = tracked(histAllocationGcs.data)({}, context);
+    const context = { scopeProfile: profile, scopeLine: source, scopeBreakdown: source.breakdowns[0], binCount: 7 };
+    const rows = query(histAllocationGcs.content.data)({}, context);
+    const header = histAllocationGcs.content.header[1].content[1].content[0].content[0];
 
-    assert.deepEqual(calls, [1]);
-    const graph = tracked(histAllocationGcs.content.data)(summary, context);
-    assert.deepEqual(calls, [1, 7]);
-    assert.deepEqual(graph.map(row => row.value), summary.map(row => row.value));
-
-    expanded = true;
-    calls.length = 0;
-    const open = tracked(histAllocationGcs.data)({}, context);
-    assert.equal(tracked(histAllocationGcs.content.data)(open, context), open);
-    assert.deepEqual(calls, [7]);
+    assert.equal(header.view, 'update-on-line-metrics-changes');
+    assert.deepEqual(query(header.content.data)(rows, { ...context, viewportTotals: { value: { tracks: [{ value: 80 }, { value: 32 }, { value: 48 }], total: 160 } } }), [
+        { name: 'none', color: 'red', value: 80, total: 160 },
+        { name: 'minor', color: 'blue', value: 80, total: 160 }
+    ]);
 });
+
 
 test('lifespan details use the scope interval instead of display bins', async () => {
     const { profile } = await createProfileFixture();
@@ -241,7 +328,7 @@ test('lifespan details use the scope interval instead of display bins', async ()
     });
     const context = { scopeProfile: profile, scopeLine: source, scopeBreakdown: source.breakdowns[0], binCount: 7 };
     const selection = source.range.selection.ranges;
-    const details = histAllocationLifespan.rulerDetails;
+    const details = histAllocationLifespan.content.rulerDetails;
     const detailContext = tracked(details.context)(null, { ...context, detail: { start: 8, end: 64 } });
     const rows = tracked(details.data)(null, detailContext);
 

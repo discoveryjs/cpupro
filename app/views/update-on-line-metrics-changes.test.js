@@ -3,6 +3,30 @@ import { setImmediate } from 'node:timers/promises';
 import { test } from 'vitest';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
+function loadViews({ requestAnimationFrame, cancelAnimationFrame, debounce, query = () => null }) {
+    const views = {};
+
+    evaluateModule(new URL('./update-on-line-metrics-changes.js', import.meta.url), {
+        discovery: {
+            view: { define(name, render) {
+                views[name] = render;
+            } },
+            query
+        },
+        HTMLElement: class {},
+        customElements: { define() {} },
+        document: {
+            body: {},
+            createDocumentFragment: () => ({ children: [] })
+        },
+        requestAnimationFrame,
+        cancelAnimationFrame,
+        require: () => ({ utils: { debounce } })
+    });
+
+    return views;
+}
+
 async function createHarness({ multiple = false, ...options } = {}) {
     const frames = new Map();
     const debounced = [];
@@ -68,19 +92,8 @@ async function createHarness({ multiple = false, ...options } = {}) {
             await setImmediate();
         }
     };
-    let renderView;
     let lastFrame = 0;
-
-    evaluateModule(new URL('./update-on-line-metrics-changes.js', import.meta.url), {
-        discovery: { view: { define(name, render) {
-            renderView = render;
-        } } },
-        HTMLElement: class {},
-        customElements: { define() {} },
-        document: {
-            body: {},
-            createDocumentFragment: () => ({ children: [] })
-        },
+    const views = loadViews({
         requestAnimationFrame(callback) {
             frames.set(++lastFrame, callback);
             return lastFrame;
@@ -88,9 +101,7 @@ async function createHarness({ multiple = false, ...options } = {}) {
         cancelAnimationFrame(id) {
             frames.delete(id);
         },
-        require: () => ({ utils: {
-            debounce: callback => () => debounced.push(callback)
-        } })
+        debounce: callback => () => debounced.push(callback)
     });
 
     const host = {
@@ -115,7 +126,7 @@ async function createHarness({ multiple = false, ...options } = {}) {
         content: 'text'
     };
 
-    await renderView.call(host, harness.element, config, {}, {});
+    await views['update-on-line-metrics-changes'].call(host, harness.element, config, {}, {});
 
     return harness;
 }
@@ -208,4 +219,64 @@ test.each(['focus moved', 'destroyed'])('does not restore focus when %s during r
     await harness.flush();
 
     assert.deepEqual(harness.focusCalls, []);
+});
+
+test('shares a value computed once per change of its metrics among nested readers', async () => {
+    const listeners = new Set();
+    const source = {
+        subscribe(callback) {
+            listeners.add(callback);
+            return () => listeners.delete(callback);
+        }
+    };
+    const queries = [];
+    const views = loadViews({
+        requestAnimationFrame() {},
+        cancelAnimationFrame() {},
+        debounce: callback => callback,
+        query: (query, data, context) => {
+            queries.push([query, data, context]);
+            return queries.length;
+        }
+    });
+    const element = {};
+    const data = {};
+    const context = { scope: 'section' };
+    let rendered = null;
+    const host = {
+        render(el, content, renderData, renderContext) {
+            rendered = { el, content, data: renderData, context: renderContext };
+        }
+    };
+
+    await views['line-metrics-value'].call(host, element, { name: 'totals', metrics: source, value: 'query', content: 'list' }, data, context);
+
+    const { totals } = rendered.context;
+
+    assert.equal(rendered.el, element);
+    assert.equal(rendered.content, 'list');
+    assert.equal(rendered.data, data);
+    assert.equal(rendered.context.scope, 'section');
+    assert.deepEqual(queries, []);
+    assert.equal(totals.value, 1);
+    assert.equal(totals.value, 1);
+    assert.deepEqual(queries, [['query', data, context]]);
+
+    // Readers follow the value as metrics, it's computed again on the first read after a change
+    let notified = 0;
+    const unsubscribe = totals.subscribe(() => notified++);
+
+    for (const callback of [...listeners]) {
+        callback();
+    }
+
+    assert.equal(notified, 1);
+    assert.equal(queries.length, 1);
+    assert.equal(totals.value, 2);
+    assert.equal(totals.value, 2);
+    assert.equal(queries.length, 2);
+
+    unsubscribe();
+    element.onDestroy();
+    assert.equal(listeners.size, 0);
 });

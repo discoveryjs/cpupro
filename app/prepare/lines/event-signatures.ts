@@ -44,6 +44,8 @@ export class EventSignatures {
     readonly #binRecords = new Map<string, BinRecords>();
     // Per mapping or cumulative vector of the line's events
     readonly #rangeRecords = new Map<Uint32Array | Float64Array, RangeRecords | null>();
+    // Per weights vector of the line's events
+    readonly #totals = new Map<Uint32Array, Float64Array>();
     #filterClasses: EventClasses | null = null;
 
     constructor(line: ProfileLine) {
@@ -118,6 +120,26 @@ export class EventSignatures {
     // Value of every signature for an attribute or a breakdown's sample-to-category-node mapping
     valuesOf(values: SignatureColumn['values']) {
         return this.#signatureValues.get(values) ?? null;
+    }
+
+    // Weight of the events of every signature over the whole line, computed on the first use and kept,
+    // since neither the events nor their signatures change
+    totals(weights: Uint32Array) {
+        let totals = this.#totals.get(weights);
+
+        if (totals === undefined) {
+            const { ids } = this;
+
+            totals = new Float64Array(this.count);
+
+            for (let event = 0; event < ids.length; event++) {
+                totals[ids[event]] += weights[event];
+            }
+
+            this.#totals.set(weights, totals);
+        }
+
+        return totals;
     }
 
     // Acceptance of every signature by a population of the line, or null when the population may accept

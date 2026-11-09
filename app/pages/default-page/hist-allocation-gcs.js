@@ -1,12 +1,9 @@
 import { sessionExpandState } from '../common.js';
+import { viewportShareText, withViewportAttributeTotals } from './viewport-attribute-totals.js';
 
-export const histAllocationGcs = {
+export const histAllocationGcs = withViewportAttributeTotals('allocationGcEpoch', {
     view: 'expand',
-    data: `
-        $expanded: "getSessionSetting".callAction("cpupro-default-allocation-gcs", false);
-        $binCount: $expanded ? #.binCount : 1;
-        "allocationGcEpoch".binAllocationAttribute($binCount).sort(name.order() asc)
-    `,
+    data: '"allocationGcEpoch".allocationAttributeRows().sort(name.order() asc)',
     whenData: true,
     ...sessionExpandState('default-allocation-gcs', false, '$'),
     header: [
@@ -22,14 +19,27 @@ export const histAllocationGcs = {
                 { content: [
                     { view: 'block', className: 'labeled-value-groups', content: [
                         {
-                            view: 'inline-list',
-                            className: 'labeled-value-group',
-                            data: 'group(=>entry.type).({ name: key, color: value[].entry.color, value: value.sum(=>value), total: value[].total })',
-                            itemConfig: {
-                                view: 'labeled-value',
-                                color: '=color',
-                                text: '=name',
-                                value: 'text:100 * value / total | `${toFixed(2)}%`'
+                            view: 'update-on-line-metrics-changes',
+                            metrics: '=#.viewportTotals',
+                            debounce: true,
+                            content: {
+                                view: 'inline-list',
+                                className: 'labeled-value-group',
+                                data: `
+                                    $viewport: #.viewportTotals.value;
+                                    group(=> entry.type).({
+                                        name: key,
+                                        color: value[].entry.color,
+                                        value: value.sum(=> $viewport.tracks[index].value),
+                                        total: $viewport.total
+                                    })
+                                `,
+                                itemConfig: {
+                                    view: 'labeled-value',
+                                    color: '=color',
+                                    text: '=name',
+                                    value: 'text:total ? 100 * value / total : 0 | `${toFixed(2)}%`'
+                                }
                             }
                         }
                     ] }
@@ -41,8 +51,8 @@ export const histAllocationGcs = {
         view: 'list',
         className: 'category-timelines-list',
         data: `
-            $[].bins.size() = #.binCount ? $
-                : "allocationGcEpoch".binAllocationAttribute(#.binCount).sort(name.order() asc)
+            $bins: "allocationGcEpoch".binAllocationAttribute(#.binCount);
+            .($track: $bins[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step })
         `,
         item: {
             view: 'link',
@@ -57,7 +67,7 @@ export const histAllocationGcs = {
                 {
                     view: 'block',
                     className: 'total-percent',
-                    content: 'text:100 * value / total | toFixed(2)'
+                    content: viewportShareText()
                 },
                 {
                     view: 'line-histogram',
@@ -71,4 +81,4 @@ export const histAllocationGcs = {
             ]
         }
     }
-};
+});

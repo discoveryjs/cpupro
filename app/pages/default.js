@@ -71,7 +71,6 @@ const categoriesTimelineWindow = {
                 $bins: $categoryBins[=>entry = $category];
 
                 $category,
-                timings: $,
                 $totalValue,
                 $binCount,
                 binSize: (scopeViewport().end - scopeViewport().start) / $binCount,
@@ -216,34 +215,53 @@ const categoriesTimelineWindow = {
             ]
         },
         {
-            view: 'list',
-            className: 'category-timelines-list',
-            data: 'samples',
-            item: {
-                view: 'link',
-                className: 'category-timelines-item',
-                content: [
-                    {
-                        view: 'block',
-                        className: 'label',
-                        postRender: (el, _, data) => el.style.setProperty('--color', data.color),
-                        content: 'text:category.name'
-                    },
-                    {
-                        view: 'block',
-                        className: 'total-percent',
-                        content: 'text:timings.selfValue.totalMetricPercent().replace("%", "")'
-                    },
-                    {
-                        view: 'line-histogram',
-                        zoom: true,
-                        bins: '=bins',
-                        max: '=binSize',
-                        binsMax: true,
-                        presence: '=nestedPresence',
-                        color: '=color'
-                    }
-                ]
+            view: 'line-metrics-value',
+            name: 'viewportCategories',
+            metrics: '=scopeBreakdown().populationViewport',
+            value: `
+                $totals: scopeBreakdown() | categories.dimensionSampleTotals(populationViewport);
+                { totals: $totals, total: $totals.sum(=> value) }
+            `,
+            content: {
+                view: 'list',
+                className: 'category-timelines-list',
+                data: 'samples',
+                item: {
+                    view: 'link',
+                    className: 'category-timelines-item',
+                    content: [
+                        {
+                            view: 'block',
+                            className: 'label',
+                            postRender: (el, _, data) => el.style.setProperty('--color', data.color),
+                            content: 'text:category.name'
+                        },
+                        {
+                            view: 'block',
+                            className: 'total-percent',
+                            content: {
+                                view: 'update-on-line-metrics-changes',
+                                metrics: '=#.viewportCategories',
+                                debounce: true,
+                                content: `text:
+                                    $category: category;
+                                    $viewport: #.viewportCategories.value;
+                                    $viewport.total ? 100 * $viewport.totals[=> entry = $category].value / $viewport.total : 0
+                                    | toFixed(2)
+                                `
+                            }
+                        },
+                        {
+                            view: 'line-histogram',
+                            zoom: true,
+                            bins: '=bins',
+                            max: '=binSize',
+                            binsMax: true,
+                            presence: '=nestedPresence',
+                            color: '=color'
+                        }
+                    ]
+                }
             }
         },
 

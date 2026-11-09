@@ -71,6 +71,37 @@ discovery.view.define('update-on-line-metrics-changes', function(el, config, dat
     return renderContent();
 }, { tag: 'update-on-line-metrics-changes' });
 
+// Shares a value computed from line metrics with nested views: they read it as `#.<name>.value` and follow its
+// changes as metrics of `update-on-line-metrics-changes`. The value query is evaluated on the first read after
+// a change, once for all readers, e.g. viewport totals for the labels of every row of a section
+discovery.view.define('line-metrics-value', function(el, config, data, context) {
+    const { name, metrics = data, value, content } = config;
+    const sources = Array.isArray(metrics) ? metrics : [metrics];
+    let current = null;
+    let stale = true;
+    const shared = {
+        get value() {
+            if (stale) {
+                current = discovery.query(value, data, context);
+                stale = false;
+            }
+
+            return current;
+        },
+        subscribe(fn) {
+            const unsubscribeSources = sources.map(source => source.subscribe(fn));
+
+            return () => unsubscribeSources.forEach(unsubscribe => unsubscribe());
+        }
+    };
+
+    el.onDestroy = shared.subscribe(() => {
+        stale = true;
+    });
+
+    return this.render(el, content, data, { ...context, [name]: shared });
+}, { tag: 'update-on-line-metrics-changes' });
+
 class UpdateOnLineValuesChanges extends HTMLElement {
     connectedCallback() {
         this.onConnect?.();

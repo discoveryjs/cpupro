@@ -120,6 +120,29 @@ test('signatures group allocations by equal attribute, category and filter value
     }
 });
 
+test('whole-line signature totals give attribute rows without an event pass, regardless of viewport and filters', async () => {
+    const profile = await createSignaturesProfile();
+    const memline = profile.memline!;
+    const { signatures, breakdowns } = memline;
+    const context = { scopeProfile: profile, scopeLine: profile.timeline };
+    const totals = signatures!.totals(memline.values);
+
+    assert.equal(signatures!.totals(memline.values), totals);
+    assert.equal(totals.reduce((sum, value) => sum + value, 0), memline.axisTotal);
+
+    memline.viewport.selection.setRange(100, 2000);
+    profile.timeline!.viewport.selection.setRange(500, 1500);
+    (memline.filters.get('allocationSpace') as SetAttributeFilter).setSelection('include', ['old_space']);
+
+    for (const attribute of memline.attributes) {
+        const rows = methods.allocationAttributeRows.call({ context }, attribute.name);
+        const { samplesTotal } = breakdowns[0].population.aggregateBy(attribute.values, attribute.dict.length);
+
+        assert.deepEqual(rows.map(row => row.value), Array.from(samplesTotal));
+        assert.deepEqual(rows.map(row => [row.index, row.entry]), attribute.dict.map((entry, index) => [index, entry]));
+    }
+});
+
 test('filter classes group events with equal values of every registered event filter', async () => {
     const { memline } = await createSignaturesProfile();
     const { ids, events, values } = memline!.signatures!.filterClasses;

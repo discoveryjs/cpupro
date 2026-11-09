@@ -1,4 +1,6 @@
 // input: scopeProfile
+const viewportNote = '\\n\\nIn the viewport, for the samples accepted by the filters.';
+
 export const pageIndicators = {
     view: 'page-indicators',
     content: [
@@ -16,21 +18,20 @@ export const pageIndicators = {
             content: [
                 {
                     title: '="axis".metricName()',
-                    hint: markdownMetric('axis'),
-                    value: '=scopeLine().axisTotal.formatValue()',
-                    unit: true
+                    hint: markdownMetric('axis', viewportNote),
+                    content: viewportValue('=populationViewport.samplesTotal.sum().formatValue()', true)
                 },
                 {
                     title: 'Samples',
                     hint: markdown(
                         '#### Samples',
-                        'The total number of samples captured during the profiling session.',
+                        'The number of samples in the viewport accepted by the filters.',
                         'Each sample represents the CPU\'s state, including the call stack, at a specific time interval, revealing which functions are executing at each point.',
                         'For efficiency, CPUpro merges sequentially identical samples, reducing the workload of processing samples.',
                         '- Captured samples: `{{scopeLine().sourceInfo.samples}}`',
                         '- Deduplicated samples: `{{scopeBreakdown().population.samples.size()}}`'
                     ),
-                    value: '=scopeLine().sourceInfo.samples'
+                    content: viewportValue('=populationViewport.samplesCount.sum()')
                 },
                 {
                     title: 'Sampling interval',
@@ -45,13 +46,13 @@ export const pageIndicators = {
             content: [
                 {
                     title: 'Call tree nodes',
-                    hint: 'md:"#### Call tree nodes\\n\\nA **call tree** is a data structure that represents the hierarchy of function calls during the execution of a program. It demostrates the actual sequences of function calls that occurred during the profiling session.\\n\\nThe metric indicates **the size of the tree** (the number of leafs). Typically, the number of distinct functions is less than the call tree\'s size, reflecting multiple calls to the same functions from various parts of the program."',
-                    value: '=scopeBreakdown().callFrames.tree.nodes.size()'
+                    hint: 'md:"#### Call tree nodes\\n\\nA **call tree** is a data structure that represents the hierarchy of function calls during the execution of a program. It demostrates the actual sequences of function calls that occurred during the profiling session.\\n\\nThe metric indicates **the size of the tree** (the number of leafs). Typically, the number of distinct functions is less than the call tree\'s size, reflecting multiple calls to the same functions from various parts of the program.\\n\\nCounts the nodes with samples in the viewport accepted by the filters, and their ancestors."',
+                    content: viewportValue('=callFrames.dimensionPresence(populationViewport).nodes')
                 },
                 {
                     title: 'Call frames',
-                    hint: 'md:"#### Call frames\\n\\nThe count of unique functions encountered during profiling. This metric helps identify the diversity of function executions regardless of their position in the call stacks.\\n\\nUniqueness is determined by attributes such as `scriptId`, `function name`, `url`, `line number`, and `column number`."',
-                    value: '=scopeBreakdown().callFrames.tree.dictionary.size()'
+                    hint: 'md:"#### Call frames\\n\\nThe count of unique functions encountered during profiling. This metric helps identify the diversity of function executions regardless of their position in the call stacks.\\n\\nUniqueness is determined by attributes such as `scriptId`, `function name`, `url`, `line number`, and `column number`.\\n\\nCounts the functions of the call tree nodes in the viewport accepted by the filters."',
+                    content: viewportValue('=callFrames.dimensionPresence(populationViewport).entries')
                 }
             ]
         },
@@ -98,9 +99,20 @@ function markdown(...lines) {
     };
 }
 
-function markdownMetric(metric) {
+function markdownMetric(metric, note = '') {
     return {
         view: 'markdown',
-        source: '=`#### ${"' + metric + '".metricName()}\\n\\n${"' + metric + '".metricDefinition()}`'
+        source: '=`#### ${"' + metric + '".metricName()}\\n\\n${"' + metric + '".metricDefinition()}' + note + '`'
+    };
+}
+
+// A value of the scope breakdown that follows the viewport and filters
+function viewportValue(value, unit = false) {
+    return {
+        view: 'update-on-line-metrics-changes',
+        data: 'scopeBreakdown()',
+        metrics: '=populationViewport',
+        debounce: true,
+        content: { view: 'text-with-unit', value, unit }
     };
 }

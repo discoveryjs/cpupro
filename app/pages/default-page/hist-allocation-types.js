@@ -1,12 +1,9 @@
 import { sessionExpandState } from '../common.js';
+import { viewportShare, viewportShareText, withViewportAttributeTotals } from './viewport-attribute-totals.js';
 
-export const histAllocationTypes = {
+export const histAllocationTypes = withViewportAttributeTotals('allocationType', {
     view: 'expand',
-    data: `
-        $expanded: "getSessionSetting".callAction("cpupro-default-allocation-types", false);
-        $binCount: $expanded ? #.binCount : 1;
-        "allocationType".binAllocationAttribute($binCount).[value].sort(value desc)
-    `,
+    data: '"allocationType".allocationAttributeRows().[value].sort(value desc)',
     whenData: true,
     ...sessionExpandState('default-allocation-types', false, '$'),
     header: [
@@ -22,14 +19,19 @@ export const histAllocationTypes = {
                 { content: [
                     { view: 'block', className: 'labeled-value-groups', content: [
                         {
-                            view: 'inline-list',
-                            className: 'labeled-value-group',
-                            limit: false,
-                            itemConfig: {
-                                view: 'labeled-value',
-                                color: '=color or entry.colorRand()',
-                                text: '=entry',
-                                value: 'text:100 * value / total | `${toFixed(2)}%`'
+                            view: 'update-on-line-metrics-changes',
+                            metrics: '=#.viewportTotals',
+                            debounce: true,
+                            content: {
+                                view: 'inline-list',
+                                className: 'labeled-value-group',
+                                limit: false,
+                                itemConfig: {
+                                    view: 'labeled-value',
+                                    color: '=color or entry.colorRand()',
+                                    text: '=entry',
+                                    value: `text:${viewportShare} | \`\${toFixed(2)}%\``
+                                }
                             }
                         }
                     ] }
@@ -41,8 +43,8 @@ export const histAllocationTypes = {
         view: 'list',
         className: 'category-timelines-list',
         data: `
-            $[].bins.size() = #.binCount ? $
-                : "allocationType".binAllocationAttribute(#.binCount).[value].sort(value desc)
+            $bins: "allocationType".binAllocationAttribute(#.binCount);
+            .($track: $bins[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step })
         `,
         limit: 10,
         item: {
@@ -64,7 +66,7 @@ export const histAllocationTypes = {
                 {
                     view: 'block',
                     className: 'total-percent',
-                    content: 'text:100 * value / total | toFixed(2)'
+                    content: viewportShareText()
                 },
                 {
                     view: 'line-histogram',
@@ -78,4 +80,4 @@ export const histAllocationTypes = {
             ]
         }
     }
-};
+});

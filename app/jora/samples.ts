@@ -1,4 +1,5 @@
-import { ProfileLine, ProfileLineType, ProfileLineAttribute } from '../prepare/lines/types.js';
+import { ProfileLine, ProfileLineType, ProfileLineAttribute, type LineTreeDimension } from '../prepare/lines/types.js';
+import type { CpuProNode } from '../prepare/types.js';
 import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange } from './viewport.js';
 import { findCumulativeBoundary, type Population, type PopulationFiltered } from '../prepare/computations/population.js';
@@ -122,6 +123,58 @@ export const methods = {
         const { samplesCount, samplesTotal } = population.aggregateBy(values, dict.length);
 
         return dict.map((entry, index) => ({ entry, count: samplesCount[index], size: samplesTotal[index] }));
+    },
+    // Self values of a breakdown's entries (e.g. categories) in a population, by the samples of their nodes
+    dimensionSampleTotals(dimension: LineTreeDimension<CpuProNode>, population: PopulationFiltered) {
+        const { tree, sampleToNode } = dimension;
+        const { samplesCount, samplesTotal } = population;
+        const counts = new Uint32Array(tree.dictionary.length);
+        const totals = new Float64Array(tree.dictionary.length);
+
+        for (let sample = 0; sample < samplesCount.length; sample++) {
+            if (samplesCount[sample] > 0) {
+                const entry = tree.nodes[sampleToNode[sample]];
+
+                counts[entry] += samplesCount[sample];
+                totals[entry] += samplesTotal[sample];
+            }
+        }
+
+        return tree.dictionary.map((entry, index) => ({ entry, count: counts[index], value: totals[index] }));
+    },
+    // Numbers of a breakdown's tree nodes and entries with samples in a population: the nodes of the samples
+    // and their ancestors
+    dimensionPresence(dimension: LineTreeDimension<CpuProNode>, population: PopulationFiltered) {
+        const { tree, sampleToNode } = dimension;
+        const { nodes, parent } = tree;
+        const { samplesCount } = population;
+        const presentNodes = new Uint8Array(nodes.length);
+        const presentEntries = new Uint8Array(tree.dictionary.length);
+        let nodeCount = 0;
+        let entryCount = 0;
+
+        for (let sample = 0; sample < samplesCount.length; sample++) {
+            if (samplesCount[sample] > 0) {
+                presentNodes[sampleToNode[sample]] = 1;
+            }
+        }
+
+        // Parents precede their children, so a node is marked by its descendants before it's visited
+        for (let node = nodes.length - 1; node >= 0; node--) {
+            if (presentNodes[node] === 1) {
+                const entry = nodes[node];
+
+                nodeCount++;
+                presentNodes[parent[node]] = 1;
+
+                if (presentEntries[entry] === 0) {
+                    presentEntries[entry] = 1;
+                    entryCount++;
+                }
+            }
+        }
+
+        return { nodes: nodeCount, entries: entryCount };
     },
     countSamples(n = 500, line?: ProfileLine | ProfileLineType) {
         const resolvedLine = resolveScopeProfileLine(line, this.context) as ProfileLine;
