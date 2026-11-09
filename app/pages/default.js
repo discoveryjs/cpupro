@@ -105,7 +105,7 @@ const categoriesTimelineWindow = {
                         context: '{ ...#, scopeViewport: #.detail }',
                         data: 'samples',
                         content: [
-                            { view: 'block', content: 'text:`Range: ${#.timeStart.formatValue()} – ${#.timeEnd.formatValue()}`' },
+                            { view: 'block', content: 'text:`Range: ${#.labelStart.formatValue()} – ${#.labelEnd.formatValue()}`' },
                             { view: 'block', content: ['text:`${"interval".metricName()}: `', 'duration:{ time: #.timeEnd - #.timeStart, total: line.axisTotal }'] },
                             { view: 'block', content: 'text-numeric:`Samples: ${1.countSamples().sum()}`' },
                             { view: 'block', when: '#.noCoverage', content: 'text:"No population coverage"' }

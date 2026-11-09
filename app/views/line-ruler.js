@@ -63,6 +63,9 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
     // With zoom the range and segments describe a grid of bins and the ruler segments are their columns
     const grid = zoom && segments ? createState(range, segments) : null;
     const gridCount = grid?.segments ? grid.segments.length - 1 : 0;
+    // Labels count from the start of the ruler, which is the viewport bounds for a zoomed one,
+    // as line coordinates may be absolute timestamps
+    const origin = zoom ? bounds.start : createState(range).range.start;
     let updatingRangeManager = false;
 
     return this.render(el, {
@@ -77,10 +80,10 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
         selection: rangeManager ? readSelection() : selection,
         formatLabel: formatLabel || ((value, range) =>
             scopeLine.type === 'memline'
-                ? formatMemory(value, range.end - range.start)
+                ? formatMemory(value - origin, range.end - range.start)
                 : scopeLine.type === 'timeline'
-                    ? formatMicrosecondsTime(value, range.end - range.start)
-                    : String(value)
+                    ? formatMicrosecondsTime(value - origin, range.end - range.start)
+                    : String(value - origin)
         ),
         details: details && {
             view: 'context',
@@ -94,6 +97,8 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
                     duration: ruler.length,
                     timeStart: detail.start - range.start,
                     timeEnd: detail.end - range.start,
+                    labelStart: detail.start - origin,
+                    labelEnd: detail.end - origin,
                     segmentStart: indices?.start ?? 0,
                     segmentEnd: indices ? indices.end - 1 : -1
                 };

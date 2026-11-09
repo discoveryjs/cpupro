@@ -34,8 +34,9 @@ test('forwards resolved props and callbacks without a container or a second sele
         [undefined, 1_000_000, formatMicrosecondsTime(100_000, 1_000_000)],
         ['memline', 100_000, '10Kb'],
         [profile.memline, 1_000_000, '0.1Mb'],
-        [undefined, { start: 1000, end: 2000 }, formatMicrosecondsTime(1100, 1000)],
-        [undefined, [1000, 2000], formatMicrosecondsTime(1100, 1000)]
+        // Labels count from the start of the range
+        [undefined, { start: 1000, end: 2000 }, formatMicrosecondsTime(100, 1000)],
+        [undefined, [1000, 2000], formatMicrosecondsTime(100, 1000)]
     ]) {
         const element = harness.createElement('ruler');
         const rangeManager = profile.timeline.range;
@@ -315,5 +316,48 @@ test('zoom with a grid of bins segments the ruler by columns of bins and details
     harness.showTooltip();
     assert.deepEqual([detailsContext.segmentStart, detailsContext.segmentEnd], [10, 11]);
     harness.destroy(element);
+    line.viewport.resetRange();
+});
+
+test('labels and detail labels of a zoomed ruler count from the viewport bounds start, absolute timestamps too', async () => {
+    const { profile } = await createProfileFixture({ startTime: 456_706_000_000 });
+    const line = profile.timeline;
+    const harness = createRulerHarness((el, details, data, scope) => {
+        detailsContext = details.context(data, scope);
+    });
+    const element = harness.createElement('ruler');
+    const context = { primaryProfile: profile, primaryLineType: 'timeline' };
+    const bounds = lineViewportBounds(line);
+    let detailsContext;
+
+    element.width = 100;
+    harness.createElement('parent').appendChild(element);
+    line.viewport.selection.setRange(bounds.start + 10, bounds.start + 30);
+    renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
+        element, { range: { start: bounds.start, end: bounds.start + 40 }, segments: 40, zoom: true, details: { view: 'struct' } }, null, context);
+    harness.setActive(element);
+
+    const titles = element.children.filter(child => child.className === 'interval-marker' && !child.hidden).map(marker => marker.dataset.title);
+
+    assert.deepEqual(titles.slice(0, 2), [formatMicrosecondsTime(10, 20), formatMicrosecondsTime(12.5, 20)]);
+    harness.move({ x: 50, y: 5 });
+    harness.showTooltip();
+    assert.deepEqual([detailsContext.labelStart, detailsContext.labelEnd], [20, 21]);
+    assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [20, 21]);
+
+    // The grid may start after the bounds start: queries are relative to the grid, labels to the bounds
+    const shifted = harness.createElement('ruler');
+
+    shifted.width = 100;
+    harness.createElement('parent').appendChild(shifted);
+    renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
+        shifted, { range: { start: bounds.start + 8, end: bounds.start + 48 }, segments: 40, zoom: true, details: { view: 'struct' } }, null, context);
+    harness.setActive(shifted);
+    harness.move({ x: 50, y: 5 });
+    harness.showTooltip();
+    assert.deepEqual([detailsContext.labelStart, detailsContext.labelEnd], [20, 21]);
+    assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [12, 13]);
+    harness.destroy(element);
+    harness.destroy(shifted);
     line.viewport.resetRange();
 });

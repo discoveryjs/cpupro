@@ -67,7 +67,7 @@ discovery.view.define('subject-with-nested-timeline', {
                         view: 'block',
                         className: 'timeline-segment-info',
                         content: [
-                            { view: 'block', content: 'text:`Range: ${#.timeStart.formatValue()} – ${#.timeEnd.formatValue()}`' },
+                            { view: 'block', content: 'text:`Range: ${#.labelStart.formatValue()} – ${#.labelEnd.formatValue()}`' },
                             { view: 'block', content: 'text:`Samples: ${binSamples[#.segmentStart:#.segmentEnd + 1].sum() or 0}`' },
                             { view: 'block', content: ['text:"Duration: "', 'metric:{ value: #.timeEnd - #.timeStart, total: totalValue }'] }
                         ]

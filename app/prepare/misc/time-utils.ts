@@ -24,7 +24,10 @@ export function formatMicrosecondsTime(time: number, duration: number, fixed = f
 
     switch (true) {
         case duration < 100_000: {
-            return `${(time / 1000).toFixed(1)}ms`;
+            // Ruler steps are about a tenth of the duration, a digit more is needed for each tenfold shorter one
+            const digits = Math.max(1, Math.ceil(Math.log10(10_000 / duration)) + 1);
+
+            return `${(time / 1000).toFixed(digits)}ms`;
         }
 
         case duration < 1_000_000: {
