@@ -31,7 +31,7 @@ export const pageIndicators = {
                         '- Captured samples: `{{scopeLine().sourceInfo.samples}}`',
                         '- Deduplicated samples: `{{scopeBreakdown().population.samples.size()}}`'
                     ),
-                    content: viewportValue('=populationViewport.samplesCount.sum()')
+                    content: viewportValue('=populationViewport.populationEventCount()')
                 },
                 {
                     title: 'Sampling interval',

@@ -58,6 +58,33 @@ export class Population extends Observer {
     aggregateBy(groups: Uint8Array | Uint32Array, groupCount: number) {
         return aggregatePopulation(this, groups, groupCount);
     }
+
+    // Events of zero weight (e.g. samples with a zero time delta) in index order: they have no extent on the axis,
+    // so counts of nonzero values miss them
+    get zeroEvents(): Uint32Array {
+        if (this.#zeroEvents === null) {
+            const { values } = this;
+            let count = 0;
+
+            for (let index = 0; index < values.length; index++) {
+                count += values[index] === 0 ? 1 : 0;
+            }
+
+            const events = new Uint32Array(count);
+
+            for (let index = 0, event = 0; event < count; index++) {
+                if (values[index] === 0) {
+                    events[event++] = index;
+                }
+            }
+
+            this.#zeroEvents = events;
+        }
+
+        return this.#zeroEvents;
+    }
+
+    #zeroEvents: Uint32Array | null = null;
 }
 
 export type MaskFunction = (mask: Uint32Array) => void;

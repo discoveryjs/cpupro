@@ -124,6 +124,39 @@ export const methods = {
 
         return dict.map((entry, index) => ({ entry, count: samplesCount[index], size: samplesTotal[index] }));
     },
+    // Events of a population accepted within its ranges, including zero-weight events at positions in the ranges
+    populationEventCount(population: PopulationFiltered) {
+        const { samplesCount, ranges, sinkId } = population;
+        const { zeroEvents, cumulative, cumulativeEnd } = population.population;
+        // Ranges are half-open, but events at the end of the axis are within a range reaching it
+        const endOf = (range: { end: number }) => range.end >= cumulativeEnd ? Infinity : range.end;
+        let count = 0;
+
+        for (let sample = 0; sample < samplesCount.length; sample++) {
+            count += samplesCount[sample];
+        }
+
+        if (zeroEvents.length > 0) {
+            const { destination } = population.eventReader();
+            let rangeIndex = 0;
+
+            for (const event of zeroEvents) {
+                const position = cumulative[event];
+
+                while (ranges !== null && rangeIndex < ranges.length && endOf(ranges[rangeIndex]) <= position) {
+                    rangeIndex++;
+                }
+
+                const inRanges = ranges === null || (rangeIndex < ranges.length && ranges[rangeIndex].start <= position);
+
+                if (inRanges && destination(event) !== sinkId) {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    },
     // Self values of a breakdown's entries (e.g. categories) in a population, by the samples of their nodes
     dimensionSampleTotals(dimension: LineTreeDimension<CpuProNode>, population: PopulationFiltered) {
         const { tree, sampleToNode } = dimension;
