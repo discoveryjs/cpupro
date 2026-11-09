@@ -2,12 +2,17 @@ import type { PopulationFiltered } from '../computations/population.js';
 import type { EventClasses } from '../computations/population-filter.js';
 import type { PreparedAttributeFilter } from '../computations/attribute-filter.js';
 import { equalRanges, type RangeSet } from '../computations/coordinates.js';
+import { lowerBound } from '../computations/misc.js';
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
 
 // Identity-like attributes have about as many values as there are signatures; grouping by them would
 // multiply signatures and records for every aggregation, so their own consumers aggregate events directly
 const IDENTITY_ATTRIBUTES = new Set<ProfileLineAttribute['name']>(['allocationOwner']);
 const CHUNK_LENGTH = 1 << 16;
+// Windows with up to this many events take their records from events, a pass of about 2 ms
+const WINDOW_EVENTS = 1 << 20;
+// Bins of a window's data grid
+const WINDOW_BINS = 2000;
 
 type SignatureColumn = {
     values: Uint8Array | Uint16Array | Uint32Array;
@@ -37,6 +42,8 @@ export class EventSignatures {
     readonly #columns: SignatureColumn[];
     readonly #signatureValues = new Map<SignatureColumn['values'], Uint32Array>();
     readonly #binRecords = new Map<string, BinRecords>();
+    // Per mapping or cumulative vector of the line's events
+    readonly #rangeRecords = new Map<Uint32Array | Float64Array, RangeRecords | null>();
     #filterClasses: EventClasses | null = null;
 
     constructor(line: ProfileLine) {
@@ -153,12 +160,138 @@ export class EventSignatures {
         return created;
     }
 
+    // Records of the events of every target in another line, for a nondecreasing mapping
+    targetRecords(mapping: Uint32Array, targetCount: number, weights: Uint32Array) {
+        return this.#ranges(mapping, () => new RangeRecords(this, targetStarts(mapping, targetCount), weights))!;
+    }
+
+    // Records of the cells of a fine grid on the line's own axis: WINDOW_BINS cells per window of the deepest
+    // window level whose windows average more than WINDOW_EVENTS events, so bins of windows of that and coarser
+    // levels hold whole cells for bin counts dividing WINDOW_BINS times a power of two; deeper windows have few
+    // events. Null when the line has few events.
+    cellRecords(cumulative: Float64Array, cumulativeEnd: number, weights: Uint32Array, windowEvents = WINDOW_EVENTS) {
+        return this.#ranges(cumulative, () => {
+            if (cumulative.length <= windowEvents || cumulativeEnd === 0) {
+                return null;
+            }
+
+            const level = Math.ceil(Math.log2(cumulative.length / windowEvents)) - 1;
+
+            return new RangeRecords(this, cellStarts(cumulative, cumulativeEnd, WINDOW_BINS * 2 ** level), weights);
+        });
+    }
+
+    // Range records are built on the first aggregation that uses them and kept with the signatures, since
+    // neither the events nor their signatures change
+    #ranges(events: Uint32Array | Float64Array, create: () => RangeRecords | null) {
+        if (!this.#rangeRecords.has(events)) {
+            this.#rangeRecords.set(events, create());
+        }
+
+        return this.#rangeRecords.get(events)!;
+    }
+
     #distinguishes(filter: PreparedAttributeFilter, baseSamples: Uint32Array) {
         const samples = filter.domain === 'sample' ? baseSamples : null;
 
         return filter.values !== undefined &&
             this.#columns.some(column => column.values === filter.values && column.samples === samples);
     }
+}
+
+/**
+ * Events of a line grouped by consecutive ranges of events and by signature. A grid span holding whole ranges takes
+ * their records instead of their events: ranges of the events of one target, for grids on the target line's axis
+ * (they place targets, not events), and cells of a fine grid on the line's own axis, for windows on it.
+ */
+export class RangeRecords {
+    readonly starts: Uint32Array;       // per range: its first event, plus the end of the events
+    readonly recordStarts: Uint32Array; // per range: its first record, plus the end of the records
+    signatures = new Uint32Array(16);   // per record
+    weights = new Float64Array(16);     // per record: sum of event weights
+
+    constructor(signatures: EventSignatures, starts: Uint32Array, weights: Uint32Array) {
+        const { ids } = signatures;
+        const rangeCount = starts.length - 1;
+        const recordStarts = new Uint32Array(rangeCount + 1);
+        // Per signature: the last range it occurred in and its sum there; signatures of a range in the order
+        // of their first event
+        const signatureRanges = new Int32Array(signatures.count).fill(-1);
+        const rangeWeights = new Float64Array(signatures.count);
+        const rangeSignatures = new Uint32Array(signatures.count);
+        let count = 0;
+
+        for (let range = 0; range < rangeCount; range++) {
+            let signatureCount = 0;
+
+            for (let event = starts[range]; event < starts[range + 1]; event++) {
+                const signature = ids[event];
+
+                if (signatureRanges[signature] !== range) {
+                    signatureRanges[signature] = range;
+                    rangeWeights[signature] = 0;
+                    rangeSignatures[signatureCount++] = signature;
+                }
+
+                rangeWeights[signature] += weights[event];
+            }
+
+            while (count + signatureCount > this.signatures.length) {
+                this.signatures = grow(this.signatures);
+                this.weights = grow(this.weights);
+            }
+
+            recordStarts[range] = count;
+
+            for (let index = 0; index < signatureCount; index++) {
+                const signature = rangeSignatures[index];
+
+                this.signatures[count] = signature;
+                this.weights[count++] = rangeWeights[signature];
+            }
+        }
+
+        recordStarts[rangeCount] = count;
+        this.starts = starts;
+        this.recordStarts = recordStarts;
+        this.signatures = this.signatures.slice(0, count);
+        this.weights = this.weights.slice(0, count);
+    }
+}
+
+// Starts of the events of every target, for a nondecreasing mapping
+function targetStarts(mapping: Uint32Array, targetCount: number) {
+    const starts = new Uint32Array(targetCount + 1);
+    let target = -1;
+
+    for (let event = 0; event < mapping.length; event++) {
+        while (target < mapping[event]) {
+            starts[++target] = event;
+        }
+    }
+
+    starts.fill(mapping.length, target + 1);
+
+    return starts;
+}
+
+// Starts of the events of every cell of a grid on a line's own axis: events starting in a cell
+function cellStarts(cumulative: Float64Array, cumulativeEnd: number, cellCount: number) {
+    const starts = new Uint32Array(cellCount + 1);
+    const step = cumulativeEnd / cellCount;
+    let cell = 0;
+
+    for (let event = 0; event < cumulative.length; event++) {
+        const eventCell = Math.min(cellCount - 1, Math.floor(cumulative[event] / step));
+
+        while (cell < eventCell) {
+            starts[++cell] = event;
+        }
+    }
+
+    starts.fill(cumulative.length, cell + 1);
+
+    return starts;
 }
 
 /**
@@ -181,6 +314,7 @@ export class BinRecords {
     #signatureGroups: Int32Array;
     #signatureRecords: Uint32Array;
     #nextRecords = new Int32Array(0);       // per record: the next record of its signature in the group
+    #spanWeights = new Float64Array(0);     // per signature: its sum in the span being recorded
     #group = 0;
 
     constructor(grid: BinRecordsGrid, signatureCount: number) {
@@ -200,26 +334,79 @@ export class BinRecords {
     }
 
     // Records the next span from events [first, last) of a line
-    addSpan(signatures: EventSignatures, weights: Uint32Array, first: number, last: number) {
+    addSpan(signatures: EventSignatures, weights: Uint32Array, first: number, last: number, cells: RangeRecords | null) {
         const { ids } = signatures;
         const group = this.#group++;
+        const signatureGroups = this.#signatureGroups;
+        // Sums of the span per signature and the signatures in the order of their first event
+        const spanWeights = this.#spanWeights.length === signatureGroups.length
+            ? this.#spanWeights
+            : this.#spanWeights = new Float64Array(signatureGroups.length);
+        const spanSignatures = this.#signatureRecords;
+        let spanCount = 0;
 
-        for (let event = first; event < last; event++) {
-            const signature = ids[event];
+        let event = first;
 
-            if (this.#signatureGroups[signature] !== group) {
-                this.#signatureGroups[signature] = group;
-                this.#signatureRecords[signature] = this.#push(signature, 0, 0);
+        // Events before the first whole cell, records of whole cells, then the rest of the events
+        if (cells !== null) {
+            const { starts, recordStarts, signatures: cellSignatures, weights: cellWeights } = cells;
+            let cell = lowerBound(starts, first);
+            const firstEnd = Math.min(last, starts[cell]);
+
+            for (; event < firstEnd; event++) {
+                const signature = ids[event];
+
+                if (signatureGroups[signature] !== group) {
+                    signatureGroups[signature] = group;
+                    spanWeights[signature] = 0;
+                    spanSignatures[spanCount++] = signature;
+                }
+
+                spanWeights[signature] += weights[event];
             }
 
-            this.weights[this.#signatureRecords[signature]] += weights[event];
+            for (; cell < starts.length - 1 && starts[cell + 1] <= last; cell++) {
+                for (let record = recordStarts[cell]; record < recordStarts[cell + 1]; record++) {
+                    const signature = cellSignatures[record];
+
+                    if (signatureGroups[signature] !== group) {
+                        signatureGroups[signature] = group;
+                        spanWeights[signature] = 0;
+                        spanSignatures[spanCount++] = signature;
+                    }
+
+                    spanWeights[signature] += cellWeights[record];
+                }
+
+                event = starts[cell + 1];
+            }
+        }
+
+        for (; event < last; event++) {
+            const signature = ids[event];
+
+            if (signatureGroups[signature] !== group) {
+                signatureGroups[signature] = group;
+                spanWeights[signature] = 0;
+                spanSignatures[spanCount++] = signature;
+            }
+
+            spanWeights[signature] += weights[event];
+        }
+
+        for (let index = 0; index < spanCount; index++) {
+            const signature = spanSignatures[index];
+            const record = this.#push(signature, 0, 0);
+
+            this.weights[record] = spanWeights[signature];
         }
 
         this.#endSpan();
     }
 
     // Records the next span from events [first, last) of a line placed on another line's axis: by the bin
-    // of their mapped events and by the signatures of the mapped events in the other line
+    // of their mapped events and by the signatures of the mapped events in the other line. Whole targets
+    // come from target records when given
     addMappedSpan(
         signatures: EventSignatures,
         weights: Uint32Array,
@@ -227,62 +414,71 @@ export class BinRecords {
         last: number,
         mapping: Uint32Array,
         axisSignatures: EventSignatures,
-        targetBin: (target: number) => number
+        targetBin: (target: number) => number,
+        targets: RangeRecords | null
     ) {
         const { ids } = signatures;
-        let previousTarget = -1;
         let previousBin = -1;
         let group = -1;
+        let event = first;
 
         if (this.bins.length < this.signatures.length) {
             this.#growMapped();
         }
 
-        for (let event = first; event < last; event++) {
+        while (event < last) {
             const target = mapping[event];
-
-            if (target !== previousTarget) {
-                previousTarget = target;
-
-                const bin = targetBin(target);
-
-                if (bin !== previousBin || group === -1) {
-                    previousBin = bin;
-                    group = this.#group++;
-                }
-            }
-
-            if (previousBin === -1) {
-                continue;
-            }
-
-            const signature = ids[event];
+            const bin = targetBin(target);
             const axisSignature = axisSignatures.ids[target];
-            let record = -1;
 
-            if (this.#signatureGroups[signature] === group) {
-                for (let candidate = this.#signatureRecords[signature]; candidate !== -1; candidate = this.#nextRecords[candidate]) {
-                    if (this.axisSignatures[candidate] === axisSignature) {
-                        record = candidate;
-                        break;
+            if (bin !== previousBin || group === -1) {
+                previousBin = bin;
+                group = this.#group++;
+            }
+
+            if (targets !== null && targets.starts[target] === event && targets.starts[target + 1] <= last) {
+                if (bin !== -1) {
+                    for (let record = targets.recordStarts[target]; record < targets.recordStarts[target + 1]; record++) {
+                        this.#addMapped(group, targets.signatures[record], axisSignature, bin, targets.weights[record]);
                     }
                 }
 
-                if (record === -1) {
-                    record = this.#push(signature, axisSignature, previousBin);
-                    this.#nextRecords[record] = this.#nextRecords[this.#signatureRecords[signature]];
-                    this.#nextRecords[this.#signatureRecords[signature]] = record;
-                }
+                event = targets.starts[target + 1];
             } else {
-                record = this.#push(signature, axisSignature, previousBin);
-                this.#signatureGroups[signature] = group;
-                this.#signatureRecords[signature] = record;
+                for (; event < last && mapping[event] === target; event++) {
+                    if (bin !== -1) {
+                        this.#addMapped(group, ids[event], axisSignature, bin, weights[event]);
+                    }
+                }
             }
-
-            this.weights[record] += weights[event];
         }
 
         this.#endSpan();
+    }
+
+    #addMapped(group: number, signature: number, axisSignature: number, bin: number, weight: number) {
+        let record = -1;
+
+        if (this.#signatureGroups[signature] === group) {
+            for (let candidate = this.#signatureRecords[signature]; candidate !== -1; candidate = this.#nextRecords[candidate]) {
+                if (this.axisSignatures[candidate] === axisSignature) {
+                    record = candidate;
+                    break;
+                }
+            }
+
+            if (record === -1) {
+                record = this.#push(signature, axisSignature, bin);
+                this.#nextRecords[record] = this.#nextRecords[this.#signatureRecords[signature]];
+                this.#nextRecords[this.#signatureRecords[signature]] = record;
+            }
+        } else {
+            record = this.#push(signature, axisSignature, bin);
+            this.#signatureGroups[signature] = group;
+            this.#signatureRecords[signature] = record;
+        }
+
+        this.weights[record] += weight;
     }
 
     // Marks the records as covering every span of the grid and releases the recording state
@@ -291,6 +487,7 @@ export class BinRecords {
         this.#signatureGroups = new Int32Array(0);
         this.#signatureRecords = new Uint32Array(0);
         this.#nextRecords = new Int32Array(0);
+        this.#spanWeights = new Float64Array(0);
     }
 
     #push(signature: number, axisSignature: number, bin: number) {

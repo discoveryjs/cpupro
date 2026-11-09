@@ -118,6 +118,8 @@ export type ProfileLineMapping = {
     line: ProfileLine;
     inverse: ProfileLineMapping;
     _mapping: Uint32Array;
+    // Targets never decrease along the events, so events with targets in a range are one interval
+    nondecreasing: boolean;
 };
 
 export type ProfileLine = {

@@ -11,6 +11,7 @@ import type { ProfileLine } from '../prepare/lines/types.js';
 import { createState, selectRange } from '../views/ruler-range.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import { createLineMapping } from '../prepare/computations/line-mapping.js';
+import { EventSignatures } from '../prepare/lines/event-signatures.js';
 
 const query = jora.setup({ methods: { ...methods, ...samplesMethods, ...profileMethods } });
 
@@ -433,6 +434,7 @@ test('skips unmapped targets before reading weights in mapped accumulation', asy
     const mapping = new Uint32Array([0, 3, 0xffffffff, 1, 2]);
     const { source, viewport } = await createMappedSource(context.scopeLine, new Uint32Array([3, 4, 5, 6, 7]), new Uint32Array([0, 0, 0, 1, 2]));
     source.mappings.timeline._mapping = mapping;
+    source.mappings.timeline.nondecreasing = false;
     Object.defineProperty(viewport, 'values', { value: new Proxy(viewport.values, { get(target, property) {
         assert.notEqual(property, '1');
         assert.notEqual(property, '2');
@@ -444,6 +446,115 @@ test('skips unmapped targets before reading weights in mapped accumulation', asy
     const summary = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 1)[0];
     assert.deepEqual([...summary.bins], [16]);
     assert.equal(summary.value, 16);
+});
+
+test.each([
+    { name: 'events', grouped: false },
+    { name: 'signature records', grouped: true }
+])('mapped bins from $name visit only events with targets on the grid and match every event placed by its target', async ({ grouped }) => {
+    let seed = 7;
+    const random = (max: number) => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) % max;
+    const axisValues = Uint32Array.from({ length: 40 }, () => 1 + random(9));
+    const context = await createContext({ values: axisValues, samples: Uint32Array.from(axisValues, () => random(3)) });
+    const axis = context.scopeLine;
+    const targets = Uint32Array.from({ length: 300 }, () => random(axisValues.length)).sort();
+    const { source, viewport } = await createMappedSource(axis, Uint32Array.from(targets, () => 1 + random(20)), targets, Uint32Array.from(targets, () => random(4)));
+    const attribute = { name: 'allocationType' as const, values: Uint32Array.from(targets, () => random(3)), dict: ['a', 'b', 'c'] };
+    const filterValues = Uint8Array.from(targets, () => random(3));
+    const start = axis.range.frame.resolveValue(0);
+    const axisCumulative = context.scopeBreakdown.population.cumulative;
+    const total = axisCumulative.at(-1)! + axisValues.at(-1)!;
+    const reads = new Set<number>();
+    const tracked = <T extends Uint32Array>(array: T) => new Proxy(array, { get(target, property) {
+        if (typeof property === 'string' && /^\d+$/.test(property)) {
+            reads.add(Number(property));
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+    } });
+
+    source.attributes = [attribute];
+    viewport.filter.set({ key: 'source', domain: 'event', size: targets.length, values: filterValues, accepts: Uint8Array.of(1, 0, 1) });
+
+    if (grouped) {
+        source.signatures = new EventSignatures(source);
+        axis.signatures = new EventSignatures(axis);
+    }
+    source.mappings.timeline._mapping = tracked(targets);
+
+    for (const [from, to, n] of [[0, 1, 7], [0.3, 0.45, 13], [0.5, 0.52, 3], [0.97, 1, 5], [0, 1, 1], [0.2, 0.6, 1]]) {
+        const scopeViewport = { start: start + total * from, end: start + total * to };
+        const step = (scopeViewport.end - scopeViewport.start) / n;
+        const expected = attribute.dict.map(() => new Array(n).fill(0));
+        const onGrid = (event: number) => {
+            const position = start + axisCumulative[targets[event]] - scopeViewport.start;
+            return position >= 0 && position < scopeViewport.end - scopeViewport.start ? position : -1;
+        };
+
+        for (let event = 0; event < targets.length; event++) {
+            const position = onGrid(event);
+
+            if (position !== -1 && filterValues[event] !== 1) {
+                expected[attribute.values[event]][Math.floor(position / step)] += source.values[event];
+            }
+        }
+
+        reads.clear();
+        const actual = methods.binLineToAxisLine.call({ context: { ...context, scopeViewport } }, source, attribute, axis, n);
+
+        assert.deepEqual(actual.map(row => [...row.bins]), expected, `${from}-${to}/${n}`);
+        // Visited events are the events with targets on the grid or one target off it; the other reads are the
+        // edge events of the source range and two binary searches
+        const near = targets.filter((target, event) => [target - 1, target, target + 1].some(other =>
+            targets.some((candidate, index) => candidate === other && onGrid(index) !== -1)) || event === 0 || event === targets.length - 1).length;
+
+        assert.ok(reads.size <= near + 2 * Math.ceil(Math.log2(targets.length + 1)), `${from}-${to}/${n}: ${reads.size} reads`);
+    }
+});
+
+test('mapped records of whole targets equal event binning across source range cuts and filters', async () => {
+    let seed = 3;
+    const random = (max: number) => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) % max;
+    const axisValues = Uint32Array.from({ length: 30 }, () => 1 + random(9));
+    const context = await createContext({ values: axisValues, samples: Uint32Array.from(axisValues, () => random(3)) });
+    const axis = context.scopeLine;
+    const targets = Uint32Array.from({ length: 400 }, () => random(axisValues.length)).sort();
+    const { source, viewport } = await createMappedSource(axis, Uint32Array.from(targets, () => random(6) === 0 ? 0 : 1 + random(20)), targets, Uint32Array.from(targets, () => random(4)));
+    const attribute = { name: 'allocationType' as const, values: Uint32Array.from(targets, () => random(3)), dict: ['a', 'b', 'c'] };
+    const start = axis.range.frame.resolveValue(0);
+    const total = axisValues.reduce((sum, value) => sum + value, 0);
+    const cumulative = viewport.population.cumulative;
+    const sourceTotal = viewport.population.cumulativeEnd;
+    const grids = [[0, 1, 9], [0.2, 0.7, 11], [0.4, 0.45, 2], [0, 1, 1]];
+    const bins = () => grids.map(([from, to, n]) => methods.binLineToAxisLine.call(
+        { context: { ...context, scopeViewport: { start: start + total * from, end: start + total * to } } }, source, attribute, axis, n
+    ).map(row => [row.value, ...row.bins]));
+
+    source.attributes = [attribute];
+    viewport.filter.set({ key: 'source', domain: 'event', size: targets.length, values: attribute.values, accepts: Uint8Array.of(1, 1, 0) });
+
+    for (const ranges of [
+        null,
+        // Cuts inside events of one target, at event edges, and gaps over whole targets
+        [{ start: cumulative[37] + 0.5, end: cumulative[90] }, { start: cumulative[90] + 1, end: cumulative[211] + 0.25 }, { start: cumulative[300], end: sourceTotal }],
+        [{ start: cumulative[5] + 1, end: cumulative[6] }]
+    ]) {
+        viewport.setRanges(ranges);
+        source.signatures = null;
+        axis.signatures = null;
+        const expected = bins();
+        source.signatures = new EventSignatures(source);
+        axis.signatures = new EventSignatures(axis);
+
+        assert.deepEqual(bins(), expected, JSON.stringify(ranges));
+        assert.ok(source.signatures.targetRecords(targets, axisValues.length, source.values).signatures.length < targets.length);
+        context.scopeBreakdown.populationWindow.filter.set({ key: 'axis', domain: 'sample', size: 3, accepts: Uint8Array.of(1, 0, 1) });
+        const axisFiltered = bins();
+        source.signatures = null;
+        axis.signatures = null;
+        assert.deepEqual(axisFiltered, bins(), `${JSON.stringify(ranges)} with an axis filter`);
+        context.scopeBreakdown.populationWindow.filter.remove('axis');
+    }
 });
 
 test('allocation bins apply source and axis viewport participation without affecting their Base coordinates', async () => {

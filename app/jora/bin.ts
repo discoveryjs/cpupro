@@ -1,5 +1,5 @@
 import { typeColor, vmFunctionStateTiers } from '../prepare/const.js';
-import { ProfileLine, ProfileLineAttribute, ProfileLineBreakdown, ProfileLineType } from '../prepare/lines/types.js';
+import { ProfileLine, ProfileLineAttribute, ProfileLineBreakdown, ProfileLineMapping, ProfileLineType } from '../prepare/lines/types.js';
 import { sum } from '../prepare/misc/utils.js';
 import { Profile } from '../prepare/profile.mjs';
 import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepare/types.js';
@@ -9,8 +9,9 @@ import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileL
 import { binningRange, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
 import { findCumulativeBoundary, type EventReader, type PopulationFiltered } from '../prepare/computations/population.js';
+import { lowerBound } from '../prepare/computations/misc.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
-import type { BinRecords, BinRecordsGrid, EventSignatures } from '../prepare/lines/event-signatures.js';
+import type { BinRecords, EventSignatures, RangeRecords } from '../prepare/lines/event-signatures.js';
 
 function getCallStackPopulation(line: ProfileLine) {
     return line.breakdowns.find(tree => tree.kind === 'call-stack')!.population;
@@ -159,14 +160,18 @@ type SignatureGrouping = {
     accepted: Uint8Array;
     groups: Uint32Array;
     span: number;
+    // Records of the cells of a fine grid on the line's own axis, for spans of whole cells
+    cells: () => RangeRecords | null;
 };
 
+// Groups by the values of an attribute or a breakdown, or one group of all events when no values are given
 function createSignatureGrouping(
     line: ProfileLine,
-    groupValues: Uint8Array | Uint32Array,
+    groupValues: Uint8Array | Uint32Array | null,
     viewport: PopulationFiltered,
     key: string,
-    grid: BinRecordsGrid
+    grid: BinGrid,
+    axisViewport: PopulationFiltered | null = null
 ): SignatureGrouping | null {
     const { signatures } = line;
 
@@ -174,11 +179,24 @@ function createSignatureGrouping(
         return null;
     }
 
-    const groups = signatures.valuesOf(groupValues);
+    const groups = groupValues !== null
+        ? signatures.valuesOf(groupValues)
+        : new Uint32Array(signatures.count);
     const accepted = signatures.acceptance(viewport);
 
     return groups !== null && accepted !== null
-        ? { signatures, records: signatures.binRecords(key, grid), accepted, groups, span: 0 }
+        ? {
+            signatures,
+            records: signatures.binRecords(key, {
+                ...grid,
+                ranges: viewport.ranges,
+                axisRanges: axisViewport?.ranges ?? null
+            }),
+            accepted,
+            groups,
+            span: 0,
+            cells: () => signatures.cellRecords(viewport.cumulative, viewport.cumulativeEnd, line.values)
+        }
         : null;
 }
 
@@ -189,7 +207,7 @@ function addSpanRecords(grouping: SignatureGrouping, weights: Uint32Array, track
     const span = grouping.span++;
 
     if (!records.complete) {
-        records.addSpan(signatures, weights, first, last);
+        records.addSpan(signatures, weights, first, last, grouping.cells());
     }
 
     for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
@@ -447,12 +465,15 @@ type MappedSignatureGrouping = SignatureGrouping & {
     axisAccepted: Uint8Array;
     // Places targets by position and axis ranges only; axis filters apply through axisAccepted
     targetPosition: () => (target: number) => number;
+    // Records of whole targets, for a nondecreasing mapping
+    targetRecords: () => RangeRecords | null;
 };
 
 function createMappedSignatureGrouping(
     line: ProfileLine,
-    attribute: ProfileLineAttribute,
+    attribute: ProfileLineAttribute | null,
     viewport: PopulationFiltered,
+    { _mapping: mapping, nondecreasing }: ProfileLineMapping,
     axisLine: ProfileLine,
     axisViewport: PopulationFiltered,
     axisCumulative: Float64Array,
@@ -461,18 +482,19 @@ function createMappedSignatureGrouping(
 ): MappedSignatureGrouping | null {
     const axisSignatures = axisLine.signatures;
     const axisAccepted = axisSignatures?.acceptance(axisViewport) ?? null;
-    const grouping = createSignatureGrouping(line, attribute.values, viewport, `mapped:${axisLine.type}:${count}`, {
-        ...grid,
-        ranges: viewport.ranges,
-        axisRanges: axisViewport.ranges
-    });
+    const grouping = axisAccepted !== null
+        ? createSignatureGrouping(line, attribute?.values ?? null, viewport, `mapped:${axisLine.type}:${count}`, grid, axisViewport)
+        : null;
 
     return grouping !== null && axisSignatures !== null && axisAccepted !== null
         ? {
             ...grouping,
             axisSignatures,
             axisAccepted,
-            targetPosition: () => createTargetBinReader(axisViewport, axisCumulative, grid, true)
+            targetPosition: () => createTargetBinReader(axisViewport, axisCumulative, grid, true),
+            targetRecords: () => nondecreasing
+                ? grouping.signatures.targetRecords(mapping, axisLine.values.length, line.values)
+                : null
         }
         : null;
 }
@@ -484,7 +506,7 @@ function addMappedSpanRecords(grouping: MappedSignatureGrouping, weights: Uint32
     const span = grouping.span++;
 
     if (!records.complete) {
-        records.addMappedSpan(signatures, weights, first, last, mapping, axisSignatures, grouping.targetPosition());
+        records.addMappedSpan(signatures, weights, first, last, mapping, axisSignatures, grouping.targetPosition(), grouping.targetRecords());
     }
 
     for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
@@ -507,6 +529,8 @@ function binMappedPopulation(
     groups: Uint8Array | Uint32Array | null,
     mapping: Uint32Array,
     targetBin: (target: number) => number,
+    // Events whose targets can be on the grid; other events of the source ranges have no bin
+    [gridFirst, gridLast]: [number, number],
     grouping: MappedSignatureGrouping | null = null
 ) {
     const { values, axisTotal } = line;
@@ -553,10 +577,13 @@ function binMappedPopulation(
 
         flushBoundary();
 
+        const spanFirst = Math.max(first + 1, gridFirst);
+        const spanLast = Math.max(spanFirst, Math.min(last, gridLast));
+
         if (grouping === null) {
-            binMappedEvents(viewport, tracks, groups, mapping, targetBin, first + 1, last);
+            binMappedEvents(viewport, tracks, groups, mapping, targetBin, spanFirst, spanLast);
         } else {
-            addMappedSpanRecords(grouping, values, tracks, mapping, first + 1, last);
+            addMappedSpanRecords(grouping, values, tracks, mapping, spanFirst, spanLast);
         }
 
         boundaryIndex = last;
@@ -665,7 +692,7 @@ function sumTreeRecords(grouping: SignatureGrouping, weights: Uint32Array, total
     const span = grouping.span++;
 
     if (!records.complete) {
-        records.addSpan(signatures, weights, first, last);
+        records.addSpan(signatures, weights, first, last, grouping.cells());
     }
 
     for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
@@ -874,11 +901,7 @@ export const methods = {
         const { total, skip } = binningRange(resolved.line, resolveScopeViewport(null, this.context), n);
         const grid = { total, skip, step: sampleBinStep(total, n) };
         const viewport = resolved.populationWindow;
-        const grouping = createSignatureGrouping(resolved.line, treeMetrics.sampleToNode, viewport, `tree:${n}`, {
-            ...grid,
-            ranges: viewport.ranges,
-            axisRanges: null
-        });
+        const grouping = createSignatureGrouping(resolved.line, treeMetrics.sampleToNode, viewport, `tree:${n}`, grid);
 
         return binTreePopulation(viewport, treeMetrics, n, grid, grouping);
     },
@@ -1049,9 +1072,10 @@ export const methods = {
         const populationBreakdown = scopeBreakdown?.line === valuesLine ? scopeBreakdown : valuesLine.breakdowns[0];
         const viewport = populationBreakdown.populationWindow;
         const { ranges: sourceRanges } = viewport;
-        const mappingToLine = valuesLine !== axisLine
-            ? valuesLine.mappings[axisLine.type]._mapping
+        const lineMapping = valuesLine !== axisLine
+            ? valuesLine.mappings[axisLine.type]
             : null;
+        const mappingToLine = lineMapping?._mapping ?? null;
         const grid = binningRange(axisLine, resolveScopeViewport(null, this.context), n);
         const { total, step, skip } = grid;
         const binSumVector = new Uint32Array(n);
@@ -1066,22 +1090,26 @@ export const methods = {
             const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0]).populationWindow;
             const coversAxis = skip >= 0 && skip + axisViewport.cumulativeEnd <= total;
             const targetBin = createTargetBinReader(axisViewport, cumulative, grid);
-            const grouping = attribute !== null
-                ? createMappedSignatureGrouping(valuesLine, attribute, viewport, axisLine, axisViewport, cumulative, grid, n)
-                : null;
+            // With a nondecreasing mapping, events with targets on the grid are one interval; one more
+            // target on each side keeps it a bound under rounding of the grid's positions
+            const gridEvents: [number, number] = lineMapping!.nondecreasing
+                ? [
+                    lowerBound(mappingToLine, Math.max(0, lowerBound(cumulative, -skip) - 1)),
+                    lowerBound(mappingToLine, lowerBound(cumulative, total - skip) + 1)
+                ]
+                : [0, mappingToLine.length];
+            const grouping = createMappedSignatureGrouping(valuesLine, attribute, viewport, lineMapping!, axisLine, axisViewport, cumulative, grid, n);
 
             // Signature records already sum events; the totals shortcut is for event scans
             if (grouping !== null) {
-                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin, grouping);
+                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents, grouping);
             } else if (n === 1 && sourceRanges === null && coversAxis) {
                 binMappedTotals(viewport, tracks, attributeValues, mappingToLine, axisViewport.samples.length, targetBin);
             } else {
-                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin);
+                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents);
             }
         } else {
-            const grouping = attribute !== null
-                ? createSignatureGrouping(valuesLine, attribute.values, viewport, `own:${n}`, { ...grid, ranges: viewport.ranges, axisRanges: null })
-                : null;
+            const grouping = createSignatureGrouping(valuesLine, attribute?.values ?? null, viewport, `own:${n}`, grid);
 
             if (grouping === null && n === 1 && attribute && sourceRanges === null && coversSource) {
                 const { samplesTotal } = viewport.aggregateBy(attribute.values, attribute.dict.length);

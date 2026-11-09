@@ -183,13 +183,23 @@ test('bin records are shared by aggregations over a grid and replaced when the g
 });
 
 test.each([
-    { name: 'mapped to a timeline', mapped: true },
-    { name: 'without a timeline mapping', mapped: false }
+    { name: 'mapped to a timeline', mapped: true, cells: false },
+    { name: 'without a timeline mapping', mapped: false, cells: false },
+    { name: 'with cell records', mapped: true, cells: true }
 ])('allocation summaries and category bins from signatures equal event aggregation across filters, ranges and grids ($name)', async options => {
     const profile = await createSignaturesProfile(options);
     const memline = profile.memline!;
     const timeline = profile.timeline!;
     const signatures = memline.signatures!;
+
+    // Cells for windows of 1500 events instead of millions; bin queries take the records built here
+    if (options.cells) {
+        for (const { population } of memline.breakdowns) {
+            const cells = signatures.cellRecords(population.cumulative, population.cumulativeEnd, memline.values, 1500);
+
+            assert.ok(cells !== null && cells.starts.length - 1 === 4000);
+        }
+    }
     const axisLines = options.mapped ? [timeline, memline] : [memline];
     const filter = (line: ProfileLine, key: string) => line.filters.get(key) as SetAttributeFilter;
     const states: [string, () => void][] = [
@@ -231,7 +241,7 @@ test.each([
 
                 groupedCalls += signatures.acceptance(viewport) !== null ? 1 : 0;
 
-                for (const attribute of memline.attributes) {
+                for (const attribute of [...memline.attributes, null]) {
                     for (const count of [1, 3, 7, 64]) {
                         const grouped = methods.binLineToAxisLine.call({ context }, memline, attribute, axisLine, count);
 
@@ -239,7 +249,7 @@ test.each([
                         const direct = methods.binLineToAxisLine.call({ context }, memline, attribute, axisLine, count);
                         memline.signatures = signatures;
 
-                        assert.deepEqual(grouped, direct, `${name}, ${axisLine.type} ${breakdown.kind}, ${attribute.name}, ${count} bins`);
+                        assert.deepEqual(grouped, direct, `${name}, ${axisLine.type} ${breakdown.kind}, ${attribute?.name}, ${count} bins`);
                     }
                 }
 

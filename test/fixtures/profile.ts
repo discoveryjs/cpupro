@@ -119,6 +119,8 @@ export async function createLineFixture({
     line.viewport = new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent);
     line.window = new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent);
     line.mappings = Object.create(null);
+    // Signatures of the replaced events
+    line.signatures = null;
     const breakdown = await createLineBreakdown('call-stack', line, populationFiltered, populationViewport, populationWindow, trees, noopWorkHandler);
     line.breakdowns = [breakdown];
     profile.lines = [line];

@@ -79,12 +79,16 @@ export function createLineMapping(
     const source = {
         line: destLine,
         inverse: null as unknown as ProfileLineMapping,
-        _mapping: sourceToDest
+        _mapping: sourceToDest,
+        // The target cursor above never moves backward
+        nondecreasing: true
     };
     const dest = {
         line: sourceLine,
         inverse: null as unknown as ProfileLineMapping,
-        _mapping: destToSource
+        _mapping: destToSource,
+        // Recorded allocation IDs, not ordered by construction
+        nondecreasing: false
     };
 
     source.inverse = dest;
