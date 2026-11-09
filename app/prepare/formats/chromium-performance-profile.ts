@@ -674,7 +674,7 @@ export function extractFromChromiumPerformanceProfile(
                 let sampleTraceId: number | null = null;
                 let data: unknown = null;
 
-                // FIXME: skip s/f events for now
+                // flow events (s/f) are not used
                 if (event.ph === 's' || event.ph === 'f') {
                     continue;
                 }
