@@ -49,24 +49,44 @@ export type SampledTree<T> = {
 export class TreeMetrics<T extends CpuProNode> extends Observer {
     tree: CallTree<T>;
     sampleToNode: Uint32Array;
-    samplesCount: Uint32Array;
-    selfValues: Uint32Array;
-    nestedValues: Uint32Array;
+    #samplesCount: Uint32Array;
+    #selfValues: Uint32Array;
+    #nestedValues: Uint32Array;
+    // Brings stale values up to date before they are read
+    #refresh: (() => void) | null;
 
     constructor(
         tree: CallTree<T>,
         sampleToNode: Uint32Array,
         samplesCount: Uint32Array,
         selfValues: Uint32Array,
-        nestedValues: Uint32Array
+        nestedValues: Uint32Array,
+        refresh: (() => void) | null = null
     ) {
         super();
 
         this.tree = tree;
         this.sampleToNode = sampleToNode;
-        this.samplesCount = samplesCount;
-        this.selfValues = selfValues;
-        this.nestedValues = nestedValues;
+        this.#samplesCount = samplesCount;
+        this.#selfValues = selfValues;
+        this.#nestedValues = nestedValues;
+        this.#refresh = refresh;
+        exposeGetters(this, TreeMetrics.prototype, ['samplesCount', 'selfValues', 'nestedValues']);
+    }
+
+    get samplesCount() {
+        this.#refresh?.();
+        return this.#samplesCount;
+    }
+
+    get selfValues() {
+        this.#refresh?.();
+        return this.#selfValues;
+    }
+
+    get nestedValues() {
+        this.#refresh?.();
+        return this.#nestedValues;
     }
 
     getMetrics(index: number) {
@@ -105,6 +125,15 @@ export class TreeMetrics<T extends CpuProNode> extends Observer {
             nestedValue,
             totalValue: selfValue + nestedValue
         };
+    }
+}
+
+// Jora reads own properties: expose prototype getters as own enumerable properties
+function exposeGetters(target: object, prototype: object, names: string[]) {
+    for (const name of names) {
+        const { get } = Object.getOwnPropertyDescriptor(prototype, name)!;
+
+        Object.defineProperty(target, name, { enumerable: true, get: get!.bind(target) });
     }
 }
 
@@ -244,26 +273,30 @@ export type DictionaryMetric<T> = {
 
 export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     dictionary: T[];
-    entries: DictionaryMetric<T>[];
+    #entries: DictionaryMetric<T>[];
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
-    samplesCount: Uint32Array;
-    selfValues: Uint32Array;
-    totalValues: Uint32Array;
+    #samplesCount: Uint32Array;
+    #selfValues: Uint32Array;
+    #totalValues: Uint32Array;
+    // Brings stale values and entries up to date before they are read
+    #refresh: (() => void) | null;
 
     constructor(
         dictionary: T[],
         samplesCount: Uint32Array,
         selfValues: Uint32Array,
-        totalValues: Uint32Array
+        totalValues: Uint32Array,
+        refresh: (() => void) | null = null
     ) {
         super();
 
         this.dictionary = dictionary;
-        this.samplesCount = samplesCount;
-        this.selfValues = selfValues;
-        this.totalValues = totalValues;
+        this.#samplesCount = samplesCount;
+        this.#selfValues = selfValues;
+        this.#totalValues = totalValues;
+        this.#refresh = refresh;
 
-        this.entries = this.dictionary.map((entry, entryIndex) => ({
+        this.#entries = this.dictionary.map((entry, entryIndex) => ({
             entryIndex,
             entry,
             samples: samplesCount[entryIndex],
@@ -271,6 +304,27 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
             nestedValue: totalValues[entryIndex] - selfValues[entryIndex],
             totalValue: totalValues[entryIndex]
         }));
+        exposeGetters(this, DictionaryMetrics.prototype, ['samplesCount', 'selfValues', 'totalValues', 'entries']);
+    }
+
+    get samplesCount() {
+        this.#refresh?.();
+        return this.#samplesCount;
+    }
+
+    get selfValues() {
+        this.#refresh?.();
+        return this.#selfValues;
+    }
+
+    get totalValues() {
+        this.#refresh?.();
+        return this.#totalValues;
+    }
+
+    get entries() {
+        this.#refresh?.();
+        return this.#entries;
     }
 
     get entriesMap() {
@@ -290,7 +344,10 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     }
 
     sync() {
-        const { entries, samplesCount, selfValues, totalValues } = this;
+        const entries = this.#entries;
+        const samplesCount = this.#samplesCount;
+        const selfValues = this.#selfValues;
+        const totalValues = this.#totalValues;
 
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i];
@@ -433,7 +490,8 @@ function createSampleBreakdownBuffer<T>(
 }
 
 function createDimension<T extends CpuProNode>(
-    dimensionMaps: BufferDimensionMap<T>
+    dimensionMaps: BufferDimensionMap<T>,
+    refresh: () => void
 ): { dict: DictDimension<T>; tree: TreeDimension<T> } {
     const { treeMap, dictMap } = dimensionMaps;
     const dictAll = new DictionaryMetrics<T>(
@@ -446,7 +504,8 @@ function createDimension<T extends CpuProNode>(
         dictMap.dictionary,
         dictMap.samplesCount,
         dictMap.selfValues,
-        dictMap.totalValues
+        dictMap.totalValues,
+        refresh
     );
     const treeAll = new TreeMetrics(
         treeMap.tree,
@@ -460,7 +519,8 @@ function createDimension<T extends CpuProNode>(
         treeMap.sampleToNode,
         treeMap.samplesCount,
         treeMap.selfValues,
-        treeMap.nestedValues
+        treeMap.nestedValues,
+        refresh
     );
 
     return {
@@ -488,17 +548,42 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
 
     computeAll(computeApi, bufferMap, population, false);
 
+    // Filtered metrics follow population changes when they are read: a line computes its breakdowns over
+    // shared populations, while views read the metrics of the displayed breakdown only
+    let samplesStale = false;
+    const staleDimensions = new Set<number>();
+    const refreshDimension = (index: number) => {
+        if (!staleDimensions.delete(index)) {
+            return;
+        }
+
+        if (samplesStale) {
+            samplesStale = false;
+            bufferMap.samplesCount.set(population.samplesCount);
+            bufferMap.samplesTotal.set(population.samplesTotal);
+        }
+
+        const { treeMap, dictMap } = dimensions[index];
+
+        computeApi.computeTreeMetrics(treeMap, true);
+        computeApi.computeDictionaryMetrics(dictMap, true);
+        dimensionsWithStructure[index].dict.filtered.sync();
+    };
+
     // Build dimensions with dict/tree separation
-    const dimensionsWithStructure = dimensions.map(maps =>
-        createDimension(maps)
+    const dimensionsWithStructure = dimensions.map((maps, index) =>
+        createDimension(maps, () => refreshDimension(index))
     );
 
     const recomputeMetrics = () => {
-        computeAll(computeApi, bufferMap, population, true);
+        samplesStale = true;
+
+        for (let index = 0; index < dimensions.length; index++) {
+            staleDimensions.add(index);
+        }
 
         for (const dimension of dimensionsWithStructure) {
             dimension.tree.filtered.notify();
-            dimension.dict.filtered.sync();
             dimension.dict.filtered.notify();
         }
     };
