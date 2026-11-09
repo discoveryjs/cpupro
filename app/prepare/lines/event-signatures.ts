@@ -145,8 +145,14 @@ export class EventSignatures {
         return accepted;
     }
 
-    // Records of one binning grid; replaced when the grid changes (a viewport or bin count change)
+    // Records of one binning grid; replaced when the grid changes (a window or bin count change). Records of a
+    // grid over unrestricted populations, the whole extent where zooming out returns, are kept apart from the
+    // records of a window
     binRecords(key: string, grid: BinRecordsGrid) {
+        if (grid.ranges === null && grid.axisRanges === null) {
+            key += ':unrestricted';
+        }
+
         const records = this.#binRecords.get(key);
 
         if (records !== undefined && records.matches(grid)) {

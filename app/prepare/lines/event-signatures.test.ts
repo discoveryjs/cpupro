@@ -5,6 +5,7 @@ import { Dictionary } from '../dictionary.js';
 import { createProfile } from '../profile.mjs';
 import { noopWorkHandler } from '../misc/work.js';
 import { methods } from '../../jora/bin.js';
+import { lineWindow } from '../../jora/viewport.js';
 import { EventSignatures } from './event-signatures.js';
 import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
@@ -159,27 +160,47 @@ test('signature IDs widen when signatures outgrow 16 bits', () => {
     assert.deepEqual(Array.from(signatures.ids), Array.from(values));
 });
 
-test('bin records are shared by aggregations over a grid and replaced when the grid changes', async () => {
+test('bin records are shared by aggregations over a grid, replaced for another window and kept for the whole extent', async () => {
     const profile = await createSignaturesProfile();
     const memline = profile.memline!;
     const [breakdown] = memline.breakdowns;
-    const context = { scopeLine: memline, scopeBreakdown: breakdown, data: { profiles: [profile] } };
     const [type, space] = memline.attributes;
     const signatures = memline.signatures!;
-    const grid = () => ({ total: memline.axisTotal, step: memline.axisTotal / 64, skip: 0, ranges: breakdown.populationViewport.ranges, axisRanges: null });
+    const window = () => lineWindow(memline);
+    const bin = (attribute: typeof type) => methods.binLineToAxisLine.call({ context: {
+        scopeLine: memline, scopeBreakdown: breakdown, data: { profiles: [profile] }, scopeViewport: window()
+    } }, memline, attribute, memline, 64);
+    const records = () => {
+        const { start, end } = window();
+        const extent = lineWindow({ ...memline, window: memline.range });
 
-    methods.binLineToAxisLine.call({ context }, memline, type, memline, 64);
-    const records = signatures.binRecords('own:64', grid());
+        return signatures.binRecords('own:64', {
+            total: end - start, step: (end - start) / 64, skip: extent.start - start, ranges: breakdown.populationWindow.ranges, axisRanges: null
+        });
+    };
 
-    assert.ok(records.complete && records.count > 0 && records.count < memline.values.length);
-    methods.binLineToAxisLine.call({ context }, memline, space, memline, 64);
+    bin(type);
+    const whole = records();
+
+    assert.ok(whole.complete && whole.count > 0 && whole.count < memline.values.length);
+    bin(space);
     (memline.filters.get('category') as SetAttributeFilter).setSelection('exclude', ['script']);
-    methods.binLineToAxisLine.call({ context }, memline, type, memline, 64);
-    assert.equal(signatures.binRecords('own:64', grid()), records);
+    bin(type);
+    assert.equal(records(), whole);
 
-    memline.viewport.setRange(memline.axisTotal * 0.2, memline.axisTotal * 0.7);
-    methods.binLineToAxisLine.call({ context }, memline, type, memline, 64);
-    assert.notEqual(signatures.binRecords('own:64', grid()), records);
+    memline.viewport.setRange(memline.axisTotal * 0.2, memline.axisTotal * 0.3);
+    bin(type);
+    const zoomed = records();
+
+    assert.ok(zoomed !== whole && zoomed.complete);
+    memline.viewport.setRange(memline.axisTotal * 0.6, memline.axisTotal * 0.7);
+    bin(type);
+    assert.ok(records() !== zoomed && records().complete);
+
+    // Zooming out to the whole extent takes its kept records
+    memline.viewport.resetRange();
+    bin(type);
+    assert.equal(records(), whole);
 });
 
 test.each([
