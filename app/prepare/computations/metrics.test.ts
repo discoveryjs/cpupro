@@ -2,36 +2,35 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
 
-test('filtered breakdown metrics follow population changes when they are read', async () => {
+test('filtered metrics of every breakdown of a population follow its changes when they are read', async () => {
     const { profile } = await createProfileFixture();
-    const line = profile.memline!;
-    const [first, second] = line.breakdowns;
-    const population = first.populationFiltered;
-    const expectedTotal = () => population.samplesTotal.reduce((sum, value) => sum + value, 0);
-    let notifications = 0;
+    const breakdown = (kind: string) => profile.memline!.breakdowns.find(breakdown => breakdown.kind === kind)!;
+    // A source-mapped breakdown shares the population of its original, the location breakdown has its own
+    const [original, mapped, other] = [breakdown('call-stack'), breakdown('call-stack-sm'), breakdown('location')];
+    const population = original.populationFiltered;
+    const included = () => population.samplesTotal.reduce((sum, value) => sum + value, 0);
+    const notifications = { mapped: 0, other: 0 };
 
-    second.callFrames.filtered.dict.subscribe(() => notifications++);
+    mapped.callFrames!.filtered.dict.subscribe(() => notifications.mapped++);
+    other.callFrames!.filtered.dict.subscribe(() => notifications.other++);
     population.updateMask(mask => {
         mask[0] = 1;
     });
 
-    assert.equal(notifications, second.populationFiltered === population ? 1 : 0);
-    for (const breakdown of [first, second].filter(breakdown => breakdown.populationFiltered === population)) {
-        const { dict, nodes } = breakdown.callFrames.filtered;
-        const selfTotal = dict.entries.reduce((sum, entry) => sum + entry.selfValue, 0);
+    assert.deepEqual(notifications, { mapped: 1, other: 0 });
+    for (const { callFrames } of [original, mapped]) {
+        const { dict, nodes } = callFrames!.filtered;
 
-        assert.equal(selfTotal, expectedTotal());
-        assert.equal(nodes.selfValues.reduce((sum, value) => sum + value, 0), expectedTotal());
+        assert.equal(dict.entries.reduce((sum, entry) => sum + entry.selfValue, 0), included());
+        assert.equal(nodes.selfValues.reduce((sum, value) => sum + value, 0), included());
         assert.equal(dict.totalValues.length, dict.dictionary.length);
     }
 
     population.updateMask(mask => {
         mask[0] = 0;
     });
-    const { dict } = first.callFrames.filtered;
 
-    assert.equal(dict.entries.reduce((sum, entry) => sum + entry.selfValue, 0), expectedTotal());
-    assert.deepEqual([...dict.selfValues], [...first.callFrames.all.dict.selfValues]);
+    assert.deepEqual([...original.callFrames!.filtered.dict.selfValues], [...original.callFrames!.all.dict.selfValues]);
 });
 
 test('cumulative values, totals and tree metrics stay exact beyond 2^32', async () => {
