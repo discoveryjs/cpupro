@@ -1,16 +1,19 @@
 (import "imports" "memory" (memory 0))
 
-(func $accumulateSampleCount (export "accumulateSampleCount")
+(func $accumulateSampleMetrics (export "accumulateSampleMetrics")
   (param $srcSize i32)
   (param $src i32)
   (param $map i32)
-  (param $dest i32)
+  (param $count i32)
+  (param $total i32)
   (local $offset i32) ;; Byte offset for iteration through the arrays.
-  (local $resultAddr i32) ;; Address in $dest array.
+  (local $value i32)
+  (local $index i32) ;; Byte offset of map[i] in $count and $total arrays.
 
   ;; for (let i = srcSize - 1; i >= 0; i--) {
   ;;   if (src[i] !== 0) {
-  ;;     dest[map[i]] += 1;
+  ;;     count[map[i]] += 1;
+  ;;     total[map[i]] += src[i];
   ;;   }
   ;; }
 
@@ -38,39 +41,45 @@
       ;; if (src[i] === 0) continue;
       (br_if $loop
         (i32.eqz
-          (i32.load
-            (i32.add
-              (local.get $src)
-              (local.get $offset)
-            )
-          )
-        )
-      )
-
-      ;; Calculate address in $dest array and store in $resultAddr.
-      ;; resultAddr = dest + map[i] * 4  // dest[map[i]]
-      (local.set $resultAddr
-        (i32.add
-          (local.get $dest)
-          (i32.shl
+          (local.tee $value
             (i32.load
               (i32.add
-                (local.get $map)
+                (local.get $src)
                 (local.get $offset)
               )
             )
-            (i32.const 2)
           )
         )
       )
 
-      ;; Load the existing value at $resultAddr, add the time delta, then store the result back.
-      ;; dest[$addr] += 1
+      ;; index = map[i] * 4
+      (local.set $index
+        (i32.shl
+          (i32.load
+            (i32.add
+              (local.get $map)
+              (local.get $offset)
+            )
+          )
+          (i32.const 2)
+        )
+      )
+
+      ;; count[map[i]] += 1
       (i32.store
-        (local.get $resultAddr)
+        (i32.add (local.get $count) (local.get $index))
         (i32.add
-          (i32.load (local.get $resultAddr))
+          (i32.load (i32.add (local.get $count) (local.get $index)))
           (i32.const 1)
+        )
+      )
+
+      ;; total[map[i]] += src[i]
+      (i32.store
+        (i32.add (local.get $total) (local.get $index))
+        (i32.add
+          (i32.load (i32.add (local.get $total) (local.get $index)))
+          (local.get $value)
         )
       )
 

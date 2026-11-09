@@ -138,7 +138,7 @@ test.each([
                     key: 'test',
                     domain: 'event',
                     size: line.values.length,
-                    accepts: index => ranges === null || index % 2 === 0
+                    accepts: Uint8Array.from({ length: line.values.length }, (_, index) => Number(ranges === null || index % 2 === 0))
                 });
                 breakdown.populationViewport.setRanges(ranges);
                 calls.length = 0;
@@ -281,7 +281,7 @@ test('lifespan details use the scope interval instead of display bins', async ()
     assert.ok(projected.every(row => row.total === expected.reduce((sum, value) => sum + value, 0)));
 
     axis.breakdowns[0].populationViewport.filter.set({
-        key: 'test', domain: 'event', size: axis.values.length, accepts: index => index !== target
+        key: 'test', domain: 'event', size: axis.values.length, accepts: Uint8Array.from({ length: axis.values.length }, (_, index) => Number(index !== target))
     });
     assert.deepEqual(tracked(details.data)([], projectedContext), []);
     assert.equal(source.range.selection.ranges, selection);
@@ -338,7 +338,7 @@ test('mapped allocation summaries follow source constraints and axis participati
     alternate.setRanges(null);
     assert.deepEqual(totals(), initial);
 
-    viewport.filter.set({ key: 'test', domain: 'event', size: values.length, accepts: () => false });
+    viewport.filter.set({ key: 'test', domain: 'event', size: values.length, accepts: new Uint8Array(values.length) });
     assert.deepEqual(totals(), [[0, 0], [0, 0]]);
     viewport.filter.remove('test');
     assert.deepEqual(totals(), initial);

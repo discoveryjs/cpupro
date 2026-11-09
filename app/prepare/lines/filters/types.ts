@@ -4,5 +4,6 @@ export type FilterComputation = {
     settings: SetAttributeFilter;
     domain: PreparedAttributeFilter['domain'];
     size: number;
+    values?: PreparedAttributeFilter['values'];
     compile(settings: SetAttributeFilter): Acceptance;
 };

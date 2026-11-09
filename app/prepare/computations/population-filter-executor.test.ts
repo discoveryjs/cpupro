@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { PopulationFilter } from './population-filter.js';
-import type { Acceptance, PreparedAttributeFilter } from './attribute-filter.js';
+import { PopulationFilter, type EventAcceptance } from './population-filter.js';
+import type { PreparedAttributeFilter } from './attribute-filter.js';
 import { Population, PopulationFiltered } from './population.js';
 
 test('uses all 32 bits and clears a removed bit before reuse', () => {
@@ -12,14 +12,14 @@ test('uses all 32 bits and clears a removed bit before reuse', () => {
     }));
     executor.batch(() => filters.slice(0, 32).forEach(filter => executor.set(filter)));
     assert.throws(() => executor.set(filters[32]), /at most 32/);
-    executor.set({ ...filters[31], accepts: () => false });
+    executor.set({ ...filters[31], accepts: new Uint8Array(1) });
     assert.equal(mask[0], 0x80000000);
     executor.batch(() => {
         executor.remove('31');
         executor.set(filters[32]);
     });
     assert.equal(mask[0], 0);
-    executor.set({ ...filters[32], accepts: () => false });
+    executor.set({ ...filters[32], accepts: new Uint8Array(1) });
     assert.equal(mask[0], 0x80000000);
     executor.set(filters[32]);
     assert.equal(mask[0], 0);
@@ -28,7 +28,7 @@ test('uses all 32 bits and clears a removed bit before reuse', () => {
 test('batches prepared predicates, ignores identical inputs and keeps event and sample domains separate', () => {
     const mask = new Uint32Array(3);
     let applications = 0;
-    let acceptsEvent: Acceptance | null = null;
+    let acceptsEvent: EventAcceptance | null = null;
     const executor = new PopulationFilter(3, 4, (update, accepts) => {
         applications++;
         acceptsEvent = accepts;
@@ -40,14 +40,14 @@ test('batches prepared predicates, ignores identical inputs and keeps event and 
         executor.set(first); executor.set(second);
     });
     assert.equal(applications, 0);
-    const active = { ...first, accepts: (index: number) => index % 2 === 0 };
+    const active = { ...first, accepts: Uint8Array.of(1, 0, 1) };
     executor.batch(() => {
         executor.set(active);
-        executor.set({ ...second, accepts: index => index > 1 });
+        executor.set({ ...second, accepts: Uint8Array.of(0, 0, 1, 1) });
     });
     assert.equal(applications, 1);
     assert.deepEqual([...mask], [0, 1, 0]);
-    assert.deepEqual([0, 1, 2, 3].map(index => acceptsEvent!(index)), [false, false, true, true]);
+    assert.deepEqual(Array.from(acceptsEvent!.values, value => acceptsEvent!.accepts[value]), [0, 0, 1, 1]);
     executor.set(active);
     assert.equal(applications, 1);
     assert.throws(() => executor.set({ ...second, size: 3 }), /incompatible/);
@@ -63,7 +63,7 @@ test('batches prepared predicates, ignores identical inputs and keeps event and 
 test.each(['sample', 'event'] as const)('preserves prepared %s acceptance when resetting raw mask and range', domain => {
     const population = new PopulationFiltered(new Population(new Uint32Array([0, 1, 0]), new Uint32Array([10, 20, 30])));
     const prepared: PreparedAttributeFilter = {
-        key: 'attribute', domain, size: domain === 'sample' ? 2 : 3, accepts: index => index % 2 === 0
+        key: 'attribute', domain, size: domain === 'sample' ? 2 : 3, accepts: Uint8Array.of(1, 0, 1).subarray(0, domain === 'sample' ? 2 : 3)
     };
     population.setRange(5, 35);
     population.filter.set(prepared);
@@ -76,7 +76,7 @@ test.each(['sample', 'event'] as const)('preserves prepared %s acceptance when r
     population.resetMask();
     assert.equal(population.filter.get('attribute'), prepared);
     assert.equal(population.sink.total, 20);
-    population.filter.set({ ...prepared, accepts: () => false });
+    population.filter.set({ ...prepared, accepts: new Uint8Array(prepared.size) });
     assert.equal(population.sink.total, 30);
     population.filter.remove('attribute');
     assert.equal(population.rangeStart, 5);
@@ -84,4 +84,22 @@ test.each(['sample', 'event'] as const)('preserves prepared %s acceptance when r
     assert.deepEqual([...population.samplesTotal], [10, 20]);
     population.resetRange();
     assert.deepEqual(population.samplesTotal, population.population.samplesTotal);
+});
+
+test('intersects event filters over attribute values without changing sample destinations of accepted events', () => {
+    const population = new PopulationFiltered(new Population(new Uint32Array([0, 1, 0, 1]), new Uint32Array([10, 20, 30, 40])));
+    const lifespan = { key: 'lifespan', domain: 'event' as const, size: 4, values: Uint8Array.of(0, 1, 2, 0), accepts: Uint8Array.of(1, 0, 1) };
+    const space = { key: 'space', domain: 'event' as const, size: 4, values: Uint32Array.of(3, 3, 1, 1), accepts: Uint8Array.of(0, 1, 0, 1) };
+    const sinkId = population.sinkId;
+
+    population.filter.set(lifespan);
+    assert.deepEqual([...population.samples], [0, sinkId, 0, 1]);
+    population.filter.set(space);
+    assert.deepEqual([...population.samples], [0, sinkId, 0, 1]);
+    population.filter.set({ ...space, accepts: Uint8Array.of(0, 0, 0, 1) });
+    assert.deepEqual([...population.samples], [0, sinkId, sinkId, sinkId]);
+    assert.deepEqual([...population.samplesTotal], [10, 0]);
+    population.filter.remove('lifespan');
+    assert.deepEqual([...population.samples], [0, 1, sinkId, sinkId]);
+    assert.deepEqual([...population.samplesTotal], [10, 20]);
 });

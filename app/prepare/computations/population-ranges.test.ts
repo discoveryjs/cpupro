@@ -73,13 +73,7 @@ test('inherits sink destinations without reading parent totals or replaying pare
     assert.equal(base.sinkId, 2);
     assert.deepEqual(base.sink, { count: 1, total: 40 });
     const viewport = new PopulationFiltered(base);
-    let parentEvaluations = 0;
-    viewport.filter.set({ key: 'parent', domain: 'event', size: 4, accepts(index) {
-        assert.notEqual(index, 3);
-        parentEvaluations++;
-        return index !== 1;
-    } });
-    assert.equal(parentEvaluations, 3);
+    viewport.filter.set({ key: 'parent', domain: 'event', size: 4, accepts: Uint8Array.of(1, 0, 1, 1) });
     viewport.samplesTotal.fill(1234);
     viewport.samplesCount.fill(4321);
     viewport.buffer.samplesTotal[viewport.sinkId] = 9876;
@@ -87,23 +81,13 @@ test('inherits sink destinations without reading parent totals or replaying pare
     assert.deepEqual([...selection.samples], [0, 2, 1, 2]);
     assert.deepEqual([...selection.samplesTotal], [10, 30]);
     assert.deepEqual(selection.sink, { count: 2, total: 60 });
-    const inputVisits: number[] = [];
-    selection.filter.set({ key: 'own', domain: 'sample', size: 2, accepts(sampleId) {
-        assert.ok(sampleId < selection.samplesCount.length);
-        return true;
-    } });
-    selection.filter.set({ key: 'own-event', domain: 'event', size: 4, accepts(index) {
-        inputVisits.push(index);
-        return true;
-    } });
-    assert.deepEqual(inputVisits, [0, 2]);
+    selection.filter.set({ key: 'own', domain: 'sample', size: 2, accepts: Uint8Array.of(1, 1) });
+    selection.filter.set({ key: 'own-event', domain: 'event', size: 4, accepts: Uint8Array.of(1, 1, 1, 1) });
     viewport.setRange(5, 85);
     selection.setRange(15, 75);
     assert.deepEqual([...selection.values], [0, 20, 30, 40]);
     assert.deepEqual([...selection.samplesTotal], [0, 30]);
     assert.deepEqual(selection.sink, { count: 2, total: 30 });
-    assert.equal(parentEvaluations, 3);
-    assert.deepEqual(inputVisits, [0, 2]);
     selection.resetRange();
     selection.updateMask(mask => mask.fill(1));
     selection.resetMask();
@@ -114,7 +98,6 @@ test('inherits sink destinations without reading parent totals or replaying pare
     assert.deepEqual([...selection.samples], [0, 0, 1, 2]);
     assert.deepEqual([...selection.samplesTotal], [25, 30]);
     assert.deepEqual(selection.sink, { count: 1, total: 25 });
-    assert.equal(parentEvaluations, 3);
 });
 
 test('matches scalar source and selection intersections through independent filter and range updates', () => {
@@ -131,8 +114,8 @@ test('matches scalar source and selection intersections through independent filt
         for (const ownRanges of ranges) {
             selection.setRanges(ownRanges);
             for (const filtered of [true, false]) {
-                viewport.filter.set({ key: 'source', domain: 'event', size: 6, accepts: filtered ? index => index !== 2 : null });
-                selection.filter.set({ key: 'selection', domain: 'sample', size: 3, accepts: filtered ? sampleId => sampleId !== 1 : null });
+                viewport.filter.set({ key: 'source', domain: 'event', size: 6, accepts: filtered ? Uint8Array.of(1, 1, 0, 1, 1, 1) : null });
+                selection.filter.set({ key: 'selection', domain: 'sample', size: 3, accepts: filtered ? Uint8Array.of(1, 0, 1) : null });
                 const totals = new Uint32Array(4);
                 const counts = new Uint32Array(4);
                 const expectedValues = new Uint32Array(6);

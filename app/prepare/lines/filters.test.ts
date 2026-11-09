@@ -98,12 +98,12 @@ test('category filter accepts the samples of selected categories of each breakdo
         for (const { populationViewport, categories } of line.breakdowns) {
             for (const option of category.options) {
                 category.setSelection('include', [option.key]);
-                const accepts = populationViewport.filter.get('category')!.accepts!;
+                const { values, accepts } = populationViewport.filter.get('category')!;
 
                 for (let sampleId = 0; sampleId < populationViewport.samplesCount.length; sampleId++) {
                     const node = categories!.tree.nodes[categories!.sampleToNode[sampleId]];
 
-                    assert.equal(accepts(sampleId), categories!.tree.dictionary[node].name === option.key);
+                    assert.equal(accepts![values![sampleId]] === 1, categories!.tree.dictionary[node].name === option.key);
                 }
             }
         }

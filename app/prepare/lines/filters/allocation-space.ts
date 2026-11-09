@@ -18,10 +18,9 @@ export function createAllocationSpaceFilter(attribute: ProfileLineAttribute, eve
         settings: new SetAttributeFilter('allocationSpace', 'Space', options),
         domain: 'event',
         size: eventCount,
+        values,
         compile(settings) {
-            const allowed = Uint8Array.from(dict, entry => settings.isEnabled(entry.code) ? 1 : 0);
-
-            return index => allowed[values[index]] === 1;
+            return Uint8Array.from(dict, entry => settings.isEnabled(entry.code) ? 1 : 0);
         }
     };
 }

@@ -75,10 +75,10 @@ export function prepareLineFilters(line: ProfileLine) {
 
     const update = () => {
         for (const computation of computations) {
-            const { settings, domain, size } = computation;
+            const { settings, domain, size, values } = computation;
 
             if (computation.revision !== settings.revision) {
-                computation.result = { key: settings.key, domain, size, accepts: settings.active ? computation.compile(settings) : null };
+                computation.result = { key: settings.key, domain, size, values, accepts: settings.active ? computation.compile(settings) : null };
                 computation.revision = settings.revision;
             }
         }

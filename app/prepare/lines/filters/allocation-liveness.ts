@@ -7,7 +7,7 @@ export function createAllocationLivenessFilter(attribute: ProfileLineAttribute, 
         return null;
     }
 
-    const { values } = attribute;
+    const { values, dict } = attribute;
     const options = [
         { key: 'alive', label: 'Alive' },
         { key: 'gced', label: 'GCed' }
@@ -17,11 +17,13 @@ export function createAllocationLivenessFilter(attribute: ProfileLineAttribute, 
         settings: new SetAttributeFilter('allocationLiveness', 'Allocations', options),
         domain: 'event',
         size: eventCount,
+        values,
         compile(settings) {
-            const alive = settings.isEnabled('alive');
-            const gced = settings.isEnabled('gced');
+            const alive = settings.isEnabled('alive') ? 1 : 0;
+            const gced = settings.isEnabled('gced') ? 1 : 0;
 
-            return index => values[index] === 0 ? alive : gced;
+            // Lifespan 0 is alive, every other lifespan was collected
+            return Uint8Array.from(dict, (_, lifespan) => lifespan === 0 ? alive : gced);
         }
     };
 }

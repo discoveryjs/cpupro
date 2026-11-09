@@ -1,8 +1,7 @@
 import { USE_WASM } from '../const.js';
 import { Observer } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi } from './compute-wasm-wrapper.js';
-import { PopulationFilter } from './population-filter.js';
-import type { Acceptance } from './attribute-filter.js';
+import { PopulationFilter, type EventAcceptance } from './population-filter.js';
 import { normalizeRanges, intersectRanges, equalRanges, validateRangeBounds, type RangeSet } from './coordinates.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
@@ -69,7 +68,7 @@ export class PopulationFiltered extends Observer {
     buffer: PopulationBufferMap;
     #recompute: (clear?: boolean) => void;
     #hasMask = false;
-    #acceptsEvent: Acceptance | null = null;
+    #acceptedEvents: EventAcceptance | null = null;
     #unsubscribe: () => void;
     #boundaryCuts: { index: number; value: number }[] = [];
     samplesRevision = 0;
@@ -124,8 +123,8 @@ export class PopulationFiltered extends Observer {
         this.filter = new PopulationFilter(
             sampleCount,
             source.samples.length,
-            (updateMask, acceptsEvent) => {
-                this.#acceptsEvent = acceptsEvent;
+            (updateMask, acceptedEvents) => {
+                this.#acceptedEvents = acceptedEvents;
                 this.updateMask(updateMask);
             }
         );
@@ -209,7 +208,7 @@ export class PopulationFiltered extends Observer {
         const hadMask = this.#hasMask;
 
         maskFn(this.samplesMask);
-        this.#hasMask = this.#acceptsEvent !== null || !isMaskEmpty(this.samplesMask);
+        this.#hasMask = this.#acceptedEvents !== null || !isMaskEmpty(this.samplesMask);
 
         if (!this.#hasMask && !hadMask) {
             return;
@@ -224,13 +223,25 @@ export class PopulationFiltered extends Observer {
     #compileSamples() {
         const originalSamples = this.source.samples;
         const samples = this.samples;
+
+        // Without own sample or event constraints every event keeps the source destination
+        if (!this.#hasMask) {
+            samples.set(originalSamples);
+            this.samplesRevision++;
+
+            return true;
+        }
+
         const sinkId = this.sinkId;
+        const samplesMask = this.samplesMask;
+        const eventValues = this.#acceptedEvents?.values ?? null;
+        const eventAccepts = this.#acceptedEvents?.accepts ?? null;
         let changed = false;
 
         for (let i = 0; i < samples.length; i++) {
             const sampleId = originalSamples[i];
-            const target = sampleId !== sinkId && this.samplesMask[sampleId] === 0 &&
-                (!this.#acceptsEvent || this.#acceptsEvent(i)) ? sampleId : sinkId;
+            const target = sampleId !== sinkId && samplesMask[sampleId] === 0 &&
+                (eventValues === null || eventAccepts![eventValues[i]] === 1) ? sampleId : sinkId;
 
             changed = changed || samples[i] !== target;
             samples[i] = target;

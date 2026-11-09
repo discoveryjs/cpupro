@@ -60,7 +60,7 @@ test.each([
     filter.settings.setSelection(mode, [...keys]);
     const accepts = filter.compile(filter.settings);
 
-    assert.deepEqual([accepts(0), accepts(1)], accepted);
+    assert.deepEqual([accepts[filter.values![0]] === 1, accepts[filter.values![1]] === 1], accepted);
 });
 
 test.each([false, true])('a line shares one category setting across populations (reversed breakdowns: %s)', async reverse => {

@@ -51,11 +51,12 @@ export type BufferDictionaryMetricsMap<T> = {
 
 type ComputeMetricsWasmModuleInstance = {
     exports: {
-        accumulateSampleCount(
+        accumulateSampleMetrics(
             srcSize: number,
             src: number,
             map: number,
-            dest: number
+            count: number,
+            total: number
         ): void;
         accumulateMetrics(
             srcSize: number,
@@ -106,7 +107,7 @@ function createWasmModule(source: string, imports = {}) {
 export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeApi {
     const wasmModule = createWasmModule(computeMetricsWasmSourceBase64, { memory }) as ComputeMetricsWasmModuleInstance;
     const {
-        accumulateSampleCount,
+        accumulateSampleMetrics,
         accumulateMetrics,
         rollupTreeMetrics,
         rollupDictionaryMetrics
@@ -119,17 +120,11 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
                 map.samplesTotal.fill(0);
             }
 
-            accumulateSampleCount(
+            accumulateSampleMetrics(
                 map.values.length,
                 map.values.byteOffset,
                 map.samples.byteOffset,
-                map.samplesCount.byteOffset
-            );
-
-            accumulateMetrics(
-                map.values.length,
-                map.values.byteOffset,
-                map.samples.byteOffset,
+                map.samplesCount.byteOffset,
                 map.samplesTotal.byteOffset
             );
         },
@@ -197,10 +192,13 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
 }
 
 export function createJavaScriptApi(): ComputeApi {
-    function accumulateSampleCount(source: Uint32Array, map: Uint32Array, dest: Uint32Array) {
+    function accumulateSampleMetrics(source: Uint32Array, map: Uint32Array, count: Uint32Array, total: Uint32Array) {
         for (let i = source.length - 1; i >= 0; i--) {
-            if (source[i] !== 0) {
-                dest[map[i]] += 1;
+            const value = source[i];
+
+            if (value !== 0) {
+                count[map[i]] += 1;
+                total[map[i]] += value;
             }
         }
     }
@@ -247,8 +245,7 @@ export function createJavaScriptApi(): ComputeApi {
                 samplesTotal.fill(0);
             }
 
-            accumulateSampleCount(values, samples, samplesCount);
-            accumulateMetrics(values, samples, samplesTotal);
+            accumulateSampleMetrics(values, samples, samplesCount, samplesTotal);
         },
 
         computeTreeMetrics(map, clear = true) {

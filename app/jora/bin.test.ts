@@ -128,13 +128,13 @@ test.each(['timeline', 'memline'] as const)('category bins ignore a sink overlap
             const filter = { key: 'category', domain, size: domain === 'sample' ? 2 : viewport.samples.length };
             viewport.filter.set({
                 ...filter,
-                accepts: index => (domain === 'sample' ? index : viewport.population.samples[index]) === 0
+                accepts: Uint8Array.from({ length: filter.size }, (_, index) => Number((domain === 'sample' ? index : viewport.population.samples[index]) === 0))
             });
             assert.deepEqual(Array.from(bins()), before);
             assert.deepEqual(Array.from(presence()), before);
             assert.deepEqual(Array.from(signals()), before);
 
-            viewport.filter.set({ ...filter, accepts: () => false });
+            viewport.filter.set({ ...filter, accepts: new Uint8Array(filter.size) });
             assert.deepEqual(Array.from(bins()), new Array(10).fill(0));
             assert.deepEqual(Array.from(presence()), new Array(10).fill(0));
             assert.deepEqual(Array.from(signals()), new Array(10).fill(0));
@@ -198,7 +198,7 @@ test('joint tree bins preserve self values and binary nested presence across vie
     for (const ranges of [null, [], [{ start: 2, end: 9 }, { start: 12, end: 20 }, { start: 30, end: 280 }, { start: 700, end: 999 }]]) {
         viewport.setRanges(ranges);
         for (const filtered of [false, true]) {
-            viewport.filter.set({ key: 'event', domain: 'event', size: 6, accepts: index => !filtered || index % 2 === 0 });
+            viewport.filter.set({ key: 'event', domain: 'event', size: 6, accepts: Uint8Array.from({ length: 6 }, (_, index) => Number(!filtered || index % 2 === 0)) });
             for (const [start, end] of [[0, 1000], [-50, 151], [20, 121], [900, 1100], [1200, 1300]]) {
                 context.scopeViewport = { start, end };
                 for (const count of [1, 3, 10, 500]) {
@@ -357,7 +357,7 @@ test('full-event bin spans match scalar intersections across filters and fractio
     for (const ranges of [null, [], [{ start: 1.125, end: 480.875 }, { start: 500.125, end: 700.875 }, { start: 900.125, end: 2500.875 }]]) {
         viewport.setRanges(ranges);
         for (const filtered of [false, true]) {
-            viewport.filter.set({ key: 'event', domain: 'event', size: values.length, accepts: index => !filtered || index % 5 !== 0 });
+            viewport.filter.set({ key: 'event', domain: 'event', size: values.length, accepts: Uint8Array.from({ length: values.length }, (_, index) => Number(!filtered || index % 5 !== 0)) });
             for (const [start, end] of [[0, 4096], [-32.125, 4063.875], [992.125, 1248.125]]) {
                 context.scopeViewport = { start, end };
                 for (const count of [1, 2, 16, 64]) {
@@ -406,7 +406,7 @@ test('mapped single-bin totals preserve wide sums with and without groups', asyn
         assert.deepEqual(row.bins, new Uint32Array([4]));
     }
 
-    context.scopeBreakdown.populationViewport.filter.set({ key: 'test', domain: 'event', size: 3, accepts: index => index === 1 });
+    context.scopeBreakdown.populationViewport.filter.set({ key: 'test', domain: 'event', size: 3, accepts: Uint8Array.of(0, 1, 0) });
     for (const grouping of [null, attribute]) {
         const [row] = methods.binLineToAxisLine.call({ context }, source, grouping, context.scopeLine, 1);
         assert.equal(row.value, 5);
@@ -449,11 +449,11 @@ test('allocation bins apply source and axis viewport participation without affec
     viewport.setRange(1, 10);
     const mapped = () => methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10)[0];
     assert.deepEqual([...mapped().bins], [0, 0, 2, 4, 3, 0, 0, 0, 0, 0]);
-    viewport.filter.set({ key: 'allocations', domain: 'event', size: 3, accepts: index => index !== 1 });
+    viewport.filter.set({ key: 'allocations', domain: 'event', size: 3, accepts: Uint8Array.of(1, 0, 1) });
     assert.deepEqual([...mapped().bins], [0, 0, 2, 0, 3, 0, 0, 0, 0, 0]);
     context.scopeBreakdown.populationViewport.setRanges([{ start: 10, end: 25 }]);
     assert.deepEqual([...mapped().bins], [0, 0, 0, 0, 3, 0, 0, 0, 0, 0]);
-    context.scopeBreakdown.populationViewport.filter.set({ key: 'axis', domain: 'sample', size: 2, accepts: sampleId => sampleId === 1 });
+    context.scopeBreakdown.populationViewport.filter.set({ key: 'axis', domain: 'sample', size: 2, accepts: Uint8Array.of(0, 1) });
     assert.equal(mapped().value, 0);
     context.scopeBreakdown.populationViewport.filter.remove('axis');
     context.scopeBreakdown.populationViewport.setRanges([{ start: 1, end: 2 }, { start: 3, end: 4 }, { start: 21, end: 24 }]);
@@ -618,12 +618,12 @@ test('viewport bins and counters preserve coordinates, disjoint coverage and sou
     const context = await createContext();
     const viewport = context.scopeBreakdown.populationViewport;
     const mask = new Uint8Array([1, 1]);
-    viewport.filter.set({ key: 'sample', domain: 'sample', size: 2, accepts: sampleId => sampleId === 0 });
+    viewport.filter.set({ key: 'sample', domain: 'sample', size: 2, accepts: Uint8Array.of(1, 0) });
     assert.deepEqual(methods.binCallsFromMask.call({ context }, mask, 10), [0, 0, 5, 5, 5, 0, 0, 0, 0, 0]);
     assert.deepEqual([...samplesMethods.countSamples.call({ context }, 10)], [0, 0, 1, 1, 1, 0, 0, 0, 0, 0]);
     const selection = context.scopeBreakdown.populationFiltered;
     selection.setRange(20, 25);
-    selection.filter.set({ key: 'selection', domain: 'sample', size: 2, accepts: () => false });
+    selection.filter.set({ key: 'selection', domain: 'sample', size: 2, accepts: new Uint8Array(2) });
     assert.deepEqual(methods.binCallsFromMask.call({ context }, mask, 10), [0, 0, 5, 5, 5, 0, 0, 0, 0, 0]);
     viewport.filter.remove('sample');
     viewport.setRanges([{ start: 1, end: 2 }, { start: 3, end: 4 }, { start: 8, end: 12 }, { start: 21, end: 24 }]);

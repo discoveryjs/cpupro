@@ -3,11 +3,16 @@ import { Observer } from './misc.js';
 export type FilterMode = 'exclude' | 'include';
 export type FilterOption = { key: string; label: string; color?: string };
 export type FilterDomain = 'sample' | 'event';
-export type Acceptance = (index: number) => boolean;
+// Acceptance of a value: 1 accepts it, 0 rejects it
+export type Acceptance = Uint8Array;
+// A domain entry (sample ID or event) is accepted when `accepts` is 1 for its value. `values` holds the value
+// of every entry, it is omitted when the entry index is the value itself. A line prepares a filter once per
+// settings change and shares it between populations; populations only read it.
 export type PreparedAttributeFilter = {
     readonly key: string;
     readonly domain: FilterDomain;
     readonly size: number;
+    readonly values?: Uint8Array | Uint32Array;
     readonly accepts: Acceptance | null;
 };
 export interface AttributeFilterSettings {

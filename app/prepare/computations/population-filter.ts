@@ -4,9 +4,16 @@ type FilterEntry = {
     filter: PreparedAttributeFilter;
     bit: number;
     dirty: boolean;
-    accepts: Acceptance | null;
+    active: boolean;
 };
-type ApplyFilters = (updateMask: (mask: Uint32Array) => void, acceptsEvent: Acceptance | null) => void;
+// One value per event and its acceptance; populations test exactly one table lookup per event
+export type EventAcceptance = {
+    values: Uint8Array | Uint32Array;
+    accepts: Acceptance;
+};
+type ApplyFilters = (updateMask: (mask: Uint32Array) => void, acceptedEvents: EventAcceptance | null) => void;
+
+const ACCEPTED_FLAG = Uint8Array.of(0, 1);
 
 export class PopulationFilter extends Observer {
     #entries = new Map<string, FilterEntry>();
@@ -89,7 +96,7 @@ export class PopulationFilter extends Observer {
             filter,
             bit,
             dirty: true,
-            accepts: null
+            active: false
         };
 
         this.#entries.set(key, entry);
@@ -109,7 +116,7 @@ export class PopulationFilter extends Observer {
 
         if (entry.filter.domain === 'sample') {
             this.#removedBits |= entry.bit;
-        } else if (entry.accepts) {
+        } else if (entry.active) {
             this.#removedEvent = true;
         }
 
@@ -140,27 +147,32 @@ export class PopulationFilter extends Observer {
 
     #flush() {
         const dirtySamples: FilterEntry[] = [];
-        const eventFilters: Acceptance[] = [];
+        const eventFilters: EventAcceptance[] = [];
         let eventsChanged = false;
 
         this.#pending = false;
 
         for (const entry of this.#entries.values()) {
-            if (entry.dirty) {
-                const wasActive = entry.accepts !== null;
+            const { filter } = entry;
 
-                entry.accepts = entry.filter.accepts;
+            if (entry.dirty) {
+                const wasActive = entry.active;
+
+                entry.active = filter.accepts !== null;
                 entry.dirty = false;
 
-                if (entry.filter.domain === 'sample' && (wasActive || entry.accepts)) {
+                if (filter.domain === 'sample' && (wasActive || entry.active)) {
                     dirtySamples.push(entry);
-                } else if (entry.filter.domain === 'event' && (wasActive || entry.accepts)) {
+                } else if (filter.domain === 'event' && (wasActive || entry.active)) {
                     eventsChanged = true;
                 }
             }
 
-            if (entry.filter.domain === 'event' && entry.accepts) {
-                eventFilters.push(entry.accepts);
+            if (filter.domain === 'event' && filter.accepts !== null) {
+                eventFilters.push(filter.values
+                    ? { values: filter.values, accepts: filter.accepts }
+                    : { values: filter.accepts, accepts: ACCEPTED_FLAG }
+                );
             }
         }
 
@@ -174,15 +186,34 @@ export class PopulationFilter extends Observer {
                 for (let sampleId = 0; sampleId < mask.length; sampleId++) {
                     let bits = mask[sampleId] & ~removedBits;
 
-                    for (const entry of dirtySamples) {
-                        bits = entry.accepts && !entry.accepts(sampleId) ? bits | entry.bit : bits & ~entry.bit;
+                    for (const { filter, bit } of dirtySamples) {
+                        const value = filter.values ? filter.values[sampleId] : sampleId;
+
+                        bits = filter.accepts !== null && filter.accepts[value] === 0 ? bits | bit : bits & ~bit;
                     }
 
                     mask[sampleId] = bits;
                 }
-            }, eventFilters.length ? index => eventFilters.every(accepts => accepts(index)) : null);
+            }, intersectEventAcceptance(eventFilters));
         }
 
         this.notify();
     }
+}
+
+// Only several event filters need an event-sized vector: their intersection as per-event flags
+function intersectEventAcceptance(filters: EventAcceptance[]): EventAcceptance | null {
+    if (filters.length < 2) {
+        return filters[0] ?? null;
+    }
+
+    const flags = new Uint8Array(filters[0].values.length).fill(1);
+
+    for (const { values, accepts } of filters) {
+        for (let index = 0; index < flags.length; index++) {
+            flags[index] &= accepts[values[index]];
+        }
+    }
+
+    return { values: flags, accepts: ACCEPTED_FLAG };
 }

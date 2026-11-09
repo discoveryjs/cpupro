@@ -102,7 +102,7 @@ describe('PopulationFiltered', () => {
         filtered.resetIndexRange();
         filtered.setValueRange(20, null);
         verify([0, 1, 0], [0, 8, 0]);
-        filtered.filter.set({ key: 'row', domain: 'event', size: 3, accepts: index => index !== 1 });
+        filtered.filter.set({ key: 'row', domain: 'event', size: 3, accepts: Uint8Array.of(1, 0, 1) });
         verify([0, 0, 0], [0, 0, 0]);
         filtered.destroy();
         viewport.destroy();
@@ -111,13 +111,8 @@ describe('PopulationFiltered', () => {
     test('moves and resets ranges without evaluating event acceptance or rebuilding sample destinations', () => {
         const population = new Population(new Uint32Array([0, 1, 0, 2, 1]), new Uint32Array([10, 0, 20, 30, 0]));
         const filtered = new PopulationFiltered(population);
-        let evaluations = 0;
-        const predicate = { key: 'event', domain: 'event' as const, size: population.values.length, accepts: (index: number) => {
-            evaluations++;
-            return index % 2 === 0;
-        } };
+        const predicate = { key: 'event', domain: 'event' as const, size: population.values.length, accepts: Uint8Array.of(1, 0, 1, 0, 1) };
         filtered.filter.set(predicate);
-        const initialEvaluations = evaluations;
         const destinations = filtered.samples.slice();
         let filterUpdates = 0;
         filtered.filter.subscribe(() => filterUpdates++);
@@ -135,7 +130,6 @@ describe('PopulationFiltered', () => {
         assert.deepEqual(filtered.values, population.values);
         assert.deepEqual(filtered.samples, destinations);
         assert.equal(filtered.filter.get('event'), predicate);
-        assert.equal(evaluations, initialEvaluations);
         assert.equal(filterUpdates, 0);
     });
 
