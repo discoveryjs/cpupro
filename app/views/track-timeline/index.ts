@@ -117,6 +117,7 @@ export class TrackTimeline {
             maxX: null!,
             onHover: null!,
             onClick: null!,
+            onViewChange: null!,
             groups: false,
             intervals: [],
             ...options
@@ -1001,6 +1002,11 @@ export class TrackTimeline {
     }
 
     private onWheel(e: WheelEvent): void {
+        if (typeof this.options.onViewChange === 'function') {
+            this.onViewWheel(e);
+            return;
+        }
+
         e.preventDefault();
 
         const rect = this.overlayCanvas.getBoundingClientRect();
@@ -1034,6 +1040,25 @@ export class TrackTimeline {
         } else {
             this.handleZoom(e.deltaY, x);
         }
+    }
+
+    private onViewWheel(e: WheelEvent): void {
+        const isPrimaryVertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX);
+
+        if (e.ctrlKey || e.metaKey) {
+            this.handleZoom(e.deltaY, e.clientX - this.overlayCanvas.getBoundingClientRect().left);
+        } else if (!isPrimaryVertical) {
+            this.handlePan(e.deltaX);
+        } else if (e.shiftKey) {
+            e.preventDefault();
+            this.handleVerticalScroll(e.deltaY);
+            return;
+        } else {
+            return;
+        }
+
+        e.preventDefault();
+        this.options.onViewChange(this.offsetMs, this.offsetMs + this.width / this.pxPerMs);
     }
 
     private handleZoom(delta: number, centerX: number): void {

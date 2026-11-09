@@ -424,7 +424,58 @@ test('zoom bounds the timeline by the viewport bounds and follows the line viewp
 
     line.viewport.selection.setRange(140, 150);
     assert.deepEqual(unzoomed.views, []);
+    assert.equal(unzoomed.options.onViewChange, null);
     line.viewport.resetRange();
+});
+
+test('zoom requests a view of the timeline as the line viewport, the whole bounds reset it', async () => {
+    const { timeline, scopeLine } = await renderTimeline({ zoom: true }, undefined);
+    const { onViewChange } = timeline.options;
+
+    onViewChange(120, 150);
+    assert.deepEqual(scopeLine.viewport.selection.ranges, [{ start: 120, end: 150 }]);
+    onViewChange(100, 200);
+    assert.equal(scopeLine.viewport.selection.ranges, null);
+    onViewChange(120, 150);
+    onViewChange(99.9, 200.1);
+    assert.equal(scopeLine.viewport.selection.ranges, null);
+    onViewChange(100, 199);
+    assert.deepEqual(scopeLine.viewport.selection.ranges, [{ start: 100, end: 199 }]);
+    scopeLine.viewport.resetRange();
+});
+
+test('an outside owned view zooms and pans by the wheel with a modifier or horizontally, otherwise scrolls', () => {
+    const views = [];
+    const { timeline, overlay } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange: (start, end) => views.push([start, end]) });
+    const wheel = event => {
+        let prevented = false;
+
+        overlay.listeners.get('wheel')({ clientX: 500, deltaX: 0, deltaY: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...event,
+            preventDefault() {
+                prevented = true;
+            } });
+        return prevented;
+    };
+    const view = [timeline.offsetMs, timeline.pxPerMs];
+
+    // A vertical wheel scrolls the page and leaves the view
+    assert.equal(wheel({ deltaY: -100 }), false);
+    assert.deepEqual([timeline.offsetMs, timeline.pxPerMs], view);
+    assert.deepEqual(views, []);
+
+    // Zoom around the pointer is reported as the requested view
+    for (const modifier of ['ctrlKey', 'metaKey']) {
+        assert.equal(wheel({ deltaY: -Math.log(2) / 0.0015, [modifier]: true }), true);
+    }
+    assert.deepEqual(views.map(([start, end]) => [Math.round(start), Math.round(end)]), [[250, 750], [375, 625]]);
+
+    assert.equal(wheel({ deltaX: 125, deltaY: 10 }), true);
+    assert.deepEqual(views.at(-1).map(Math.round), [406, 656]);
+
+    // With Shift a vertical wheel scrolls the tracks without a view request
+    assert.equal(wheel({ deltaY: 100, shiftKey: true }), true);
+    assert.equal(views.length, 3);
+    timeline.destroy();
 });
 
 test('an outside view applies to the canvas once sized and keeps it on resize', () => {

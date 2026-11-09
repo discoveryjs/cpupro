@@ -71,7 +71,15 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
             } else {
                 range.resetRange();
             }
-        }
+        },
+        // With zoom the wheel moves the line viewport, the whole bounds are no request
+        onViewChange: config.zoom ? (start, end) => {
+            if (start <= bounds.start && end >= bounds.end) {
+                scopeLine.viewport.selection.resetRange();
+            } else {
+                scopeLine.viewport.selection.setRange(start, end);
+            }
+        } : null
     });
 
     let rangeSubscription = null;

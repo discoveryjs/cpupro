@@ -40,6 +40,9 @@ export interface TrackTimelineOptions {
     maxX?: number;
     onHover?: (span: Span | null, event: MouseEvent) => void;
     onClick?: (span: Span | null, event: MouseEvent) => void;
+    // The view is owned outside: zoom with a pinch or Ctrl/Cmd + wheel and pan with a horizontal wheel report
+    // the requested view instead of moving it, a vertical wheel scrolls the page (with Shift the tracks)
+    onViewChange?: (start: number, end: number) => void;
     groups?: boolean;
     intervals?: Interval[];
 }
