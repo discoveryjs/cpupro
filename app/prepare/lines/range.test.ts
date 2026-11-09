@@ -127,6 +127,8 @@ test('a viewport window is the aligned cells of the level within twice the viewp
     assert.deepEqual(viewportWindow([], extent), []);
     assert.equal(windowOf(100, 1100), null);
     assert.equal(windowOf(200, 700), null);
+    // A cell of exactly twice the viewport size is kept
+    assert.equal(windowOf(100, 600), null);
     assert.deepEqual(windowOf(500, 700), [{ start: 350, end: 850 }]);
     // Moving or zooming inside the window keeps it
     assert.deepEqual(windowOf(520, 680), [{ start: 350, end: 850 }]);
@@ -162,6 +164,7 @@ test('a window is kept while it contains the zoom within 4 zoom sizes', async ()
     assert.equal(windowHolds(null, [{ start: 0.125, end: 0.375 }], extent), true);
     assert.equal(windowHolds(null, [{ start: 0.125, end: 0.37 }], extent), false);
     assert.equal(windowHolds(null, [{ start: -0.1, end: 0.5 }], extent), false);
+    assert.equal(windowHolds([{ start: 0.25, end: 0.5 }], [{ start: 0.25, end: 0.5 }], extent), true);
 
     line.window.selection.subscribe(() => windowChanges++);
     line.zoom.setRange(total * 0.4, total * 0.45);

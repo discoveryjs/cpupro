@@ -70,6 +70,19 @@ test.each([
     assert.deepEqual(profile.memline!.filters.filters.map(filter => filter.key), ['category']);
 });
 
+test.each([
+    { name: 'with a value for every event', values: [1, 1, 2, 0], expected: ['category', 'allocationCompilationStage'] },
+    { name: 'without a value for every event', values: [1], expected: ['category'] }
+])('registers the compilation stage filter only $name', async ({ values, expected }) => {
+    const { profile } = await createProfileFixture();
+    const attributes = [{ name: 'allocationCompilationStage' as const, values: Uint8Array.from(values), dict: ['none', 'Compile', 'Finalize'] }];
+    const line = { ...profile.memline!, filters: new FilterSet(), attributes };
+
+    prepareLineFilters(line);
+
+    assert.deepEqual(line.filters.filters.map(filter => filter.key), expected);
+});
+
 test('filters apply to the viewport and window populations shared with source-mapped breakdowns', async () => {
     const { profile } = await createProfileFixture(allocationEvents);
 
