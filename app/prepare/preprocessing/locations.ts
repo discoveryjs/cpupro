@@ -375,12 +375,9 @@ export function createVectorLocations(
                 locationIndex = 0;
             }
 
-            if (locationIndex >= locationIndexToNodeIndex.length) {
-                locationIndexToNodeIndex.push(-1);
-                nodeIndex = -1;
-            } else {
-                nodeIndex = locationIndexToNodeIndex[locationIndex];
-            }
+            // Resolving a location (or its call frame) may add other locations to the dictionary,
+            // so a location index can skip ahead of the map, leaving entries unset
+            nodeIndex = locationIndexToNodeIndex[locationIndex] ?? -1;
 
             if (nodeIndex === -1) {
                 nodeIndex = generatedNodes.addNode(
