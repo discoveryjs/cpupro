@@ -7,5 +7,5 @@
     bottom: 0;
     left: calc((var(--start) - var(--display-start, 0)) * var(--display-scale, 1) * 100%);
     width: calc((var(--end) - var(--start)) * var(--display-scale, 1) * 100%);
-    background: var(--color, #8888);
+    background: var(--color);
 }

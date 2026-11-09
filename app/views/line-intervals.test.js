@@ -17,7 +17,7 @@ function createElement(tagName, className) {
     return element;
 }
 
-function render(config, data, context) {
+function render(config, data, context, renders = []) {
     let renderIntervals;
     let lifecycle;
 
@@ -31,8 +31,13 @@ function render(config, data, context) {
 
     const el = createElement('div');
 
-    renderIntervals(el, config, data, context);
+    const result = renderIntervals.call({ render(...args) {
+        renders.push(args);
+        return Promise.resolve(args[2]);
+    } }, el, config, data, context);
+
     assert.equal(lifecycle.name, 'destroy-line-intervals');
+    assert.equal(typeof result.then, 'function');
 
     return el;
 }
@@ -79,4 +84,19 @@ test('zoom displays the line viewport within the range until destroyed', async (
     line.viewport.selection.setRange(120, 145);
     assert.deepEqual(Object.fromEntries(el.styles), { '--display-start': 0, '--display-scale': 1 });
     line.viewport.resetRange();
+});
+
+test('renders an item config into each interval and leaves the band uncolored without a color', async () => {
+    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+    const itemConfig = { view: 'block' };
+    const intervals = [{ start: 110, end: 120 }, { start: 300, end: 310 }, { start: 150, end: 160, color: 'x' }];
+    const context = { scopeLine: line, scopeViewport: { start: 100, end: 200 } };
+    const renders = [];
+    const el = render({ itemConfig }, intervals, context, renders);
+    const bands = el.children.filter(child => child.className === 'interval');
+
+    assert.deepEqual(renders, [[bands[0], itemConfig, intervals[0], context], [bands[1], itemConfig, intervals[2], context]]);
+    assert.equal(bands[0].styles.has('--color'), false);
+    assert.equal(bands[1].styles.get('--color'), 'x');
+    assert.deepEqual(render({}, intervals, context, renders) && renders.length, 2);
 });

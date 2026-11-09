@@ -44,24 +44,24 @@
 .view-subject-with-nested-timeline .nested-work .view-bins-histogram {
     transform: scaleY(-1);
 }
-.view-subject-with-nested-timeline > .self-time,
-.view-subject-with-nested-timeline > .nested-time {
+.view-subject-with-nested-timeline .self-time,
+.view-subject-with-nested-timeline .nested-time {
     position: relative;
     margin-left: 1px;
 }
-.view-subject-with-nested-timeline > .self-time {
+.view-subject-with-nested-timeline .self-time {
     border-top: 1px solid #0004;
 }
-.view-subject-with-nested-timeline > .self-time .view-line-histogram,
-.view-subject-with-nested-timeline > .nested-time .view-line-histogram {
+.view-subject-with-nested-timeline .self-time .view-line-histogram,
+.view-subject-with-nested-timeline .nested-time .view-line-histogram {
     margin-block: 0;
 }
-.view-subject-with-nested-timeline > .nested-time .view-bins-histogram {
+.view-subject-with-nested-timeline .nested-time .view-bins-histogram {
     border: none;
     transform: scaleY(-1);
 }
-.view-subject-with-nested-timeline > .self-time::before,
-.view-subject-with-nested-timeline > .nested-time::before {
+.view-subject-with-nested-timeline .self-time::before,
+.view-subject-with-nested-timeline .nested-time::before {
     content: "SELF";
     display: block;
     position: absolute;
@@ -77,11 +77,11 @@
     color: #888;
     background-color: color-mix(in srgb, var(--discovery-color) 10%, var(--discovery-background-color));
 }
-.view-subject-with-nested-timeline > .self-time::before {
+.view-subject-with-nested-timeline .self-time::before {
     padding-left: 1px;
     margin-bottom: 1px;
 }
-.view-subject-with-nested-timeline > .nested-time::before {
+.view-subject-with-nested-timeline .nested-time::before {
     content: "NEST";
 }
 
@@ -101,13 +101,11 @@
     --tier-color: #aaaaaaa0;
     position: absolute;
     box-sizing: border-box;
-    top: 0;
-    left: calc(100% * var(--pos));
+    inset: 0;
     height: 7.5px;
     border-left: .75px solid var(--tier-color);
     border-color: color(from var(--tier-color) srgb r g b / 1);
     border-right: .5px solid transparent;
-    width: calc(100% * var(--duration));
     pointer-events: all;
 }
 .view-subject-with-nested-timeline .function-codes .tick::before {

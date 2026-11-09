@@ -2,20 +2,30 @@ import { utils } from '@discoveryjs/discovery';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { lineViewport } from '../jora/viewport.js';
 
-// Bands of intervals over a range; with zoom the line viewport is displayed within the range
+// Intervals over a range, bands or rendered items; with zoom the line viewport is displayed within the range
 discovery.view.define('line-intervals', function(el, config, data, context) {
     const intervals = Array.isArray(data) ? data : [];
     const range = resolveScopeViewport(config.viewport, context);
     const length = range.end - range.start;
+    const renders = [];
 
-    for (const { start, end, color } of intervals) {
+    for (const interval of intervals) {
+        const { start, end, color } = interval;
+
         if (start < range.end && end > range.start) {
             const intervalEl = utils.createElement('div', 'interval');
 
             intervalEl.style.setProperty('--start', (start - range.start) / length);
             intervalEl.style.setProperty('--end', (end - range.start) / length);
-            intervalEl.style.setProperty('--color', color);
             el.append(intervalEl);
+
+            if (color) {
+                intervalEl.style.setProperty('--color', color);
+            }
+
+            if (config.itemConfig) {
+                renders.push(this.render(intervalEl, config.itemConfig, interval, context));
+            }
         }
     }
 
@@ -38,6 +48,8 @@ discovery.view.define('line-intervals', function(el, config, data, context) {
         destroyEl.onDestroy = () => unsubscribe();
         el.append(destroyEl);
     }
+
+    return Promise.all(renders);
 });
 
 class LineIntervalsElement extends HTMLElement {
