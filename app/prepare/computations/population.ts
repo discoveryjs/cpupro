@@ -107,6 +107,11 @@ export class PopulationFiltered extends Observer {
         this.samplesMask = new Uint32Array(sampleCount);
 
         this.#recompute = (clear = true) => {
+            if (this.#adoptsSource()) {
+                this.#adoptSourceMetrics();
+                return;
+            }
+
             api.computeMetrics(this.buffer, clear);
 
             for (const { index, value } of this.#boundaryCuts) {
@@ -252,6 +257,26 @@ export class PopulationFiltered extends Observer {
         }
 
         return changed;
+    }
+
+    // Without own constraints destinations, values and boundary cuts equal the source ones, and so do the metrics
+    #adoptsSource() {
+        return !this.#hasMask &&
+            this.#ranges === null &&
+            this.indexStart === null &&
+            this.indexEnd === null &&
+            this.valueMin === null &&
+            this.valueMax === null;
+    }
+
+    #adoptSourceMetrics() {
+        const { samplesCount, samplesTotal } = this.buffer;
+        const { sink } = this.source;
+
+        samplesCount.set(this.source.samplesCount);
+        samplesTotal.set(this.source.samplesTotal);
+        samplesCount[this.sinkId] = sink.count;
+        samplesTotal[this.sinkId] = sink.total;
     }
 
     get ranges() {

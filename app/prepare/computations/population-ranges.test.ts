@@ -68,15 +68,12 @@ test('keeps source and local requests separate through disjoint fractional range
     assert.deepEqual([viewport, selection, nested].map(population => population.buffer.memory!.buffer), buffers);
 });
 
-test('inherits sink destinations without reading parent totals or replaying parent predicates', () => {
+test('inherits sink destinations and unconstrained source metrics without replaying parent predicates', () => {
     const base = new Population(new Uint32Array([0, 0, 1, 2]), new Uint32Array([10, 20, 30, 40]), 2);
     assert.equal(base.sinkId, 2);
     assert.deepEqual(base.sink, { count: 1, total: 40 });
     const viewport = new PopulationFiltered(base);
     viewport.filter.set({ key: 'parent', domain: 'event', size: 4, accepts: Uint8Array.of(1, 0, 1, 1) });
-    viewport.samplesTotal.fill(1234);
-    viewport.samplesCount.fill(4321);
-    viewport.buffer.samplesTotal[viewport.sinkId] = 9876;
     const selection = new PopulationFiltered(viewport);
     assert.deepEqual([...selection.samples], [0, 2, 1, 2]);
     assert.deepEqual([...selection.samplesTotal], [10, 30]);
