@@ -159,6 +159,7 @@ function histHeapTotalBody() {
                     height: 36,
                     extent: '=extent',
                     bins: '=totalHeapSize',
+                    peaks: true,
                     // max: '=max() | $ < 20_000_000 ?: 20_000_000',
                     binsMax: true,
                     color: '#5b88c6'

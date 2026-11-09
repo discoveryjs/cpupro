@@ -75,3 +75,15 @@ test('resolves viewport gestures through a display frame without clipping the re
     assert.deepEqual(line.range.selection.ranges, [{ start: 100, end: 110 }]);
     assert.equal(line.range.frame.origin, 120);
 });
+
+test('viewport bounds are the viewport without a request, also with the common time bounds', async () => {
+    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
+    const other = await createLineFixture({ origin: 105, values: new Uint32Array([90]) });
+
+    line.viewport.selection.setRange(130, 150);
+    assert.deepEqual(methods.lineViewport(line), { start: 130, end: 150 });
+    assert.deepEqual(methods.lineViewportBounds(line), { start: 120, end: 180 });
+    assert.deepEqual(methods.lineViewportBounds(line, [other.profile]), { start: 105, end: 195 });
+    line.viewport.resetRange();
+    assert.deepEqual(methods.lineViewport(line, [other.profile]), methods.lineViewportBounds(line, [other.profile]));
+});

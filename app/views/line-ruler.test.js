@@ -4,7 +4,9 @@ import { createRulerHarness } from '../../test/helpers/ruler.js';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { resolveScopeProfileLine } from '../jora/profile.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
-import { rangeToSegments } from './ruler-range.js';
+import { createState, rangeToSegments } from './ruler-range.js';
+import { binsPerColumn } from './bins-histogram/index.js';
+import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
 import { RangeSelection } from '../prepare/computations/range.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
@@ -16,7 +18,10 @@ evaluateModule(new URL('./line-ruler.js', import.meta.url), {
         renderLineRuler = render;
         viewOptions = options;
     } } },
-    require: () => ({ resolveScopeProfileLine, formatMicrosecondsTime, rangeToSegments })
+    require: () => ({
+        resolveScopeProfileLine, lineViewport, lineViewportBounds, formatMicrosecondsTime,
+        createState, rangeToSegments, binsPerColumn
+    })
 });
 
 test('forwards resolved props and callbacks without a container or a second selection owner', async () => {
@@ -44,6 +49,8 @@ test('forwards resolved props and callbacks without a container or a second sele
             assert.equal(target, element);
             assert.equal(config.view, 'ruler');
             assert.equal(config.range, range);
+            assert.equal(config.bounds, null);
+            assert.equal(config.onRangeChange, false);
             assert.equal(config.rangeManager, undefined);
             assert.equal(config.multiple, true);
             assert.equal(config.selection, rangeManager.ranges);
@@ -200,3 +207,113 @@ test.each(minimumResizeCases)(
         harness.destroy(element);
     }
 );
+
+test('zoom moves the line viewport within its bounds and follows its changes', async () => {
+    const { profile } = await createProfileFixture();
+    const other = await createProfileFixture({ startTime: -20 });
+    const line = profile.timeline;
+    const harness = createRulerHarness();
+    const element = harness.createElement('ruler');
+    const context = { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles: [profile, other.profile] } };
+    const bounds = lineViewportBounds(line, context.data.profiles);
+    let config;
+    let api;
+
+    element.width = 100;
+    harness.createElement('parent').appendChild(element);
+    line.viewport.selection.setRange(bounds.start + 10, bounds.start + 30);
+    renderLineRuler.call({ render(el, props, data, scope) {
+        config = props;
+        return harness.render(el, props, data, scope);
+    } }, element, { range: { start: 0, end: 1 }, zoom: true, onInit: value => {
+        api = value;
+    } }, null, context);
+    harness.setActive(element);
+
+    assert.deepEqual(config.bounds, bounds);
+    assert.deepEqual(api.state.range, { start: bounds.start + 10, end: bounds.start + 30 });
+
+    // Panning and zooming request the viewport of the line
+    harness.wheel(50, { deltaX: 50 });
+    assert.deepEqual(line.viewport.selection.ranges, [{ start: bounds.start + 20, end: bounds.start + 40 }]);
+    harness.wheel(50, { deltaY: 10_000, ctrlKey: true });
+    assert.deepEqual(api.state.range, bounds);
+    assert.equal(line.viewport.selection.ranges, null);
+
+    // Only the whole bounds are no request, a part of them at their start is
+    harness.wheel(0, { deltaY: -500, ctrlKey: true });
+    assert.equal(api.state.range.start, bounds.start);
+    assert.deepEqual(line.viewport.selection.ranges, [api.state.range]);
+    line.viewport.resetRange();
+
+    // External changes of the viewport move the ruler
+    line.viewport.selection.setRange(bounds.start + 5, bounds.start + 15);
+    assert.deepEqual(api.state.range, { start: bounds.start + 5, end: bounds.start + 15 });
+    line.viewport.resetRange();
+    assert.deepEqual(api.state.range, bounds);
+
+    const subscribe = line.viewport.subscribe;
+    let unsubscribed = 0;
+
+    // The following of the viewport ends with the ruler
+    line.viewport.subscribe = callback => {
+        const unsubscribe = subscribe.call(line.viewport, callback);
+
+        return () => {
+            unsubscribed++;
+            unsubscribe();
+        };
+    };
+    const zoomed = harness.createElement('ruler');
+
+    renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
+        zoomed, { zoom: true }, null, context);
+    delete line.viewport.subscribe;
+    assert.equal(unsubscribed, 0);
+    harness.destroy(zoomed);
+    assert.equal(unsubscribed, 1);
+});
+
+test('zoom with a grid of bins segments the ruler by columns of bins and details by the bins', async () => {
+    const { profile } = await createProfileFixture();
+    const line = profile.timeline;
+    const harness = createRulerHarness((el, details, data, scope) => {
+        detailsContext = details.context(data, scope);
+    });
+    const element = harness.createElement('ruler');
+    const context = { primaryProfile: profile, primaryLineType: 'timeline' };
+    const bounds = lineViewportBounds(line);
+    const grid = { start: bounds.start, end: bounds.start + 32 };
+    let detailsContext;
+    let api;
+
+    element.width = 8;
+    harness.createElement('parent').appendChild(element);
+    line.viewport.selection.setRange(grid.start + 3, grid.start + 19);
+    renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
+        element, { range: grid, segments: 64, zoom: true, details: { view: 'struct' }, onInit: value => {
+            api = value;
+        } }, null, context);
+    harness.setActive(element);
+
+    // 32 bins across 8 pixels merge by 8 into columns of 4, the edge ones are clipped
+    assert.deepEqual(Array.from(api.state.segments), [3, 4, 8, 12, 16, 19].map(value => grid.start + value));
+
+    harness.move({ x: 1.5, y: 5 });
+    harness.showTooltip();
+    assert.deepEqual([detailsContext.segmentStart, detailsContext.segmentEnd], [8, 15]);
+    assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [4, 8]);
+    harness.move({ x: 0.2, y: 5 });
+    harness.showTooltip();
+    assert.deepEqual([detailsContext.segmentStart, detailsContext.segmentEnd], [6, 7]);
+    assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [3, 4]);
+
+    // Zooming in splits the columns
+    line.viewport.selection.setRange(grid.start + 4, grid.start + 8);
+    assert.deepEqual(Array.from(api.state.segments), [4, 5, 6, 7, 8].map(value => grid.start + value));
+    harness.move({ x: 2.5, y: 5 });
+    harness.showTooltip();
+    assert.deepEqual([detailsContext.segmentStart, detailsContext.segmentEnd], [10, 11]);
+    harness.destroy(element);
+    line.viewport.resetRange();
+});

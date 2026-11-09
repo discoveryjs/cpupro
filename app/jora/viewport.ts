@@ -21,15 +21,23 @@ export function timestampExtent(line: Pick<ProfileLine, 'axisStart' | 'axisEnd'>
 }
 
 export function lineViewport(line: ViewportLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
-    const extent = lineExtent(line);
     const ranges = line.viewport.selection.ranges;
 
     if (ranges) {
+        const extent = lineExtent(line);
+
         return {
             start: ranges[0]?.start ?? extent.start,
             end: ranges.at(-1)?.end ?? extent.start
         };
     }
+
+    return lineViewportBounds(line, profiles);
+}
+
+// The viewport without a request; zooming narrows the viewport within it
+export function lineViewportBounds(line: ViewportLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
+    const extent = lineExtent(line);
 
     // Current recordings share timestamps. Cumulative bytes have no cross-thread coordinate relation.
     if (line.kind === 'time' && profiles.length > 0) {
@@ -85,6 +93,7 @@ export const methods = {
     lineExtent,
     timestampExtent,
     lineViewport,
+    lineViewportBounds,
     lineWindow,
     viewportRange
 };

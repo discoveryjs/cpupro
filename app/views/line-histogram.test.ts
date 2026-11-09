@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { lineExtent } from '../jora/viewport.js';
+import { lineExtent, lineViewport } from '../jora/viewport.js';
 import { validateRange } from '../prepare/computations/coordinates.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import usage from './line-histogram.usage.js';
@@ -16,6 +16,7 @@ function renderHistogram(props = {}, context = {}) {
         resolveScopeProfileLine,
         resolveScopeViewport,
         lineExtent,
+        lineViewport,
         validateRange,
         usage,
         setRangeCoverage,
@@ -35,7 +36,10 @@ function renderHistogram(props = {}, context = {}) {
     element, props, bins, context);
     assert.equal(result, completion);
     assert.equal(calls.length, 1);
-    const child = calls[0][1] as { view: string; bins: unknown; presence: unknown; color: unknown };
+    const child = calls[0][1] as {
+        view: string; bins: unknown; range: unknown; viewport: unknown; presence: unknown; peaks: unknown; color: unknown;
+        onInit: false | undefined | ((api: { setViewport(viewport: unknown): void }) => () => void);
+    };
     assert.equal(child.view, 'bins-histogram');
     return { styles, child, bins, calls };
 }
@@ -45,14 +49,18 @@ test('renders viewport bins without rebucketing or mutating selection', async ()
     line.range.setRange(10, 20);
     const requested = line.range.selection.ranges;
     const presence = new Uint8Array([1, 1, 1]);
-    const { styles, child, bins } = renderHistogram({ presence, color: '#123', height: 30 }, {
+    const { styles, child, bins } = renderHistogram({ presence, peaks: true, color: '#123', height: 30 }, {
         scopeLine: line, scopeViewport: { start: 100, end: 200 }
     });
     assert.equal(styles.get('--range-pad-start'), 0.2);
     assert.ok(Math.abs(styles.get('--range-pad-end') - 0.2) < 1e-12);
     assert.equal(child.bins, bins);
     assert.equal(child.presence, presence);
+    assert.equal(child.peaks, true);
     assert.equal(child.color, '#123');
+    assert.deepEqual(child.range, { start: 100, end: 200 });
+    assert.equal(child.viewport, child.range);
+    assert.equal(child.onInit, undefined);
     assert.equal(line.range.selection.ranges, requested);
 });
 
@@ -134,4 +142,32 @@ test('reports full or missing coverage without changing viewport bins', () => {
         assert.equal(result.styles.get('--range-pad-start') + result.styles.get('--range-pad-end'), 1);
         assert.ok([...result.styles.values()].every(Number.isFinite));
     }
+});
+
+test('zoom displays the line viewport within the range of bins and follows its changes', async () => {
+    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
+    const window = { start: 100, end: 200 };
+
+    line.viewport.selection.setRange(130, 150);
+    const { styles, child } = renderHistogram({ zoom: true }, { scopeLine: line, scopeViewport: window });
+    const viewports: unknown[] = [];
+
+    assert.equal(child.range, window);
+    assert.deepEqual(child.viewport, { start: 130, end: 150 });
+    assert.equal(styles.get('--range-pad-start'), 0);
+    assert.ok(typeof child.onInit === 'function');
+
+    const unsubscribe = child.onInit({ setViewport: viewport => viewports.push(viewport) });
+
+    line.viewport.selection.setRange(110, 130);
+    assert.deepEqual(viewports, [{ start: 110, end: 130 }]);
+    assert.equal(styles.get('--range-pad-start'), 0.5);
+    line.viewport.resetRange();
+    assert.deepEqual(viewports.at(-1), { start: 120, end: 180 });
+    assert.equal(styles.get('--range-pad-start'), 0);
+
+    unsubscribe();
+    line.viewport.selection.setRange(110, 130);
+    assert.equal(viewports.length, 2);
+    line.viewport.resetRange();
 });
