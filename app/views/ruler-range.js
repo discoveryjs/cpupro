@@ -159,3 +159,23 @@ export function resizeRange(state, anchor, pointer, minimum = 0, direction = 1) 
         end: position
     });
 }
+
+// Scales the range around a pointer fraction within bounds; the range keeps at least the minimum length
+export function zoomRange(range, bounds, fraction, scale, minimum = 0) {
+    const length = range.end - range.start;
+    const nextLength = Math.max(minimum, Math.min(bounds.end - bounds.start, length * scale));
+
+    return placeRange(range.start + fraction * (length - nextLength), nextLength, bounds);
+}
+
+export function panRange(range, bounds, deltaFraction) {
+    const length = range.end - range.start;
+
+    return placeRange(range.start + deltaFraction * length, length, bounds);
+}
+
+function placeRange(start, length, bounds) {
+    start = Math.max(bounds.start, Math.min(bounds.end - length, start));
+
+    return { start, end: start + length };
+}

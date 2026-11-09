@@ -49,6 +49,12 @@ function setup(options = {}, render) {
         range: [100, 200],
         onChange: record('change'), onCommit: record('commit'),
         ...options,
+        onRangeChange(value, input, scope) {
+            assert.equal(value, api);
+            assert.equal(input, data);
+            assert.equal(scope, context);
+            calls.push({ type: 'range', range: value.state.range });
+        },
         onInit(value, input, scope) {
             api = value;
             assert.equal(value.el, element);
@@ -295,5 +301,151 @@ test.each([[false, false], [true, false], [false, 'top']])('grid and labels are 
     assert.equal(view.element.dataset.grid, String(grid));
     assert.equal(view.element.dataset.labels, labels || 'none');
     assert.equal(view.element.children.some(child => child.className === 'interval-marker'), Boolean(grid || labels));
+    view.destroy();
+});
+
+const markers = element => element.children.filter(child => child.className === 'interval-marker');
+const markerTitles = element => markers(element)
+    .filter(marker => !marker.hidden)
+    .map(marker => marker.dataset.title);
+
+test('wheel zooms around the pointer and pans within bounds, a vertical wheel scrolls the page', () => {
+    const view = setup({ range: [100, 200], bounds: [0, 400], segments: 10 });
+    const { api, calls, harness, element } = view;
+
+    assert.equal(harness.wheel(25, { deltaY: -100 }), false);
+    assert.equal(harness.wheel(25, { deltaY: -100, shiftKey: true }), false);
+    assert.equal(harness.wheel(25, { deltaY: -100, deltaX: 100 }), false);
+    assert.equal(calls.length, 0);
+
+    assert.equal(harness.wheel(25, { deltaY: -Math.log(2) / 0.0015, ctrlKey: true }), true);
+    assert.ok(Math.abs(api.state.range.start - 112.5) < 1e-9 && Math.abs(api.state.range.end - 162.5) < 1e-9);
+    assert.equal(api.state.segments.length, 11);
+    assert.equal(api.state.segments.at(-1), api.state.range.end);
+    assert.deepEqual(calls.map(call => call.type), ['range']);
+    // Markers keep the steps from the bounds start rather than from the zoomed range start
+    assert.deepEqual(markerTitles(element), ['115', '120', '125', '130', '135', '140', '145', '150', '155', '160']);
+
+    assert.equal(harness.wheel(50, { deltaY: 2000, metaKey: true }), true);
+    assert.deepEqual(api.state.range, { start: 0, end: 400 });
+
+    assert.equal(harness.wheel(50, { deltaY: 0, deltaX: 1000 }), true);
+    assert.deepEqual(api.state.range, { start: 0, end: 400 });
+    assert.equal(calls.length, 2);
+
+    api.setRange([100, 140]);
+    assert.equal(harness.wheel(50, { deltaY: 1, deltaX: 25 }), true);
+    assert.deepEqual(api.state.range, { start: 110, end: 150 });
+    assert.equal(calls.length, 3);
+    assert.deepEqual(markerTitles(element), ['110', '115', '120', '125', '130', '135', '140', '145']);
+    view.destroy();
+});
+
+test('zoom stops at the precision of coordinates under a pixel', () => {
+    const origin = 2 ** 40;
+    const view = setup({ range: [origin, origin + 100], bounds: [origin, origin + 100] });
+
+    for (let i = 0; i < 100; i++) {
+        view.harness.wheel(50, { deltaY: -1000, ctrlKey: true });
+    }
+
+    const { start, end } = view.api.state.range;
+
+    assert.ok(end - start >= 100 * Number.EPSILON * origin);
+    assert.ok(end - start < 200 * Number.EPSILON * origin);
+    view.destroy();
+});
+
+test('wheel is ignored without bounds, during a drag and outside of rulers', () => {
+    const unbounded = setup();
+
+    assert.equal(unbounded.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
+    assert.equal(unbounded.calls.length, 0);
+    unbounded.destroy();
+
+    const view = setup({ bounds: [0, 400] });
+
+    view.down(20);
+    view.move(40);
+    assert.equal(view.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
+    view.up(40);
+    assert.deepEqual(view.api.state.range, { start: 100, end: 200 });
+
+    view.harness.setActive(null);
+    assert.equal(view.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
+    view.destroy();
+    view.harness.setActive(view.element);
+    assert.equal(view.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
+});
+
+test('setRange updates reused markers and keeps the selection without notifications', () => {
+    const view = setup({ selection: { start: 120, end: 130 } });
+    const { api, calls, element } = view;
+
+    assert.equal(element.style.values.get('--selection-start'), 0.2);
+    const intervals = markers(element);
+
+    api.setRange({ start: 120, end: 140 });
+    assert.deepEqual(api.state.range, { start: 120, end: 140 });
+    assert.equal(api.state.length, 20);
+    assert.deepEqual(api.state.selection, { start: 120, end: 130 });
+    assert.deepEqual(markerTitles(element), ['120', '122.5', '125', '127.5', '130', '132.5', '135', '137.5']);
+    assert.deepEqual(markers(element), intervals);
+    assert.deepEqual(intervals.map(marker => marker.hidden), [...new Array(8).fill(false), true, true]);
+    assert.deepEqual(intervals.slice(0, 3).map(marker => marker.style.values.get('--offset')), [0, 0.125, 0.25]);
+    assert.equal(element.children.indexOf(element.querySelector('.view-ruler__selection-overlay')), 10);
+    api.setRange({ start: 120, end: 140 });
+    assert.equal(element.style.values.get('--selection-start'), 0);
+    assert.equal(element.style.values.get('--selection-end'), 0.5);
+    api.setRange([140, 120]);
+    api.setRange({ start: 120, end: 160 });
+    assert.deepEqual(api.state.range, { start: 120, end: 160 });
+    assert.equal(element.style.values.get('--selection-end'), 0.25);
+    assert.equal(calls.length, 0);
+    view.destroy();
+    api.setRange([0, 1]);
+    assert.deepEqual(api.state.range, { start: 120, end: 160 });
+});
+
+test('markers are added before the overlay only when more of them are needed', () => {
+    const view = setup({ range: [100, 140] });
+    const { api, element } = view;
+    const intervals = markers(element);
+
+    assert.equal(intervals.length, 8);
+    api.setRange([100, 200]);
+    assert.equal(markers(element).length, 10);
+    assert.deepEqual(markers(element).slice(0, 8), intervals);
+    assert.deepEqual(element.children.slice(0, 10), markers(element));
+    assert.deepEqual(markerTitles(element), ['100', '110', '120', '130', '140', '150', '160', '170', '180', '190']);
+    view.destroy();
+});
+
+test('segments may depend on the range and the width of the ruler', () => {
+    const calls = [];
+    const view = setup({ range: [100, 200], bounds: [0, 400], segments(range, width) {
+        calls.push([range, width]);
+
+        return width / 25;
+    } });
+    const { api, harness, element } = view;
+
+    assert.deepEqual(calls, [[{ start: 100, end: 200 }, 100]]);
+    assert.equal(api.state.segments.length, 5);
+
+    // A width change resolves the segments on the next pointer move only
+    element.width = 50;
+    assert.equal(api.state.segments.length, 5);
+    view.move(10);
+    assert.deepEqual(calls.slice(1), [[{ start: 100, end: 200 }, 50]]);
+    assert.deepEqual(Array.from(api.state.segments), [100, 150, 200]);
+    view.move(20);
+    assert.equal(calls.length, 2);
+
+    harness.wheel(0, { deltaX: 25 });
+    assert.deepEqual(calls.slice(2), [[{ start: 150, end: 250 }, 50]]);
+    api.setRange([300, 200]);
+    assert.deepEqual(calls.slice(3), [[{ start: 200, end: 300 }, 50]]);
+    assert.deepEqual(Array.from(api.state.segments), [200, 250, 300]);
     view.destroy();
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { createState, normalizeSelection, selectRange, moveRange, resizeRange, rangeToSegments } from './ruler-range.js';
+import { createState, normalizeSelection, selectRange, moveRange, resizeRange, zoomRange, panRange, rangeToSegments } from './ruler-range.js';
 
 test('normalizes all scale forms and preserves out-of-range selections', () => {
     for (const range of [100, [0, 100], { start: 0, end: 100 }]) {
@@ -133,4 +133,27 @@ describe('ruler ranges', () => {
         assert.equal(state.segments, null);
         assert.equal(state.selection, null);
     });
+});
+
+test('zoom keeps the value under the pointer within bounds and a minimum length', () => {
+    const bounds = { start: 0, end: 100 };
+    const range = { start: 20, end: 60 };
+
+    assert.deepEqual(zoomRange(range, bounds, 0.25, 0.5), { start: 25, end: 45 });
+    assert.deepEqual(zoomRange(range, bounds, 0, 0.5), { start: 20, end: 40 });
+    assert.deepEqual(zoomRange(range, bounds, 1, 2), { start: 0, end: 80 });
+    assert.deepEqual(zoomRange(range, bounds, 0.5, 4), bounds);
+    assert.deepEqual(zoomRange({ start: 80, end: 100 }, bounds, 0, 2), { start: 60, end: 100 });
+    assert.deepEqual(zoomRange(range, bounds, 0.5, 0.01, 2), { start: 39, end: 41 });
+    assert.deepEqual(zoomRange(range, bounds, 0.5, 0.01, 2), zoomRange({ start: 39, end: 41 }, bounds, 0.5, 0.5, 2));
+});
+
+test('pan moves by a fraction of the range and stops at bounds', () => {
+    const bounds = { start: -50, end: 50 };
+    const range = { start: -10, end: 10 };
+
+    assert.deepEqual(panRange(range, bounds, 0.5), { start: 0, end: 20 });
+    assert.deepEqual(panRange(range, bounds, -0.25), { start: -15, end: 5 });
+    assert.deepEqual(panRange(range, bounds, 10), { start: 30, end: 50 });
+    assert.deepEqual(panRange(range, bounds, -10), { start: -50, end: -30 });
 });

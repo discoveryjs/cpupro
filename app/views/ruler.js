@@ -1,11 +1,13 @@
 const { utils } = require('@discoveryjs/discovery');
-const { createState, normalizeSelection, selectRange, moveRange, resizeRange, valueAt } = require('./ruler-range.js');
+const { createState, normalizeRange, normalizeSelection, selectRange, moveRange, resizeRange, zoomRange, panRange, valueAt } = require('./ruler-range.js');
 const usage = require('./ruler.usage.js').default;
 
 const SELECTION_NONE = 'none';
 const SELECTION_HOVERED = 'hovered';
 const SELECTION_SELECTING = 'selecting';
 const SELECTION_SELECTED = 'selected';
+// The same wheel gesture scale as the track timeline
+const WHEEL_ZOOM_SPEED = 0.0015;
 
 const viewByEl = new WeakMap();
 const detailsTooltip = new discovery.view.Popup({
@@ -74,6 +76,78 @@ function renderSelection(el, view) {
                 interval.style.setProperty('left', `${start * 100}%`);
                 interval.style.setProperty('width', `${(end - start) * 100}%`);
             }
+        }
+    }
+}
+
+function renderMarkers(el, view) {
+    const { state, formatLabel, markers } = view;
+    const rulerStep = computeStep(state.length);
+    // Markers of a zoomed range keep the steps of its bounds
+    const origin = view.bounds?.start ?? state.range.start;
+    const firstStep = Math.ceil((state.range.start - origin) / rulerStep);
+    let count = 0;
+
+    if (view.grid || el.dataset.labels !== 'none') {
+        for (
+            let value = origin + firstStep * rulerStep, index = firstStep;
+            value < state.range.end - rulerStep / 10;
+            value = origin + ++index * rulerStep
+        ) {
+            // PERF: Markers are reused while zooming, since an insertion may restyle the whole document
+            // (e.g. under a :has() rule of an ancestor)
+            if (count === markers.length) {
+                markers.push(el.insertBefore(utils.createElement('div', 'interval-marker'), view.overlayEl));
+            }
+
+            markers[count].hidden = false;
+            markers[count].style.setProperty('--offset', (value - state.range.start) / state.length);
+            markers[count].dataset.title = formatLabel(value, state.range);
+            count++;
+        }
+    }
+
+    for (let i = count; i < markers.length; i++) {
+        markers[i].hidden = true;
+    }
+}
+
+// Segments may depend on the range and the width of the ruler, e.g. columns of a histogram
+function resolveSegments(segments, range, width) {
+    return typeof segments === 'function'
+        ? segments(normalizeRange(range), width)
+        : segments;
+}
+
+function updateSegments(el, view) {
+    const width = el.getBoundingClientRect().width;
+
+    if (typeof view.segments === 'function' && width !== view.width) {
+        const { state } = view;
+
+        view.width = width;
+        state.segments = createState(state.range, resolveSegments(view.segments, state.range, width)).segments;
+    }
+}
+
+function updateRange(el, range, notify = false) {
+    const view = viewByEl.get(el);
+
+    if (!view) {
+        return;
+    }
+
+    const { state } = view;
+    const next = createState(range, resolveSegments(view.segments, range, view.width), state.selection, view.multiple);
+
+    if (next.range.start !== state.range.start || next.range.end !== state.range.end) {
+        Object.assign(state, next);
+        renderMarkers(el, view);
+        renderSelection(el, view);
+        detailsTooltip.hide();
+
+        if (notify) {
+            view.onRangeChange?.(view.api, view.data, view.context);
         }
     }
 }
@@ -169,6 +243,8 @@ function updatePointer(el, x, y) {
     if (!view || view.state.length <= 0) {
         return;
     }
+
+    updateSegments(el, view);
 
     const { state } = view;
     const fraction = getRulerFractionForPoint(el, x);
@@ -323,6 +399,35 @@ discovery.addHostElEventListener('pointerdown', ({ buttons, pointerId, x, y, tar
     }
 });
 
+// zoom with a pinch or Ctrl/Cmd + wheel, and pan with a horizontal wheel, when the ruler has bounds;
+// a vertical wheel keeps scrolling the page
+discovery.addHostElEventListener('wheel', (event) => {
+    const zoom = event.ctrlKey || event.metaKey;
+
+    if (gesture || (!zoom && Math.abs(event.deltaX) <= Math.abs(event.deltaY))) {
+        return;
+    }
+
+    // The ruler under the pointer may have been replaced since the pointer moved
+    const el = discovery.dom.root.elementsFromPoint(event.x, event.y).find(el => viewByEl.has(el));
+    const view = el && viewByEl.get(el);
+
+    if (!view?.bounds) {
+        return;
+    }
+
+    const { state, bounds } = view;
+    const width = el.getBoundingClientRect().width || 1;
+    // A pixel can't resolve a range finer than the precision of its coordinates
+    const precision = Number.EPSILON * Math.max(1, Math.abs(bounds.start), Math.abs(bounds.end));
+    const range = zoom
+        ? zoomRange(state.range, bounds, getRulerFractionForPoint(el, event.x), Math.exp(event.deltaY * WHEEL_ZOOM_SPEED), width * precision)
+        : panRange(state.range, bounds, event.deltaX / width);
+
+    event.preventDefault();
+    updateRange(el, range, true);
+}, { passive: false });
+
 // thack pointer to determine the pointer is over a ruler;
 // using such an approach since ruler might be overlaped by another content
 utils.pointerXY.subscribe(({ x, y }) => {
@@ -378,12 +483,15 @@ discovery.view.define('ruler', function(el, options, data, context) {
         labels = 'top',
         formatLabel = String,
         name = 'ruler',
+        bounds = null,
         details,
         onInit,
         onChange,
+        onRangeChange,
         onCommit
     } = options;
-    const state = createState(range, segments, selection, multiple);
+    const width = el.getBoundingClientRect().width;
+    const state = createState(range, resolveSegments(segments, range, width), selection, multiple);
     const api = { state, name, el, setSelection(selection) {
         if (viewByEl.has(el)) {
             const next = normalizeSelection(selection, multiple);
@@ -395,6 +503,8 @@ discovery.view.define('ruler', function(el, options, data, context) {
                 detailsTooltip.hide();
             }
         }
+    }, setRange(range) {
+        updateRange(el, range);
     } };
 
     // apply interval marker labels position if any
@@ -403,24 +513,8 @@ discovery.view.define('ruler', function(el, options, data, context) {
         : 'none';
     el.dataset.grid = String(grid);
 
-    // draw interval markers
-    const rulerStep = computeStep(state.length);
-    if (grid || el.dataset.labels !== 'none') {
-        for (
-            let offset = 0;
-            offset < state.length - rulerStep / 10;
-            offset += rulerStep
-        ) {
-            const intervalMarkerEl = el.appendChild(utils.createElement('div'));
-
-            intervalMarkerEl.className = 'interval-marker';
-            intervalMarkerEl.style.setProperty('--offset', offset / state.length);
-            intervalMarkerEl.dataset.title = formatLabel(state.range.start + offset, state.range);
-        }
-    }
-
     // overlay element
-    el.appendChild(
+    const overlayEl = el.appendChild(
         utils.createElement('div', 'view-ruler__selection-overlay', [
             utils.createElement('div', 'view-ruler__selection-overlay-mover', [
                 utils.createElement('div', {
@@ -436,9 +530,14 @@ discovery.view.define('ruler', function(el, options, data, context) {
     );
 
     const rangesEl = el.appendChild(utils.createElement('div', 'view-ruler__ranges'));
-    const view = { state, api, data, context, multiple, details, onChange, onCommit, rangesEl, render: this.render };
+    const view = {
+        state, api, data, context, multiple, segments, width, grid, formatLabel, markers: [], overlayEl,
+        bounds: bounds && normalizeRange(bounds),
+        details, onChange, onRangeChange, onCommit, rangesEl, render: this.render
+    };
 
     viewByEl.set(el, view);
+    renderMarkers(el, view);
     renderSelection(el, view);
 
     // add element for cleanup on destroy

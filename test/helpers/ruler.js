@@ -8,12 +8,19 @@ class Element {
         this.dataset = {};
         this.children = [];
         this.listeners = new Map();
-        this.style = { setProperty() {} };
+        this.style = { values: new Map(), setProperty(name, value) {
+            this.values.set(name, value);
+        } };
         this.width = 317;
     }
     appendChild(child) {
         child.parentNode = this;
         this.children.push(child);
+        return child;
+    }
+    insertBefore(child, reference) {
+        child.parentNode = this;
+        this.children.splice(this.children.indexOf(reference), 0, child);
         return child;
     }
     replaceChildren(...children) {
@@ -144,6 +151,14 @@ export function createRulerHarness(render = () => {}) {
         pointerDown(x, target) {
             pointerMove({ x, y: 5 });
             hostEvents.get('pointerdown')({ buttons: 1, pointerId: 1, x, y: 5, target });
+        },
+        wheel(x, event) {
+            pointerMove({ x, y: 5 });
+            const wheelEvent = { x, y: 5, deltaX: 0, deltaY: 0, ...event, prevented: false, preventDefault() {
+                this.prevented = true;
+            } };
+            hostEvents.get('wheel')(wheelEvent);
+            return wheelEvent.prevented;
         },
         pointerUp(x) {
             globalEvents.get('pointerup')({ pointerId: 1, x, y: 5 });
