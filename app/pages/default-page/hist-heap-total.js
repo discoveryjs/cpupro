@@ -20,8 +20,7 @@ export const histHeapTotal = withScopeValue('heapScope', '=scopeLine().viewport'
 
         totalHeapSize: events.binHeapTotal(#.binCount, capacity),
         $new,
-        $delete,
-        maxNewDelete: [$new.max(), $delete.max()].max()
+        $delete
     }
 `, {
     view: 'expand',
@@ -204,7 +203,7 @@ function histHeapTotalBody() {
                     className: 'mem-bins',
                     extent: '=extent',
                     bins: '=new',
-                    max: '=maxNewDelete',
+                    scaleBins: '=[new, delete]',
                     binsMax: true,
                     color: '#bf8354'
                 })
@@ -229,7 +228,7 @@ function histHeapTotalBody() {
                     className: 'mem-bins heap-delete-chunks',
                     extent: '=extent',
                     bins: '=delete',
-                    max: '=maxNewDelete',
+                    scaleBins: '=[new, delete]',
                     binsMax: true,
                     color: '#80a556'
                 })

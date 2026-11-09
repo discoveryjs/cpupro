@@ -1193,8 +1193,6 @@ export const methods = {
             }
         }
 
-        const max = Math.max(...binSumVector);
-
         return tracks.map(({ bins, value }, index) => {
             const entry = attribute ? attribute.dict[index] : null;
 
@@ -1202,8 +1200,8 @@ export const methods = {
                 entry: entry ?? valuesLine.type,
                 color: attribute ? attributeEntryColor(entry!) : 'green',
                 value,
-                max,
                 total: valuesLine.axisTotal,
+                totalBins: binSumVector,
                 step: valuesLine === axisLine
                     ? step
                     : null,

@@ -65,9 +65,9 @@ export const histAllocationTypes = withViewportAttributeTotals('allocationType',
                     className: 'total-percent',
                     content: viewportShareText()
                 },
-                lineWindowHistogram('attributeBins', '$track: #.attributeBins.value[index]; { ..., bins: $track.bins, max: $track.max, step: $track.step }', {
+                lineWindowHistogram('attributeBins', '$track: #.attributeBins.value[index]; { ..., bins: $track.bins, totalBins: $track.totalBins, step: $track.step }', {
                     bins: '=bins',
-                    max: '=max',
+                    scaleBins: '=[totalBins]',
                     scale: '=step ? "linear" : "sqrt"',
                     binsMax: true,
                     color: '=color'

@@ -1,5 +1,8 @@
 const range = { start: 0, end: 1000 };
 const bins = [0, 1, 3, 2, 5, 8, 6, 3, 1, 0, 0, 2, 4, 3, 1, 0];
+// Tracks splitting a total share its scale
+const tracks = [bins, bins.map(value => value % 3)];
+const totalBins = bins.map((value, index) => value + tracks[1][index]);
 // Two thousand bins merge into columns by four on a wide canvas and split while zooming in
 const fineBins = Array.from({ length: 2000 }, (_, index) =>
     Math.round(10 * (1 + Math.sin(index / 40)) * (1 + Math.sin(index / 7)) * (index % 97 < 60 ? 1 : 0.2))
@@ -46,6 +49,11 @@ export default {
             title: 'Shared maximum',
             highlightProps: ['max', 'binsMax'],
             demo: { view: 'bins-histogram', bins, max: 16, binsMax: true, height: 40 }
+        },
+        {
+            title: 'Scale shared with other series',
+            highlightProps: ['scaleBins'],
+            demo: tracks.map(track => ({ view: 'bins-histogram', bins: track, scaleBins: [totalBins], binsMax: true, height: 30 }))
         },
         {
             title: 'Presence of bins with small values',

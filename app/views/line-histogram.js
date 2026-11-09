@@ -30,6 +30,7 @@ discovery.view.define('line-histogram', function(el, props, data, context) {
         color: props.color,
         height: props.height,
         max: props.max,
+        scaleBins: props.scaleBins,
         binsMax: props.binsMax,
         scale: props.scale,
         onInit: props.zoom && (api => subscribeLineZoom(line, () => {

@@ -156,18 +156,52 @@ test('tracks splitting a total keep their shares in merged columns', () => {
     }
 });
 
-test('the scale of merged columns follows the whole range and does not change on panning', () => {
+test('without a maximum of a bin, columns scale to the highest visible column', () => {
     const bins = [9, 0, 0, 0, 1, 1, 2, 0];
     const range = { start: 0, end: 80 };
 
-    // Not scaled to the maximum of visible columns
-    assert.deepEqual(bars(8, 9, { bins, range, viewport: { start: 40, end: 80 } }), [
-        [0, 8, 1, 1],
-        [2, 8, 1, 1],
-        [4, 7, 1, 2]
+    // Bins beyond the viewport don't change the scale
+    assert.deepEqual(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 } }), [
+        [0, 4, 1, 4],
+        [2, 4, 1, 4],
+        [4, 0, 1, 8]
     ]);
-    assert.deepEqual(heights(bars(4, 9, { bins, range, viewport: { start: 40, end: 80 } })), [2, 2]);
-    assert.deepEqual(heights(bars(4, 9, { bins, range, viewport: { start: 0, end: 40 } })), [9]);
+    assert.deepEqual(bars(8, 8, { bins: [0, ...bins.slice(1)], range, viewport: { start: 40, end: 80 } }), [
+        [0, 4, 1, 4],
+        [2, 4, 1, 4],
+        [4, 0, 1, 8]
+    ]);
+    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 30, end: 70 } })), [4, 4, 8]);
+    assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 40, end: 80 } })), [8, 8]);
+    assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 0, end: 40 } })), [8]);
+
+    // A partially visible column counts with its whole value
+    assert.deepEqual(heights(bars(16, 8, { bins, range, viewport: { start: 5, end: 45 } })), [8, 1]);
+
+    // A maximum of a bin keeps the scale of the whole range
+    assert.deepEqual(heights(bars(8, 9, { bins, range, viewport: { start: 40, end: 80 }, max: 9 })), [1, 1, 2]);
+});
+
+test('series sharing the scale make the highest of their visible columns the full height', () => {
+    const range = { start: 0, end: 80 };
+    const total = [20, 0, 0, 0, 4, 2, 2, 0];
+    const bins = [10, 0, 0, 0, 2, 1, 1, 0];
+
+    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total] })), [4, 2, 2]);
+    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 0, end: 40 }, scaleBins: [total] })), [4]);
+
+    // The highest of several series, merged into the same columns
+    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [[0, 0, 0, 0, 0, 0, 8, 0], total] })), [2, 1, 1]);
+    assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total] })), [4, 1]);
+
+    // A maximum of a bin takes precedence
+    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total], max: 2 })), [8, 4, 4]);
+
+    // Columns far below the shared scale show their own shape behind
+    assert.deepEqual(draw(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total], binsMax: true }).map(layer => heights(layer.rects)), [
+        [8, 4, 4],
+        [4, 2, 2]
+    ]);
 });
 
 test('the viewport places columns aligned to their bins and clips the edges', () => {
@@ -185,18 +219,18 @@ test('the viewport places columns aligned to their bins and clips the edges', ()
 
     // Partially visible columns are clipped, columns outside are skipped
     assert.deepEqual(bars(15, 10, { bins, range, viewport: { start: 125, end: 175 } }), [
-        [0, 7, 0.5, 3],
-        [1.5, 6, 2, 4],
-        [4.5, 5, 2, 5],
-        [7.5, 4, 2, 6],
-        [10.5, 3, 2, 7],
-        [13.5, 2, 1.5, 8]
+        [0, 6, 0.5, 4],
+        [1.5, 5, 2, 5],
+        [4.5, 4, 2, 6],
+        [7.5, 2, 2, 8],
+        [10.5, 1, 2, 9],
+        [13.5, 0, 1.5, 10]
     ]);
 
     // A column clipped within its gap is not drawn
     assert.deepEqual(rounded(bars(15, 10, { bins, range, viewport: { start: 128, end: 178 } })).slice(0, 2), [
-        [0.6, 6, 2, 4],
-        [3.6, 5, 2, 5]
+        [0.6, 5, 2, 5],
+        [3.6, 4, 2, 6]
     ]);
 
     // Merged columns start at multiples of their size and keep their value when partially visible
@@ -419,7 +453,7 @@ test('draws on a canvas sized to its CSS box and pixel ratio while connected', (
     ]);
     assert.deepEqual({ ...histogram.drawn[0].options }, {
         bins, range: undefined, viewport: undefined,
-        presence, peaks: undefined, max: 5, binsMax: true, scale: 'log'
+        presence, peaks: undefined, max: 5, scaleBins: undefined, binsMax: true, scale: 'log'
     });
     assert.equal(histogram.drawn[1].options, histogram.drawn[0].options);
 

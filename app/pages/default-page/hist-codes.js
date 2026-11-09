@@ -220,11 +220,11 @@ function histFunctionCodesBody() {
                     lineWindowHistogram('codeBins', `
                         $tier: name;
                         $window: #.codeBins.value;
-                        { ..., bins: $window.byTier[=> name = $tier].bins, maxTotal: $window.maxTotal }
+                        { ..., bins: $window.byTier[=> name = $tier].bins, totalBins: $window.totalBins }
                     `, {
                         extent: '=extent',
                         bins: '=bins',
-                        max: '=maxTotal',
+                        scaleBins: '=[totalBins]',
                         binsMax: true,
                         color: '=color'
                     })

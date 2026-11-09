@@ -11,6 +11,8 @@ export type BinsHistogramOptions = {
     peaks?: boolean;
     // A maximum of a single bin, a column of merged amounts compares with the sum of their maximums
     max?: number;
+    // Series sharing the scale (e.g. the total of tracks), the highest of their visible columns is the full height
+    scaleBins?: ArrayLike<number>[] | null;
     binsMax?: boolean;
     scale?: BinsScale;
 };
@@ -53,6 +55,7 @@ export function drawBinsHistogram(
         presence = null,
         peaks = false,
         max,
+        scaleBins = null,
         binsMax,
         scale = 'linear'
     }: BinsHistogramOptions,
@@ -65,7 +68,6 @@ export function drawBinsHistogram(
     const gap = Math.max(1, Math.round(BAR_GAP * dpr));
     const columns = { size: 1, offset: 0, count: bins.length };
     const columnValue = peaks ? columnPeak : columnSum;
-    let columnsMax = 0;
 
     if (range && viewport && range.end > range.start && viewport.end > viewport.start) {
         const binSize = (range.end - range.start) / bins.length;
@@ -76,13 +78,20 @@ export function drawBinsHistogram(
 
     columns.size = binsPerColumn(columns.count, bins.length, width / dpr);
 
-    // The scale of all columns doesn't change on panning, only when columns merge or split
-    for (let i = 0; i < bins.length; i += columns.size) {
-        columnsMax = Math.max(columnsMax, columnValue(bins, i, columns.size));
-    }
+    // Without a maximum of a bin, the scale depends only on the visible columns rather than on the range of bins,
+    // which follows the viewport in steps and may hold columns far higher than any visible one
+    const columnsMax = visibleColumnsMax(bins, columns, columnValue);
 
     if (max && !peaks) {
         max *= columns.size;
+    }
+
+    if (!max && scaleBins !== null) {
+        max = 0;
+
+        for (const series of scaleBins) {
+            max = Math.max(max, visibleColumnsMax(series, columns, columnValue));
+        }
     }
 
     ctx.clearRect(0, 0, width, height);
@@ -108,6 +117,18 @@ export function binsPerColumn(binsAcross: number, binCount: number, width: numbe
     }
 
     return size;
+}
+
+function visibleColumnsMax(bins: ArrayLike<number>, { size, offset, count }: Columns, columnValue: ColumnValueFn) {
+    const start = Math.max(0, Math.floor(offset / size) * size);
+    const end = Math.min(bins.length, offset + count);
+    let max = 0;
+
+    for (let i = start; i < end; i += size) {
+        max = Math.max(max, columnValue(bins, i, size));
+    }
+
+    return max;
 }
 
 function columnSum(bins: ArrayLike<number>, start: number, size: number) {

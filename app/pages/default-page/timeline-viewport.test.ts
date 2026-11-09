@@ -187,8 +187,8 @@ test.each([
                     assert.equal(histogram.metrics, `=#.${windowBins.name}`);
                     assert.deepEqual(calls, [[name, 7]]);
                     assert.deepEqual(content.map(row => row.entry), rows.map(row => row.entry));
-                    assert.deepEqual(content.map(row => [row.value, row.bins, row.max, row.step]), rows.map(row =>
-                        [row.value, bins[row.index].bins, bins[row.index].max, bins[row.index].step]
+                    assert.deepEqual(content.map(row => [row.value, row.bins, row.totalBins, row.step]), rows.map(row =>
+                        [row.value, bins[row.index].bins, bins[row.index].totalBins, bins[row.index].step]
                     ));
 
                     // Labels are shares of the viewport totals, regardless of the scope viewport
@@ -583,7 +583,7 @@ test('passes code coverage explicitly to each histogram without a context overri
     assert.ok(histogram.extent);
     assert.equal(query(histogram.extent.slice(1))(rowData), extent);
     assert.equal(rowData.bins, codeBins.byTier[0].bins);
-    assert.equal(rowData.maxTotal, codeBins.maxTotal);
+    assert.equal(rowData.totalBins, codeBins.totalBins);
 });
 
 test.each([100, 1000])('shares viewport coordinates while details count actual events for duration=%i', async duration => {

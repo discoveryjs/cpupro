@@ -295,7 +295,7 @@ const categoriesTimelineWindow = withLineWindow({
                                 },
                                 lineWindowHistogram('mappingBins', '$entry: entry; #.mappingBins.value[=> entry = $entry]', {
                                     bins: '=bins',
-                                    max: '=max',
+                                    scaleBins: '=[totalBins]',
                                     scale: '=step ? "linear" : "sqrt"',
                                     binsMax: true,
                                     presence: '=totalValueBins',
