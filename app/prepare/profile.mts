@@ -426,6 +426,10 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         prepareLineFilters(line);
         prepareLineRange(line);
         line.signatures = await work(`compute ${line.type} event signatures`, () => new EventSignatures(line));
+
+        for (const { populationViewport } of line.breakdowns) {
+            populationViewport.filter.setEventClasses(line.signatures.eventClasses);
+        }
     }
 
     return profile;

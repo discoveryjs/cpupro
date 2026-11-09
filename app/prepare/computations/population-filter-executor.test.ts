@@ -103,3 +103,40 @@ test('intersects event filters over attribute values without changing sample des
     assert.deepEqual([...population.samples], [0, 1, sinkId, sinkId]);
     assert.deepEqual([...population.samplesTotal], [10, 20]);
 });
+
+test('intersects event filters per class when classes keep their values together', () => {
+    const population = new PopulationFiltered(new Population(new Uint32Array([0, 1, 0, 1, 0]), new Uint32Array([10, 20, 30, 40, 50])));
+    const lifespan = Uint8Array.of(0, 1, 1, 0, 2);
+    const space = Uint32Array.of(3, 3, 1, 1, 3);
+    const other = Uint8Array.of(0, 0, 0, 0, 1);
+    const sinkId = population.sinkId;
+    let acceptedEvents: EventAcceptance | null = null;
+    const executor = new PopulationFilter(2, 5, (update, accepted) => {
+        acceptedEvents = accepted;
+        update(new Uint32Array(2));
+    });
+    const classes = {
+        ids: Uint16Array.of(0, 1, 2, 3, 4),
+        events: Uint32Array.of(0, 1, 2, 3, 4),
+        values: new Set([lifespan, space])
+    };
+
+    population.filter.setEventClasses(classes);
+    population.filter.set({ key: 'lifespan', domain: 'event', size: 5, values: lifespan, accepts: Uint8Array.of(1, 0, 1) });
+    population.filter.set({ key: 'space', domain: 'event', size: 5, values: space, accepts: Uint8Array.of(0, 0, 0, 1) });
+    assert.deepEqual([...population.samples], [0, sinkId, sinkId, sinkId, 0]);
+    assert.deepEqual([...population.samplesTotal], [60, 0]);
+
+    executor.setEventClasses(classes);
+    executor.batch(() => {
+        executor.set({ key: 'lifespan', domain: 'event', size: 5, values: lifespan, accepts: Uint8Array.of(1, 0, 1) });
+        executor.set({ key: 'space', domain: 'event', size: 5, values: space, accepts: Uint8Array.of(0, 0, 0, 1) });
+    });
+    assert.equal(acceptedEvents!.values, classes.ids);
+    assert.deepEqual([...acceptedEvents!.accepts], [1, 0, 0, 0, 1]);
+
+    // A filter over values the classes don't keep together intersects per event
+    executor.set({ key: 'other', domain: 'event', size: 5, values: other, accepts: Uint8Array.of(1, 0) });
+    assert.notEqual(acceptedEvents!.values, classes.ids);
+    assert.deepEqual(Array.from(acceptedEvents!.values, value => acceptedEvents!.accepts[value]), [1, 0, 0, 0, 0]);
+});

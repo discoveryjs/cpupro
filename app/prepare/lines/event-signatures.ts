@@ -1,4 +1,5 @@
 import type { PopulationFiltered } from '../computations/population.js';
+import type { EventClasses } from '../computations/population-filter.js';
 import type { PreparedAttributeFilter } from '../computations/attribute-filter.js';
 import { equalRanges, type RangeSet } from '../computations/coordinates.js';
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
@@ -59,6 +60,15 @@ export class EventSignatures {
 
     get count() {
         return this.events.length;
+    }
+
+    // Signatures as event classes: filters over values given per event are constant within a signature
+    get eventClasses(): EventClasses {
+        return {
+            ids: this.ids,
+            events: this.events,
+            values: new Set(this.#columns.filter(column => column.samples === null).map(column => column.values))
+        };
     }
 
     // Value of every signature for an attribute or a breakdown's sample-to-category-node mapping

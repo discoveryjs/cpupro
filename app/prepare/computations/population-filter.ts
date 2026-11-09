@@ -8,8 +8,15 @@ type FilterEntry = {
 };
 // One value per event and its acceptance; populations test exactly one table lookup per event
 export type EventAcceptance = {
-    values: Uint8Array | Uint32Array;
+    values: Uint8Array | Uint16Array | Uint32Array;
     accepts: Acceptance;
+};
+// Classes of events that every filter over the listed value vectors accepts or rejects together:
+// a class per event and the first event of every class
+export type EventClasses = {
+    ids: Uint16Array | Uint32Array;
+    events: Uint32Array;
+    values: ReadonlySet<Uint8Array | Uint16Array | Uint32Array>;
 };
 type ApplyFilters = (updateMask: (mask: Uint32Array) => void, acceptedEvents: EventAcceptance | null) => void;
 
@@ -21,6 +28,7 @@ export class PopulationFilter extends Observer {
     #pending = false;
     #removedBits = 0;
     #removedEvent = false;
+    #eventClasses: EventClasses | null = null;
 
     constructor(
         private readonly sampleCount: number,
@@ -45,6 +53,11 @@ export class PopulationFilter extends Observer {
         }
 
         return bits;
+    }
+
+    // Several event filters over values the classes keep together are then intersected per class, not per event
+    setEventClasses(classes: EventClasses | null) {
+        this.#eventClasses = classes;
     }
 
     get(key: string) {
@@ -194,17 +207,30 @@ export class PopulationFilter extends Observer {
 
                     mask[sampleId] = bits;
                 }
-            }, intersectEventAcceptance(eventFilters));
+            }, intersectEventAcceptance(eventFilters, this.#eventClasses));
         }
 
         this.notify();
     }
 }
 
-// Only several event filters need an event-sized vector: their intersection as per-event flags
-function intersectEventAcceptance(filters: EventAcceptance[]): EventAcceptance | null {
+// Several event filters are intersected into one acceptance: per class when the classes keep the values of every
+// filter together, otherwise as per-event flags
+function intersectEventAcceptance(filters: EventAcceptance[], classes: EventClasses | null): EventAcceptance | null {
     if (filters.length < 2) {
         return filters[0] ?? null;
+    }
+
+    if (classes !== null && filters.every(filter => classes.values.has(filter.values))) {
+        const accepts = new Uint8Array(classes.events.length).fill(1);
+
+        for (const { values, accepts: filterAccepts } of filters) {
+            for (let eventClass = 0; eventClass < accepts.length; eventClass++) {
+                accepts[eventClass] &= filterAccepts[values[classes.events[eventClass]]];
+            }
+        }
+
+        return { values: classes.ids, accepts };
     }
 
     const flags = new Uint8Array(filters[0].values.length).fill(1);
