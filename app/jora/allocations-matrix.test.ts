@@ -6,31 +6,85 @@ import type { ProfileLineAllocationOwnerAttribute, ProfileLineAllocationCompilat
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 
-test.each([{ mapping: [1, 3, 4] }, { mapping: [0, 4, 4] }, { mapping: [4, 4, 4] }])('excludes sink at the end of or inside a tree mapping: $mapping', async ({ mapping }) => {
+// Fixture allocation events weigh 16, 32, 48 and 64 bytes
+function addTypesAndLifespans(profile: Awaited<ReturnType<typeof createProfileFixture>>['profile'], types: number[], lifespans: number[]) {
+    profile.memline!.attributes.push(
+        { name: 'allocationType', values: Uint32Array.from(types), dict: ['object', 'array'] },
+        { name: 'allocationLifespan', values: Uint8Array.from(lifespans), dict: ['alive', 'short-lived'] }
+    );
+}
+
+test.each([
+    { mapping: [1, 3, 4], samples: 'events 0 and 3 in sample 0', masked: [80] },
+    { mapping: [0, 4, 4], samples: 'no event in sample 0', masked: [160] },
+    { mapping: [4, 4, 4], samples: 'every event in sample 0', masked: [] }
+])('rows count only events outside sink: $samples', async ({ mapping, masked }) => {
     const { profile } = await createProfileFixture({ mapping });
-    const line = profile.memline!;
-    const breakdown = line.breakdowns.find(entry => entry.kind === 'call-stack')!;
-    line.attributes.push(
-        { name: 'allocationType', values: new Uint32Array([0, 0, 0, 0]), dict: ['object'] },
-        { name: 'allocationLifespan', values: new Uint8Array([0, 0, 0, 0]), dict: ['alive'] }
-    );
+    const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === 'call-stack')!;
     const population = breakdown.populationFiltered;
-    const matrix = () => methods.allocationsMatrix.call(
-        { context: {} }, breakdown.callFrames!.filtered.nodes, population, () => true, profile
-    );
-    assert.equal(matrix()[0].total.sum, 160);
+    const sums = () => methods.allocationsMatrix
+        .call({ context: {} }, breakdown.callFrames!.filtered.nodes, population, () => true, profile)
+        .map(row => row.total.sum);
+
+    addTypesAndLifespans(profile, [0, 0, 0, 0], [0, 0, 0, 0]);
+    assert.deepEqual(sums(), [160]);
+
     population.updateMask(mask => {
         mask[0] = 0x80000000;
     });
-    const accepted = population.population.values.reduce((sum, value, index) =>
-        sum + (population.population.samples[index] === 0 ? 0 : value), 0
-    );
-    assert.equal(matrix()[0]?.total.sum ?? 0, accepted);
+    assert.deepEqual(sums(), masked);
+
     population.updateMask(mask => mask.fill(0x80000000));
-    assert.deepEqual(matrix(), []);
-    assert.equal(population.sink.total, 160);
+    assert.deepEqual(sums(), []);
+
     population.resetMask();
-    assert.equal(matrix()[0].total.sum, 160);
+    assert.deepEqual(sums(), [160]);
+});
+
+test('rows summarize each type by lifespan, cells with several events keep their extremes', async () => {
+    const { profile } = await createProfileFixture({ mapping: [0, 4, 4] });
+    const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === 'call-stack')!;
+
+    // Objects: 16 and 48 bytes alive, 32 short-lived; arrays: 64 bytes alive
+    addTypesAndLifespans(profile, [0, 0, 0, 1], [0, 1, 0, 0]);
+    const population = breakdown.populationFiltered;
+    const rows = () => methods.allocationsMatrix.call(
+        { context: {} }, breakdown.callFrames!.filtered.nodes, population, () => true, profile
+    );
+
+    assert.deepEqual(rows(), [
+        {
+            type: 'object',
+            total: { count: 3, sum: 96, min: 16, max: 48 },
+            alive: { count: 2, sum: 64, min: 16, max: 48 },
+            'short-lived': { count: 1, sum: 32, min: 32, max: 32 }
+        },
+        {
+            type: 'array',
+            total: { count: 1, sum: 64, min: 64, max: 64 },
+            alive: { count: 1, sum: 64, min: 64, max: 64 },
+            'short-lived': { count: 0, sum: 0, min: 0, max: 0 }
+        }
+    ]);
+
+    // The range cuts the 48-byte object at 60 bytes to 12 bytes, below the other alive object
+    population.setRange(0, 60);
+    assert.deepEqual(rows()[0].alive, { count: 2, sum: 28, min: 12, max: 16 });
+});
+
+test.each([
+    { missing: 'allocationType' },
+    { missing: 'allocationLifespan' }
+])('there is no matrix without $missing', async ({ missing }) => {
+    const { profile } = await createProfileFixture({ mapping: [0, 4, 4] });
+    const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === 'call-stack')!;
+
+    addTypesAndLifespans(profile, [0, 0, 0, 1], [0, 1, 0, 0]);
+    profile.memline!.attributes = profile.memline!.attributes.filter(attribute => attribute.name !== missing);
+
+    assert.deepEqual(methods.allocationsMatrix.call(
+        { context: {} }, breakdown.callFrames!.filtered.nodes, breakdown.populationFiltered, () => true, profile
+    ), []);
 });
 
 test('selects compilation owners and stages without losing allocation filters', async () => {
