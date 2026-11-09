@@ -188,6 +188,14 @@ test.each([
                     assert.deepEqual(shares, { tracks, total });
                     assert.ok(viewport !== null || filtered || total > 0);
 
+                    // The window of histogram data doesn't scope labels
+                    const windows = profile.lines.flatMap(line => line.breakdowns.map(breakdown => breakdown.populationWindow));
+                    const windowRanges = windows.map(population => population.ranges);
+
+                    windows.forEach(population => population.setRanges([]));
+                    assert.deepEqual(tracked(section.value)(rows, context), shares);
+                    windows.forEach((population, index) => population.setRanges(windowRanges[index]));
+
                     for (const row of rows) {
                         assert.equal(
                             query(viewportShare)(row, { viewportTotals: { value: shares } }),

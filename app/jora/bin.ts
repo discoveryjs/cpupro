@@ -942,13 +942,20 @@ export const methods = {
         }));
     },
 
-    // A single bin of an allocation attribute over the scope line viewport, rather than the scope viewport
-    // (e.g. the window of histogram data)
+    // Totals of an allocation attribute in the viewport populations of the scope line and the memline, as a single
+    // bin over the scope line viewport; unlike bins, they don't depend on the window of histogram data
     viewportAllocationAttribute(name: ProfileLineAttribute['name']) {
-        const line = resolveScopeProfileLine(null, this.context);
-        const scopeViewport = line ? lineViewport(line, this.context.data?.profiles) : null;
+        const scopeLine = resolveScopeProfileLine(null, this.context);
+        const line = resolveScopeProfileLine('memline', this.context);
+        const attribute = line?.attributes.find(attribute => attribute.name === name);
 
-        return methods.binAllocationAttribute.call({ ...this, context: { ...this.context, scopeViewport } }, name, 1);
+        if (!scopeLine || !line || !attribute) {
+            return [];
+        }
+
+        const context = { ...this.context, scopeViewport: lineViewport(scopeLine, this.context.data?.profiles) };
+
+        return methods.binLineToAxisLine.call({ ...this, context }, line, attribute, undefined, 1, 'populationViewport');
     },
 
     binTreeSamples(treeMetrics: SampledTree<unknown>, n = 500, breakdown?: ProfileLineBreakdown | string) {
@@ -1119,13 +1126,15 @@ export const methods = {
         valuesLine: ProfileLine,
         attribute: ProfileLineAttribute | null,
         axisLine?: ProfileLine,
-        n = 500
+        n = 500,
+        // Histograms bin the window populations, totals of the viewport take the viewport populations
+        scope: 'populationWindow' | 'populationViewport' = 'populationWindow'
     ) {
         axisLine = resolveScopeProfileLine(axisLine, this.context) || valuesLine;
 
         const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, this.context);
         const populationBreakdown = scopeBreakdown?.line === valuesLine ? scopeBreakdown : valuesLine.breakdowns[0];
-        const viewport = populationBreakdown.populationWindow;
+        const viewport = populationBreakdown[scope];
         const { ranges: sourceRanges } = viewport;
         const lineMapping = valuesLine !== axisLine
             ? valuesLine.mappings[axisLine.type]
@@ -1142,7 +1151,7 @@ export const methods = {
 
         if (mappingToLine !== null) {
             const { cumulative } = getCallStackPopulation(axisLine);
-            const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0]).populationWindow;
+            const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0])[scope];
             const coversAxis = skip >= 0 && skip + axisViewport.cumulativeEnd <= total;
             const targetBin = createTargetBinReader(axisViewport, cumulative, grid);
             // With a nondecreasing mapping, events with targets on the grid are one interval; one more

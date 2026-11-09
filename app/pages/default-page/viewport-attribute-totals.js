@@ -6,7 +6,7 @@ export function withViewportAttributeTotals(attributeName, content) {
         name: 'viewportTotals',
         metrics: `=[
             scopeBreakdown().populationViewport,
-            scopeProfile().memline.breakdowns[0].populationWindow
+            scopeProfile().memline.breakdowns[0].populationViewport
         ].[$]`,
         value: `
             $tracks: "${attributeName}".viewportAllocationAttribute();
