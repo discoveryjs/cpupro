@@ -1,6 +1,6 @@
 import { sessionExpandState } from '../common.js';
 import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
-import { viewportShare, viewportShareText, withViewportAttributeTotals } from './viewport-attribute-totals.js';
+import { viewportShare, viewportShareText, withViewportAttributeTotals } from './scope-values.js';
 
 export const histAllocationLifespan = withViewportAttributeTotals('allocationLifespan', {
     view: 'expand',

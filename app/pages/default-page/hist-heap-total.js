@@ -1,20 +1,26 @@
 import { sessionExpandState } from '../common.js';
 import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
+import { withScopeValue, scopeValueContent, scopeBinsContext } from './scope-values.js';
 
-// Heap sizes are binned for the line window, the values derived from them follow it
-export const histHeapTotal = withLineWindowValue('heapBins', `
+// Heap sizes are binned for the line window, histograms follow it. Totals are of the line viewport: the range
+// of heap sizes (peaks of bins of the same size as the window bins) and the sums of allocated and released sizes
+export const histHeapTotal = withScopeValue('heapScope', '=scopeLine().viewport', `
     scopeProfile().heap | events ? {
         $totalHeapSize: events.binHeapTotal(#.binCount, capacity);
+
+        minTotal: $totalHeapSize.min(),
+        maxTotal: $totalHeapSize.max(),
+        newTotal: events.binHeapEvents("new", #.binCount).sum(),
+        deleteTotal: events.binHeapEvents("delete", #.binCount).sum()
+    }
+`, withLineWindowValue('heapBins', `
+    scopeProfile().heap | events ? {
         $new: events.binHeapEvents("new", #.binCount);
         $delete: events.binHeapEvents("delete", #.binCount);
 
-        $totalHeapSize,
-        minTotal: $totalHeapSize.min(),
-        maxTotal: $totalHeapSize.max(),
+        totalHeapSize: events.binHeapTotal(#.binCount, capacity),
         $new,
-        newTotal: $new.sum(),
         $delete,
-        deleteTotal: $delete.sum(),
         maxNewDelete: [$new.max(), $delete.max()].max()
     }
 `, {
@@ -50,10 +56,10 @@ export const histHeapTotal = withLineWindowValue('heapBins', `
             {
                 view: 'list',
                 className: 'category-timings-list with-from',
-                data: `#.heapBins.value | [
-                    { $selection: totalHeapSize[#.binStart:#.binEnd]; name: 'Total size', value: $selection.max(), from: $selection.min(), total: maxTotal },
-                    { name: 'Allocated', value: new[#.binStart:#.binEnd].sum(), total: newTotal },
-                    { name: 'Released', value: delete[#.binStart:#.binEnd].sum(), total: deleteTotal }
+                data: `$scope: #.heapScope.value; #.heapBins.value | [
+                    { $selection: totalHeapSize[#.binStart:#.binEnd]; name: 'Total size', value: $selection.max(), from: $selection.min(), total: $scope.maxTotal },
+                    { name: 'Allocated', value: new[#.binStart:#.binEnd].sum(), total: $scope.newTotal },
+                    { name: 'Released', value: delete[#.binStart:#.binEnd].sum(), total: $scope.deleteTotal }
                 ]`,
                 itemConfig: {
                     className: '=value = 0 ? "no-value"',
@@ -84,19 +90,15 @@ export const histHeapTotal = withLineWindowValue('heapBins', `
             } }
         ]
     }
-});
+}), scopeBinsContext);
 
-// Values of the window bins shown with the data of the section, rendered again when they change
-function withHeapBins(content) {
-    return {
-        view: 'update-on-line-metrics-changes',
-        metrics: '=#.heapBins',
-        content: {
-            view: 'context',
-            data: '{ ..., ...#.heapBins.value }',
-            content
-        }
-    };
+// Totals of the line viewport shown with the data of the section, rendered again when they change
+function withHeapScope(content) {
+    return scopeValueContent('heapScope', {
+        view: 'context',
+        data: '{ ..., ...#.heapScope.value }',
+        content
+    });
 }
 
 function histHeapTotalHeader() {
@@ -105,7 +107,7 @@ function histHeapTotalHeader() {
         content: [
             { when: 'no $', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
             { content: [
-                withHeapBins({ view: 'block', className: 'labeled-value-groups', content: [
+                withHeapScope({ view: 'block', className: 'labeled-value-groups', content: [
                     { view: 'block', className: 'labeled-value-group', content: [
                         {
                             view: 'labeled-value',
@@ -165,7 +167,7 @@ function histHeapTotalBody() {
                 {
                     view: 'block',
                     className: 'total-value',
-                    content: withHeapBins([
+                    content: withHeapScope([
                         'text-with-unit{ value: maxTotal.bytes(false), unit: true }',
                         'text-with-unit{ value: minTotal.bytes(), unit: true }'
                     ])
@@ -196,7 +198,7 @@ function histHeapTotalBody() {
                 {
                     view: 'block',
                     className: 'total-value',
-                    content: withHeapBins('text-with-unit{ value: newTotal.bytes(false), unit: true }')
+                    content: withHeapScope('text-with-unit{ value: newTotal.bytes(false), unit: true }')
                 },
                 lineWindowHistogram('heapBins', '{ ..., ...#.heapBins.value }', {
                     className: 'mem-bins',
@@ -221,7 +223,7 @@ function histHeapTotalBody() {
                 {
                     view: 'block',
                     className: 'total-value',
-                    content: withHeapBins('text-with-unit{ value: deleteTotal.bytes(false), unit: true }')
+                    content: withHeapScope('text-with-unit{ value: deleteTotal.bytes(false), unit: true }')
                 },
                 lineWindowHistogram('heapBins', '{ ..., ...#.heapBins.value }', {
                     className: 'mem-bins heap-delete-chunks',

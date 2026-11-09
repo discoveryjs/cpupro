@@ -1,6 +1,20 @@
 import { sessionExpandState } from '../common.js';
+import { withScopeValue, scopeValueContent } from './scope-values.js';
 
-export const chartUsedHeap = {
+// Points of the whole profile are drawn and the zoom is displayed within them; the stats and the scale of sizes
+// are of the line viewport, with the counters interpolated at its edges
+export const chartUsedHeap = withScopeValue('usedHeapScope', '=scopeLine().viewport', `
+    $scope: scopeLine().lineViewport(#.data.profiles);
+    $counters: scopeProfile().thread.counters;
+    $used: $counters[=> name = "used-heap-size"].values.selectCountersWithOuters($scope.start, $scope.end);
+    $total: $counters[=> name = "total-heap-size"].values.selectCountersWithOuters($scope.start, $scope.end);
+    $used ? {
+        min: $used.value.min(),
+        max: $used.value.max(),
+        maxY: [$used.value.max(), $total.value.max()].max(),
+        ...$used.updownSum(=> value)
+    }
+`, {
     view: 'expand',
     ...sessionExpandState('default-chart-used-heap', false, '$'),
     data: `scopeProfile() | {
@@ -22,10 +36,11 @@ export const chartUsedHeap = {
             content: [
                 { when: 'no points', content: 'html:` <span style=\"color: #888\">(unavailable)</span>`' },
                 { content: [
-                    {
+                    scopeValueContent('usedHeapScope', {
                         view: 'block',
                         className: 'labeled-value-groups persistent',
-                        data: '{ min: points.y.min(), max: points.y.max(), ...points.updownSum(=>y) }',
+                        data: '#.usedHeapScope.value',
+                        whenData: true,
                         content: [
                             { view: 'block', className: 'labeled-value-group', content: { view: 'labeled-value-list', data: `[
                                 { label: 'Range', value: \`\${min.bytes()} – \${max.bytes()}\` },
@@ -37,7 +52,7 @@ export const chartUsedHeap = {
                                 { label: 'Net Change', value: (up - down).bytes() }
                             ]`, label: 'text:label', value: 'text:value' } }
                         ]
-                    }
+                    })
                 ] }
             ]
         }
@@ -53,13 +68,15 @@ export const chartUsedHeap = {
             } }
         ]
     }
-};
+});
 
 function chartUsedHeapBody() {
     return [
-        {
+        scopeValueContent('usedHeapScope', {
             view: 'cpupro-chart',
             extent: '=extent',
+            minY: '=#.usedHeapScope.value.min',
+            maxY: '=#.usedHeapScope.value.maxY',
             minX: '=scopeViewport().start',
             maxX: '=scopeViewport().end',
             zoom: true,
@@ -68,6 +85,6 @@ function chartUsedHeapBody() {
             labelFormat: '==>bytes()',
             height: 120,
             color: '#e8bc6da0'
-        }
+        })
     ];
 }

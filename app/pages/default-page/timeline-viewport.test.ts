@@ -14,7 +14,8 @@ import { histAllocationSpaces } from './hist-allocation-spaces.js';
 import { histAllocationLifespan } from './hist-allocation-lifespan.js';
 import { histAllocationGcs } from './hist-allocation-gcs.js';
 import { histAllocationCodeType } from './hist-allocation-code-type.js';
-import { viewportShare } from './viewport-attribute-totals.js';
+import { viewportShare } from './scope-values.js';
+import { setLineZoom } from '../../jora/viewport.js';
 import { categoriesFractionBars } from './categories-fraction-bar.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 import * as lineWindow from '../../views/misc/line-window.js';
@@ -52,7 +53,7 @@ test('tooltip dispatch selects one section and uses its current local data and s
     const renderer = { render: renderDetails };
     calls.length = 0;
     const heap = {
-        config: histHeapTotal.content,
+        config: histHeapTotal.content.content,
         data: { revision: 1 },
         context: { scopeProfile: 'heap-profile', scopeLine: 'heap-line', scopeBreakdown: 'heap-breakdown' }
     };
@@ -72,7 +73,7 @@ test('tooltip dispatch selects one section and uses its current local data and s
 
     renderDetails.call(renderer, null, {}, {}, context);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0][1], histHeapTotal.content.rulerDetails);
+    assert.equal(calls[0][1], histHeapTotal.content.content.rulerDetails);
     assert.equal(calls[0][2], heap.data);
     assert.equal(calls[0][3].detail, detail);
     assert.equal(calls[0][3].scopeProfile, 'heap-profile');
@@ -535,8 +536,8 @@ test('sections own their queries without eager parent calls and retain source co
     assert.deepEqual(calls, []);
 
     // Bins are computed once by values of the line window, rows and their extents don't need them
-    const heap = tracked(histHeapTotal.content.data)(panel, context);
-    const heapBins = tracked(histHeapTotal.value)(panel, query(histHeapTotal.valueContext)(panel, context));
+    const heap = tracked(histHeapTotal.content.content.data)(panel, context);
+    const heapBins = tracked(histHeapTotal.content.value)(panel, query(histHeapTotal.content.valueContext)(panel, context));
 
     assert.deepEqual(calls, ['heap']);
 
@@ -550,8 +551,8 @@ test('sections own their queries without eager parent calls and retain source co
 
     assert.equal(panel.line, profile.timeline);
     assert.deepEqual(heap.extent, { start: 0, end: 60 });
-    assert.equal(heapBins.newTotal, 10);
-    const heapRows = histHeapTotal.content.content.content[0].content;
+    assert.equal(heapBins.new.reduce((sum, value) => sum + value, 0), 10);
+    const heapRows = histHeapTotal.content.content.content.content[0].content;
     assert.ok(Array.isArray(heapRows));
     for (const row of heapRows) {
         const histogram = row.content.at(-1)!.content;
@@ -655,10 +656,11 @@ test('profile time charts keep their viewport and selection owner when the prima
         assert.equal(parentContext.scopeLine, selectedLine);
 
         for (const chart of charts.content) {
-            const data = query(chart.data)({}, context);
+            const section = chart === chartUsedHeap ? chart.content : chart;
+            const data = query(section.data)({}, context);
             if (chart === chartUsedHeap) {
                 assert.deepEqual(data.extent, { start: 120, end: 180 });
-                const view = chart.content.content[0].content[0];
+                const view = section.content.content[0].content[0].content;
                 assert.equal(query(view.extent.slice(1))(data, context), data.extent);
                 assert.equal(query(view.minX.slice(1))(data, context), 100);
                 assert.equal(query(view.maxX.slice(1))(data, context), 200);
@@ -718,7 +720,7 @@ test('values of the line window follow it without rendering the section again, G
     assert.equal(events.zoom, true);
     assert.deepEqual(query('scopeViewport()')(profile, query(events.context)(profile, parent)), bounds);
     assert.deepEqual(query('scopeViewport()')(profile, query(charts.context)(profile, parent)), bounds);
-    assert.equal(chartUsedHeap.content.content[0].content[0].zoom, true);
+    assert.equal(chartUsedHeap.content.content.content[0].content[0].content.zoom, true);
     assert.equal(userTimingsTimeline.content.content[0].content[0].zoom, true);
     line.zoom.resetRange();
     assert.deepEqual(query('scopeViewport()')({}, parent), { start: 0, end: 100 });
@@ -731,4 +733,79 @@ test('values of the line window follow it without rendering the section again, G
     line.zoom.selection.setRange(15, 25);
     assert.deepEqual(windowContext(profile, parent).scopeViewport, { start: 10, end: 35 });
     line.viewport.resetRange();
+});
+
+test('heap totals, used heap stats and its scale follow the line viewport rather than the zoom or the window', async () => {
+    const { profile } = await createProfileFixture({ cpuOnly: true });
+    const line = profile.timeline!;
+    const parent = { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles: [profile] } };
+    profile.heap = {
+        available: 1000,
+        capacity: 100,
+        events: [
+            { tm: 5, event: 'new', size: 10, address: '0x1' },
+            { tm: 15, event: 'new', size: 20, address: '0x2' },
+            { tm: 25, event: 'delete', size: 10, address: '0x1' },
+            { tm: 35, event: 'new', size: 40, address: '0x3' }
+        ]
+    };
+    profile.thread = { counters: [
+        { name: 'used-heap-size', values: [{ tm: 0, value: 100, event: null }, { tm: 10, value: 300, event: null }, { tm: 20, value: 200, event: null }, { tm: 30, value: 500, event: null }] },
+        { name: 'total-heap-size', values: [{ tm: 0, value: 400, event: null }, { tm: 30, value: 600, event: null }] }
+    ] } as typeof profile.thread;
+    const heapTotals = () => query(histHeapTotal.value)(null, query(histHeapTotal.valueContext)(null, { ...parent, scopeLine: line }));
+    const usedHeap = () => query(chartUsedHeap.value)(null, { ...parent, scopeLine: line });
+
+    assert.equal(histHeapTotal.metrics, '=scopeLine().viewport');
+    assert.equal(chartUsedHeap.metrics, '=scopeLine().viewport');
+    assert.deepEqual(heapTotals(), { minTotal: 100, maxTotal: 160, newTotal: 70, deleteTotal: 10 });
+    assert.deepEqual(usedHeap(), { min: 100, max: 500, maxY: 600, up: 500, down: 100 });
+
+    line.viewport.selection.setRange(10, 30);
+    const scoped = heapTotals();
+    const scopedHeap = usedHeap();
+
+    assert.deepEqual(scoped, { minTotal: 110, maxTotal: 130, newTotal: 20, deleteTotal: 10 });
+    assert.deepEqual(scopedHeap, { min: 200, max: 500, maxY: 600, up: 300, down: 100 });
+
+    // The zoom and the window it derives don't change them
+    setLineZoom(line, parent.data.profiles, { start: 12, end: 14 });
+    assert.notDeepEqual(methods.lineWindow(line, parent.data.profiles), methods.lineViewport(line, parent.data.profiles));
+    assert.deepEqual(heapTotals(), scoped);
+    assert.deepEqual(usedHeap(), scopedHeap);
+
+    // The chart is scaled to the sizes in the viewport
+    const chart = chartUsedHeap.content.content.content[0].content[0];
+    assert.equal(chart.view, 'update-on-line-metrics-changes');
+    assert.equal(query(chart.metrics.slice(1))(null, { usedHeapScope: 'value' }), 'value');
+    assert.equal(query(chart.content.minY.slice(1))(null, { usedHeapScope: { value: scopedHeap } }), 200);
+    assert.equal(query(chart.content.maxY.slice(1))(null, { usedHeapScope: { value: scopedHeap } }), 600);
+
+    line.zoom.selection.resetRange();
+    line.viewport.selection.resetRange();
+});
+
+test('code tier shares are of all functions by their top tier, regardless of the window', async () => {
+    const { profile } = await createProfileFixture({ cpuOnly: true });
+    const ignition = { topTier: 'Ignition', callFrame: { id: 1 } };
+    const sparkplug = { topTier: 'Sparkplug', callFrame: { id: 2 } };
+    Object.assign(profile, {
+        codes: [
+            { tm: 5, tier: 'Ignition', callFrameCodes: ignition },
+            { tm: 6, tier: 'Ignition', callFrameCodes: sparkplug },
+            { tm: 25, tier: 'Sparkplug', callFrameCodes: sparkplug }
+        ],
+        codesByCallFrame: [ignition, sparkplug, { topTier: 'Sparkplug', callFrame: { id: 3 } }]
+    });
+    const parent = { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles: [profile] } };
+    const context = windowContext(profile, parent);
+    const codeBins = query(histCodes.value)(null, query(histCodes.valueContext)(null, context));
+    const data = query(histCodes.content.data)(null, { ...context, codeBins: { value: codeBins } });
+    const header = histCodes.content.header[1].content[1].content[0].content[1];
+    const rows = histCodes.content.content.content[0].content.at(-1);
+    const percent = rows.item.content[1].content;
+
+    assert.equal(data.functionCount, 3);
+    assert.deepEqual(query(header.data)(data).map(tier => query(header.itemConfig.value.slice('text:'.length))(tier)), ['33.33%', '66.67%']);
+    assert.deepEqual(query(rows.data)(data).map(tier => query(percent.slice('text:'.length))(tier)), ['33.33', '66.67']);
 });

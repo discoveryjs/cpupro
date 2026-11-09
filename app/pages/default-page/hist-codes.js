@@ -2,7 +2,7 @@ import { sessionExpandState } from '../common.js';
 import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
 
 // Code states are binned for the line window, the values derived from them follow it. Tier rows are the tiers
-// of the codes, so they don't depend on the window
+// of the codes and their shares are of all functions by their top tier, so they don't depend on the window
 export const histCodes = withLineWindowValue('codeBins', `
     scopeProfile() | codes |? {
         $codes: sort(tm asc);
@@ -25,6 +25,7 @@ export const histCodes = withLineWindowValue('codeBins', `
             $tiers: $codes.tier;
 
             $countByTopTier,
+            functionCount: $profile.codesByCallFrame.size(),
             extent: $profile.timeline.timestampExtent($codes[-1].tm),
             compilations: $codes,
             totalColor: '#7fb2f7a0',
@@ -135,18 +136,14 @@ function histFunctionCodesHeader() {
                         }
                     ] },
                     {
-                        view: 'update-on-line-metrics-changes',
-                        metrics: '=#.codeBins',
-                        content: {
-                            view: 'inline-list',
-                            className: 'labeled-value-group',
-                            data: 'byTier',
-                            itemConfig: {
-                                view: 'labeled-value',
-                                color: '=color',
-                                text: '=name',
-                                value: 'text:100 * maxTier / #.codeBins.value.maxTotal | `${toFixed(2)}%`'
-                            }
+                        view: 'inline-list',
+                        className: 'labeled-value-group',
+                        data: 'byTier.({ ..., functionCount: @.functionCount })',
+                        itemConfig: {
+                            view: 'labeled-value',
+                            color: '=color',
+                            text: '=name',
+                            value: 'text:100 * maxTier / functionCount | `${toFixed(2)}%`'
                         }
                     }
                 ] }
@@ -204,7 +201,7 @@ function histFunctionCodesBody() {
         {
             view: 'list',
             className: 'category-timelines-list',
-            data: 'byTier.({ ..., extent: @.extent })',
+            data: 'byTier.({ ..., extent: @.extent, functionCount: @.functionCount })',
             item: {
                 view: 'link',
                 className: 'category-timelines-item',
@@ -218,11 +215,7 @@ function histFunctionCodesBody() {
                     {
                         view: 'block',
                         className: 'total-percent',
-                        content: {
-                            view: 'update-on-line-metrics-changes',
-                            metrics: '=#.codeBins',
-                            content: 'text:100 * maxTier / #.codeBins.value.maxTotal | toFixed(2)'
-                        }
+                        content: 'text:100 * maxTier / functionCount | toFixed(2)'
                     },
                     lineWindowHistogram('codeBins', `
                         $tier: name;
