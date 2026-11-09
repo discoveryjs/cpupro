@@ -202,6 +202,7 @@ export async function createMemline(
         attributes,
         filters: new FilterSet(),
         viewport: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
+        window: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
         range,
         breakdowns: [],
         mappings: Object.create(null),

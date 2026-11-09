@@ -12,6 +12,7 @@ export async function createLineBreakdown(
     line: ProfileLine,
     populationFiltered: PopulationFiltered,
     populationViewport: PopulationFiltered,
+    populationWindow: PopulationFiltered,
     { source, sampledTrees }: SampledTreeSet,
     work: WorkHandler
 ): Promise<ProfileLineBreakdown> {
@@ -35,6 +36,7 @@ export async function createLineBreakdown(
         source,
         population,
         populationViewport,
+        populationWindow,
         populationFiltered,
         recomputeMetrics,
         locations: offset ? dimensions[0] as LineTreeDimension<CpuProLocation> : null,

@@ -38,6 +38,8 @@ export type ProfileLineBreakdown = {
     source: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>;
     population: Population;
     populationViewport: PopulationFiltered;
+    // Histogram data: the filters of populationViewport over the line's window
+    populationWindow: PopulationFiltered;
     populationFiltered: PopulationFiltered;
     recomputeMetrics: () => void;
     locations: LineTreeDimension<CpuProLocation> | null;
@@ -141,6 +143,9 @@ export type ProfileLine = {
     attributes: ProfileLineAttribute[];
     filters: FilterSet;
     viewport: RangeView;
+    // Window of histogram data: the viewport quantized to aligned levels, so zooming and panning inside it
+    // changes how histograms are displayed, not their data
+    window: RangeView;
     range: RangeView;
 
     // Line-owned tree breakdowns. Several lines may reuse the same tree structure,

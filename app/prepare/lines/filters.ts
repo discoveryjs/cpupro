@@ -24,7 +24,8 @@ type PreparedComputation = FilterComputation & {
 
 export function prepareLineFilters(line: ProfileLine) {
     const { filters, breakdowns, attributes } = line;
-    const targets = [...new Set(breakdowns.map(breakdown => breakdown.populationViewport.filter))];
+    // Histogram windows apply the same prepared filters as viewports
+    const targets = [...new Set(breakdowns.flatMap(breakdown => [breakdown.populationViewport.filter, breakdown.populationWindow.filter]))];
     const computations: PreparedComputation[] = [];
     const include = (computation: FilterComputation | null, targets: PopulationFilter[]) => {
         if (!computation) {
@@ -60,7 +61,7 @@ export function prepareLineFilters(line: ProfileLine) {
 
         for (const [target, sources] of populationBreakdowns) {
             for (const createFilter of Object.values(breakdownFilterFactories)) {
-                include(createFilter(sources), [target]);
+                include(createFilter(sources), [target, sources[0].populationWindow.filter]);
             }
         }
 

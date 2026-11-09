@@ -873,7 +873,7 @@ export const methods = {
         const resolved = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
         const { total, skip } = binningRange(resolved.line, resolveScopeViewport(null, this.context), n);
         const grid = { total, skip, step: sampleBinStep(total, n) };
-        const viewport = resolved.populationViewport;
+        const viewport = resolved.populationWindow;
         const grouping = createSignatureGrouping(resolved.line, treeMetrics.sampleToNode, viewport, `tree:${n}`, {
             ...grid,
             ranges: viewport.ranges,
@@ -893,7 +893,7 @@ export const methods = {
     binCallsFromMask(mask: Uint8Array, n = 500, lineTree?: ProfileLineBreakdown | string) {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, null, this.context) as ProfileLineBreakdown;
         const { total, skip } = binningRange(resolvedLineTree.line, resolveScopeViewport(null, this.context), n);
-        const bins = makeViewportBins(n, mask, resolvedLineTree.populationViewport, total, skip);
+        const bins = makeViewportBins(n, mask, resolvedLineTree.populationWindow, total, skip);
 
         return Array.from(bins);
     },
@@ -910,7 +910,7 @@ export const methods = {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, line, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
         const mask = makeSamplesMask(treeMetrics, test);
-        const bins = makeViewportBins(n, mask, resolvedLineTree.populationViewport, total ?? axisTotal, skip);
+        const bins = makeViewportBins(n, mask, resolvedLineTree.populationWindow, total ?? axisTotal, skip);
 
         return bins;
     },
@@ -919,7 +919,7 @@ export const methods = {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
         const { total, skip } = binningRange(resolvedLineTree.line, resolveScopeViewport(null, this.context), n);
         const mask = makeSamplesMask(treeMetrics, test);
-        const bins = makeViewportBins(n, mask, resolvedLineTree.populationViewport, total, skip);
+        const bins = makeViewportBins(n, mask, resolvedLineTree.populationWindow, total, skip);
 
         // let sum = 0;
         // for (let i = 0; i < bins.length; i++) {
@@ -1047,7 +1047,7 @@ export const methods = {
 
         const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, this.context);
         const populationBreakdown = scopeBreakdown?.line === valuesLine ? scopeBreakdown : valuesLine.breakdowns[0];
-        const viewport = populationBreakdown.populationViewport;
+        const viewport = populationBreakdown.populationWindow;
         const { ranges: sourceRanges } = viewport;
         const mappingToLine = valuesLine !== axisLine
             ? valuesLine.mappings[axisLine.type]._mapping
@@ -1063,7 +1063,7 @@ export const methods = {
 
         if (mappingToLine !== null) {
             const { cumulative } = getCallStackPopulation(axisLine);
-            const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0]).populationViewport;
+            const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0]).populationWindow;
             const coversAxis = skip >= 0 && skip + axisViewport.cumulativeEnd <= total;
             const targetBin = createTargetBinReader(axisViewport, cumulative, grid);
             const grouping = attribute !== null

@@ -250,16 +250,16 @@ test('lifespan details use the scope interval instead of display bins', async ()
     assert.deepEqual(tracked(details.data)([], { ...detailContext, binCount: 50 }), rows);
     assert.ok(rows.every(row => !('bins' in row)));
 
-    source.breakdowns[0].populationViewport.setRanges([{ start: 1, end: 4 }, { start: 8, end: 12 }, { start: 20, end: 25 }]);
+    source.breakdowns[0].populationWindow.setRanges([{ start: 1, end: 4 }, { start: 8, end: 12 }, { start: 20, end: 25 }]);
     const clipped = tracked(details.data)([], detailContext);
     assert.deepEqual(clipped.map(row => [row.entry, row.value, row.total]), [['alive', 4, 9], ['short-lived', 5, 9]]);
     assert.equal(source.range.selection.ranges, selection);
     assert.equal('scopeViewport' in context, false);
 
-    source.breakdowns[0].populationViewport.setRanges([]);
+    source.breakdowns[0].populationWindow.setRanges([]);
     assert.deepEqual(tracked(details.data)(null, detailContext), []);
 
-    source.breakdowns[0].populationViewport.setRanges(null);
+    source.breakdowns[0].populationWindow.setRanges(null);
     const axis = profile.timeline!;
     const target = source.mappings.timeline._mapping[1];
     const timestamp = axis.range.frame.resolveValue(axis.breakdowns[0].population.cumulative[target]);
@@ -280,7 +280,7 @@ test('lifespan details use the scope interval instead of display bins', async ()
     assert.deepEqual(projected.map(row => row.value), expected.filter(value => value > 0));
     assert.ok(projected.every(row => row.total === expected.reduce((sum, value) => sum + value, 0)));
 
-    axis.breakdowns[0].populationViewport.filter.set({
+    axis.breakdowns[0].populationWindow.filter.set({
         key: 'test', domain: 'event', size: axis.values.length, accepts: Uint8Array.from({ length: axis.values.length }, (_, index) => Number(index !== target))
     });
     assert.deepEqual(tracked(details.data)([], projectedContext), []);
@@ -299,7 +299,7 @@ test('allocation headers cannot substitute source totals for selected-axis parti
     assert.ok(axisTotals().some(row => row.value > 0));
     assert.equal(sourceTotals().reduce((total, row) => total + row.size, 0), 160);
 
-    context.scopeBreakdown.populationViewport.setRanges([]);
+    context.scopeBreakdown.populationWindow.setRanges([]);
 
     assert.ok(axisTotals().every(row => row.value === 0));
     assert.equal(sourceTotals().reduce((total, row) => total + row.size, 0), 160);
@@ -323,14 +323,14 @@ test('mapped allocation summaries follow source constraints and axis participati
     ];
     source.attributes = attributes;
     const context = { scopeProfile: profile, scopeLine: axis, scopeBreakdown: axis.breakdowns[0] };
-    const viewport = source.breakdowns[0].populationViewport;
+    const viewport = source.breakdowns[0].populationWindow;
     const values = viewport.values;
     const totals = () => attributes.map(attribute => methods.binLineToAxisLine.call({ context }, source, attribute, axis, 1).map(row => row.value));
     const initial = totals();
     assert.deepEqual(initial, [[64, 96], [48, 112]]);
 
     const alternate = new PopulationFiltered(axis.breakdowns[0].population);
-    context.scopeBreakdown = { ...axis.breakdowns[0], populationViewport: alternate };
+    context.scopeBreakdown = { ...axis.breakdowns[0], populationWindow: alternate };
     assert.deepEqual(totals(), initial);
 
     alternate.setRanges([]);

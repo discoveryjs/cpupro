@@ -2,6 +2,7 @@ import { validateRange, type Range } from '../prepare/computations/coordinates.j
 import type { ProfileLine } from '../prepare/lines/types.js';
 
 type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'axisStart' | 'axisEnd' | 'viewport'>;
+type WindowLine = ViewportLine & Pick<ProfileLine, 'window'>;
 
 export function lineExtent(line: Pick<ProfileLine, 'range'>) {
     const { frame, extent } = line.range;
@@ -43,6 +44,11 @@ export function lineViewport(line: ViewportLine, profiles: readonly { timeline?:
     return extent;
 }
 
+// The range of histogram data: the line's window, which contains the viewport
+export function lineWindow(line: WindowLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
+    return lineViewport({ ...line, viewport: line.window }, profiles);
+}
+
 export function viewportRange(viewport: Range, line: Pick<ProfileLine, 'range'>) {
     validateRange(viewport);
 
@@ -79,5 +85,6 @@ export const methods = {
     lineExtent,
     timestampExtent,
     lineViewport,
+    lineWindow,
     viewportRange
 };

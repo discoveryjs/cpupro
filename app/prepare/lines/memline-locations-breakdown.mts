@@ -39,8 +39,9 @@ export async function createMemlineLocationsBreakdown(
         const population = new Population(samples, allocationSizes);
         const populationViewport = new PopulationFiltered(population);
         const populationFiltered = new PopulationFiltered(populationViewport);
+        const populationWindow = new PopulationFiltered(population);
 
-        return { populationViewport, populationFiltered };
+        return { populationViewport, populationFiltered, populationWindow };
     });
     const locationTreeSamples = await createSampledTreeSet(
         dictionary,
@@ -53,6 +54,7 @@ export async function createMemlineLocationsBreakdown(
         line,
         population.populationFiltered,
         population.populationViewport,
+        population.populationWindow,
         locationTreeSamples,
         work
     );

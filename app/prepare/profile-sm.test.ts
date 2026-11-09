@@ -45,6 +45,7 @@ test('a source-mapped breakdown shares the populations of its original breakdown
     // Sample ID 0 has no events
     const viewport = new PopulationFiltered(new Population(new Uint32Array([1, 1]), new Uint32Array([16, 32])));
     const population = new PopulationFiltered(viewport);
+    const window = new PopulationFiltered(viewport.population);
     const samples = population.population.samples;
     const source = {
         dictionary: dictionary.locations,
@@ -53,7 +54,7 @@ test('a source-mapped breakdown shares the populations of its original breakdown
         sourceIdToNode: new Int32Array([1, 2])
     };
     const trees = await createSampledTreeSet(dictionary, source, noopWorkHandler);
-    const original = await createLineBreakdown('extra', line, population, viewport, trees, noopWorkHandler);
+    const original = await createLineBreakdown('extra', line, population, viewport, window, trees, noopWorkHandler);
     const breakdowns = line.breakdowns.slice();
     const mapped = await createSourceMappedBreakdown('extra-sm', line, original, dictionary, await sourceMapping.mapLocations(), noopWorkHandler);
 
@@ -61,6 +62,7 @@ test('a source-mapped breakdown shares the populations of its original breakdown
     assert.deepEqual(line.breakdowns, breakdowns);
     assert.equal(mapped.population, population.population);
     assert.equal(mapped.populationViewport, viewport);
+    assert.equal(mapped.populationWindow, window);
     assert.equal(mapped.populationFiltered, population);
     assert.equal(mapped.population.samples, samples);
     assert.deepEqual([...samples], [1, 1]);

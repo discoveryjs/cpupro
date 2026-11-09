@@ -70,7 +70,7 @@ test.each([
     assert.deepEqual(profile.memline!.filters.filters.map(filter => filter.key), ['category']);
 });
 
-test('filters apply to the viewport population shared with source-mapped breakdowns', async () => {
+test('filters apply to the viewport and window populations shared with source-mapped breakdowns', async () => {
     const { profile } = await createProfileFixture(allocationEvents);
 
     for (const line of profile.lines) {
@@ -78,6 +78,7 @@ test('filters apply to the viewport population shared with source-mapped breakdo
 
         for (const breakdown of line.breakdowns) {
             assert.deepEqual(breakdown.populationViewport.filter.filters.map(filter => filter.key), keys);
+            assert.deepEqual(breakdown.populationWindow.filter.filters.map(filter => filter.key), keys);
             assert.deepEqual(breakdown.populationFiltered.filter.filters, []);
         }
 
@@ -85,6 +86,7 @@ test('filters apply to the viewport population shared with source-mapped breakdo
             const mapped = line.breakdowns.find(entry => entry.kind === breakdown.kind + '-sm')!;
 
             assert.equal(breakdown.populationViewport.filter, mapped.populationViewport.filter);
+            assert.equal(breakdown.populationWindow, mapped.populationWindow);
         }
     }
 });

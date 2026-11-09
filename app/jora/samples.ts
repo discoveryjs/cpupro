@@ -128,7 +128,7 @@ export const methods = {
         const { total, skip } = binningRange(resolvedLine, resolveScopeViewport(null, this.context), n);
         const breakdown = resolveScopeProfileLineBreakdown(null, resolvedLine, this.context)!;
 
-        return countSamples(n, breakdown.populationViewport, total, true, skip);
+        return countSamples(n, breakdown.populationWindow, total, true, skip);
     },
 
     countSamplesDiscrete(n = 500, line: unknown) {
@@ -136,7 +136,7 @@ export const methods = {
         const { total, skip } = binningRange(resolvedLine, resolveScopeViewport(null, this.context), n);
         const breakdown = resolveScopeProfileLineBreakdown(null, resolvedLine, this.context)!;
 
-        return countSamples(n, breakdown.populationViewport, total, false, skip);
+        return countSamples(n, breakdown.populationWindow, total, false, skip);
     },
 
     sampleXBins(n = 500, line?: ProfileLine | ProfileLineType) {

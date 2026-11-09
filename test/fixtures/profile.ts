@@ -103,6 +103,7 @@ export async function createLineFixture({
     const trees = await createSampledTreeSet(dictionary, source, noopWorkHandler);
     const populationViewport = new PopulationFiltered(population);
     const populationFiltered = new PopulationFiltered(populationViewport);
+    const populationWindow = new PopulationFiltered(population);
     const range = new RangeSelection(line.range.selection.space).view({ start: 0, end: population.cumulativeEnd }, origin);
 
     line.axisStart = origin - before;
@@ -116,8 +117,9 @@ export async function createLineFixture({
     line.filters = new FilterSet();
     line.range = range;
     line.viewport = new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent);
+    line.window = new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent);
     line.mappings = Object.create(null);
-    const breakdown = await createLineBreakdown('call-stack', line, populationFiltered, populationViewport, trees, noopWorkHandler);
+    const breakdown = await createLineBreakdown('call-stack', line, populationFiltered, populationViewport, populationWindow, trees, noopWorkHandler);
     line.breakdowns = [breakdown];
     profile.lines = [line];
     profile.timeline = line.type === 'timeline' ? line : null;

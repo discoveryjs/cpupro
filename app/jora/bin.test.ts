@@ -60,7 +60,7 @@ async function createMappedSource(axis: ProfileLine, values = new Uint32Array([3
     const { left, right } = createLineMapping(source, Array.from(mapping), axis, Array.from({ length: axis.values.length }, (_, index) => index));
     source.mappings[axis.type] = left;
     axis.mappings[source.type] = right;
-    return { source, viewport: breakdown.populationViewport };
+    return { source, viewport: breakdown.populationWindow };
 }
 
 test('bins a short population on the viewport grid instead of stretching its local bins', async () => {
@@ -110,7 +110,7 @@ test.each(['timeline', 'memline'] as const)('category bins ignore a sink overlap
         sampleToNode: new Uint32Array([0, 1, 0, 1])
     };
     const mask = new Uint8Array([1, 0, 1, 0]);
-    const viewport = context.scopeBreakdown.populationViewport;
+    const viewport = context.scopeBreakdown.populationWindow;
     const bins = () => methods.binCalls.call({ context }, treeMetrics, category, 10);
     const presence = () => methods.binCallsFromMask.call({ context }, mask, 10);
     const signals = () => methods.binSignals.call({ context }, treeMetrics, {
@@ -160,7 +160,7 @@ test.each([0, 1, 7, 0xffffffff])('binning excludes sink ID %i without excluding 
             }),
             scopeViewport: { start: 0, end: 40 }
         };
-        const viewport = context.scopeBreakdown.populationViewport;
+        const viewport = context.scopeBreakdown.populationWindow;
         viewport.setRanges(ranges);
         Object.defineProperty(viewport, 'sinkId', { value: sinkId });
         viewport.samples.set([sinkId, 2, 3, sinkId]);
@@ -193,7 +193,7 @@ test('joint tree bins preserve self values and binary nested presence across vie
     const subtree = subtreeFromParent(parent);
     const tree = new CallTree(dictionary, nodes, parent, subtree, nestedFromNodesSubtree(nodes, subtree, dictionary.length));
     const metrics = { tree, sampleToNode: new Uint32Array([0, 1, 2, 3, 4, 6]) };
-    const viewport = context.scopeBreakdown.populationViewport;
+    const viewport = context.scopeBreakdown.populationWindow;
 
     for (const ranges of [null, [], [{ start: 2, end: 9 }, { start: 12, end: 20 }, { start: 30, end: 280 }, { start: 700, end: 999 }]]) {
         viewport.setRanges(ranges);
@@ -338,7 +338,7 @@ test('allocation row values summarize accepted contributions independently of di
         assert.ok(rows.every(row => row.bins.length === count));
     }
 
-    breakdown.populationViewport.setRanges([{ start: 1, end: 1.5 }, { start: 3, end: 3.5 }, { start: 20, end: 25 }]);
+    breakdown.populationWindow.setRanges([{ start: 1, end: 1.5 }, { start: 3, end: 3.5 }, { start: 20, end: 25 }]);
     for (const count of [1, 7, 50]) {
         const rows = methods.binLineToAxisLine.call({ context }, line, attribute, line, count);
         assert.deepEqual(rows.map(row => row.value), [1, 5, 0]);
@@ -351,7 +351,7 @@ test('full-event bin spans match scalar intersections across filters and fractio
     values[128] = 1024;
     values[511] = 0;
     const { line, breakdown } = await createLineFixture({ type: 'memline', values, samples: groups });
-    const { population: base, populationViewport: viewport } = breakdown;
+    const { population: base, populationWindow: viewport } = breakdown;
     const context = { scopeLine: line, scopeBreakdown: breakdown, scopeViewport: { start: 0, end: 4096 } };
 
     for (const ranges of [null, [], [{ start: 1.125, end: 480.875 }, { start: 500.125, end: 700.875 }, { start: 900.125, end: 2500.875 }]]) {
@@ -406,7 +406,7 @@ test('mapped single-bin totals preserve wide sums with and without groups', asyn
         assert.deepEqual(row.bins, new Uint32Array([4]));
     }
 
-    context.scopeBreakdown.populationViewport.filter.set({ key: 'test', domain: 'event', size: 3, accepts: Uint8Array.of(0, 1, 0) });
+    context.scopeBreakdown.populationWindow.filter.set({ key: 'test', domain: 'event', size: 3, accepts: Uint8Array.of(0, 1, 0) });
     for (const grouping of [null, attribute]) {
         const [row] = methods.binLineToAxisLine.call({ context }, source, grouping, context.scopeLine, 1);
         assert.equal(row.value, 5);
@@ -451,12 +451,12 @@ test('allocation bins apply source and axis viewport participation without affec
     assert.deepEqual([...mapped().bins], [0, 0, 2, 4, 3, 0, 0, 0, 0, 0]);
     viewport.filter.set({ key: 'allocations', domain: 'event', size: 3, accepts: Uint8Array.of(1, 0, 1) });
     assert.deepEqual([...mapped().bins], [0, 0, 2, 0, 3, 0, 0, 0, 0, 0]);
-    context.scopeBreakdown.populationViewport.setRanges([{ start: 10, end: 25 }]);
+    context.scopeBreakdown.populationWindow.setRanges([{ start: 10, end: 25 }]);
     assert.deepEqual([...mapped().bins], [0, 0, 0, 0, 3, 0, 0, 0, 0, 0]);
-    context.scopeBreakdown.populationViewport.filter.set({ key: 'axis', domain: 'sample', size: 2, accepts: Uint8Array.of(0, 1) });
+    context.scopeBreakdown.populationWindow.filter.set({ key: 'axis', domain: 'sample', size: 2, accepts: Uint8Array.of(0, 1) });
     assert.equal(mapped().value, 0);
-    context.scopeBreakdown.populationViewport.filter.remove('axis');
-    context.scopeBreakdown.populationViewport.setRanges([{ start: 1, end: 2 }, { start: 3, end: 4 }, { start: 21, end: 24 }]);
+    context.scopeBreakdown.populationWindow.filter.remove('axis');
+    context.scopeBreakdown.populationWindow.setRanges([{ start: 1, end: 2 }, { start: 3, end: 4 }, { start: 21, end: 24 }]);
     const own = methods.binLineToAxisLine.call({ context }, context.scopeLine, null, context.scopeLine, 10)[0];
     assert.deepEqual([...own.bins], [0, 0, 2, 0, 3, 0, 0, 0, 0, 0]);
     assert.deepEqual([...context.scopeLine.values], [10, 10, 5]);
@@ -616,7 +616,7 @@ test('counts only intersecting samples and visible sample starts in a narrow vie
 
 test('viewport bins and counters preserve coordinates, disjoint coverage and source filter acceptance', async () => {
     const context = await createContext();
-    const viewport = context.scopeBreakdown.populationViewport;
+    const viewport = context.scopeBreakdown.populationWindow;
     const mask = new Uint8Array([1, 1]);
     viewport.filter.set({ key: 'sample', domain: 'sample', size: 2, accepts: Uint8Array.of(1, 0) });
     assert.deepEqual(methods.binCallsFromMask.call({ context }, mask, 10), [0, 0, 5, 5, 5, 0, 0, 0, 0, 0]);
@@ -691,7 +691,7 @@ test('reads viewport properties outside allocation and counter event loops', asy
     const { source, viewport: sourceViewport } = await createMappedSource(context.scopeLine,
         new Uint32Array(3000).fill(1), Uint32Array.from({ length: 3000 }, (_, index) => Math.floor(index / 1000)), new Uint32Array(3000));
     const reads = new Map<string, number>();
-    for (const [label, viewport] of [['source', sourceViewport], ['axis', context.scopeBreakdown.populationViewport]] as const) {
+    for (const [label, viewport] of [['source', sourceViewport], ['axis', context.scopeBreakdown.populationWindow]] as const) {
         for (const key of ['samples', 'values', 'sinkId', 'cumulative', 'ranges'] as const) {
             const value = viewport[key];
             const name = `${label}.${key}`;
@@ -720,7 +720,7 @@ test('reads viewport properties outside allocation and counter event loops', asy
 
 test('matches scalar bins and counters across disjoint ranges without shifting filtered coordinates', async () => {
     const context = await createContext({ origin: 0, samples: new Uint32Array([0, 1, 0, 1, 1, 0, 0]), values: new Uint32Array([0, 10, 270, 5, 400, 315, 0]) });
-    const { population: base, populationViewport: viewport } = context.scopeBreakdown;
+    const { population: base, populationWindow: viewport } = context.scopeBreakdown;
     for (const ranges of [null, [], [{ start: 1, end: 19 }], [{ start: 25, end: 280 }],
         [{ start: 1, end: 4 }, { start: 6, end: 8 }, { start: 90, end: 300 }, { start: 701, end: 810 }]]) {
         viewport.setRanges(ranges);
@@ -768,7 +768,7 @@ test('matches scalar bins and counters across disjoint ranges without shifting f
 test('seeks sparse ranges without reading event weights in the gaps', async () => {
     const length = 100_000;
     const context = await createContext({ origin: 0, samples: new Uint32Array(length), values: new Uint32Array(length).fill(10) });
-    const { population: base, populationViewport: viewport } = context.scopeBreakdown;
+    const { population: base, populationWindow: viewport } = context.scopeBreakdown;
     viewport.setRanges([{ start: 100, end: 200 }, { start: 900_000, end: 900_100 }]);
     let reads = 0;
     base.values = new Proxy(base.values, { get(target, property) {

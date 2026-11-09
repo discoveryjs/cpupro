@@ -34,6 +34,7 @@ export async function createSourceMappedBreakdown(
         line,
         breakdown.populationFiltered,
         breakdown.populationViewport,
+        breakdown.populationWindow,
         sampledTreeSet,
         work
     );

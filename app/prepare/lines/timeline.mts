@@ -92,6 +92,7 @@ export async function createTimeline(
         attributes: [],
         filters: new FilterSet(),
         viewport: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
+        window: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
         range,
         breakdowns: [],
         mappings: Object.create(null),
@@ -105,11 +106,13 @@ export async function createTimeline(
 
     const populationViewport = new PopulationFiltered(population);
     const populationFiltered = new PopulationFiltered(populationViewport);
+    const populationWindow = new PopulationFiltered(population);
     const callStackBreakdown = await createLineBreakdown(
         'call-stack',
         line,
         populationFiltered,
         populationViewport,
+        populationWindow,
         sampledTreeSet,
         work
     );

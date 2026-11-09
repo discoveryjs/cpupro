@@ -432,7 +432,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
         line.signatures = signatures;
 
-        for (const { population, populationViewport, populationFiltered } of line.breakdowns) {
+        for (const { population, populationViewport, populationWindow, populationFiltered } of line.breakdowns) {
             if (!records.has(population)) {
                 records.set(population, await work(`group ${line.type} events by samples and signatures`, () =>
                     new PopulationRecords(population.samples, population.values, population.cumulative, population.cumulativeEnd, classes)
@@ -440,7 +440,9 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             }
 
             populationViewport.filter.setEventClasses(classes);
+            populationWindow.filter.setEventClasses(classes);
             populationViewport.setRecords(records.get(population)!);
+            populationWindow.setRecords(records.get(population)!);
             populationFiltered.setRecords(records.get(population)!);
         }
     }
