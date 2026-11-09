@@ -3,7 +3,7 @@ import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScope
 import { binningRange } from './viewport.js';
 import { findCumulativeBoundary, type Population, type PopulationFiltered } from '../prepare/computations/population.js';
 
-export function sampleRange(cumulative: Uint32Array, total: number, skip: number, sourceTotal: number) {
+export function sampleRange(cumulative: Float64Array, total: number, skip: number, sourceTotal: number) {
     const start = Math.max(0, -skip);
     const end = Math.min(sourceTotal, total - skip);
 

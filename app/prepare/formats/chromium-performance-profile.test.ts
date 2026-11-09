@@ -535,7 +535,7 @@ test('tracing preserves signed CPU time deltas across chunks and repeated extrac
         assert.equal(timeline.axisTotal, 300);
         assert.equal(timeline.axisStartNoSamples, 100);
         assert.equal(timeline.axisEndNoSamples, 0);
-        assert.deepEqual(timeline.breakdowns[0].population.cumulative, new Uint32Array([0, 100, 120, 210]));
+        assert.deepEqual(timeline.breakdowns[0].population.cumulative, new Float64Array([0, 100, 120, 210]));
         assert.deepEqual(chunks[1].timeDeltas, new Int32Array([-20, 110]));
     }
 });

@@ -237,6 +237,9 @@ test('category workspace does not grow by node count for every additional bin', 
         return array;
     } });
     try {
+        // Warms up the population workspace
+        methods.binTreeSamples.call({ context }, metrics, 1);
+        cells = 0;
         methods.binTreeSamples.call({ context }, metrics, 64);
         const first = cells;
         cells = 0;

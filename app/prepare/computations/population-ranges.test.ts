@@ -191,7 +191,8 @@ test.each([
     { name: 'zero weights', weights: [0, 0, 0] },
     { name: 'single event', weights: [10] },
     { name: 'repeated coordinates', weights: [0, 0, 10, 0, 20, 0, 0, 30, 0, 40, 0] },
-    { name: 'uint32 boundary', weights: [0xfffffffe, 1, 0] }
+    { name: 'uint32 boundary', weights: [0xfffffffe, 1, 0] },
+    { name: 'beyond uint32', weights: [0xffffffff, 0xffffffff, 3, 0, 0xffffffff, 7] }
 ])('matches per-event overlap through range, mask, index and value transitions: $name', ({ weights }) => {
     const base = new Population(Uint32Array.from(weights, (_, index) => index % 3), Uint32Array.from(weights));
     const filtered = new PopulationFiltered(base);
@@ -209,7 +210,7 @@ test.each([
         let rangeSamples = 0;
         const fullValues = new Uint32Array(weights.length);
         const counts = new Uint32Array(filtered.samplesCount.length + 1);
-        const totals = new Uint32Array(counts.length);
+        const totals = new Float64Array(counts.length);
 
         for (let index = 0; index < weights.length; index++) {
             const value = base.values[index];

@@ -9,10 +9,11 @@ export type BufferDimensionMap<T> = {
     dictMap: BufferDictionaryMetricsMap<T>;
 };
 
+// Counts are Uint32; sums of event values are Float64, exact up to 2^53
 export type MetricsBufferMap<T> = {
     memory: WebAssembly.Memory | Uint8Array | null;
     samplesCount: Uint32Array;
-    samplesTotal: Uint32Array;
+    samplesTotal: Float64Array;
     dimensions: BufferDimensionMap<T>[];
 };
 
@@ -21,32 +22,32 @@ export type PopulationBufferMap = {
     samples: Uint32Array;
     values: Uint32Array;
     samplesCount: Uint32Array;
-    samplesTotal: Uint32Array;
+    samplesTotal: Float64Array;
 };
 
 export type BufferTreeMetricsMap<T> = {
     tree: CallTree<T>;
     sourceSamplesCount: Uint32Array;
-    sourceSamplesTotal: Uint32Array;
+    sourceSamplesTotal: Float64Array;
     sampleToNode: Uint32Array;
     parent: Uint32Array;
     samplesCount: Uint32Array;
-    selfValues: Uint32Array;
-    nestedValues: Uint32Array;
+    selfValues: Float64Array;
+    nestedValues: Float64Array;
 };
 
 export type BufferDictionaryMetricsMap<T> = {
     dictionary: T[];
     sourceSamplesCount: Uint32Array;
-    sourceSamplesTotal: Uint32Array;
-    nodeSelfValues: Uint32Array;
-    nodeNestedValues: Uint32Array;
+    sourceSamplesTotal: Float64Array;
+    nodeSelfValues: Float64Array;
+    nodeNestedValues: Float64Array;
     sampleIdToDict: Uint32Array;
     totalNodes: Uint32Array;
     totalNodeToDict: Uint32Array;
     samplesCount: Uint32Array;
-    selfValues: Uint32Array;
-    totalValues: Uint32Array;
+    selfValues: Float64Array;
+    totalValues: Float64Array;
 };
 
 type ComputeMetricsWasmModuleInstance = {
@@ -56,27 +57,34 @@ type ComputeMetricsWasmModuleInstance = {
             src: number,
             map: number,
             count: number,
-            total: number
+            total: number,
+            totalSize: number
         ): void;
-        accumulateMetrics(
+        accumulateCounts(
+            srcSize: number,
+            src: number,
+            map: number,
+            dest: number
+        ): void;
+        accumulateValues(
             srcSize: number,
             src: number,
             map: number,
             dest: number
         ): void;
         rollupTreeMetrics(
-            nodesCount: number,
             parent: number,
-            selfTimes: number,
-            nestedTimes: number
+            nodesCount: number,
+            selfValues: number,
+            nestedValues: number
         ): void;
         rollupDictionaryMetrics(
             totalNodesSize: number,
             totalNodes: number,
-            nodeSelfTimes: number,
-            nodeNestedTimes: number,
+            nodeSelfValues: number,
+            nodeNestedValues: number,
             totalNodeToDict: number,
-            totalTimes: number
+            totalValues: number
         ): void;
     }
 }
@@ -108,7 +116,8 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
     const wasmModule = createWasmModule(computeMetricsWasmSourceBase64, { memory }) as ComputeMetricsWasmModuleInstance;
     const {
         accumulateSampleMetrics,
-        accumulateMetrics,
+        accumulateCounts,
+        accumulateValues,
         rollupTreeMetrics,
         rollupDictionaryMetrics
     } = wasmModule.exports;
@@ -125,7 +134,8 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
                 map.values.byteOffset,
                 map.samples.byteOffset,
                 map.samplesCount.byteOffset,
-                map.samplesTotal.byteOffset
+                map.samplesTotal.byteOffset,
+                map.samplesTotal.length
             );
         },
 
@@ -136,14 +146,14 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
                 map.nestedValues.fill(0);
             }
 
-            accumulateMetrics(
+            accumulateCounts(
                 map.sourceSamplesCount.length,
                 map.sourceSamplesCount.byteOffset,
                 map.sampleToNode.byteOffset,
                 map.samplesCount.byteOffset
             );
 
-            accumulateMetrics(
+            accumulateValues(
                 map.sourceSamplesTotal.length,
                 map.sourceSamplesTotal.byteOffset,
                 map.sampleToNode.byteOffset,
@@ -165,14 +175,14 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
                 map.totalValues.fill(0);
             }
 
-            accumulateMetrics(
+            accumulateCounts(
                 map.sourceSamplesCount.length,
                 map.sourceSamplesCount.byteOffset,
                 map.sampleIdToDict.byteOffset,
                 map.samplesCount.byteOffset
             );
 
-            accumulateMetrics(
+            accumulateValues(
                 map.sourceSamplesTotal.length,
                 map.sourceSamplesTotal.byteOffset,
                 map.sampleIdToDict.byteOffset,
@@ -192,7 +202,7 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
 }
 
 export function createJavaScriptApi(): ComputeApi {
-    function accumulateSampleMetrics(source: Uint32Array, map: Uint32Array, count: Uint32Array, total: Uint32Array) {
+    function accumulateSampleMetrics(source: Uint32Array, map: Uint32Array, count: Uint32Array, total: Float64Array) {
         for (let i = source.length - 1; i >= 0; i--) {
             const value = source[i];
 
@@ -203,13 +213,13 @@ export function createJavaScriptApi(): ComputeApi {
         }
     }
 
-    function accumulateMetrics(source: Uint32Array, map: Uint32Array, dest: Uint32Array) {
+    function accumulateMetrics<T extends Uint32Array | Float64Array>(source: T, map: Uint32Array, dest: T) {
         for (let i = source.length - 1; i >= 0; i--) {
             dest[map[i]] += source[i];
         }
     }
 
-    function rollupTreeMetrics(parent: Uint32Array, selfTimes: Uint32Array, nestedTimes: Uint32Array) {
+    function rollupTreeMetrics(parent: Uint32Array, selfTimes: Float64Array, nestedTimes: Float64Array) {
         for (let i = parent.length - 1; i > 0; i--) {
             nestedTimes[parent[i]] += selfTimes[i] + nestedTimes[i];
         }
@@ -217,10 +227,10 @@ export function createJavaScriptApi(): ComputeApi {
 
     function rollupDictionaryMetrics(
         totalNodes: Uint32Array,
-        nodeSelfTimes: Uint32Array,
-        nodeNestedTimes: Uint32Array,
+        nodeSelfTimes: Float64Array,
+        nodeNestedTimes: Float64Array,
         totalNodeToDict: Uint32Array,
-        totalTimes: Uint32Array
+        totalTimes: Float64Array
     ) {
         for (let i = totalNodes.length - 1; i >= 0; i--) {
             const nodeId = totalNodes[i];

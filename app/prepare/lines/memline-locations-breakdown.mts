@@ -36,7 +36,8 @@ export async function createMemlineLocationsBreakdown(
         sourceIdToNode: sampleToNode
     };
     const population = await work('create allocation location population', () => {
-        const population = new Population(samples, allocationSizes);
+        const sizesPopulation = line.breakdowns.find(breakdown => breakdown.population.values === allocationSizes)?.population;
+        const population = new Population(samples, allocationSizes, undefined, sizesPopulation?.cumulative);
         const populationViewport = new PopulationFiltered(population);
         const populationFiltered = new PopulationFiltered(populationViewport);
         const populationWindow = new PopulationFiltered(population);

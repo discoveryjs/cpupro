@@ -372,7 +372,7 @@ function binPopulation(
 
 // Bin of a target on the axis grid, -1 outside the viewport and axis ranges or for a zero-weight target;
 // acceptsSinks also places targets the axis filters reject
-function createTargetBinReader(axis: PopulationFiltered, cumulative: Uint32Array, { total, step, skip }: BinGrid, acceptsSinks = false) {
+function createTargetBinReader(axis: PopulationFiltered, cumulative: Float64Array, { total, step, skip }: BinGrid, acceptsSinks = false) {
     const { samples, values, sinkId, ranges } = axis;
     // IMPORTANT: Targets must be visited in nondecreasing order; this cursor never moves backward.
     let rangeIndex = 0;
@@ -455,7 +455,7 @@ function createMappedSignatureGrouping(
     viewport: PopulationFiltered,
     axisLine: ProfileLine,
     axisViewport: PopulationFiltered,
-    axisCumulative: Uint32Array,
+    axisCumulative: Float64Array,
     grid: BinGrid,
     count: number
 ): MappedSignatureGrouping | null {

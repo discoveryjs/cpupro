@@ -1,14 +1,32 @@
 (import "imports" "memory" (memory 0))
 
+;; Counts and indices are u32 (4 bytes); values summed from event values are f64 (8 bytes), exact up to 2^53
+
+;; Totals are f64; they are converted to i64 for the event pass and back, since an integer add keeps
+;; the add-store-load chain of consecutive events of one sample short
 (func $accumulateSampleMetrics (export "accumulateSampleMetrics")
   (param $srcSize i32)
   (param $src i32)
   (param $map i32)
   (param $count i32)
   (param $total i32)
-  (local $offset i32) ;; Byte offset for iteration through the arrays.
+  (param $totalSize i32)
+  (local $index i32) ;; Element index, iterated from the end.
   (local $value i32)
-  (local $index i32) ;; Byte offset of map[i] in $count and $total arrays.
+  (local $sample i32)
+  (local $addr i32)
+
+  ;; total[i] = BigInt(total[i]) for every sample
+  (local.set $index (local.get $totalSize))
+  (block $exit
+    (loop $loop
+      (br_if $exit (i32.eqz (local.get $index)))
+      (local.set $index (i32.sub (local.get $index) (i32.const 1)))
+      (local.set $addr (i32.add (local.get $total) (i32.shl (local.get $index) (i32.const 3))))
+      (i64.store (local.get $addr) (i64.trunc_f64_u (f64.load (local.get $addr))))
+      (br $loop)
+    )
+  )
 
   ;; for (let i = srcSize - 1; i >= 0; i--) {
   ;;   if (src[i] !== 0) {
@@ -17,152 +35,153 @@
   ;;   }
   ;; }
 
-  ;; Initialize $offset to the byte position of the last element
-  (local.set $offset
-    (i32.shl (local.get $srcSize) (i32.const 2))
-  )
+  (local.set $index (local.get $srcSize))
 
-  (block $exit ;; Block for loop exit condition.
-    (loop $loop ;; Start of loop.
-      (br_if $exit
-        (i32.eqz (local.get $offset))
-      ) ;; Exit loop if offset === 0
+  (block $exit
+    (loop $loop
+      (br_if $exit (i32.eqz (local.get $index)))
 
-      ;; Decrement 'offset' by 4 for the next iteration.
-      ;; offset -= 4;
-      (local.set $offset
-        (i32.sub
-          (local.get $offset)
-          (i32.const 4)
-        )
-      )
+      (local.set $index (i32.sub (local.get $index) (i32.const 1)))
 
-      ;; Continue if value equals zero
       ;; if (src[i] === 0) continue;
       (br_if $loop
         (i32.eqz
           (local.tee $value
-            (i32.load
-              (i32.add
-                (local.get $src)
-                (local.get $offset)
-              )
-            )
+            (i32.load (i32.add (local.get $src) (i32.shl (local.get $index) (i32.const 2))))
           )
         )
       )
 
-      ;; index = map[i] * 4
-      (local.set $index
-        (i32.shl
-          (i32.load
-            (i32.add
-              (local.get $map)
-              (local.get $offset)
-            )
-          )
-          (i32.const 2)
-        )
+      (local.set $sample
+        (i32.load (i32.add (local.get $map) (i32.shl (local.get $index) (i32.const 2))))
       )
 
-      ;; count[map[i]] += 1
+      ;; count[map[i]] += 1 (u32)
+      (local.set $addr (i32.add (local.get $count) (i32.shl (local.get $sample) (i32.const 2))))
       (i32.store
-        (i32.add (local.get $count) (local.get $index))
-        (i32.add
-          (i32.load (i32.add (local.get $count) (local.get $index)))
-          (i32.const 1)
-        )
+        (local.get $addr)
+        (i32.add (i32.load (local.get $addr)) (i32.const 1))
       )
 
-      ;; total[map[i]] += src[i]
-      (i32.store
-        (i32.add (local.get $total) (local.get $index))
-        (i32.add
-          (i32.load (i32.add (local.get $total) (local.get $index)))
-          (local.get $value)
-        )
+      ;; total[map[i]] += src[i] (i64)
+      (local.set $addr (i32.add (local.get $total) (i32.shl (local.get $sample) (i32.const 3))))
+      (i64.store
+        (local.get $addr)
+        (i64.add (i64.load (local.get $addr)) (i64.extend_i32_u (local.get $value)))
       )
 
-      (br $loop) ;; Repeat the loop.
+      (br $loop)
+    )
+  )
+
+  ;; total[i] = Number(total[i]) for every sample
+  (local.set $index (local.get $totalSize))
+  (block $exit
+    (loop $loop
+      (br_if $exit (i32.eqz (local.get $index)))
+      (local.set $index (i32.sub (local.get $index) (i32.const 1)))
+      (local.set $addr (i32.add (local.get $total) (i32.shl (local.get $index) (i32.const 3))))
+      (f64.store (local.get $addr) (f64.convert_i64_u (i64.load (local.get $addr))))
+      (br $loop)
     )
   )
 )
 
-(func $accumulateMetrics (export "accumulateMetrics")
+(func $accumulateCounts (export "accumulateCounts")
   (param $srcSize i32)
   (param $src i32)
   (param $map i32)
   (param $dest i32)
-  (local $offset i32) ;; Byte offset for iteration through the arrays.
+  (local $index i32)
   (local $value i32)
-  (local $resultAddr i32) ;; Address in $dest array.
+  (local $resultAddr i32)
 
   ;; for (let i = srcSize - 1; i >= 0; i--) {
-  ;;   dest[map[i]] += src[i];
+  ;;   dest[map[i]] += src[i]; (u32)
   ;; }
 
-  ;; Initialize $offset to the byte position of the last element
-  (local.set $offset
-    (i32.shl (local.get $srcSize) (i32.const 2))
-  )
+  (local.set $index (local.get $srcSize))
 
-  (block $exit ;; Block for loop exit condition.
-    (loop $loop ;; Start of loop.
-      (br_if $exit
-        (i32.eqz (local.get $offset))
-      ) ;; Exit loop if offset === 0
+  (block $exit
+    (loop $loop
+      (br_if $exit (i32.eqz (local.get $index)))
 
-      ;; Decrement 'offset' by 4 for the next iteration.
-      ;; offset -= 4;
-      (local.set $offset
-        (i32.sub
-          (local.get $offset)
-          (i32.const 4)
-        )
-      )
+      (local.set $index (i32.sub (local.get $index) (i32.const 1)))
 
-      ;; Continue if value equals zero
       (br_if $loop
         (i32.eqz
           (local.tee $value
-            (i32.load
-              (i32.add
-                (local.get $src)
-                (local.get $offset)
-              )
-            )
+            (i32.load (i32.add (local.get $src) (i32.shl (local.get $index) (i32.const 2))))
           )
         )
       )
 
-      ;; Calculate address in $dest array and store in $resultAddr.
-      ;; resultAddr = dest + map[i] * 4  // dest[map[i]]
       (local.set $resultAddr
         (i32.add
           (local.get $dest)
           (i32.shl
-            (i32.load
-              (i32.add
-                (local.get $map)
-                (local.get $offset)
-              )
-            )
+            (i32.load (i32.add (local.get $map) (i32.shl (local.get $index) (i32.const 2))))
             (i32.const 2)
           )
         )
       )
 
-      ;; Load the existing value at $resultAddr, add the time delta, then store the result back.
-      ;; dest[$addr] += src[i]
       (i32.store
         (local.get $resultAddr)
-        (i32.add
-          (i32.load (local.get $resultAddr))
-          (local.get $value)
+        (i32.add (i32.load (local.get $resultAddr)) (local.get $value))
+      )
+
+      (br $loop)
+    )
+  )
+)
+
+(func $accumulateValues (export "accumulateValues")
+  (param $srcSize i32)
+  (param $src i32)
+  (param $map i32)
+  (param $dest i32)
+  (local $index i32)
+  (local $value f64)
+  (local $resultAddr i32)
+
+  ;; for (let i = srcSize - 1; i >= 0; i--) {
+  ;;   dest[map[i]] += src[i]; (f64)
+  ;; }
+
+  (local.set $index (local.get $srcSize))
+
+  (block $exit
+    (loop $loop
+      (br_if $exit (i32.eqz (local.get $index)))
+
+      (local.set $index (i32.sub (local.get $index) (i32.const 1)))
+
+      (br_if $loop
+        (f64.eq
+          (local.tee $value
+            (f64.load (i32.add (local.get $src) (i32.shl (local.get $index) (i32.const 3))))
+          )
+          (f64.const 0)
         )
       )
 
-      (br $loop) ;; Repeat the loop.
+      (local.set $resultAddr
+        (i32.add
+          (local.get $dest)
+          (i32.shl
+            (i32.load (i32.add (local.get $map) (i32.shl (local.get $index) (i32.const 2))))
+            (i32.const 3)
+          )
+        )
+      )
+
+      (f64.store
+        (local.get $resultAddr)
+        (f64.add (f64.load (local.get $resultAddr)) (local.get $value))
+      )
+
+      (br $loop)
     )
   )
 )
@@ -170,82 +189,52 @@
 (func $rollupTreeMetrics (export "rollupTreeMetrics")
   (param $parent i32)
   (param $nodesCount i32)
-  (param $selfTimes i32)
-  (param $nestedTimes i32)
-  (local $offset i32) ;; Byte offset for iteration through the arrays.
-  (local $value i32)
-  (local $resultAddr i32) ;; Address in $samplesTimes array.
+  (param $selfValues i32)
+  (param $nestedValues i32)
+  (local $index i32)
+  (local $value f64)
+  (local $resultAddr i32)
 
   ;; for (let i = nodesCount - 1; i > 0; i--) {
-  ;;   nestedTimes[parent[i]] += selfTimes[i] + nestedTimes[i];
+  ;;   nestedValues[parent[i]] += selfValues[i] + nestedValues[i];
   ;; }
 
-  ;; Initialize $offset to the byte position of the last element
-  (local.set $offset
-    (i32.shl (local.get $nodesCount) (i32.const 2))
-  )
-  (block $exit ;; Block for loop exit condition.
-    (loop $loop ;; Start of loop.
-      (br_if $exit
-        (i32.le_s (local.get $offset) (i32.const 4))
-      ) ;; Exit loop if offset === 0
+  (local.set $index (local.get $nodesCount))
 
-      ;; Decrement 'offset' by 4 for the next iteration.
-      (local.set $offset
-        (i32.sub
-          (local.get $offset)
-          (i32.const 4)
-        )
-      )
+  (block $exit
+    (loop $loop
+      (br_if $exit (i32.le_s (local.get $index) (i32.const 1)))
 
-      ;; Continue if value equals zero
+      (local.set $index (i32.sub (local.get $index) (i32.const 1)))
+
       (br_if $loop
-        (i32.eqz
+        (f64.eq
           (local.tee $value
-            (i32.add
-              (i32.load
-                (i32.add
-                  (local.get $selfTimes)
-                  (local.get $offset)
-                )
-              )
-              (i32.load
-                (i32.add
-                  (local.get $nestedTimes)
-                  (local.get $offset)
-                )
-              )
+            (f64.add
+              (f64.load (i32.add (local.get $selfValues) (i32.shl (local.get $index) (i32.const 3))))
+              (f64.load (i32.add (local.get $nestedValues) (i32.shl (local.get $index) (i32.const 3))))
             )
           )
+          (f64.const 0)
         )
       )
 
-      ;; Calculate address in $nestedTimes array and store in $resultAddr.
       (local.set $resultAddr
         (i32.add
-          (local.get $nestedTimes)
+          (local.get $nestedValues)
           (i32.shl
-            (i32.load
-              (i32.add
-                (local.get $parent)
-                (local.get $offset)
-              )
-            )
-            (i32.const 2)
+            (i32.load (i32.add (local.get $parent) (i32.shl (local.get $index) (i32.const 2))))
+            (i32.const 3)
           )
         )
       )
 
-      ;; Load the existing value at $resultAddr, add the self time and nested time, then store the result back
-      (i32.store
+      (f64.store
         (local.get $resultAddr)
-        (i32.add
-          (i32.load (local.get $resultAddr))
-          (local.get $value)
-        )
+        (f64.add (f64.load (local.get $resultAddr)) (local.get $value))
       )
 
-      (br $loop) ;; Repeat the loop.
+      (br $loop)
     )
   )
 )
@@ -253,107 +242,64 @@
 (func $rollupDictionaryMetrics (export "rollupDictionaryMetrics")
   (param $totalNodesSize i32)
   (param $totalNodes i32)
-  (param $nodeSelfTimes i32)
-  (param $nodeNestedTimes i32)
+  (param $nodeSelfValues i32)
+  (param $nodeNestedValues i32)
   (param $totalNodeToDict i32)
-  (param $totalTimes i32)
-  (local $offset i32) ;; Byte offset for iteration through the arrays.
-  (local $nodeId i32)
-  (local $value i32)
-  (local $resultAddr i32) ;; Address in $samplesTimes array.
+  (param $totalValues i32)
+  (local $index i32)
+  (local $nodeOffset i32)
+  (local $value f64)
+  (local $resultAddr i32)
 
-  ;; for (let i = nodesCount - 1; i >= 0; i--) {
+  ;; for (let i = totalNodesSize - 1; i >= 0; i--) {
   ;;     const nodeId = totalNodes[i];
-  ;;     const selfTime = nodeSelfTimes[nodeId];
-  ;;     const nestedTime = nodeNestedTimes[nodeId];
-  ;;     totalTimes[totalNodeToDict[i]] += selfTime + nestedTime;
+  ;;     totalValues[totalNodeToDict[i]] += nodeSelfValues[nodeId] + nodeNestedValues[nodeId];
   ;; }
 
-  ;; Initialize $offset to the byte position of the last element
-  (local.set $offset
-    (i32.shl (local.get $totalNodesSize) (i32.const 2))
-  )
-  (block $exit ;; Block for loop exit condition.
-    (loop $loop ;; Start of loop.
-      (br_if $exit
-        (i32.eqz (local.get $offset))
-      ) ;; Exit loop if offset === 0
+  (local.set $index (local.get $totalNodesSize))
 
-      ;; Decrement 'offset' by 4 for the next iteration.
-      ;; $offset = $offset - 4
-      (local.set $offset
-        (i32.sub
-          (local.get $offset)
-          (i32.const 4)
-        )
-      )
+  (block $exit
+    (loop $loop
+      (br_if $exit (i32.eqz (local.get $index)))
 
-      ;; $nodeId = i32.load($totalNodes + $offset) << 2
-      ;; \-> nodeId = totalNodes[offset] * 4
-      (local.set $nodeId
+      (local.set $index (i32.sub (local.get $index) (i32.const 1)))
+
+      ;; nodeOffset = totalNodes[i] * 8
+      (local.set $nodeOffset
         (i32.shl
-          (i32.load
-            (i32.add
-              (local.get $totalNodes)
-              (local.get $offset)
-            )
-          )
-          (i32.const 2)
+          (i32.load (i32.add (local.get $totalNodes) (i32.shl (local.get $index) (i32.const 2))))
+          (i32.const 3)
         )
       )
 
-      ;; Continue if value equals zero
       (br_if $loop
-        (i32.eqz
-          ;; $value = i32.load($nodeSelfTimes + $nodeId) + i32.load($nodeNestedTimes + $nodeId)
-          ;; \-> value = nodeSelfTimes[nodeId] + nodeNestedTimes[nodeId]
+        (f64.eq
           (local.tee $value
-            (i32.add
-              (i32.load
-                (i32.add
-                  (local.get $nodeSelfTimes)
-                  (local.get $nodeId)
-                )
-              )
-              (i32.load
-                (i32.add
-                  (local.get $nodeNestedTimes)
-                  (local.get $nodeId)
-                )
-              )
+            (f64.add
+              (f64.load (i32.add (local.get $nodeSelfValues) (local.get $nodeOffset)))
+              (f64.load (i32.add (local.get $nodeNestedValues) (local.get $nodeOffset)))
             )
           )
+          (f64.const 0)
         )
       )
 
-      ;; Calculate address in $totalTimes array and store in $resultAddr.
-      ;; $resultAddr = $totalTimes + i32.load($totalNodeToDict + $offset) << 2
-      ;; \-> resultAddr = totalTimes[totalNodeDict[offset] * 4]
       (local.set $resultAddr
         (i32.add
-          (local.get $totalTimes)
+          (local.get $totalValues)
           (i32.shl
-            (i32.load
-              (i32.add
-                (local.get $totalNodeToDict)
-                (local.get $offset)
-              )
-            )
-            (i32.const 2)
+            (i32.load (i32.add (local.get $totalNodeToDict) (i32.shl (local.get $index) (i32.const 2))))
+            (i32.const 3)
           )
         )
       )
 
-      ;; Load the existing value at $resultAddr, add the self time and nested time, then store the result back
-      (i32.store
+      (f64.store
         (local.get $resultAddr)
-        (i32.add
-          (i32.load (local.get $resultAddr))
-          (local.get $value)
-        )
+        (f64.add (f64.load (local.get $resultAddr)) (local.get $value))
       )
 
-      (br $loop) ;; Repeat the loop.
+      (br $loop)
     )
   )
 )

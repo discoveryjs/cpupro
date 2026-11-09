@@ -123,8 +123,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
 
     tree: CallTree<T>;
     nodesDepth: Uint32Array;
-    nodesValue: Uint32Array;
-    nodesX: Uint32Array;
+    nodesValue: Float64Array;
+    nodesX: Float64Array;
     children: Uint32Array;
     childrenOffset: Uint32Array;
     childrenComputed: Uint32Array;
@@ -329,8 +329,8 @@ export class FlameChart<T> extends EventEmitter<Events> {
         const children = new Uint32Array(nodes.length);
         const childrenOffset = new Uint32Array(nodes.length);
         const names = tree.dictionary.map(getName);
-        const values = new Uint32Array(nodes.length);
-        const positions = new Uint32Array(nodes.length);
+        const values = new Float64Array(nodes.length);
+        const positions = new Float64Array(nodes.length);
         let childrenCursor = 0;
 
         this.#childrenSort = options.childrenSort === true || options.childrenSort === 'value'

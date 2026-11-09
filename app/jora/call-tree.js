@@ -159,7 +159,7 @@ export const methods = {
     nestedValues(treeMetrics, subject, structureTree) {
         const tree = structureTree || treeMetrics.tree;
         const selfId = typeof subject === 'number' ? subject : tree.dictionary.indexOf(subject);
-        const dictMetrics = new Uint32Array(tree.dictionary.length);
+        const dictMetrics = new Float64Array(tree.dictionary.length);
         const nodes = tree.nodes;
         const sampleToNode = treeMetrics.sampleToNode;
         const nodesMask = new Uint32Array(tree.nodes.length);

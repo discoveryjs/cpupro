@@ -15,30 +15,30 @@ export class Population extends Observer {
     readonly samplesRevision = 0;
     samples: Uint32Array;
     values: Uint32Array;
-    // FIXME: Prefix sums wrap at 2^32, breaking coordinate order and binary range search.
-    cumulative: Uint32Array;   // size of values
-    // End of the base cumulative axis, not the sum of filtered contributions. Shares the overflow limitation above.
+    // Prefix sums of values; Float64 keeps them exact beyond 2^32 (up to 2^53)
+    cumulative: Float64Array;  // size of values
+    // End of the base cumulative axis, not the sum of filtered contributions
     readonly cumulativeEnd: number;
     samplesCount: Uint32Array; // size of samples
-    // FIXME: Per-sample totals also wrap at 2^32. Widen storage and JS/WASM accumulation together;
-    // changing cumulative alone does not resolve overflow. This is deferred beyond the range optimization.
-    samplesTotal: Uint32Array; // size of samples
+    samplesTotal: Float64Array; // size of samples
 
     constructor(
         samples: Uint32Array,
         values: Uint32Array,
-        sampleCount = findMaxId(samples) + 1
+        sampleCount = findMaxId(samples) + 1,
+        // Populations over the same values share their prefix sums
+        cumulative: Float64Array = computeCumulative(values)
     ) {
         super();
 
         this.samples = samples;
         this.values = values;
-        this.cumulative = computeCumulative(values);
+        this.cumulative = cumulative;
         this.cumulativeEnd = values.length ? this.cumulative[values.length - 1] + values[values.length - 1] : 0;
         this.sinkId = sampleCount;
 
         const samplesCount = new Uint32Array(sampleCount + 1);
-        const samplesTotal = new Uint32Array(sampleCount + 1);
+        const samplesTotal = new Float64Array(sampleCount + 1);
         this.samplesCount = samplesCount.subarray(0, sampleCount);
         this.samplesTotal = samplesTotal.subarray(0, sampleCount);
 
@@ -70,7 +70,7 @@ export class PopulationFiltered extends Observer {
     #buffer: PopulationBufferMap | null = null;
     #api: ComputeApi | null = null;
     #counts: Uint32Array;      // size of samples plus the sink
-    #totals: Uint32Array;      // size of samples plus the sink
+    #totals: Float64Array;     // size of samples plus the sink
     #recompute: (clear?: boolean) => void;
     #hasMask = false;
     #hasRawMask = false;
@@ -85,10 +85,9 @@ export class PopulationFiltered extends Observer {
     #aggregate: RecordsAggregate | null = null;
     #acceptance: RecordsAcceptance | null = null;
     #coverage: [number, number][] = [];
-    cumulative: Uint32Array;   // size of values
+    cumulative: Float64Array;  // size of values
     samplesCount: Uint32Array; // size of samples
-    // FIXME: Filtered totals share the same Uint32 overflow limit, including the buffer's sink cell.
-    samplesTotal: Uint32Array; // size of samples
+    samplesTotal: Float64Array; // size of samples
     samplesMask: Uint32Array;
     #ranges: RangeSet | null = null;
     #effectiveRanges: RangeSet | null = null;
@@ -107,7 +106,7 @@ export class PopulationFiltered extends Observer {
         this.population = source instanceof PopulationFiltered ? source.population : source;
         this.cumulative = source.cumulative;
         this.#counts = new Uint32Array(sampleCount + 1);
-        this.#totals = new Uint32Array(sampleCount + 1);
+        this.#totals = new Float64Array(sampleCount + 1);
         this.samplesCount = this.#counts.subarray(0, sampleCount);
         this.samplesTotal = this.#totals.subarray(0, sampleCount);
         this.samplesMask = new Uint32Array(sampleCount);
@@ -494,7 +493,7 @@ export class PopulationFiltered extends Observer {
     }
 
     // Per-sample metrics of covered events: whole parts from aggregated keys, partial parts and boundary
-    // cuts per event; the same integer sums as the event pass, so Uint32 results match
+    // cuts per event; the same integer sums as the event pass
     #computeMetricsFromRecords() {
         const aggregate = this.#aggregate!;
         const { sampleAccepts, classAccepts, accepts } = this.#acceptance!;
@@ -716,7 +715,7 @@ export class PopulationFiltered extends Observer {
         let rangeSamples = 0;
 
         // Called only at interval edges, never from the event loop. Successive intervals can touch the same event;
-        // keep its sum in Number until recording the cut so fractional contributions survive Uint32 truncation.
+        // keep its sum in Number until recording the cut so fractional contributions survive truncation.
         const addBoundary = (index: number, contribution: number) => {
             const originalValue = originalValues[index];
 
@@ -798,7 +797,7 @@ type RecordsAcceptance = {
 
 // Event intervals whose values ranges keep, and boundary cuts of their edge events: the same coverage as
 // PopulationFiltered#compileValues without index or value constraints
-function computeCoverage(ranges: RangeSet | null, cumulative: Uint32Array, values: Uint32Array) {
+function computeCoverage(ranges: RangeSet | null, cumulative: Float64Array, values: Uint32Array) {
     const coverage: [number, number][] = [];
     const cuts: { index: number; value: number }[] = [];
     const addCut = (index: number, contribution: number) => {
@@ -890,7 +889,7 @@ function aggregateRange(
     groups: Uint8Array | Uint32Array,
     sinkId: number,
     samplesCount: Uint32Array,
-    samplesTotal: Uint32Array,
+    samplesTotal: Float64Array,
     start: number,
     end: number
 ) {
@@ -909,7 +908,7 @@ function aggregateRange(
 function aggregatePopulation(population: Population | PopulationFiltered, groups: Uint8Array | Uint32Array, groupCount: number) {
     const { samples, values, sinkId, cumulative, ranges } = population;
     const samplesCount = new Uint32Array(groupCount);
-    const samplesTotal = new Uint32Array(groupCount);
+    const samplesTotal = new Float64Array(groupCount);
 
     if (ranges === null) {
         aggregateRange(samples, values, groups, sinkId, samplesCount, samplesTotal, 0, values.length);
@@ -929,23 +928,21 @@ function aggregatePopulation(population: Population | PopulationFiltered, groups
 
 function createComputeBuffer(eventCount: number, sampleCount: number, useWasm = true) {
     const aggregateSize = sampleCount + 1;
-    const bufferSize =
-        eventCount + // values
-        eventCount + // samples
-        aggregateSize +
-        aggregateSize;
+    // Float64 totals go first to keep their 8-byte alignment
+    const byteSize =
+        8 * aggregateSize + // samplesTotal
+        4 * eventCount +    // values
+        4 * eventCount +    // samples
+        4 * aggregateSize;  // samplesCount
     const memory = useWasm
-        ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
-        : new Uint8Array(4 * bufferSize);
-    const buffer = new Uint32Array(memory.buffer);
-    let bufferOffset = 0;
-    const reserve = (length: number) => buffer.subarray(bufferOffset, bufferOffset += length);
+        ? new WebAssembly.Memory({ initial: Math.ceil(byteSize / 0x10000) })
+        : new Uint8Array(byteSize);
     const bufferMap: PopulationBufferMap = {
         memory,
-        values: reserve(eventCount),
-        samples: reserve(eventCount),
-        samplesCount: reserve(aggregateSize),
-        samplesTotal: reserve(aggregateSize)
+        samplesTotal: new Float64Array(memory.buffer, 0, aggregateSize),
+        values: new Uint32Array(memory.buffer, 8 * aggregateSize, eventCount),
+        samples: new Uint32Array(memory.buffer, 8 * aggregateSize + 4 * eventCount, eventCount),
+        samplesCount: new Uint32Array(memory.buffer, 8 * aggregateSize + 8 * eventCount, aggregateSize)
     };
 
     return bufferMap;
@@ -985,8 +982,7 @@ function intersectRangeSets(source: RangeSet | null, ranges: RangeSet | null): R
 }
 
 function computeCumulative(values: Uint32Array) {
-    // Binary range search assumes no Uint32 overflow. Widening this vector alone would not fix samplesTotal overflow.
-    const cumulative = new Uint32Array(values.length);
+    const cumulative = new Float64Array(values.length);
 
     for (let index = 1; index < values.length; index++) {
         cumulative[index] = cumulative[index - 1] + values[index - 1];
@@ -995,7 +991,7 @@ function computeCumulative(values: Uint32Array) {
     return cumulative;
 }
 
-export function findCumulativeBoundary(cumulative: Uint32Array, value: number, afterEqual: boolean) {
+export function findCumulativeBoundary(cumulative: Float64Array, value: number, afterEqual: boolean) {
     let left = 0;
     let right = cumulative.length;
 

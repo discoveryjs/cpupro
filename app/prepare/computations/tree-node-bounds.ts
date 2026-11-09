@@ -10,17 +10,17 @@ export type DictionaryBounds<T> = {
 };
 
 export class TreeValueBounds<T extends CpuProNode> {
-    #seenVectors: WeakRef<{ firstSeen: Uint32Array; lastSeen: Uint32Array }>;
+    #seenVectors: WeakRef<{ firstSeen: Float64Array; lastSeen: Float64Array }>;
     #entries: WeakRef<DictionaryBounds<T>[]>;
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
     tree: CallTree<T>;
     sampleToNode: Uint32Array;
-    cumulative: Uint32Array;
+    cumulative: Float64Array;
     samples: Uint32Array;
-    firstSeen: Uint32Array;
-    lastSeen: Uint32Array;
+    firstSeen: Float64Array;
+    lastSeen: Float64Array;
 
-    constructor(tree: CallTree<T>, sampleToNode: Uint32Array, cumulative: Uint32Array, samples: Uint32Array) {
+    constructor(tree: CallTree<T>, sampleToNode: Uint32Array, cumulative: Float64Array, samples: Uint32Array) {
         this.tree = tree;
         this.sampleToNode = sampleToNode;
         this.cumulative = cumulative;
@@ -47,8 +47,9 @@ export class TreeValueBounds<T extends CpuProNode> {
 
         const { tree, sampleToNode, cumulative, samples } = this;
         const { /* dictionary,*/ nodes, parent } = tree;
-        const firstSeen = new Uint32Array(nodes.length).fill(0xffffffff);
-        const lastSeen = new Uint32Array(nodes.length);
+        // Cumulative positions; unseen nodes keep firstSeen above any position
+        const firstSeen = new Float64Array(nodes.length).fill(Infinity);
+        const lastSeen = new Float64Array(nodes.length);
         // const firstSeenDict = new Uint32Array(dictionary.length).fill(0xffffffff);
         // const lastSeenDict = new Uint32Array(dictionary.length);
 

@@ -26,7 +26,7 @@ export class PopulationRecords {
     constructor(
         readonly samples: Uint32Array,
         readonly values: Uint32Array,
-        cumulative: Uint32Array,
+        cumulative: Float64Array,
         cumulativeEnd: number,
         readonly classes: EventClasses
     ) {
@@ -158,7 +158,7 @@ function hashKey(sample: number, eventClass: number) {
 
 // Starts of parts of events, plus the end of the last part: bins of a grid on the value axis, empty bins
 // dropped and bins with many events split
-function splitParts(cumulative: Uint32Array, cumulativeEnd: number) {
+function splitParts(cumulative: Float64Array, cumulativeEnd: number) {
     const eventCount = cumulative.length;
     const starts = [0];
 
@@ -182,7 +182,7 @@ function splitParts(cumulative: Uint32Array, cumulativeEnd: number) {
 }
 
 // First event with a coordinate at or after the value
-function findCumulativeBoundary(cumulative: Uint32Array, value: number) {
+function findCumulativeBoundary(cumulative: Float64Array, value: number) {
     let left = 0;
     let right = cumulative.length;
 

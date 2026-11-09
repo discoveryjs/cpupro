@@ -50,8 +50,8 @@ export class TreeMetrics<T extends CpuProNode> extends Observer {
     tree: CallTree<T>;
     sampleToNode: Uint32Array;
     #samplesCount: Uint32Array;
-    #selfValues: Uint32Array;
-    #nestedValues: Uint32Array;
+    #selfValues: Float64Array;
+    #nestedValues: Float64Array;
     // Brings stale values up to date before they are read
     #refresh: (() => void) | null;
 
@@ -59,8 +59,8 @@ export class TreeMetrics<T extends CpuProNode> extends Observer {
         tree: CallTree<T>,
         sampleToNode: Uint32Array,
         samplesCount: Uint32Array,
-        selfValues: Uint32Array,
-        nestedValues: Uint32Array,
+        selfValues: Float64Array,
+        nestedValues: Float64Array,
         refresh: (() => void) | null = null
     ) {
         super();
@@ -172,8 +172,8 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
             tree,
             sampleToNode,
             new Uint32Array(size),
-            new Uint32Array(size),
-            new Uint32Array(size)
+            new Float64Array(size),
+            new Float64Array(size)
         );
 
         this.population = population;
@@ -222,8 +222,8 @@ export class AncestorSubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics
             tree,
             projectSampleToNode(tree, originalMetrics),
             new Uint32Array(size),
-            new Uint32Array(size),
-            new Uint32Array(size)
+            new Float64Array(size),
+            new Float64Array(size)
         );
 
         this.originalMetrics = originalMetrics;
@@ -276,16 +276,16 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     #entries: DictionaryMetric<T>[];
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
     #samplesCount: Uint32Array;
-    #selfValues: Uint32Array;
-    #totalValues: Uint32Array;
+    #selfValues: Float64Array;
+    #totalValues: Float64Array;
     // Brings stale values and entries up to date before they are read
     #refresh: (() => void) | null;
 
     constructor(
         dictionary: T[],
         samplesCount: Uint32Array,
-        selfValues: Uint32Array,
-        totalValues: Uint32Array,
+        selfValues: Float64Array,
+        totalValues: Float64Array,
         refresh: (() => void) | null = null
     ) {
         super();
@@ -393,44 +393,47 @@ function createSampleBreakdownBuffer<T>(
 ) {
     const maps = trees.map(createMapsFromTree);
 
-    // estimate buffer size
-    let bufferSize =
-        // samplesCount
+    // Buffer sizes: Uint32 counts and maps; Float64 sums of values, placed first to keep their 8-byte alignment
+    let valuesSize =
         // samplesTotal
-        2 * samplesMapSize;
+        samplesMapSize;
+    let countsSize =
+        // samplesCount
+        samplesMapSize;
 
     for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
-        // tree metrics
-        bufferSize +=
+        // tree metrics: selfValues, nestedValues
+        valuesSize += 2 * tree.nodes.length;
+        countsSize +=
             // sample-to-node map
             sampleToNode.length +
             // parent
             tree.parent.length +
             // samplesCount
-            // selfValues
-            // nestedValues
-            3 * tree.nodes.length;
+            tree.nodes.length;
 
-        // dict metrics
-        bufferSize +=
+        // dict metrics: selfValues, totalValues
+        valuesSize += 2 * tree.dictionary.length;
+        countsSize +=
             sampleIdToDict.length +
             totalNodes.length +
             totalNodeToDict.length +
             // samplesCount
-            // selfValues
-            // totalValues
-            3 * tree.dictionary.length;
+            tree.dictionary.length;
     }
 
+    const byteSize = 8 * valuesSize + 4 * countsSize;
     const memory = useWasm
-        ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
-        : new Uint8Array(4 * bufferSize);
-    const buffer = memory ? new Uint32Array(memory.buffer) : null;
-    let bufferOffset = 0;
+        ? new WebAssembly.Memory({ initial: Math.ceil(byteSize / 0x10000) })
+        : new Uint8Array(byteSize);
+    const values = new Float64Array(memory.buffer, 0, valuesSize);
+    const counts = new Uint32Array(memory.buffer, 8 * valuesSize, countsSize);
+    let valuesOffset = 0;
+    let countsOffset = 0;
     const bufferMap: MetricsBufferMap<T> = {
         memory,
         samplesCount: alloc(samplesMapSize),
-        samplesTotal: alloc(samplesMapSize),
+        samplesTotal: allocValues(samplesMapSize),
         dimensions: []
     };
 
@@ -445,8 +448,8 @@ function createSampleBreakdownBuffer<T>(
             parent: adopt(tree.parent),
             // output
             samplesCount: alloc(tree.nodes.length),
-            selfValues: alloc(tree.nodes.length),
-            nestedValues: alloc(tree.nodes.length)
+            selfValues: allocValues(tree.nodes.length),
+            nestedValues: allocValues(tree.nodes.length)
         };
         const dictMap: BufferDictionaryMetricsMap<T> = {
             // input
@@ -461,8 +464,8 @@ function createSampleBreakdownBuffer<T>(
             totalNodeToDict: adopt(totalNodeToDict),
             // output
             samplesCount: alloc(tree.dictionary.length),
-            selfValues: alloc(tree.dictionary.length),
-            totalValues: alloc(tree.dictionary.length)
+            selfValues: allocValues(tree.dictionary.length),
+            totalValues: allocValues(tree.dictionary.length)
         };
 
         bufferMap.dimensions.push({ treeMap: treeMap, dictMap: dictMap });
@@ -471,21 +474,17 @@ function createSampleBreakdownBuffer<T>(
     return bufferMap;
 
     function adopt(array: Uint32Array) {
-        if (buffer === null) {
-            return array;
-        }
+        counts.set(array, countsOffset);
 
-        buffer.set(array, bufferOffset);
-
-        return buffer.subarray(bufferOffset, bufferOffset += array.length);
+        return counts.subarray(countsOffset, countsOffset += array.length);
     }
 
     function alloc(size: number) {
-        if (buffer === null) {
-            return new Uint32Array(size);
-        }
+        return counts.subarray(countsOffset, countsOffset += size);
+    }
 
-        return buffer.subarray(bufferOffset, bufferOffset += size);
+    function allocValues(size: number) {
+        return values.subarray(valuesOffset, valuesOffset += size);
     }
 }
 

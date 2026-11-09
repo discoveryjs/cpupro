@@ -131,7 +131,7 @@ describe('profile breakdowns', () => {
         assert.equal(stack.population.values, line.values);
         assert.equal(stack.population.values, locations.population.values);
         assert.deepEqual([...stack.population.values], [16, 32, 48, 64]);
-        assert.deepEqual(stack.population.cumulative, locations.population.cumulative);
+        assert.equal(stack.population.cumulative, locations.population.cumulative);
         const metrics = stack.callFrames!.all.nodes;
         assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], 160);
     });

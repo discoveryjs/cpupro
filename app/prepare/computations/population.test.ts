@@ -70,7 +70,7 @@ describe('PopulationFiltered', () => {
         const values = filtered.values;
 
         assert.deepEqual(population.aggregateBy(groups, 3), {
-            samplesCount: new Uint32Array([0, 2, 1]), samplesTotal: new Uint32Array([0, 48, 48])
+            samplesCount: new Uint32Array([0, 2, 1]), samplesTotal: new Float64Array([0, 48, 48])
         });
 
         const verify = (counts: number[], totals: number[]) => {

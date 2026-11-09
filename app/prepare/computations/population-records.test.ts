@@ -12,8 +12,9 @@ function sequence(seed: number) {
     };
 }
 
-// Several record chunks of events with runs of equal samples and classes, some zero values
-function createFixture() {
+// Several record chunks of events with runs of equal samples and classes, some zero values; scaled values sum
+// beyond 2^32
+function createFixture(scale = 1) {
     const random = sequence(11);
     const eventCount = 300_000;
     const samples = new Uint32Array(eventCount);
@@ -24,7 +25,7 @@ function createFixture() {
     for (let event = 0, sample = 0; event < eventCount; event++) {
         sample = random(4) === 0 ? random(50) : sample;
         samples[event] = sample;
-        values[event] = random(6) === 0 ? 0 : 1 + random(900);
+        values[event] = random(6) === 0 ? 0 : (1 + random(900)) * scale;
         lifespan[event] = random(3);
         space[event] = random(5);
     }
@@ -68,8 +69,8 @@ function assertEqualPopulations(actual: PopulationFiltered, expected: Population
     assert.deepEqual(actual.values, expected.values, `${step}: values`);
 }
 
-test('metrics from records equal event aggregation through filter, mask, range and constraint changes', () => {
-    const { population, lifespan, space, records } = createFixture();
+test.each([1, 100_000])('metrics from records equal event aggregation through filter, mask, range and constraint changes, values scale %d', (scale) => {
+    const { population, lifespan, space, records } = createFixture(scale);
     const total = population.cumulativeEnd;
     const [viewport, expectedViewport] = [new PopulationFiltered(population), new PopulationFiltered(population)];
     const [selection, expectedSelection] = [new PopulationFiltered(viewport), new PopulationFiltered(expectedViewport)];
