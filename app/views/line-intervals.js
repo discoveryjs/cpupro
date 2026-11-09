@@ -1,8 +1,8 @@
 import { utils } from '@discoveryjs/discovery';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { lineViewport } from '../jora/viewport.js';
+import { lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 
-// Intervals over a range, bands or rendered items; with zoom the line viewport is displayed within the range
+// Intervals over a range, bands or rendered items; with zoom the line zoom is displayed within the range
 discovery.view.define('line-intervals', function(el, config, data, context) {
     const intervals = Array.isArray(data) ? data : [];
     const range = resolveScopeViewport(config.viewport, context);
@@ -33,8 +33,8 @@ discovery.view.define('line-intervals', function(el, config, data, context) {
         const line = resolveScopeProfileLine(config.line, context);
         const profiles = context.data?.profiles;
         const destroyEl = utils.createElement('destroy-line-intervals');
-        const followViewport = () => {
-            const display = lineViewport(line, profiles);
+        const followZoom = () => {
+            const display = lineZoom(line, profiles);
 
             el.style.setProperty('--display-start', (display.start - range.start) / length);
             el.style.setProperty('--display-scale', length / (display.end - display.start));
@@ -42,8 +42,8 @@ discovery.view.define('line-intervals', function(el, config, data, context) {
         let unsubscribe = null;
 
         destroyEl.onConnect = () => {
-            unsubscribe = line.viewport.subscribe(followViewport);
-            followViewport();
+            unsubscribe = subscribeLineZoom(line, followZoom);
+            followZoom();
         };
         destroyEl.onDestroy = () => unsubscribe();
         el.append(destroyEl);

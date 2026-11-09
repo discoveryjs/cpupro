@@ -1,6 +1,6 @@
 import { utils } from '@discoveryjs/discovery';
 import { resolveScopeProfileLine } from '../jora/profile.js';
-import { lineViewport } from '../jora/viewport.js';
+import { lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import usage from './chart.usage.js';
 
@@ -52,13 +52,13 @@ discovery.view.define('cpupro-chart', function(el, config, data, context) {
     el.append(...generateYLabels(ticks, config.labelFormat));
     el.append(svgEl);
 
-    // With zoom the chart is drawn for its range and displays the line viewport within it
+    // With zoom the chart is drawn for its range and displays the line zoom within it
     if (config.zoom) {
         const line = resolveScopeProfileLine(config.line, context);
         const profiles = context.data?.profiles;
         const destroyEl = utils.createElement('destroy-cpupro-chart');
-        const followViewport = () => {
-            const display = lineViewport(line, profiles);
+        const followZoom = () => {
+            const display = lineZoom(line, profiles);
             const scale = 1000 / (maxX - minX);
 
             setRangeCoverage(el, extent, display);
@@ -67,8 +67,8 @@ discovery.view.define('cpupro-chart', function(el, config, data, context) {
         let unsubscribe = null;
 
         destroyEl.onConnect = () => {
-            unsubscribe = line.viewport.subscribe(followViewport);
-            followViewport();
+            unsubscribe = subscribeLineZoom(line, followZoom);
+            followZoom();
         };
         destroyEl.onDestroy = () => unsubscribe();
         el.append(destroyEl);

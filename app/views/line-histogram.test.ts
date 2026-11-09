@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { lineExtent, lineViewport } from '../jora/viewport.js';
+import { lineExtent, lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { validateRange } from '../prepare/computations/coordinates.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import usage from './line-histogram.usage.js';
@@ -16,7 +16,7 @@ function renderHistogram(props = {}, context = {}) {
         resolveScopeProfileLine,
         resolveScopeViewport,
         lineExtent,
-        lineViewport,
+        lineZoom, subscribeLineZoom,
         validateRange,
         usage,
         setRangeCoverage,
@@ -144,11 +144,11 @@ test('reports full or missing coverage without changing viewport bins', () => {
     }
 });
 
-test('zoom displays the line viewport within the range of bins and follows its changes', async () => {
+test('zoom displays the line zoom within the range of bins and follows its changes', async () => {
     const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
     const window = { start: 100, end: 200 };
 
-    line.viewport.selection.setRange(130, 150);
+    line.zoom.selection.setRange(130, 150);
     const { styles, child } = renderHistogram({ zoom: true }, { scopeLine: line, scopeViewport: window });
     const viewports: unknown[] = [];
 
@@ -159,15 +159,21 @@ test('zoom displays the line viewport within the range of bins and follows its c
 
     const unsubscribe = child.onInit({ setViewport: viewport => viewports.push(viewport) });
 
-    line.viewport.selection.setRange(110, 130);
+    line.zoom.selection.setRange(110, 130);
     assert.deepEqual(viewports, [{ start: 110, end: 130 }]);
     assert.equal(styles.get('--range-pad-start'), 0.5);
-    line.viewport.resetRange();
+    line.zoom.resetRange();
     assert.deepEqual(viewports.at(-1), { start: 120, end: 180 });
     assert.equal(styles.get('--range-pad-start'), 0);
+    // Without a zoom request the viewport is displayed
+    line.viewport.selection.setRange(140, 160);
+    assert.deepEqual(viewports.at(-1), { start: 140, end: 160 });
+    line.viewport.resetRange();
+    assert.equal(viewports.length, 4);
 
     unsubscribe();
-    line.viewport.selection.setRange(110, 130);
-    assert.equal(viewports.length, 2);
+    line.zoom.selection.setRange(110, 130);
+    line.viewport.selection.setRange(140, 160);
+    assert.equal(viewports.length, 4);
     line.viewport.resetRange();
 });

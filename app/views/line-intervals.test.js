@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { lineViewport } from '../jora/viewport.js';
+import { lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
@@ -22,7 +22,7 @@ function render(config, data, context, renders = []) {
     let lifecycle;
 
     evaluateModule(new URL('./line-intervals.js', import.meta.url), {
-        resolveScopeProfileLine, resolveScopeViewport, lineViewport,
+        resolveScopeProfileLine, resolveScopeViewport, lineZoom, subscribeLineZoom,
         utils: { createElement },
         discovery: { view: { define: (_, callback) => renderIntervals = callback } },
         HTMLElement: class {},
@@ -66,7 +66,7 @@ test('places intervals overlapping the range as fractions of it', async () => {
     assert.deepEqual(styles(render({}, null, { scopeLine: line })), []);
 });
 
-test('zoom displays the line viewport within the range until destroyed', async () => {
+test('zoom displays the line zoom within the range until destroyed', async () => {
     const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const el = render({ zoom: true }, [{ start: 150, end: 160, color: 'a' }], {
         scopeLine: line, scopeViewport: { start: 100, end: 200 }
@@ -74,16 +74,20 @@ test('zoom displays the line viewport within the range until destroyed', async (
     const destroyEl = el.children.at(-1);
 
     assert.equal(destroyEl.tagName, 'destroy-line-intervals');
-    line.viewport.selection.setRange(120, 145);
+    line.zoom.selection.setRange(120, 145);
     assert.equal(el.styles.size, 0);
     destroyEl.onConnect();
     assert.deepEqual(Object.fromEntries(el.styles), { '--display-start': 0.2, '--display-scale': 4 });
-    line.viewport.resetRange();
+    line.zoom.resetRange();
     assert.deepEqual(Object.fromEntries(el.styles), { '--display-start': 0, '--display-scale': 1 });
+    // Without a zoom request the viewport is displayed
+    line.viewport.selection.setRange(150, 200);
+    assert.deepEqual(Object.fromEntries(el.styles), { '--display-start': 0.5, '--display-scale': 2 });
+    line.viewport.resetRange();
     destroyEl.onDestroy();
-    line.viewport.selection.setRange(120, 145);
+    line.zoom.selection.setRange(120, 145);
     assert.deepEqual(Object.fromEntries(el.styles), { '--display-start': 0, '--display-scale': 1 });
-    line.viewport.resetRange();
+    line.zoom.resetRange();
 });
 
 test('renders an item config into each interval and leaves the band uncolored without a color', async () => {

@@ -1,9 +1,13 @@
 import type { Profile } from './prepare/profile.mjs';
 import { mapLineRanges } from './prepare/computations/line-mapping.js';
 
+// Selections, viewports and zooms of lines are shared by peer profiles: they don't depend on a thread but on time,
+// lines of time share it, other lines map through the time line of their profile
+const scopes = ['range', 'viewport', 'zoom'] as const;
+
 export function subscribeSelectionSync(profiles: readonly Profile[], getPeers: (profile: Profile) => Iterable<Profile>) {
     let syncing = false;
-    const subscriptions = profiles.flatMap(profile => profile.lines.map(source => source.range.selection.updates.subscribe(() => {
+    const subscriptions = profiles.flatMap(profile => profile.lines.flatMap(source => scopes.map(scope => source[scope].selection.updates.subscribe(() => {
         if (syncing) {
             return;
         }
@@ -17,8 +21,8 @@ export function subscribeSelectionSync(profiles: readonly Profile[], getPeers: (
         }
 
         const ranges = source === time
-            ? source.range.selection.ranges
-            : mapLineRanges(source, time, source.range.selection.ranges);
+            ? source[scope].selection.ranges
+            : mapLineRanges(source, time, source[scope].selection.ranges);
 
         if (ranges === undefined) {
             return;
@@ -40,14 +44,14 @@ export function subscribeSelectionSync(profiles: readonly Profile[], getPeers: (
 
                     const translated = target === targetTime ? ranges : mapLineRanges(targetTime, target, ranges);
                     if (translated !== undefined) {
-                        target.range.selection.setRanges(translated);
+                        target[scope].selection.setRanges(translated);
                     }
                 }
             }
         } finally {
             syncing = false;
         }
-    })));
+    }))));
 
     return () => subscriptions.forEach(unsubscribe => unsubscribe());
 }

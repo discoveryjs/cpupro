@@ -93,6 +93,7 @@ export async function createTimeline(
         attributes: [],
         filters: new FilterSet(),
         viewport: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
+        zoom: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
         window: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
         range,
         breakdowns: [],

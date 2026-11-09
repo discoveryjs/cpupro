@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
+import { lineViewport, lineViewportBounds, lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
@@ -27,7 +27,7 @@ async function render() {
 
     evaluateModule(new URL('./timeline-profiles.js', import.meta.url), {
         utils: { createElement },
-        lineViewport,
+        lineZoom, subscribeLineZoom, lineViewport,
         lineViewportBounds,
         document: { createElement },
         discovery: {
@@ -50,9 +50,10 @@ async function render() {
     return { el, line: first.profile.timeline, primaryBar, ruler, profiles: context.data.profiles };
 }
 
-test('the viewport of the primary timeline is shown over all profiles and changed on the primary profile', async () => {
+test('the viewport of the primary timeline and the zoom within it are shown over all profiles, the viewport is changed on the primary profile', async () => {
     const { el, line, primaryBar, ruler, profiles } = await render();
     const window = el.children.find(child => child.className === 'viewport-window');
+    const zoom = el.children.find(child => child.className === 'zoom-window');
     const { onInit, onChange } = ruler.config;
 
     assert.equal(ruler.target, primaryBar);
@@ -60,6 +61,7 @@ test('the viewport of the primary timeline is shown over all profiles and change
     assert.deepEqual({ ...ruler.config.range }, { start: 100, end: 250 });
     assert.equal(ruler.config.selection, null);
     assert.equal(window.hidden, true);
+    assert.equal(zoom.hidden, true);
 
     const selections = [];
     const api = { state: { selection: null }, setSelection: selection => selections.push(selection) };
@@ -71,12 +73,19 @@ test('the viewport of the primary timeline is shown over all profiles and change
     assert.deepEqual([window.style.values.get('--x1'), window.style.values.get('--x2')], [0.2, 0.4]);
     assert.deepEqual(selections, [{ start: 130, end: 160 }]);
 
+    // The zoom is shown within the viewport, it doesn't change the ruler selection
+    line.zoom.selection.setRange(145, 160);
+    assert.equal(zoom.hidden, false);
+    assert.deepEqual([zoom.style.values.get('--x1'), zoom.style.values.get('--x2')], [0.3, 0.4]);
+    assert.deepEqual(selections, [{ start: 130, end: 160 }, { start: 130, end: 160 }]);
+
     // The ruler selection requests the viewport without echoing it back; the whole bounds and none reset it
     api.state.selection = { start: 175, end: 205 };
     onChange(api);
     assert.deepEqual(line.viewport.selection.ranges, [{ start: 175, end: 205 }]);
+    assert.equal(zoom.hidden, true);
     assert.deepEqual([window.style.values.get('--x1'), window.style.values.get('--x2')], [0.5, 0.7]);
-    assert.equal(selections.length, 1);
+    assert.equal(selections.length, 2);
     api.state.selection = lineViewportBounds(line, profiles);
     onChange(api);
     assert.equal(line.viewport.selection.ranges, null);
@@ -90,8 +99,10 @@ test('the viewport of the primary timeline is shown over all profiles and change
 
     cleanup();
     line.viewport.selection.setRange(130, 160);
+    line.zoom.selection.setRange(140, 150);
     assert.equal(window.hidden, true);
-    assert.equal(selections.length, 1);
+    assert.equal(zoom.hidden, true);
+    assert.equal(selections.length, 2);
     line.viewport.resetRange();
 });
 

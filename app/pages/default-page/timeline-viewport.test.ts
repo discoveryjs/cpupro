@@ -686,7 +686,7 @@ test('values of the line window follow it without rendering the section again, G
     const line = profile.timeline;
     const bounds = methods.lineViewportBounds(line, parent.data.profiles);
 
-    line.viewport.selection.setRange(15, 25);
+    line.zoom.selection.setRange(15, 25);
 
     const [windowPart, events, charts] = section.content;
     const context = windowContext(profile, parent);
@@ -720,6 +720,15 @@ test('values of the line window follow it without rendering the section again, G
     assert.deepEqual(query('scopeViewport()')(profile, query(charts.context)(profile, parent)), bounds);
     assert.equal(chartUsedHeap.content.content[0].content[0].zoom, true);
     assert.equal(userTimingsTimeline.content.content[0].content[0].zoom, true);
-    line.viewport.resetRange();
+    line.zoom.resetRange();
     assert.deepEqual(query('scopeViewport()')({}, parent), { start: 0, end: 100 });
+
+    // A viewport scopes the window, which is the viewport itself without a zoom; the parts following the zoom
+    // stay rendered for the viewport bounds
+    line.viewport.selection.setRange(10, 60);
+    assert.deepEqual(windowContext(profile, parent).scopeViewport, { start: 10, end: 60 });
+    assert.deepEqual(query('scopeViewport()')(profile, query(events.context)(profile, parent)), bounds);
+    line.zoom.selection.setRange(15, 25);
+    assert.deepEqual(windowContext(profile, parent).scopeViewport, { start: 10, end: 35 });
+    line.viewport.resetRange();
 });

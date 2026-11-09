@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import { resolveScopeProfileLine } from '../jora/profile.js';
-import { lineViewport } from '../jora/viewport.js';
+import { lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import usage from './chart.usage.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
@@ -31,7 +31,7 @@ const generateCurve = evaluateModule(new URL('./chart.js', import.meta.url), {
     discovery: { view: { define(name, render) {
         renderChart = render;
     } } },
-    usage, setRangeCoverage, resolveScopeProfileLine, lineViewport,
+    usage, setRangeCoverage, resolveScopeProfileLine, lineZoom, subscribeLineZoom,
     utils: { createElement },
     HTMLElement: class {},
     customElements: { define() {} },
@@ -104,11 +104,11 @@ test('uses the viewport as coverage when no extent is supplied', () => {
     assert.ok(curve.endsWith('H 1000'));
 });
 
-test('zoom draws the range and displays the line viewport within it until destroyed', async () => {
+test('zoom draws the range and displays the line zoom within it until destroyed', async () => {
     const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const element = createElement();
 
-    line.viewport.selection.setRange(110, 160);
+    line.zoom.selection.setRange(110, 160);
     renderChart(element, {
         minX: 100, maxX: 200, extent: { start: 120, end: 200 }, zoom: true, height: 50,
         points: [{ x: 120, y: 10 }, { x: 180, y: 20 }]
@@ -124,13 +124,19 @@ test('zoom draws the range and displays the line viewport within it until destro
     assert.equal(element.styles.get('--range-pad-start'), 0.2);
     assert.equal(element.styles.get('--range-pad-end'), 0);
 
-    line.viewport.resetRange();
+    line.zoom.resetRange();
     assert.equal(svg.attributes.get('viewBox'), '0 0 1000 50');
     assert.equal(element.styles.get('--range-pad-start'), 0.2);
 
-    destroyEl.onDestroy();
+    // Without a zoom request the viewport is displayed
     line.viewport.selection.setRange(150, 200);
+    assert.equal(svg.attributes.get('viewBox'), '500 0 500 50');
+    line.viewport.resetRange();
+
+    destroyEl.onDestroy();
+    line.zoom.selection.setRange(150, 200);
     assert.equal(svg.attributes.get('viewBox'), '0 0 1000 50');
+    line.zoom.resetRange();
 
     const unzoomed = createElement();
 

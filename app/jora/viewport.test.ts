@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import jora from 'jora';
-import { methods, binningRange } from './viewport.js';
+import { methods, binningRange, setLineZoom, subscribeLineZoom } from './viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 
 const query = jora.setup({ methods });
@@ -86,4 +86,43 @@ test('viewport bounds are the viewport without a request, also with the common t
     assert.deepEqual(methods.lineViewportBounds(line, [other.profile]), { start: 105, end: 195 });
     line.viewport.resetRange();
     assert.deepEqual(methods.lineViewport(line, [other.profile]), methods.lineViewportBounds(line, [other.profile]));
+});
+
+test('the zoom is displayed within the viewport, requests are kept within it and the whole viewport is no request', async () => {
+    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+    const other = await createLineFixture({ origin: 50, values: new Uint32Array([200]) });
+    const profiles = [other.profile];
+    let changes = 0;
+    const unsubscribe = subscribeLineZoom(line, () => changes++);
+
+    // Without requests the zoom is the viewport, i.e. its bounds
+    assert.deepEqual(query('lineZoom(#.profiles)')(line, { profiles }), { start: 50, end: 250 });
+    line.zoom.selection.setRange(120, 140);
+    assert.deepEqual(query('lineZoom(#.profiles)')(line, { profiles }), { start: 120, end: 140 });
+    line.zoom.resetRange();
+
+    // A new viewport changes the displayed range too
+    line.viewport.selection.setRange(100, 200);
+    assert.deepEqual(query('lineZoom()')(line), { start: 100, end: 200 });
+    assert.equal(changes, 3);
+
+    setLineZoom(line, profiles, { start: 120, end: 140 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: 120, end: 140 }]);
+    // Moved inside the viewport, a longer one is clipped to it
+    setLineZoom(line, profiles, { start: 90, end: 110 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: 100, end: 120 }]);
+    setLineZoom(line, profiles, { start: 190, end: 230 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: 160, end: 200 }]);
+    setLineZoom(line, profiles, { start: 120, end: 300 });
+    assert.equal(line.zoom.selection.ranges, null);
+    setLineZoom(line, profiles, { start: 120, end: 140 });
+    setLineZoom(line, profiles, { start: 100, end: 200 });
+    assert.equal(line.zoom.selection.ranges, null);
+    assert.equal(changes, 9);
+
+    unsubscribe();
+    line.viewport.resetRange();
+    line.zoom.selection.setRange(120, 140);
+    assert.equal(changes, 9);
+    line.zoom.resetRange();
 });

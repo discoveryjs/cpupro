@@ -1,5 +1,5 @@
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { lineExtent, lineViewport } from '../jora/viewport.js';
+import { lineExtent, lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { validateRange } from '../prepare/computations/coordinates.js';
 import usage from './line-histogram.usage.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
@@ -11,9 +11,9 @@ discovery.view.define('line-histogram', function(el, props, data, context) {
     // Bins already span the viewport; extent describes coverage, not a second bin grid.
     const viewport = resolveScopeViewport(props.viewport, context) || extent;
 
-    // With zoom the bins span a window of the line viewport and the display follows the line viewport within it
+    // With zoom the bins span a window of the line zoom and the display follows the line zoom within it
     const profiles = context.data?.profiles;
-    const display = props.zoom ? lineViewport(line, profiles) : viewport;
+    const display = props.zoom ? lineZoom(line, profiles) : viewport;
 
     validateRange(extent);
     validateRange(viewport);
@@ -32,8 +32,8 @@ discovery.view.define('line-histogram', function(el, props, data, context) {
         max: props.max,
         binsMax: props.binsMax,
         scale: props.scale,
-        onInit: props.zoom && (api => line.viewport.subscribe(() => {
-            const display = lineViewport(line, profiles);
+        onInit: props.zoom && (api => subscribeLineZoom(line, () => {
+            const display = lineZoom(line, profiles);
 
             setRangeCoverage(el, extent, display);
             api.setViewport(display);

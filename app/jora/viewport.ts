@@ -3,6 +3,7 @@ import type { ProfileLine } from '../prepare/lines/types.js';
 
 type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'axisStart' | 'axisEnd' | 'viewport'>;
 type WindowLine = ViewportLine & Pick<ProfileLine, 'window'>;
+type ZoomLine = ViewportLine & Pick<ProfileLine, 'zoom'>;
 
 export function lineExtent(line: Pick<ProfileLine, 'range'>) {
     const { frame, extent } = line.range;
@@ -52,7 +53,38 @@ export function lineViewportBounds(line: ViewportLine, profiles: readonly { time
     return extent;
 }
 
-// The range of histogram data: the line's window, which contains the viewport
+// The range displayed by timelines: the zoom within the viewport, the viewport itself without a zoom request
+export function lineZoom(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
+    return line.zoom.selection.ranges
+        ? lineViewport({ ...line, viewport: line.zoom }, profiles)
+        : lineViewport(line, profiles);
+}
+
+// Follows changes of the displayed range: a new viewport without a zoom request changes it too
+export function subscribeLineZoom(line: Pick<ProfileLine, 'viewport' | 'zoom'>, callback: () => void) {
+    const unsubscribeViewport = line.viewport.subscribe(callback);
+    const unsubscribeZoom = line.zoom.subscribe(callback);
+
+    return () => {
+        unsubscribeViewport();
+        unsubscribeZoom();
+    };
+}
+
+// Requests a zoom moved inside the viewport, the length of the viewport or more is no request
+export function setLineZoom(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[], range: Range) {
+    const scope = lineViewport(line, profiles);
+    const length = range.end - range.start;
+    const start = Math.min(Math.max(range.start, scope.start), scope.end - length);
+
+    if (length >= scope.end - scope.start) {
+        line.zoom.selection.resetRange();
+    } else {
+        line.zoom.selection.setRange(start, start + length);
+    }
+}
+
+// The range of histogram data: the line's window, which contains the zoom
 export function lineWindow(line: WindowLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
     return lineViewport({ ...line, viewport: line.window }, profiles);
 }
@@ -94,6 +126,7 @@ export const methods = {
     timestampExtent,
     lineViewport,
     lineViewportBounds,
+    lineZoom,
     lineWindow,
     viewportRange
 };

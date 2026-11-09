@@ -1,5 +1,5 @@
 const { resolveScopeProfileLine } = require('../jora/profile.js');
-const { lineViewport, lineViewportBounds } = require('../jora/viewport.js');
+const { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } = require('../jora/viewport.js');
 const { formatMicrosecondsTime } = require('../prepare/misc/time-utils.js');
 const { createState, rangeToSegments } = require('./ruler-range.js');
 const { binsPerColumn } = require('./bins-histogram/index.js');
@@ -58,7 +58,8 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
     } = props;
     const scopeLine = resolveScopeProfileLine(line, context);
     const readSelection = getSelectionReader(rangeManager, multiple);
-    // Zoom moves the line viewport within its bounds and the ruler follows the viewport
+    // Zoom moves the line zoom within the line viewport and the ruler follows the zoom; markers and labels keep
+    // the steps and the origin of the viewport bounds, the whole recordings
     const profiles = context.data?.profiles;
     const bounds = zoom ? lineViewportBounds(scopeLine, profiles) : null;
     // With zoom the range and segments describe a grid of bins and the ruler segments are their columns.
@@ -81,7 +82,7 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
     return this.render(el, {
         ...rest,
         view: 'ruler',
-        range: zoom ? lineViewport(scopeLine, profiles) : range,
+        range: zoom ? lineZoom(scopeLine, profiles) : range,
         bounds,
         segments: readGrid() !== null
             ? (range, width) => {
@@ -131,25 +132,20 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
                     api.setSelection(readSelection());
                 }
             });
-            const unsubscribeViewport = zoom
-                ? scopeLine.viewport.subscribe(() => api.setRange(lineViewport(scopeLine, profiles)))
+            const unsubscribeZoom = zoom
+                ? subscribeLineZoom(scopeLine, () => api.setRange(lineZoom(scopeLine, profiles)))
                 : null;
 
             return () => {
                 unsubscribe?.();
-                unsubscribeViewport?.();
+                unsubscribeZoom?.();
                 cleanup?.();
             };
         },
         onRangeChange: zoom && (api => {
-            const { start, end } = api.state.range;
-
-            // The whole bounds is no request, so the viewport keeps following them
-            if (start === bounds.start && end === bounds.end) {
-                scopeLine.viewport.selection.resetRange();
-            } else {
-                scopeLine.viewport.selection.setRange(start, end);
-            }
+            // The zoom is kept within the viewport, the ruler shows what is requested
+            setLineZoom(scopeLine, profiles, api.state.range);
+            api.setRange(lineZoom(scopeLine, profiles));
         }),
         onChange(api, data, context) {
             if (rangeManager) {

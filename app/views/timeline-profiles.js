@@ -1,5 +1,5 @@
 import { utils } from '@discoveryjs/discovery';
-import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
+import { lineViewport, lineViewportBounds, lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 
 const profileTooltip = [
     'text:name',
@@ -128,8 +128,8 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         }, { profiles: bucketProfiles, profile }, context);
     }
 
-    // The viewport and selected ranges of the primary profile timeline are shown over all profiles,
-    // the viewport is changed by selecting, moving or resizing a range on the primary profile
+    // The viewport, the zoom within it and selected ranges of the primary profile timeline are shown over all
+    // profiles, the viewport is changed by selecting, moving or resizing a range on the primary profile
     // (other profiles are selected by a click)
     const line = context.primaryProfile?.timeline;
 
@@ -137,13 +137,16 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         const profiles = context.data?.profiles;
         const selectionsEl = utils.createElement('div', 'selections');
         const viewportEl = utils.createElement('div', 'viewport-window');
+        const zoomEl = utils.createElement('div', 'zoom-window');
         const readViewport = () => line.viewport.selection.ranges ? lineViewport(line, profiles) : null;
+        const renderWindow = (windowEl, window) => {
+            windowEl.hidden = window === null;
+            windowEl.style.setProperty('--x1', window ? (window.start - min) / range : 0);
+            windowEl.style.setProperty('--x2', window ? (window.end - min) / range : 1);
+        };
         const renderViewport = () => {
-            const viewport = readViewport();
-
-            viewportEl.hidden = viewport === null;
-            viewportEl.style.setProperty('--x1', viewport ? (viewport.start - min) / range : 0);
-            viewportEl.style.setProperty('--x2', viewport ? (viewport.end - min) / range : 1);
+            renderWindow(viewportEl, readViewport());
+            renderWindow(zoomEl, line.zoom.selection.ranges ? lineZoom(line, profiles) : null);
         };
         const renderSelections = () => {
             selectionsEl.replaceChildren(...(line.range.selection.ranges || []).map(({ start, end }) => {
@@ -159,7 +162,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
 
         renderSelections();
         renderViewport();
-        el.append(selectionsEl, viewportEl);
+        el.append(selectionsEl, viewportEl, zoomEl);
 
         return this.render(primaryBarEl, {
             view: 'ruler',
@@ -168,7 +171,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
             grid: false,
             selection: readViewport(),
             onInit(api) {
-                const unsubscribeViewport = line.viewport.subscribe(() => {
+                const unsubscribeViewport = subscribeLineZoom(line, () => {
                     renderViewport();
 
                     if (!updatingViewport) {

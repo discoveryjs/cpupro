@@ -145,9 +145,12 @@ export type ProfileLine = {
     values: Uint32Array;
     attributes: ProfileLineAttribute[];
     filters: FilterSet;
+    // The scope of populations: tables, totals, indicators and filters follow it
     viewport: RangeView;
-    // Window of histogram data: the viewport quantized to aligned levels, so zooming and panning inside it
-    // changes how histograms are displayed, not their data
+    // A range displayed within the viewport: zooming changes what timelines show, not populations
+    zoom: RangeView;
+    // Window of histogram data: the zoom quantized to aligned levels of the viewport, so zooming and panning
+    // inside it changes how histograms are displayed, not their data
     window: RangeView;
     range: RangeView;
 

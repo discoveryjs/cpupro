@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { afterEach, test, vi } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
+import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import { TrackTimeline as CanvasTrackTimeline } from './track-timeline/index.js';
 import { layoutSpans } from './track-timeline/layout.js';
@@ -351,7 +351,7 @@ async function renderTimeline(config = {}, scopeViewport) {
     const destroyElement = {};
 
     evaluateModule(new URL('./track-timeline.js', import.meta.url), {
-        resolveScopeProfileLine, resolveScopeViewport, lineViewport, lineViewportBounds,
+        resolveScopeProfileLine, resolveScopeViewport, lineZoom, setLineZoom, subscribeLineZoom, lineViewportBounds,
         discovery: { view: { define: (_, callback) => render = callback } },
         utils: { createElement: name => name === 'destroy-track-timeline' ? destroyElement : element },
         HTMLElement: class {}, customElements: { define() {} },
@@ -403,7 +403,7 @@ test('uses the common viewport or its scoped and explicit overrides', async () =
     }
 });
 
-test('zoom bounds the timeline by the viewport bounds and follows the line viewport until destroyed', async () => {
+test('zoom bounds the timeline by the viewport bounds and follows the line zoom until destroyed', async () => {
     const { timeline, scopeLine, destroyElement, hover } = await renderTimeline({ zoom: true }, { start: 130, end: 160 });
 
     assert.equal(timeline.options.minX, 100);
@@ -411,14 +411,19 @@ test('zoom bounds the timeline by the viewport bounds and follows the line viewp
     assert.equal(hover({ start: 135, end: 145 }).spanStart, 35);
     assert.deepEqual(timeline.views, [{ start: 100, end: 200 }]);
 
-    scopeLine.viewport.selection.setRange(140, 150);
+    scopeLine.zoom.selection.setRange(140, 150);
     assert.deepEqual(timeline.views.at(-1), { start: 140, end: 150 });
-    scopeLine.viewport.resetRange();
+    scopeLine.zoom.resetRange();
     assert.deepEqual(timeline.views.at(-1), { start: 100, end: 200 });
-    destroyElement.onDestroy();
-    scopeLine.viewport.selection.setRange(140, 150);
-    assert.equal(timeline.views.length, 3);
+    // Without a zoom request the viewport is displayed
+    scopeLine.viewport.selection.setRange(120, 160);
+    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 160 });
     scopeLine.viewport.resetRange();
+    assert.equal(timeline.views.length, 5);
+    destroyElement.onDestroy();
+    scopeLine.zoom.selection.setRange(140, 150);
+    assert.equal(timeline.views.length, 5);
+    scopeLine.zoom.resetRange();
 
     const { timeline: unzoomed, scopeLine: line } = await renderTimeline({}, undefined);
 
@@ -428,19 +433,33 @@ test('zoom bounds the timeline by the viewport bounds and follows the line viewp
     line.viewport.resetRange();
 });
 
-test('zoom requests a view of the timeline as the line viewport, the whole bounds reset it', async () => {
+test('zoom requests a view of the timeline as the line zoom within the viewport, the whole viewport resets it', async () => {
     const { timeline, scopeLine } = await renderTimeline({ zoom: true }, undefined);
     const { onViewChange } = timeline.options;
 
     onViewChange(120, 150);
-    assert.deepEqual(scopeLine.viewport.selection.ranges, [{ start: 120, end: 150 }]);
+    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 120, end: 150 }]);
+    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 150 });
     onViewChange(100, 200);
-    assert.equal(scopeLine.viewport.selection.ranges, null);
+    assert.equal(scopeLine.zoom.selection.ranges, null);
     onViewChange(120, 150);
     onViewChange(99.9, 200.1);
-    assert.equal(scopeLine.viewport.selection.ranges, null);
+    assert.equal(scopeLine.zoom.selection.ranges, null);
     onViewChange(100, 199);
-    assert.deepEqual(scopeLine.viewport.selection.ranges, [{ start: 100, end: 199 }]);
+    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 100, end: 199 }]);
+    assert.equal(scopeLine.viewport.selection.ranges, null);
+
+    // Within a viewport the view is kept inside it and shown as requested inside
+    scopeLine.viewport.selection.setRange(120, 160);
+    assert.equal(scopeLine.zoom.selection.ranges, null);
+    onViewChange(110, 130);
+    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 120, end: 140 }]);
+    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 140 });
+    onViewChange(150, 170);
+    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 140, end: 160 }]);
+    onViewChange(100, 200);
+    assert.equal(scopeLine.zoom.selection.ranges, null);
+    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 160 });
     scopeLine.viewport.resetRange();
 });
 

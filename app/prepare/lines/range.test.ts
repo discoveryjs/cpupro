@@ -147,7 +147,7 @@ test('a viewport window is the aligned cells of the level within twice the viewp
     }
 });
 
-test('a window is kept while it contains the viewport within 4 viewport sizes', async () => {
+test('a window is kept while it contains the zoom within 4 zoom sizes', async () => {
     const extent = { start: 0, end: 1 };
     const { profile } = await createProfileFixture();
     const line = profile.memline!;
@@ -164,27 +164,61 @@ test('a window is kept while it contains the viewport within 4 viewport sizes', 
     assert.equal(windowHolds(null, [{ start: -0.1, end: 0.5 }], extent), false);
 
     line.window.selection.subscribe(() => windowChanges++);
-    line.viewport.setRange(total * 0.4, total * 0.45);
+    line.zoom.setRange(total * 0.4, total * 0.45);
     assert.deepEqual(window(), [[0.375, 0.5]]);
     // Zooming in within a quarter of the window and panning inside it keep the window
-    line.viewport.setRange(total * 0.41, total * 0.445);
-    line.viewport.setRange(total * 0.45, total * 0.4813);
+    line.zoom.setRange(total * 0.41, total * 0.445);
+    line.zoom.setRange(total * 0.45, total * 0.4813);
     assert.deepEqual(window(), [[0.375, 0.5]]);
     assert.equal(windowChanges, 1);
-    // Leaving the window or zooming in deeper move it to the window of the viewport
-    line.viewport.setRange(total * 0.48, total * 0.51);
+    // Leaving the window or zooming in deeper move it to the window of the zoom
+    line.zoom.setRange(total * 0.48, total * 0.51);
     assert.deepEqual(window(), [[0.46875, 0.53125]]);
-    line.viewport.setRange(total * 0.5, total * 0.51);
+    line.zoom.setRange(total * 0.5, total * 0.51);
     assert.deepEqual(window(), [[0.5, 0.515625]]);
-    // Zooming out keeps the whole extent until the viewport is under a quarter of it
-    line.viewport.setRange(total * 0.2, total * 0.6);
+    // Zooming out keeps the whole extent until the zoom is under a quarter of it
+    line.zoom.setRange(total * 0.2, total * 0.6);
     assert.equal(window(), null);
-    line.viewport.setRange(total * 0.3, total * 0.56);
+    line.zoom.setRange(total * 0.3, total * 0.56);
     assert.equal(window(), null);
     assert.equal(windowChanges, 4);
+    line.zoom.resetRange();
 });
 
-test('histograms follow the window of the viewport with the viewport filters', async () => {
+test('the window of the zoom is within the viewport, a new viewport ends the zoom and is shown whole', async () => {
+    const { profile } = await createProfileFixture();
+    const line = profile.memline!;
+    const total = line.axisTotal;
+    const window = () => line.window.selection.ranges?.map(({ start, end }) => [start / total, end / total]) ?? null;
+    const viewport = () => line.viewport.selection.ranges?.map(({ start, end }) => [start / total, end / total]) ?? null;
+    let windowChanges = 0;
+
+    line.window.selection.subscribe(() => windowChanges++);
+
+    // Without a zoom the window is the viewport, its cells are halvings of the viewport
+    line.viewport.setRange(total * 0.2, total * 0.6);
+    assert.deepEqual(window(), viewport());
+    line.zoom.setRange(total * 0.25, total * 0.3);
+    assert.deepEqual(window(), [[0.2, 0.3]]);
+    line.zoom.setRange(total * 0.45, total * 0.6);
+    assert.deepEqual(window(), [[0.4, 0.6]]);
+    assert.equal(windowChanges, 3);
+
+    // A new viewport ends the zoom, though the previous window would hold it
+    line.viewport.setRange(total * 0.4, total * 0.6);
+    assert.equal(line.zoom.selection.ranges, null);
+    assert.deepEqual(window(), viewport());
+    assert.equal(windowChanges, 3);
+    line.viewport.setRange(total * 0.42, total * 0.6);
+    assert.deepEqual(window(), viewport());
+    assert.equal(windowChanges, 4);
+
+    line.viewport.resetRange();
+    assert.equal(window(), null);
+    assert.equal(line.zoom.selection.ranges, null);
+});
+
+test('histograms follow the window of the zoom with the viewport filters', async () => {
     const { profile } = await createProfileFixture({ allocationGc: [0, 1, 0, 1] });
     const line = profile.memline!;
     const [{ populationViewport, populationWindow }] = line.breakdowns;
@@ -194,24 +228,25 @@ test('histograms follow the window of the viewport with the viewport filters', a
     let windowUpdates = 0;
 
     populationWindow.subscribe(() => windowUpdates++);
-    line.viewport.setRange(total * 0.3, total * 0.45);
+    line.zoom.setRange(total * 0.3, total * 0.45);
 
-    assert.deepEqual(populationViewport.ranges, [{ start: total * 0.3, end: total * 0.45 }]);
+    // Zooming doesn't change the viewport population
+    assert.equal(populationViewport.ranges, null);
     assert.deepEqual(populationWindow.ranges, [{ start: total * 0.25, end: total * 0.5 }]);
     assert.deepEqual(lineWindow(line), { start: total * 0.25, end: total * 0.5 });
     assert.equal(windowUpdates, 1);
-    // Window bins outside the viewport keep their values
+    // Window bins outside the zoom keep their values
     const bins = [...windowBins()];
     assert.equal(bins.reduce((sum, value) => sum + value, 0), total * 0.25);
 
-    line.viewport.setRange(total * 0.26, total * 0.4);
+    line.zoom.setRange(total * 0.26, total * 0.4);
     assert.equal(windowUpdates, 1);
     assert.deepEqual([...windowBins()], bins);
 
     (line.filters.get('allocationLiveness') as SetAttributeFilter).setEnabled('gced', false);
     assert.ok(populationWindow.sink.total > 0);
     // At the whole extent the window and the viewport are the same filtered population
-    line.viewport.resetRange();
+    line.zoom.resetRange();
     assert.equal(populationWindow.ranges, null);
     assert.deepEqual([...populationWindow.samplesTotal], [...populationViewport.samplesTotal]);
     assert.equal(windowBins().reduce((sum, value) => sum + value, 0), sum(populationWindow.samplesTotal));

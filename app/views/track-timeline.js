@@ -1,5 +1,5 @@
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
-import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
+import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { TrackTimeline } from './track-timeline/index.js';
 import Tooltip from './track-timeline/tooltip.js';
 import { utils } from '@discoveryjs/discovery';
@@ -13,7 +13,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     const scopeLine = resolveScopeProfileLine(config.line, context);
     const viewport = resolveScopeViewport(config.viewport, context);
     const profiles = context.data?.profiles;
-    // With zoom the view follows the line viewport within its bounds
+    // With zoom the view follows the line zoom, drawn for the viewport bounds
     const bounds = config.zoom ? lineViewportBounds(scopeLine, profiles) : viewport;
     const { range } = scopeLine;
     const { selection } = range;
@@ -72,14 +72,8 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
                 range.resetRange();
             }
         },
-        // With zoom the wheel moves the line viewport, the whole bounds are no request
-        onViewChange: config.zoom ? (start, end) => {
-            if (start <= bounds.start && end >= bounds.end) {
-                scopeLine.viewport.selection.resetRange();
-            } else {
-                scopeLine.viewport.selection.setRange(start, end);
-            }
-        } : null
+        // With zoom the wheel moves the line zoom, kept within the line viewport
+        onViewChange: config.zoom ? (start, end) => setLineZoom(scopeLine, profiles, { start, end }) : null
     });
 
     let rangeSubscription = null;
@@ -89,7 +83,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
         syncSelection();
 
         if (config.zoom) {
-            viewportSubscription = scopeLine.viewport.subscribe(syncViewport);
+            viewportSubscription = subscribeLineZoom(scopeLine, syncViewport);
             syncViewport();
         }
     };
@@ -105,7 +99,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     }
 
     function syncViewport() {
-        const { start, end } = lineViewport(scopeLine, profiles);
+        const { start, end } = lineZoom(scopeLine, profiles);
 
         trackTimeline.setView(start, end);
     }

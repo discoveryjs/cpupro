@@ -123,7 +123,17 @@
         transparent calc(var(--start) + 1px) calc(var(--end) - 1px),
         #ffd800aa calc(var(--end) - 1px) var(--end), #0006 var(--end));
 }
-.view-timeline-profiles > .viewport-window[hidden] {
+.view-timeline-profiles > .zoom-window {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(100% * var(--x1));
+    right: calc(100% * (1 - var(--x2)));
+    pointer-events: none;
+    outline: 1px dashed #ffd800aa;
+    outline-offset: -1px;
+}
+.view-timeline-profiles > :is(.viewport-window, .zoom-window)[hidden] {
     display: none;
 }
 .view-timeline-profiles > .profile > .view-ruler {

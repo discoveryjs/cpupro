@@ -63,21 +63,33 @@ export function windowHolds(window: RangeSet | null, ranges: RangeSet | null, ex
     return windowStart <= start && end <= windowEnd && windowEnd - windowStart <= 4 * (end - start);
 }
 
-// The window is kept while it holds, so zooming and panning inside it change only how histograms are displayed;
-// otherwise it is the window of the viewport
-export function prepareLineWindow({ viewport, window }: ProfileLine) {
-    const update = () => {
-        const { ranges } = viewport.selection;
-        const extent = viewport.resolvedExtent;
+// The window of the zoom within the viewport: aligned cells of the viewport's halving levels, or the viewport itself.
+// The window is kept while it holds the zoom, so zooming and panning inside it change only how histograms are
+// displayed. A new viewport is shown whole, it ends the zoom request and gets a window of its own
+export function prepareLineWindow({ viewport, zoom, window }: ProfileLine) {
+    const scopeExtent = () => {
+        const scope = viewport.selection.ranges;
 
-        if (!windowHolds(window.selection.ranges, ranges, extent)) {
-            window.selection.setRanges(viewportWindow(ranges, extent));
-        }
+        return scope?.length ? { start: scope[0].start, end: scope[scope.length - 1].end } : viewport.resolvedExtent;
     };
+    const zoomWindow = () => viewportWindow(zoom.selection.ranges ?? viewport.selection.ranges, scopeExtent()) ?? viewport.selection.ranges;
+    const unsubscribeViewport = viewport.selection.subscribe(() => {
+        zoom.selection.resetRange();
+        window.selection.setRanges(zoomWindow());
+    });
+    const unsubscribeZoom = zoom.selection.subscribe(() => {
+        // A window for the whole line extent is no request, there is no viewport then
+        if (!windowHolds(window.selection.ranges, zoom.selection.ranges ?? viewport.selection.ranges, viewport.resolvedExtent)) {
+            window.selection.setRanges(zoomWindow());
+        }
+    });
 
-    update();
+    window.selection.setRanges(zoomWindow());
 
-    return viewport.selection.subscribe(update);
+    return () => {
+        unsubscribeViewport();
+        unsubscribeZoom();
+    };
 }
 
 export function prepareLineRange(line: ProfileLine) {

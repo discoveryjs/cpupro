@@ -65,3 +65,35 @@ test('uses the current peer set rather than fixing a bucket relation during prep
     assert.deepEqual(first.timeline!.range.ranges, [{ start: 0, end: 10 }]);
     stop();
 });
+
+test('shares viewports and zooms of peer profiles through time, a new viewport ends the zoom of each', async () => {
+    const { profile: first } = await createProfileFixture({ startTime: 100 });
+    const { profile: second } = await createProfileFixture({ startTime: 110 });
+    const { profile: other } = await createProfileFixture({ startTime: 120 });
+    const stop = subscribeSelectionSync([first, second, other], profile => profile === other ? [] : [first, second]);
+
+    first.timeline!.viewport.selection.setRange(110, 140);
+    assert.deepEqual(second.timeline!.viewport.selection.ranges, [{ start: 110, end: 140 }]);
+    assert.equal(other.timeline!.viewport.selection.ranges, null);
+    // Bytes follow through the time line of their profile
+    for (const profile of [first, second]) {
+        assert.ok(profile.memline!.viewport.selection.ranges!.length > 0);
+    }
+    assert.equal(other.memline!.viewport.selection.ranges, null);
+
+    second.timeline!.zoom.selection.setRange(115, 125);
+    assert.deepEqual(first.timeline!.zoom.selection.ranges, [{ start: 115, end: 125 }]);
+    assert.deepEqual(first.timeline!.viewport.selection.ranges, [{ start: 110, end: 140 }]);
+    assert.ok(first.memline!.zoom.selection.ranges !== null);
+
+    first.timeline!.viewport.selection.setRange(100, 130);
+    for (const profile of [first, second]) {
+        assert.deepEqual(profile.timeline!.viewport.selection.ranges, [{ start: 100, end: 130 }]);
+        assert.equal(profile.timeline!.zoom.selection.ranges, null);
+        assert.equal(profile.memline!.zoom.selection.ranges, null);
+    }
+
+    stop();
+    first.timeline!.viewport.selection.setRange(110, 120);
+    assert.deepEqual(second.timeline!.viewport.selection.ranges, [{ start: 100, end: 130 }]);
+});

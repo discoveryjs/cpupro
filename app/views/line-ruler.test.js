@@ -6,7 +6,7 @@ import { resolveScopeProfileLine } from '../jora/profile.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
 import { createState, rangeToSegments } from './ruler-range.js';
 import { binsPerColumn } from './bins-histogram/index.js';
-import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
+import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { RangeSelection } from '../prepare/computations/range.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
@@ -19,7 +19,7 @@ evaluateModule(new URL('./line-ruler.js', import.meta.url), {
         viewOptions = options;
     } } },
     require: () => ({
-        resolveScopeProfileLine, lineViewport, lineViewportBounds, formatMicrosecondsTime,
+        resolveScopeProfileLine, lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom, formatMicrosecondsTime,
         createState, rangeToSegments, binsPerColumn
     })
 });
@@ -209,7 +209,7 @@ test.each(minimumResizeCases)(
     }
 );
 
-test('zoom moves the line viewport within its bounds and follows its changes', async () => {
+test('zoom moves the line zoom within the viewport and follows its changes', async () => {
     const { profile } = await createProfileFixture();
     const other = await createProfileFixture({ startTime: -20 });
     const line = profile.timeline;
@@ -222,7 +222,7 @@ test('zoom moves the line viewport within its bounds and follows its changes', a
 
     element.width = 100;
     harness.createElement('parent').appendChild(element);
-    line.viewport.selection.setRange(bounds.start + 10, bounds.start + 30);
+    line.zoom.selection.setRange(bounds.start + 10, bounds.start + 30);
     renderLineRuler.call({ render(el, props, data, scope) {
         config = props;
         return harness.render(el, props, data, scope);
@@ -231,48 +231,68 @@ test('zoom moves the line viewport within its bounds and follows its changes', a
     } }, null, context);
     harness.setActive(element);
 
+    // Markers keep the steps of the viewport bounds
     assert.deepEqual(config.bounds, bounds);
     assert.deepEqual(api.state.range, { start: bounds.start + 10, end: bounds.start + 30 });
 
-    // Panning and zooming request the viewport of the line
+    // Panning and zooming request the zoom of the line
     harness.wheel(50, { deltaX: 50 });
-    assert.deepEqual(line.viewport.selection.ranges, [{ start: bounds.start + 20, end: bounds.start + 40 }]);
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: bounds.start + 20, end: bounds.start + 40 }]);
     harness.wheel(50, { deltaY: 10_000, ctrlKey: true });
     assert.deepEqual(api.state.range, bounds);
-    assert.equal(line.viewport.selection.ranges, null);
+    assert.equal(line.zoom.selection.ranges, null);
 
-    // Only the whole bounds are no request, a part of them at their start is
+    // Only the whole viewport is no request, a part of it at its start is
     harness.wheel(0, { deltaY: -500, ctrlKey: true });
     assert.equal(api.state.range.start, bounds.start);
-    assert.deepEqual(line.viewport.selection.ranges, [api.state.range]);
-    line.viewport.resetRange();
+    assert.deepEqual(line.zoom.selection.ranges, [api.state.range]);
+    line.zoom.resetRange();
 
-    // External changes of the viewport move the ruler
-    line.viewport.selection.setRange(bounds.start + 5, bounds.start + 15);
+    // External changes of the zoom move the ruler
+    line.zoom.selection.setRange(bounds.start + 5, bounds.start + 15);
     assert.deepEqual(api.state.range, { start: bounds.start + 5, end: bounds.start + 15 });
-    line.viewport.resetRange();
+    line.zoom.resetRange();
     assert.deepEqual(api.state.range, bounds);
 
-    const subscribe = line.viewport.subscribe;
+    // The zoom is kept within a viewport, the ruler shows it as kept
+    line.viewport.selection.setRange(bounds.start + 10, bounds.start + 50);
+    assert.deepEqual(api.state.range, { start: bounds.start + 10, end: bounds.start + 50 });
+    harness.wheel(50, { deltaY: 10_000, ctrlKey: true });
+    assert.equal(line.zoom.selection.ranges, null);
+    assert.deepEqual(api.state.range, { start: bounds.start + 10, end: bounds.start + 50 });
+    line.zoom.selection.setRange(bounds.start + 30, bounds.start + 50);
+    harness.wheel(50, { deltaX: 50 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: bounds.start + 30, end: bounds.start + 50 }]);
+    assert.deepEqual(api.state.range, { start: bounds.start + 30, end: bounds.start + 50 });
+    assert.deepEqual(config.bounds, bounds);
+    line.viewport.resetRange();
+    assert.equal(line.zoom.selection.ranges, null);
+    assert.deepEqual(api.state.range, bounds);
+
     let unsubscribed = 0;
 
-    // The following of the viewport ends with the ruler
-    line.viewport.subscribe = callback => {
-        const unsubscribe = subscribe.call(line.viewport, callback);
+    // The following of the viewport and the zoom ends with the ruler
+    for (const range of [line.viewport, line.zoom]) {
+        const subscribe = range.subscribe;
 
-        return () => {
-            unsubscribed++;
-            unsubscribe();
+        range.subscribe = callback => {
+            const unsubscribe = subscribe.call(range, callback);
+
+            return () => {
+                unsubscribed++;
+                unsubscribe();
+            };
         };
-    };
+    }
     const zoomed = harness.createElement('ruler');
 
     renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
         zoomed, { zoom: true }, null, context);
     delete line.viewport.subscribe;
+    delete line.zoom.subscribe;
     assert.equal(unsubscribed, 0);
     harness.destroy(zoomed);
-    assert.equal(unsubscribed, 1);
+    assert.equal(unsubscribed, 2);
 });
 
 test('zoom with a grid of bins segments the ruler by columns of bins and details by the bins', async () => {
@@ -290,7 +310,7 @@ test('zoom with a grid of bins segments the ruler by columns of bins and details
 
     element.width = 8;
     harness.createElement('parent').appendChild(element);
-    line.viewport.selection.setRange(grid.start + 3, grid.start + 19);
+    line.zoom.selection.setRange(grid.start + 3, grid.start + 19);
     renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
         element, { range: grid, segments: 64, zoom: true, details: { view: 'struct' }, onInit: value => {
             api = value;
@@ -310,13 +330,13 @@ test('zoom with a grid of bins segments the ruler by columns of bins and details
     assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [3, 4]);
 
     // Zooming in splits the columns
-    line.viewport.selection.setRange(grid.start + 4, grid.start + 8);
+    line.zoom.selection.setRange(grid.start + 4, grid.start + 8);
     assert.deepEqual(Array.from(api.state.segments), [4, 5, 6, 7, 8].map(value => grid.start + value));
     harness.move({ x: 2.5, y: 5 });
     harness.showTooltip();
     assert.deepEqual([detailsContext.segmentStart, detailsContext.segmentEnd], [10, 11]);
     harness.destroy(element);
-    line.viewport.resetRange();
+    line.zoom.resetRange();
 });
 
 test('a window value gives the grid of a zoomed ruler as it changes, and the scope of its details', async () => {
@@ -339,7 +359,7 @@ test('a window value gives the grid of a zoomed ruler as it changes, and the sco
 
     element.width = 8;
     harness.createElement('parent').appendChild(element);
-    line.viewport.selection.setRange(bounds.start + 3, bounds.start + 19);
+    line.zoom.selection.setRange(bounds.start + 3, bounds.start + 19);
     renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
         element, { window, zoom: true, details: { view: 'struct' }, onInit: instance => {
             api = instance;
@@ -358,7 +378,7 @@ test('a window value gives the grid of a zoomed ruler as it changes, and the sco
     // A new window with the viewport moving into it: segments and details follow the new grid,
     // 8 of its 16 bins across 8 pixels merge by 2
     value = { scopeViewport: { start: bounds.start + 16, end: bounds.start + 32 }, binCount: 16 };
-    line.viewport.selection.setRange(bounds.start + 18, bounds.start + 26);
+    line.zoom.selection.setRange(bounds.start + 18, bounds.start + 26);
     assert.deepEqual(Array.from(api.state.segments), [18, 20, 22, 24, 26].map(offset => bounds.start + offset));
     harness.move({ x: 2.5, y: 5 });
     harness.showTooltip();
@@ -368,10 +388,10 @@ test('a window value gives the grid of a zoomed ruler as it changes, and the sco
     assert.equal(detailsContext.binCount, 16);
 
     // Panning within the window keeps its grid
-    line.viewport.selection.setRange(bounds.start + 19, bounds.start + 27);
+    line.zoom.selection.setRange(bounds.start + 19, bounds.start + 27);
     assert.deepEqual(Array.from(api.state.segments), [19, 20, 22, 24, 26, 27].map(offset => bounds.start + offset));
     harness.destroy(element);
-    line.viewport.resetRange();
+    line.zoom.resetRange();
 });
 
 test('labels and detail labels of a zoomed ruler count from the viewport bounds start, absolute timestamps too', async () => {
@@ -387,7 +407,7 @@ test('labels and detail labels of a zoomed ruler count from the viewport bounds 
 
     element.width = 100;
     harness.createElement('parent').appendChild(element);
-    line.viewport.selection.setRange(bounds.start + 10, bounds.start + 30);
+    line.zoom.selection.setRange(bounds.start + 10, bounds.start + 30);
     renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
         element, { range: { start: bounds.start, end: bounds.start + 40 }, segments: 40, zoom: true, details: { view: 'struct' } }, null, context);
     harness.setActive(element);
@@ -415,5 +435,5 @@ test('labels and detail labels of a zoomed ruler count from the viewport bounds 
     assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [12, 13]);
     harness.destroy(element);
     harness.destroy(shifted);
-    line.viewport.resetRange();
+    line.zoom.resetRange();
 });
