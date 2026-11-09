@@ -2,14 +2,14 @@ import { numDelim, createElement } from '@discoveryjs/discovery/utils';
 import { resolveScopeProfileLine } from '../jora/profile.ts';
 
 export function renderMetricView(el, config, data, context) {
-    const { value, total = 'line', metricName } = typeof data === 'number' ? { value: data } : {
+    const { value, total = 'line', metricName, resolution } = typeof data === 'number' ? { value: data } : {
         value: '?',
         ...config,
         ...data
     };
     const line = resolveScopeProfileLine(config.line, context);
     const valueEl = createElement('span', 'value');
-    const valueWithUnit = line.valueWithUnit(value);
+    const valueWithUnit = line.valueWithUnit(value, resolution);
     const resolvedTotal = typeof total === 'number'
         ? total
         : total === 'line'

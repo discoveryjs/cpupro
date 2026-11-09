@@ -99,6 +99,8 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
                     timeEnd: detail.end - range.start,
                     labelStart: detail.start - origin,
                     labelEnd: detail.end - origin,
+                    // Values of the range tell apart a tenth of its length
+                    resolution: (detail.end - detail.start) / 10,
                     segmentStart: indices?.start ?? 0,
                     segmentEnd: indices ? indices.end - 1 : -1
                 };

@@ -105,8 +105,8 @@ const categoriesTimelineWindow = {
                         context: '{ ...#, scopeViewport: #.detail }',
                         data: 'samples',
                         content: [
-                            { view: 'block', content: 'text:`Range: ${#.labelStart.formatValue()} – ${#.labelEnd.formatValue()}`' },
-                            { view: 'block', content: ['text:`${"interval".metricName()}: `', 'duration:{ time: #.timeEnd - #.timeStart, total: line.axisTotal }'] },
+                            { view: 'block', content: 'text:`Range: ${#.labelStart.formatValue(#.resolution)} – ${#.labelEnd.formatValue(#.resolution)}`' },
+                            { view: 'block', content: ['text:`${"interval".metricName()}: `', 'duration:{ time: #.timeEnd - #.timeStart, total: line.axisTotal, resolution: #.resolution }'] },
                             { view: 'block', content: 'text-numeric:`Samples: ${1.countSamples().sum()}`' },
                             { view: 'block', when: '#.noCoverage', content: 'text:"No population coverage"' }
                         ]
@@ -141,7 +141,7 @@ const categoriesTimelineWindow = {
                                             postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                                             content: [
                                                 'block{ className: "category-name", content: "text:category.name" }',
-                                                'metric:{ value: selfValue, total: #.timeEnd - #.timeStart }'
+                                                'metric:{ value: selfValue, total: #.timeEnd - #.timeStart, resolution: #.resolution }'
                                             ]
                                         }
                                     }

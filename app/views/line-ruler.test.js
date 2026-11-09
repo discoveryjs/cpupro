@@ -344,6 +344,7 @@ test('labels and detail labels of a zoomed ruler count from the viewport bounds 
     harness.showTooltip();
     assert.deepEqual([detailsContext.labelStart, detailsContext.labelEnd], [20, 21]);
     assert.deepEqual([detailsContext.timeStart, detailsContext.timeEnd], [20, 21]);
+    assert.equal(detailsContext.resolution, 0.1);
 
     // The grid may start after the bounds start: queries are relative to the grid, labels to the bounds
     const shifted = harness.createElement('ruler');

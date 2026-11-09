@@ -108,8 +108,9 @@ export type Axis = {
 }
 
 export type ProfileLineMethods = {
-    formatValue(value: number, precision?: number): string;
-    valueWithUnit(value: number, precision?: number): { value: string; unit: string };
+    // A resolution is the smallest difference of values to tell apart, by default a tenth of a unit
+    formatValue(value: number, resolution?: number): string;
+    valueWithUnit(value: number, resolution?: number): { value: string; unit: string };
     metricName(metric: Metric): string;
     metricDefinition(metric: Metric): string;
 }

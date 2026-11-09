@@ -7,6 +7,7 @@ import { PopulationFiltered, type Population } from '../computations/population.
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
+import { fractionDigits } from '../misc/utils.js';
 
 export type CreateTimelineOptions = {
     work: WorkHandler;
@@ -37,12 +38,12 @@ const metricDefinitions: Record<Metric, string> = {
     interval: 'The time duration of a specific range.'
 };
 const timelineMethods: ProfileLineMethods = {
-    formatValue(value: number, precision = 1) {
-        return `${(value / 1000).toFixed(precision)} ms`;
+    formatValue(value: number, resolution = 100) {
+        return `${(value / 1000).toFixed(fractionDigits(resolution, 1000))} ms`;
     },
-    valueWithUnit(value: number, precision = 1) {
+    valueWithUnit(value: number, resolution = 100) {
         return {
-            value: (value / 1000).toFixed(precision),
+            value: (value / 1000).toFixed(fractionDigits(resolution, 1000)),
             unit: 'ms'
         };
     },

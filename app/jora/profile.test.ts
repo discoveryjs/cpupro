@@ -79,3 +79,18 @@ test('the samples page keeps its local ruler and bins in one explicit context', 
     assert.deepEqual(query('scopeViewport()')({}, nested), { start: 120, end: 180 });
     assert.equal(query('scopeViewport()')({}, parent), parent.scopeViewport);
 });
+
+test('values are formatted in the unit of a line with digits to tell apart a resolution', async () => {
+    const { line: timeline } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
+    const { line: memline } = await createLineFixture({ type: 'memline', values: new Uint32Array([500]) });
+
+    for (const [line, unit] of [[timeline, ' ms'], [memline, 'Kb']] as const) {
+        const context = { scopeLine: line };
+
+        assert.equal(query('2420275.formatValue()')(null, context), '2420.3' + unit);
+        assert.equal(query('2420275.formatValue(33.6)')(null, context), '2420.28' + unit);
+        assert.equal(query('2420275.formatValue(5000)')(null, context), '2420.3' + unit);
+        assert.deepEqual(line.valueWithUnit(336, 3.36), { value: '0.336', unit: unit.trim() });
+        assert.deepEqual(line.valueWithUnit(336), { value: '0.3', unit: unit.trim() });
+    }
+});

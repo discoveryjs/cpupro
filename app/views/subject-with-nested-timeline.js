@@ -67,17 +67,17 @@ discovery.view.define('subject-with-nested-timeline', {
                         view: 'block',
                         className: 'timeline-segment-info',
                         content: [
-                            { view: 'block', content: 'text:`Range: ${#.labelStart.formatValue()} – ${#.labelEnd.formatValue()}`' },
+                            { view: 'block', content: 'text:`Range: ${#.labelStart.formatValue(#.resolution)} – ${#.labelEnd.formatValue(#.resolution)}`' },
                             { view: 'block', content: 'text:`Samples: ${binSamples[#.segmentStart:#.segmentEnd + 1].sum() or 0}`' },
-                            { view: 'block', content: ['text:"Duration: "', 'metric:{ value: #.timeEnd - #.timeStart, total: totalValue }'] }
+                            { view: 'block', content: ['text:"Duration: "', 'metric:{ value: #.timeEnd - #.timeStart, total: totalValue, resolution: #.resolution }'] }
                         ]
                     },
                     {
                         view: 'block',
                         className: 'timeline-segment-info',
                         content: [
-                            { view: 'block', content: 'metric:{ metricName: "selfValue", value: bins[#.segmentStart:#.segmentEnd + 1].sum() or 0, total: totalValue }' },
-                            { view: 'block', content: 'metric:{ metricName: "nestedValue", value: totalValueBins[#.segmentStart:#.segmentEnd + 1].sum() or 0, total: totalValue }' }
+                            { view: 'block', content: 'metric:{ metricName: "selfValue", value: bins[#.segmentStart:#.segmentEnd + 1].sum() or 0, total: totalValue, resolution: #.resolution }' },
+                            { view: 'block', content: 'metric:{ metricName: "nestedValue", value: totalValueBins[#.segmentStart:#.segmentEnd + 1].sum() or 0, total: totalValue, resolution: #.resolution }' }
                         ]
                     },
                     {
@@ -89,7 +89,7 @@ discovery.view.define('subject-with-nested-timeline', {
                             postRender: (el, _, data) => el.style.setProperty('--color', data.color),
                             content: [
                                 'block{ className: "category-name", content: "text:category.name" }',
-                                'metric{ value: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalValueBins[#.segmentStart:#.segmentEnd + 1].sum() }'
+                                'metric{ value: bins[#.segmentStart:#.segmentEnd + 1].sum(), total: totalValueBins[#.segmentStart:#.segmentEnd + 1].sum(), resolution: #.resolution }'
                             ]
                         }
                     }

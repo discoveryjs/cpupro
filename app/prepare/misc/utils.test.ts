@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { asUint32Array, convertToInt32Array, convertToUint32Array, isFloat64Vector, isInt32Vector, isNumberVector, isUint32Vector } from './utils.js';
+import { asUint32Array, convertToInt32Array, convertToUint32Array, fractionDigits, isFloat64Vector, isInt32Vector, isNumberVector, isUint32Vector } from './utils.js';
 
 describe('numeric vector views', () => {
     test('accepts only the representations produced by profile extraction', () => {
@@ -52,4 +52,15 @@ describe('numeric vector views', () => {
         assert.deepEqual([...signedCopy], [1, -2, 0]);
         assert.deepEqual([...unsignedCopy], [1, 0xfffffffe, 0]);
     });
+});
+
+test('fraction digits tell apart a resolution in a unit and keep at least one', () => {
+    assert.equal(fractionDigits(100, 1000), 1);
+    assert.equal(fractionDigits(1000, 1000), 1);
+    assert.equal(fractionDigits(1e6, 1000), 1);
+    assert.equal(fractionDigits(99, 1000), 2);
+    assert.equal(fractionDigits(33.6, 1000), 2);
+    assert.equal(fractionDigits(10, 1000), 2);
+    assert.equal(fractionDigits(9.9, 1000), 3);
+    assert.equal(fractionDigits(0.5, 1000), 4);
 });

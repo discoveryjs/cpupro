@@ -16,6 +16,11 @@ export function isNumberVector(value: unknown): value is number[] | Uint32Array 
     return isUint32Vector(value) || value instanceof Float64Array;
 }
 
+// Fraction digits for values in a unit of a given size to tell apart a resolution, at least one as by default
+export function fractionDigits(resolution: number, unit: number) {
+    return Math.max(1, Math.ceil(Math.log10(unit / resolution)));
+}
+
 export function asUint32Array(source: number[] | Uint32Array): Uint32Array {
     return Array.isArray(source) ? new Uint32Array(source) : source;
 }

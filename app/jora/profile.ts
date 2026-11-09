@@ -194,8 +194,8 @@ export const methods: Record<string, Method> = {
     metricDefinition(metric: Metric, line?: ProfileLine | ProfileLineType) {
         return resolveScopeProfileLine(line, this.context)?.metricDefinition(metric);
     },
-    formatValue(value: number, line?: ProfileLine | ProfileLineType) {
-        return resolveScopeProfileLine(line, this.context)?.formatValue(value);
+    formatValue(value: number, resolution?: number, line?: ProfileLine | ProfileLineType) {
+        return resolveScopeProfileLine(line, this.context)?.formatValue(value, resolution);
     },
     valueAndUnit(value: number, line?: ProfileLine | ProfileLineType) {
         return resolveScopeProfileLine(line, this.context)?.valueWithUnit(value);

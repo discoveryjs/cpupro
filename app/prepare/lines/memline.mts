@@ -9,7 +9,7 @@ import { Dictionary } from '../dictionary.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
-import { asUint32Array, sum } from '../misc/utils.js';
+import { asUint32Array, fractionDigits, sum } from '../misc/utils.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import {
@@ -52,12 +52,12 @@ const metricDefinitions: Record<Metric, string> = {
     interval: 'The memory allocated during a specific range.'
 };
 const memlineMethods: ProfileLineMethods = {
-    formatValue(value: number, precision = 1): string {
-        return `${(value / 1000).toFixed(precision)}Kb`;
+    formatValue(value: number, resolution = 100): string {
+        return `${(value / 1000).toFixed(fractionDigits(resolution, 1000))}Kb`;
     },
-    valueWithUnit(value: number, precision = 1) {
+    valueWithUnit(value: number, resolution = 100) {
         return {
-            value: (value / 1000).toFixed(precision),
+            value: (value / 1000).toFixed(fractionDigits(resolution, 1000)),
             unit: 'Kb'
         };
     },
