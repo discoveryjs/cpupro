@@ -430,11 +430,11 @@ test('skips unmapped targets before reading weights in mapped accumulation', asy
     const mapping = new Uint32Array([0, 3, 0xffffffff, 1, 2]);
     const { source, viewport } = await createMappedSource(context.scopeLine, new Uint32Array([3, 4, 5, 6, 7]), new Uint32Array([0, 0, 0, 1, 2]));
     source.mappings.timeline._mapping = mapping;
-    viewport.values = new Proxy(viewport.values, { get(target, property) {
+    Object.defineProperty(viewport, 'values', { value: new Proxy(viewport.values, { get(target, property) {
         assert.notEqual(property, '1');
         assert.notEqual(property, '2');
         return Reflect.get(target, property, target);
-    } });
+    } }) });
     const bins = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10)[0];
     assert.deepEqual([...bins.bins], [0, 0, 3, 6, 7, 0, 0, 0, 0, 0]);
     assert.equal(bins.value, 16);

@@ -133,8 +133,8 @@ test('matches scalar source and selection intersections through independent filt
                     counts[sampleId] += effectiveValue > 0 ? 1 : 0;
                 }
                 assert.deepEqual(selection.values, expectedValues);
-                assert.deepEqual(selection.buffer.samplesTotal, totals);
-                assert.deepEqual(selection.buffer.samplesCount, counts);
+                assert.deepEqual([...selection.samplesTotal, selection.sink.total], [...totals]);
+                assert.deepEqual([...selection.samplesCount, selection.sink.count], [...counts]);
                 assert.deepEqual(sibling.values, viewport.values);
                 assert.deepEqual(sibling.samplesTotal, viewport.samplesTotal);
                 assert.equal(selection.source, viewport);

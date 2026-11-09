@@ -14,7 +14,7 @@ export type EventAcceptance = {
 // Classes of events that every filter over the listed value vectors accepts or rejects together:
 // a class per event and the first event of every class
 export type EventClasses = {
-    ids: Uint16Array | Uint32Array;
+    ids: Uint8Array | Uint16Array | Uint32Array;
     events: Uint32Array;
     values: ReadonlySet<Uint8Array | Uint16Array | Uint32Array>;
 };

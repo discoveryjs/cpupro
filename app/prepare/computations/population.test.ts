@@ -42,7 +42,7 @@ describe('PopulationFiltered', () => {
         const filtered = new PopulationFiltered(population);
         filtered.setRanges([{ start: 101, end: 102 }, { start: 105, end: 106 }, { start: 900_001, end: 900_003 }]);
         let reads = 0;
-        filtered.values = new Proxy(filtered.values, {
+        Object.defineProperty(filtered, 'values', { value: new Proxy(filtered.values, {
             get(target, property) {
                 if (typeof property === 'string' && /^\d+$/.test(property)) {
                     const index = Number(property);
@@ -51,7 +51,7 @@ describe('PopulationFiltered', () => {
                 }
                 return Reflect.get(target, property, target);
             }
-        });
+        }) });
 
         const result = filtered.aggregateBy(new Uint8Array(population.values.length), 1);
 
@@ -331,6 +331,8 @@ describe('PopulationFiltered', () => {
         for (const key of ['samples', 'values', 'samplesCount', 'samplesTotal'] as const) {
             assert.deepEqual(filtered[key], population[key]);
             assert.notEqual(filtered[key].buffer, population[key].buffer);
+        }
+        for (const key of ['samples', 'values'] as const) {
             assert.equal(filtered[key].buffer, filtered.buffer.memory!.buffer);
         }
         const originalTotals = population.samplesTotal.slice();

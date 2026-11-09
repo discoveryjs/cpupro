@@ -13,6 +13,8 @@ type SignatureColumn = {
     values: Uint8Array | Uint16Array | Uint32Array;
     // Base population samples when values are given per sample, null when values are given per event
     samples: Uint32Array | null;
+    // Values of a registered event filter
+    filtered: boolean;
 };
 
 export type BinRecordsGrid = {
@@ -35,6 +37,7 @@ export class EventSignatures {
     readonly #columns: SignatureColumn[];
     readonly #signatureValues = new Map<SignatureColumn['values'], Uint32Array>();
     readonly #binRecords = new Map<string, BinRecords>();
+    #filterClasses: EventClasses | null = null;
 
     constructor(line: ProfileLine) {
         const columns = collectSignatureColumns(line);
@@ -62,12 +65,46 @@ export class EventSignatures {
         return this.events.length;
     }
 
-    // Signatures as event classes: filters over values given per event are constant within a signature
-    get eventClasses(): EventClasses {
+    // Classes of events with equal values of every registered event filter: such filters accept or reject
+    // the events of a class together. Each signature belongs to one class, so classes group signatures.
+    get filterClasses(): EventClasses {
+        return this.#filterClasses ??= this.#groupFilterClasses();
+    }
+
+    #groupFilterClasses(): EventClasses {
+        const columns = this.#columns.filter(column => column.filtered);
+        const columnValues = columns.map(column => this.#signatureValues.get(column.values)!);
+        const classIds = new Map<string, number>();
+        const signatureClasses = new Uint32Array(this.count);
+        const events: number[] = [];
+
+        // Signatures are numbered in the order of their first events, so a class's first signature gives its first event
+        for (let signature = 0; signature < this.count; signature++) {
+            const key = columnValues.map(values => values[signature]).join(',');
+            let classId = classIds.get(key);
+
+            if (classId === undefined) {
+                classId = events.push(this.events[signature]) - 1;
+                classIds.set(key, classId);
+            }
+
+            signatureClasses[signature] = classId;
+        }
+
+        const ids = events.length <= 0x100
+            ? new Uint8Array(this.ids.length)
+            : events.length <= 0x10000
+                ? new Uint16Array(this.ids.length)
+                : new Uint32Array(this.ids.length);
+
+        for (let event = 0; event < ids.length; event++) {
+            ids[event] = signatureClasses[this.ids[event]];
+        }
+
         return {
-            ids: this.ids,
-            events: this.events,
-            values: new Set(this.#columns.filter(column => column.samples === null).map(column => column.values))
+            ids,
+            events: Uint32Array.from(events),
+            values: new Set(columns.map(column => column.values))
         };
     }
 
@@ -89,12 +126,13 @@ export class EventSignatures {
             }
         }
 
-        const { samples, sinkId } = population;
+        const { sinkId } = population;
+        const { destination } = population.eventReader();
         const { events } = this;
         const accepted = new Uint8Array(events.length);
 
         for (let signature = 0; signature < events.length; signature++) {
-            accepted[signature] = samples[events[signature]] !== sinkId ? 1 : 0;
+            accepted[signature] = destination(events[signature]) !== sinkId ? 1 : 0;
         }
 
         return accepted;
@@ -132,12 +170,12 @@ export class EventSignatures {
 export class BinRecords {
     readonly grid: BinRecordsGrid;
     complete = false;
-    spanStarts = new Uint32Array(1 << 10);  // per span: its first record, plus the end of the last span
+    spanStarts = new Uint32Array(16);       // per span: its first record, plus the end of the last span
     spanCount = 0;
-    signatures = new Uint32Array(1 << 16);  // per record
+    signatures = new Uint32Array(16);       // per record
     axisSignatures = new Uint32Array(0);    // per record of a grid on another line's axis
     bins = new Int32Array(0);               // per record of a grid on another line's axis
-    weights = new Float64Array(1 << 16);    // per record: sum of event weights
+    weights = new Float64Array(16);         // per record: sum of event weights
     count = 0;
     // Per signature: the last group it was recorded in and its first record there
     #signatureGroups: Int32Array;
@@ -304,9 +342,13 @@ export class BinRecords {
 
 function collectSignatureColumns(line: ProfileLine) {
     const columns: SignatureColumn[] = [];
-    const add = (values: SignatureColumn['values'], samples: Uint32Array | null) => {
-        if (!columns.some(column => column.values === values && column.samples === samples)) {
-            columns.push({ values, samples });
+    const add = (values: SignatureColumn['values'], samples: Uint32Array | null, filtered = false) => {
+        const column = columns.find(column => column.values === values && column.samples === samples);
+
+        if (column === undefined) {
+            columns.push({ values, samples, filtered });
+        } else {
+            column.filtered ||= filtered;
         }
     };
 
@@ -325,7 +367,7 @@ function collectSignatureColumns(line: ProfileLine) {
     for (const population of new Set(line.breakdowns.map(breakdown => breakdown.populationViewport))) {
         for (const { domain, values } of population.filter.filters) {
             if (values !== undefined) {
-                add(values, domain === 'sample' ? population.population.samples : null);
+                add(values, domain === 'sample' ? population.population.samples : null, domain === 'event');
             }
         }
     }
@@ -342,9 +384,9 @@ function keyColumns(columns: SignatureColumn[]) {
         if (samples !== null) {
             const sampleColumns = columns
                 .filter(column => column.samples === samples)
-                .map(({ values }) => ({ values, samples: null }));
+                .map(({ values }) => ({ values, samples: null, filtered: false }));
 
-            keys.push({ values: assignSignatures(sampleColumns[0].values.length, sampleColumns).ids, samples });
+            keys.push({ values: assignSignatures(sampleColumns[0].values.length, sampleColumns).ids, samples, filtered: false });
         }
     }
 
@@ -370,14 +412,16 @@ function gatherColumn({ values, samples }: SignatureColumn, keys: Uint32Array, c
 // and comparison read consecutive elements of one typed array; keys are looked up in a hash table of signatures.
 function assignSignatures(eventCount: number, columns: SignatureColumn[]) {
     const columnCount = columns.length;
-    const keys = new Uint32Array(columnCount * CHUNK_LENGTH);
-    const hashes = new Uint32Array(CHUNK_LENGTH);
+    // PERF: Scratch and tables start at the size of the line, so small lines allocate little
+    const chunkLength = Math.min(CHUNK_LENGTH, Math.max(1, eventCount));
+    const keys = new Uint32Array(columnCount * chunkLength);
+    const hashes = new Uint32Array(chunkLength);
     // PERF: Signature IDs are event-sized; widen them only when the signatures outgrow 16 bits
     let ids: Uint16Array | Uint32Array = new Uint16Array(eventCount);
-    let slots = new Int32Array(1 << 16).fill(-1);
+    let slots = new Int32Array(2 ** Math.ceil(Math.log2(Math.max(16, Math.min(2 * eventCount, 1 << 16))))).fill(-1);
     let slotHashes = new Uint32Array(slots.length);
-    let signatureKeys = new Uint32Array(columnCount << 12);
-    let signatureEvents = new Uint32Array(1 << 12);
+    let signatureKeys = new Uint32Array(columnCount * 16);
+    let signatureEvents = new Uint32Array(16);
     let count = 0;
 
     const equalKeys = (signature: number, offset: number) => {
@@ -460,8 +504,8 @@ function assignSignatures(eventCount: number, columns: SignatureColumn[]) {
 
     let previous = -1;
 
-    for (let chunkStart = 0; chunkStart < eventCount; chunkStart += CHUNK_LENGTH) {
-        const chunkEnd = Math.min(eventCount, chunkStart + CHUNK_LENGTH);
+    for (let chunkStart = 0; chunkStart < eventCount; chunkStart += chunkLength) {
+        const chunkEnd = Math.min(eventCount, chunkStart + chunkLength);
         const length = chunkEnd - chunkStart;
 
         for (let column = 0; column < columnCount; column++) {

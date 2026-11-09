@@ -1,6 +1,6 @@
 # Population Filtering
 
-`Population` keeps the original event vectors and aggregates by sample ID. `PopulationFiltered` accepts a Base or another `PopulationFiltered` as its immediate `source`; its existing `population` property still identifies Base for structural consumers. Each derived owns independent `samples`, `values` and aggregate buffers. Events and sample IDs are different domains: there may be many events for one sample ID.
+`Population` keeps the original event vectors and aggregates by sample ID. `PopulationFiltered` accepts a Base or another `PopulationFiltered` as its immediate `source`; its existing `population` property still identifies Base for structural consumers. Each derived owns independent `samples`, `values` and aggregate buffers; its event-sized compute buffer is allocated when destinations or values are first compiled, and a derived created without source ranges adopts the source metrics until then. Events and sample IDs are different domains: there may be many events for one sample ID.
 
 `values` retains the full source weight of each participating event, with zeros outside effective ranges or rejected by local index/value constraints. Attribute filters preserve weights and route rejected events to sink. Event indices never change, and `cumulative` and `cumulativeEnd` retain the Base coordinate axis. Do not derive coordinates by summing derived values or pass them to a binning routine that interprets weights as consecutive coordinate lengths.
 
@@ -123,6 +123,17 @@ Multi-range preparation iterates normalized intervals, seeking each interval's e
 Overflow handling is deferred for both `cumulative` and aggregate vectors such as `samplesTotal`. They remain `Uint32Array`; there is no separate fallback for wrapped coordinates or claim of correct range results after overflow. Widening only the coordinate vector would not solve aggregate overflow.
 
 Set/reset order must not affect compiled inputs or aggregates. Base vectors, source topology, and public filtered-vector identities remain unchanged. An effective mask change or changed range constraint recomputes aggregates and notifies subscribers; identical range updates are ignored.
+
+## Records
+
+A line groups the events of each Base by sample and event class into `PopulationRecords`: records of parts of consecutive events with their summed values and nonzero counts. Event classes are the line's filter classes, events with equal values of every registered event filter. Parts are the bins of a 2000-bin grid on the Base's value axis, with bins over 65,536 events split, so ranges on the grid cover whole parts and an edge inside a part costs a bounded number of events. `setRecords(records)` gives them to a derived population. While every event acceptance along the source chain is constant within an event class and no index or value constraint applies, a derived population:
+
+- keeps the per-key sums of the parts its effective ranges wholly cover (`RecordsAggregate`); a range change adds or subtracts only the parts whose coverage changed, and events of partially covered parts are kept as intervals;
+- computes `samplesCount`, `samplesTotal` and the sink from per-sample and per-class acceptance over keys, partial events and boundary cuts; the integer sums equal the event pass, so Uint32 results match;
+- computes `boundaryCuts` and `rangeSamples` from range edges and record counts, as the value compilation does;
+- compiles `samples` and `values` only when a consumer reads them; the event-sized compute `buffer` is allocated on that first compilation. Consumers of a few events (range and bin edges) use `eventReader()`, which derives destinations and values of single events without compiling all of them.
+
+Other populations, and a population with index or value constraints, compile destinations and values eagerly and aggregate events as before.
 
 ## Current Boundaries
 

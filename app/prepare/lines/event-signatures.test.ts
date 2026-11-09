@@ -119,6 +119,31 @@ test('signatures group allocations by equal attribute, category and filter value
     }
 });
 
+test('filter classes group events with equal values of every registered event filter', async () => {
+    const { memline } = await createSignaturesProfile();
+    const { ids, events, values } = memline!.signatures!.filterClasses;
+    const filterValues = [...new Set(memline!.breakdowns.flatMap(({ populationViewport }) => populationViewport.filter.filters
+        .filter(filter => filter.domain === 'event' && filter.values !== undefined)
+        .map(filter => filter.values!)))];
+
+    assert.ok(filterValues.length >= 2);
+    assert.deepEqual(new Set(filterValues), values);
+    assert.ok(events.length > 1);
+
+    for (let event = 0; event < ids.length; event++) {
+        const first = events[ids[event]];
+
+        assert.ok(first <= event);
+        for (const column of filterValues) {
+            assert.equal(column[event], column[first]);
+        }
+    }
+
+    for (let eventClass = 1; eventClass < events.length; eventClass++) {
+        assert.ok(filterValues.some(column => column[events[eventClass]] !== column[events[0]]));
+    }
+});
+
 test('signature IDs widen when signatures outgrow 16 bits', () => {
     const count = 70000;
     const values = Uint32Array.from({ length: 2 * count }, (_, event) => event % count);

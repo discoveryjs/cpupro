@@ -1,7 +1,8 @@
 import { USE_WASM } from '../const.js';
 import { Observer } from './misc.js';
-import { PopulationBufferMap, createJavaScriptApi, createWasmApi } from './compute-wasm-wrapper.js';
+import { PopulationBufferMap, createJavaScriptApi, createWasmApi, type ComputeApi } from './compute-wasm-wrapper.js';
 import { PopulationFilter, type EventAcceptance } from './population-filter.js';
+import { RecordsAggregate, type PopulationRecords } from './population-records.js';
 import { normalizeRanges, intersectRanges, equalRanges, validateRangeBounds, type RangeSet } from './coordinates.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
@@ -65,7 +66,11 @@ export class PopulationFiltered extends Observer {
     readonly source: Population | PopulationFiltered;
     filter: PopulationFilter;
     readonly sink: { count: number; total: number };
-    buffer: PopulationBufferMap;
+    // Event-sized compute workspace; allocated when destinations or values are compiled
+    #buffer: PopulationBufferMap | null = null;
+    #api: ComputeApi | null = null;
+    #counts: Uint32Array;      // size of samples plus the sink
+    #totals: Uint32Array;      // size of samples plus the sink
     #recompute: (clear?: boolean) => void;
     #hasMask = false;
     #hasRawMask = false;
@@ -73,8 +78,13 @@ export class PopulationFiltered extends Observer {
     #unsubscribe: () => void;
     #boundaryCuts: { index: number; value: number }[] = [];
     samplesRevision = 0;
-    samples: Uint32Array;
-    values: Uint32Array;
+    // Destinations and values are compiled when an event-sized consumer reads them; until a workspace is
+    // allocated both are stale
+    #samplesStale = true;
+    #valuesStale = true;
+    #aggregate: RecordsAggregate | null = null;
+    #acceptance: RecordsAcceptance | null = null;
+    #coverage: [number, number][] = [];
     cumulative: Uint32Array;   // size of values
     samplesCount: Uint32Array; // size of samples
     // FIXME: Filtered totals share the same Uint32 overflow limit, including the buffer's sink cell.
@@ -92,43 +102,55 @@ export class PopulationFiltered extends Observer {
         super();
 
         const sampleCount = source.samplesCount.length;
-        const buffer = createComputeBuffer(source, USE_WASM);
-        const api = USE_WASM && buffer.memory
-            ? createWasmApi(buffer.memory)
-            : computeMetricsJavaScriptApi;
 
         this.source = source;
         this.population = source instanceof PopulationFiltered ? source.population : source;
-        this.buffer = buffer;
-        this.samples = this.buffer.samples;
-        this.values = this.buffer.values;
         this.cumulative = source.cumulative;
-        this.samplesCount = this.buffer.samplesCount.subarray(0, sampleCount);
-        this.samplesTotal = this.buffer.samplesTotal.subarray(0, sampleCount);
+        this.#counts = new Uint32Array(sampleCount + 1);
+        this.#totals = new Uint32Array(sampleCount + 1);
+        this.samplesCount = this.#counts.subarray(0, sampleCount);
+        this.samplesTotal = this.#totals.subarray(0, sampleCount);
         this.samplesMask = new Uint32Array(sampleCount);
 
         this.#recompute = (clear = true) => {
+            const tables = this.#recordsTables();
+
+            if (tables !== null) {
+                this.#coverRecords(tables);
+            }
+
             if (this.#adoptsSource()) {
                 this.#adoptSourceMetrics();
                 return;
             }
 
-            api.computeMetrics(this.buffer, clear);
+            if (tables !== null) {
+                this.#computeMetricsFromRecords();
+                return;
+            }
+
+            const { samples, values } = this;
+            const buffer = this.buffer;
+
+            this.#api!.computeMetrics(buffer, clear);
 
             for (const { index, value } of this.#boundaryCuts) {
-                const sampleId = this.samples[index];
+                const sampleId = samples[index];
 
-                this.buffer.samplesTotal[sampleId] -= value;
+                buffer.samplesTotal[sampleId] -= value;
 
-                if (value === this.values[index]) {
-                    this.buffer.samplesCount[sampleId]--;
+                if (value === values[index]) {
+                    buffer.samplesCount[sampleId]--;
                 }
             }
+
+            this.#counts.set(buffer.samplesCount);
+            this.#totals.set(buffer.samplesTotal);
         };
 
         this.filter = new PopulationFilter(
             sampleCount,
-            source.samples.length,
+            this.population.values.length,
             (updateMask, acceptedEvents) => {
                 this.#acceptedEvents = acceptedEvents;
                 this.updateMask(updateMask);
@@ -136,17 +158,25 @@ export class PopulationFiltered extends Observer {
         );
 
         this.#effectiveRanges = source.ranges;
-        this.#compileValues();
-        this.#recompute();
+
+        // Without source ranges values equal the source values, and metrics are the source ones
+        if (source.ranges === null) {
+            this.#adoptSourceMetrics();
+        } else {
+            this.#valuesStale = false;
+            this.#compileValues();
+            this.#recompute();
+        }
+
         let samplesRevision = source.samplesRevision;
         this.#unsubscribe = source.subscribe(() => {
             if (samplesRevision !== source.samplesRevision) {
                 samplesRevision = source.samplesRevision;
-                this.#compileSamples();
+                this.#updateSamples();
             }
 
             this.#effectiveRanges = intersectRangeSets(source.ranges, this.#ranges);
-            this.#compileValues();
+            this.#updateValues();
             this.#recompute();
             this.notify();
         });
@@ -158,6 +188,70 @@ export class PopulationFiltered extends Observer {
 
     destroy() {
         this.#unsubscribe();
+    }
+
+    // Event-sized compute workspace: destinations, values and per-sample aggregates of the event pass
+    get buffer(): PopulationBufferMap {
+        if (this.#buffer === null) {
+            this.#buffer = createComputeBuffer(this.population.values.length, this.samplesMask.length, USE_WASM);
+            this.#api = USE_WASM && this.#buffer.memory
+                ? createWasmApi(this.#buffer.memory)
+                : computeMetricsJavaScriptApi;
+        }
+
+        return this.#buffer;
+    }
+
+    // Destinations of events: the sample ID, or sinkId when rejected
+    get samples(): Uint32Array {
+        if (this.#samplesStale) {
+            this.#samplesStale = false;
+            this.#compileSamples();
+        }
+
+        return this.buffer.samples;
+    }
+
+    // Values of events after ranges and constraints; edge events keep whole values (see boundaryCuts)
+    get values(): Uint32Array {
+        if (this.#valuesStale) {
+            this.#valuesStale = false;
+            this.#compileValues();
+        }
+
+        return this.buffer.values;
+    }
+
+    // Readers of single events for consumers that read a few events (range and bin edges): they read compiled
+    // destinations and values, or derive them when metrics came from records, without compiling all events
+    eventReader(): EventReader {
+        const { samples: baseSamples, values: baseValues, sinkId } = this.population;
+        const acceptance = this.#acceptance;
+        const coverage = this.#coverage;
+        const samples = this.#samplesStale && acceptance !== null ? null : this.samples;
+        const values = this.#valuesStale && acceptance !== null ? null : this.values;
+
+        return {
+            destination: samples !== null
+                ? index => samples[index]
+                : index => acceptance!.accepts(index, baseSamples[index]) ? baseSamples[index] : sinkId,
+            value: values !== null
+                ? index => values[index]
+                : index => isCovered(coverage, index) ? baseValues[index] : 0
+        };
+    }
+
+    // Records of the base population grouped by event classes; with them, metrics are computed from records
+    // while destinations follow per-sample and per-class acceptance
+    setRecords(records: PopulationRecords | null) {
+        this.#aggregate = records !== null && records.samples === this.population.samples
+            ? new RecordsAggregate(records)
+            : null;
+
+        // Coverage and acceptance of records let single-event readers avoid compiling all events
+        if (this.#recordsTables() !== null) {
+            this.#recompute();
+        }
     }
 
     aggregateBy(groups: Uint8Array | Uint32Array, groupCount: number) {
@@ -191,8 +285,8 @@ export class PopulationFiltered extends Observer {
 
     get #sink() {
         return {
-            count: this.buffer.samplesCount[this.sinkId],
-            total: this.buffer.samplesTotal[this.sinkId]
+            count: this.#counts[this.sinkId],
+            total: this.#totals[this.sinkId]
         };
     }
 
@@ -230,15 +324,40 @@ export class PopulationFiltered extends Observer {
             return;
         }
 
-        if (this.#compileSamples()) {
+        if (this.#updateSamples()) {
             this.#recompute();
             this.notify();
         }
     }
 
+    // Destinations are compiled now, or marked stale when metrics come from records
+    #updateSamples() {
+        if (this.#recordsTables() !== null) {
+            this.#samplesStale = true;
+            this.samplesRevision++;
+
+            return true;
+        }
+
+        const wasStale = this.#samplesStale;
+
+        this.#samplesStale = false;
+
+        return this.#compileSamples() || wasStale;
+    }
+
+    #updateValues() {
+        if (this.#recordsTables() !== null) {
+            this.#valuesStale = true;
+        } else {
+            this.#valuesStale = false;
+            this.#compileValues();
+        }
+    }
+
     #compileSamples() {
         const originalSamples = this.source.samples;
-        const samples = this.samples;
+        const samples = this.buffer.samples;
 
         // Without own sample or event constraints every event keeps the source destination
         if (!this.#hasMask) {
@@ -281,13 +400,146 @@ export class PopulationFiltered extends Observer {
     }
 
     #adoptSourceMetrics() {
-        const { samplesCount, samplesTotal } = this.buffer;
         const { sink } = this.source;
 
-        samplesCount.set(this.source.samplesCount);
-        samplesTotal.set(this.source.samplesTotal);
-        samplesCount[this.sinkId] = sink.count;
-        samplesTotal[this.sinkId] = sink.total;
+        this.#counts.set(this.source.samplesCount);
+        this.#totals.set(this.source.samplesTotal);
+        this.#counts[this.sinkId] = sink.count;
+        this.#totals[this.sinkId] = sink.total;
+    }
+
+    // Per-sample masks and event acceptances along the source chain, when metrics can come from records:
+    // records are set, every event acceptance is constant within an event class and no index or value
+    // constraint changes values
+    #recordsTables(): RecordsTables | null {
+        const aggregate = this.#aggregate;
+
+        if (aggregate === null || this.#hasConstraints()) {
+            return null;
+        }
+
+        const source = this.source instanceof PopulationFiltered
+            ? this.source.#recordsTables()
+            : { masks: [], events: [] };
+
+        if (source === null) {
+            return null;
+        }
+
+        const events = this.#acceptedEvents !== null
+            ? [...source.events, this.#acceptedEvents]
+            : source.events;
+
+        if (!events.every(({ values }) => aggregate.records.classifies(values))) {
+            return null;
+        }
+
+        return { masks: [...source.masks, this.samplesMask], events };
+    }
+
+    #hasConstraints() {
+        return this.indexStart !== null ||
+            this.indexEnd !== null ||
+            this.valueMin !== null ||
+            this.valueMax !== null;
+    }
+
+    // Covers the events of the effective ranges by records and computes boundary cuts and rangeSamples
+    // as #compileValues does, reading event values only at range edges
+    #coverRecords({ masks, events }: RecordsTables) {
+        const aggregate = this.#aggregate!;
+        const { records } = aggregate;
+        const { classes } = records;
+        const sampleAccepts = new Uint8Array(this.samplesMask.length).fill(1);
+        const classAccepts = new Uint8Array(classes.events.length).fill(1);
+        const { coverage, cuts } = computeCoverage(this.ranges, this.cumulative, this.population.values);
+
+        for (const mask of masks) {
+            for (let sampleId = 0; sampleId < mask.length; sampleId++) {
+                if (mask[sampleId] !== 0) {
+                    sampleAccepts[sampleId] = 0;
+                }
+            }
+        }
+
+        for (const { values, accepts } of events) {
+            for (let eventClass = 0; eventClass < classAccepts.length; eventClass++) {
+                classAccepts[eventClass] &= accepts[values[classes.events[eventClass]]];
+            }
+        }
+
+        aggregate.cover(coverage);
+        this.#coverage = coverage;
+        this.#boundaryCuts = cuts;
+        this.#acceptance = {
+            sampleAccepts,
+            classAccepts,
+            accepts: (index, sampleId) => sampleAccepts[sampleId] === 1 && classAccepts[classes.ids[index]] === 1
+        };
+
+        if (this.ranges === null) {
+            this.rangeSamples = null;
+        } else {
+            const { values } = this.population;
+            let rangeSamples = aggregate.count;
+
+            for (const [start, end] of aggregate.partialIntervals) {
+                for (let index = start; index < end; index++) {
+                    rangeSamples += values[index] > 0 ? 1 : 0;
+                }
+            }
+
+            this.rangeSamples = rangeSamples;
+        }
+    }
+
+    // Per-sample metrics of covered events: whole parts from aggregated keys, partial parts and boundary
+    // cuts per event; the same integer sums as the event pass, so Uint32 results match
+    #computeMetricsFromRecords() {
+        const aggregate = this.#aggregate!;
+        const { sampleAccepts, classAccepts, accepts } = this.#acceptance!;
+        const { keySamples, keyClasses } = aggregate.records;
+        const { weights, counts } = aggregate;
+        const { samples: baseSamples, values } = this.population;
+        const sinkId = this.sinkId;
+        const totals = new Float64Array(sinkId + 1);
+        const totalCounts = new Float64Array(sinkId + 1);
+
+        for (let key = 0; key < keySamples.length; key++) {
+            const sampleId = keySamples[key];
+            const target = sampleAccepts[sampleId] === 1 && classAccepts[keyClasses[key]] === 1 ? sampleId : sinkId;
+
+            totals[target] += weights[key];
+            totalCounts[target] += counts[key];
+        }
+
+        for (const [start, end] of aggregate.partialIntervals) {
+            for (let index = start; index < end; index++) {
+                const value = values[index];
+
+                if (value !== 0) {
+                    const sampleId = baseSamples[index];
+                    const target = accepts(index, sampleId) ? sampleId : sinkId;
+
+                    totals[target] += value;
+                    totalCounts[target]++;
+                }
+            }
+        }
+
+        for (const { index, value } of this.#boundaryCuts) {
+            const sampleId = baseSamples[index];
+            const target = accepts(index, sampleId) ? sampleId : sinkId;
+
+            totals[target] -= value;
+
+            if (value === values[index]) {
+                totalCounts[target]--;
+            }
+        }
+
+        this.#totals.set(totals);
+        this.#counts.set(totalCounts);
     }
 
     get ranges() {
@@ -325,7 +577,7 @@ export class PopulationFiltered extends Observer {
 
         this.#ranges = next;
         this.#effectiveRanges = intersectRangeSets(this.source.ranges, next);
-        this.#compileValues();
+        this.#updateValues();
         this.#recompute();
         this.notify();
     }
@@ -348,7 +600,7 @@ export class PopulationFiltered extends Observer {
 
         this.indexStart = start;
         this.indexEnd = end;
-        this.#compileValues();
+        this.#updateValues();
         this.#recompute();
         this.notify();
     }
@@ -366,7 +618,7 @@ export class PopulationFiltered extends Observer {
 
         this.valueMin = min;
         this.valueMax = max;
-        this.#compileValues();
+        this.#updateValues();
         this.#recompute();
         this.notify();
     }
@@ -385,7 +637,8 @@ export class PopulationFiltered extends Observer {
 
         // Range changes affect weights only; compiled sample destinations and attribute acceptance are reused.
         const originalValues = this.source.values;
-        const { values, cumulative, rangeStart, rangeEnd } = this;
+        const values = this.buffer.values;
+        const { cumulative, rangeStart, rangeEnd } = this;
         const indexStart = this.indexStart ?? 0;
         const indexEnd = this.indexEnd ?? values.length;
         const min = this.valueMin ?? -Infinity;
@@ -450,7 +703,8 @@ export class PopulationFiltered extends Observer {
     }
 
     #compileMultipleRanges(ranges: RangeSet) {
-        const { values, cumulative } = this;
+        const values = this.buffer.values;
+        const { cumulative } = this;
         const originalValues = this.source.values;
         const indexStart = this.indexStart ?? 0;
         const indexEnd = this.indexEnd ?? values.length;
@@ -516,7 +770,7 @@ export class PopulationFiltered extends Observer {
     }
 
     #addBoundaryCut(index: number, contribution: number) {
-        const value = this.values[index];
+        const value = this.buffer.values[index];
 
         if (value > 0) {
             const cut = value - Math.min(value, Math.max(0, Math.trunc(contribution)));
@@ -526,6 +780,108 @@ export class PopulationFiltered extends Observer {
             }
         }
     }
+}
+
+export type EventReader = {
+    destination: (index: number) => number;
+    value: (index: number) => number;
+};
+type RecordsTables = {
+    masks: Uint32Array[];
+    events: EventAcceptance[];
+};
+type RecordsAcceptance = {
+    sampleAccepts: Uint8Array;
+    classAccepts: Uint8Array;
+    accepts: (index: number, sampleId: number) => boolean;
+};
+
+// Event intervals whose values ranges keep, and boundary cuts of their edge events: the same coverage as
+// PopulationFiltered#compileValues without index or value constraints
+function computeCoverage(ranges: RangeSet | null, cumulative: Uint32Array, values: Uint32Array) {
+    const coverage: [number, number][] = [];
+    const cuts: { index: number; value: number }[] = [];
+    const addCut = (index: number, contribution: number) => {
+        const value = values[index];
+
+        if (value > 0) {
+            const cut = value - Math.min(value, Math.max(0, Math.trunc(contribution)));
+
+            if (cut > 0) {
+                cuts.push({ index, value: cut });
+            }
+        }
+    };
+
+    if (ranges === null) {
+        coverage.push([0, values.length]);
+    } else if (ranges.length === 1) {
+        const [{ start, end }] = ranges;
+
+        if (start !== end) {
+            const first = Math.max(0, findCumulativeBoundary(cumulative, start, true) - 1);
+            const last = findCumulativeBoundary(cumulative, end, false);
+
+            if (first < last) {
+                coverage.push([first, last]);
+                addCut(first, Math.min(cumulative[first] + values[first], end) - Math.max(cumulative[first], start));
+
+                if (last - 1 !== first) {
+                    addCut(last - 1, end - cumulative[last - 1]);
+                }
+            }
+        }
+    } else if (ranges.length > 1) {
+        // Successive intervals can touch the same event; sum its contributions before cutting
+        let boundaryIndex = -1;
+        let boundaryValue = 0;
+        const addBoundary = (index: number, contribution: number) => {
+            if (index !== boundaryIndex) {
+                if (boundaryIndex !== -1) {
+                    addCut(boundaryIndex, boundaryValue);
+                }
+
+                boundaryIndex = index;
+                boundaryValue = 0;
+            }
+
+            boundaryValue += contribution;
+        };
+
+        for (const { start, end } of ranges) {
+            const first = Math.max(0, findCumulativeBoundary(cumulative, start, true) - 1);
+            const last = findCumulativeBoundary(cumulative, end, false) - 1;
+            const previous = coverage[coverage.length - 1];
+
+            if (previous !== undefined && first < previous[1]) {
+                previous[1] = Math.max(previous[1], last + 1);
+            } else {
+                coverage.push([first, Math.max(first, last) + 1]);
+            }
+
+            addBoundary(first, Math.min(cumulative[first] + values[first], end) - start);
+
+            if (last !== first) {
+                addBoundary(last, end - cumulative[last]);
+            }
+        }
+
+        if (boundaryIndex !== -1) {
+            addCut(boundaryIndex, boundaryValue);
+        }
+    }
+
+    return { coverage, cuts };
+}
+
+function isCovered(coverage: [number, number][], index: number) {
+    for (const [start, end] of coverage) {
+        if (index < end) {
+            return index >= start;
+        }
+    }
+
+    return false;
 }
 
 function aggregateRange(
@@ -571,43 +927,28 @@ function aggregatePopulation(population: Population | PopulationFiltered, groups
     return { samplesCount, samplesTotal };
 }
 
-function createComputeBuffer(
-    population: Population | PopulationFiltered,
-    useWasm = true
-) {
-    const { samples, values, samplesCount } = population;
-    const aggregateSize = samplesCount.length + 1;
-    // estimate buffer size
-    let bufferOffset = 0;
+function createComputeBuffer(eventCount: number, sampleCount: number, useWasm = true) {
+    const aggregateSize = sampleCount + 1;
     const bufferSize =
-        values.length + // values
-        samples.length + // samples
+        eventCount + // values
+        eventCount + // samples
         aggregateSize +
         aggregateSize;
-
     const memory = useWasm
         ? new WebAssembly.Memory({ initial: Math.ceil(4 * bufferSize / 0xffff) })
         : new Uint8Array(4 * bufferSize);
     const buffer = new Uint32Array(memory.buffer);
+    let bufferOffset = 0;
+    const reserve = (length: number) => buffer.subarray(bufferOffset, bufferOffset += length);
     const bufferMap: PopulationBufferMap = {
         memory,
-        values: reserve(values.length),
-        samples: adopt(samples),
+        values: reserve(eventCount),
+        samples: reserve(eventCount),
         samplesCount: reserve(aggregateSize),
         samplesTotal: reserve(aggregateSize)
     };
 
     return bufferMap;
-
-    function adopt(array: Uint32Array) {
-        buffer.set(array, bufferOffset);
-
-        return buffer.subarray(bufferOffset, bufferOffset += array.length);
-    }
-
-    function reserve(length: number) {
-        return buffer.subarray(bufferOffset, bufferOffset += length);
-    }
 }
 
 function intersectRangeSets(source: RangeSet | null, ranges: RangeSet | null): RangeSet | null {

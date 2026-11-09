@@ -8,7 +8,7 @@ import { sampleRange } from './samples.js';
 import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
-import { findCumulativeBoundary, type PopulationFiltered } from '../prepare/computations/population.js';
+import { findCumulativeBoundary, type EventReader, type PopulationFiltered } from '../prepare/computations/population.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
 import type { BinRecords, BinRecordsGrid, EventSignatures } from '../prepare/lines/event-signatures.js';
 
@@ -258,11 +258,17 @@ function binPopulation(
     { total, step, skip }: BinGrid,
     grouping: SignatureGrouping | null = null
 ) {
-    const { samples, values: acceptedValues, sinkId, ranges, population } = viewport;
+    const { sinkId, ranges, population } = viewport;
     const { values, cumulative, cumulativeEnd } = population;
+    // Signature records cover whole events of bins; edge and crossing events are read one by one,
+    // so destinations need not be compiled for all events
+    const eventSamples = grouping === null ? viewport.samples : null;
+    const eventValues = grouping === null ? viewport.values : null;
+    const { destination, value: acceptedValue } = viewport.eventReader();
+    const accepts = (index: number) => destination(index) !== sinkId && acceptedValue(index) > 0;
 
     const addBoundary = (index: number, startCut: number, endCut: number) => {
-        if (samples[index] === sinkId || acceptedValues[index] === 0) {
+        if (!accepts(index)) {
             return;
         }
 
@@ -314,7 +320,7 @@ function binPopulation(
             const stop = Math.min(last, Math.max(index, findCumulativeBoundary(cumulative, boundary, false) - 1));
 
             if (grouping === null) {
-                binValue = binPopulationBin(samples, values, acceptedValues, sinkId, tracks, groups, index, stop, binIndex, binValue);
+                binValue = binPopulationBin(eventSamples!, values, eventValues!, sinkId, tracks, groups, index, stop, binIndex, binValue);
             } else {
                 addSpanRecords(grouping, values, tracks, index, stop, binIndex);
                 // Equals the per-event sum: within a bin every partial sum stays below the step and is a multiple
@@ -330,7 +336,7 @@ function binPopulation(
 
             const groupIndex = groups ? groups[index] : 0;
             const track = tracks[groupIndex];
-            const accept = samples[index] !== sinkId && acceptedValues[index] > 0;
+            const accept = accepts(index);
             let value = values[index];
 
             if (accept) {
@@ -504,13 +510,14 @@ function binMappedPopulation(
     grouping: MappedSignatureGrouping | null = null
 ) {
     const { values, axisTotal } = line;
-    const { samples, values: acceptedValues, sinkId, ranges, cumulative } = viewport;
+    const { sinkId, ranges, cumulative } = viewport;
+    const { destination, value: acceptedValue } = viewport.eventReader();
     // IMPORTANT: Disjoint source ranges can cut the same event. Emit their combined value once.
     let boundaryIndex = -1;
     let boundaryValue = 0;
 
     const flushBoundary = () => {
-        if (boundaryIndex !== -1 && samples[boundaryIndex] !== sinkId && acceptedValues[boundaryIndex] > 0) {
+        if (boundaryIndex !== -1 && destination(boundaryIndex) !== sinkId && acceptedValue(boundaryIndex) > 0) {
             const target = targetBin(mapping[boundaryIndex]);
 
             if (target !== -1) {
@@ -728,13 +735,16 @@ function collectTreeBin(
 
 function sumTreeRange(
     viewport: PopulationFiltered,
+    { destination, value: acceptedValue }: EventReader,
+    // Compiled destinations and values for per-event sums, when there are no signature records
+    events: { samples: Uint32Array; values: Uint32Array } | null,
     sampleToNode: Uint32Array,
     totals: Float64Array,
     start: number,
     end: number,
     grouping: SignatureGrouping | null
 ) {
-    const { samples, values, sinkId, population } = viewport;
+    const { sinkId, population } = viewport;
     const { cumulative, cumulativeEnd } = population;
     const { first, last, startCut, endCut } = sampleRange(cumulative, end - start, -start, cumulativeEnd);
 
@@ -742,9 +752,10 @@ function sumTreeRange(
         return;
     }
 
-    const firstSample = samples[first];
+    // Edge events are read one by one, so destinations need not be compiled for all events
+    const firstSample = destination(first);
 
-    if (firstSample !== sinkId && values[first] > 0) {
+    if (firstSample !== sinkId && acceptedValue(first) > 0) {
         const node = sampleToNode[firstSample];
         let value = population.values[first] - startCut;
 
@@ -760,14 +771,14 @@ function sumTreeRange(
     }
 
     if (grouping === null) {
-        sumTreeEvents(samples, values, sampleToNode, sinkId, totals, first + 1, last);
+        sumTreeEvents(events!.samples, events!.values, sampleToNode, sinkId, totals, first + 1, last);
     } else {
         sumTreeRecords(grouping, population.values, totals, first + 1, last);
     }
 
-    const lastSample = samples[last];
+    const lastSample = destination(last);
 
-    if (lastSample !== sinkId && values[last] > 0) {
+    if (lastSample !== sinkId && acceptedValue(last) > 0) {
         const node = sampleToNode[lastSample];
 
         totals[node] += population.values[last] - endCut;
@@ -785,6 +796,8 @@ function binTreePopulation(
     const { nodes, dictionary } = tree;
     const { total, step, skip } = grid;
     const coverage = viewport.ranges ?? [{ start: 0, end: viewport.cumulativeEnd }];
+    const reader = viewport.eventReader();
+    const events = grouping === null ? { samples: viewport.samples, values: viewport.values } : null;
     // PERF: Reuse one node vector across bins instead of keeping a node-by-bin matrix.
     const totals = new Float64Array(nodes.length);
     const subtreeEntries = new Int32Array(nodes.length);
@@ -816,7 +829,7 @@ function binTreePopulation(
             const right = Math.min(end, interval.end);
 
             if (left < right) {
-                sumTreeRange(viewport, sampleToNode, totals, left, right, grouping);
+                sumTreeRange(viewport, reader, events, sampleToNode, totals, left, right, grouping);
             }
         }
 
