@@ -1,17 +1,17 @@
 const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } = require('../jora/viewport.js');
-const { formatMicrosecondsTime } = require('../prepare/misc/time-utils.js');
+const { formatMicrosecondsTime, stepFractionDigits } = require('../prepare/misc/time-utils.js');
 const { createState, rangeToSegments } = require('./ruler-range.js');
 const { binsPerColumn } = require('./bins-histogram/index.js');
 
-function formatMemory(size, total) {
-    switch (true) {
-        case total < 1_000_000:
-            return `${(size / 1_000).toFixed(1).replace(/\.0$/, '')}Kb`;
+// The unit follows the total of a scale, a step gives the fraction digits that tell steps apart
+function formatMemory(size, total, step) {
+    const unit = total < 1_000_000 ? 1_000 : 1_000_000;
+    const value = step !== undefined
+        ? (size / unit).toFixed(stepFractionDigits(step, unit))
+        : (size / unit).toFixed(1).replace(/\.0$/, '');
 
-        default:
-            return `${(size / 1_000_000).toFixed(1).replace(/\.0$/, '')}Mb`;
-    }
+    return `${value}${unit === 1_000 ? 'Kb' : 'Mb'}`;
 }
 
 // Columns of histograms with bins over the grid showing a range: segments at boundaries of the columns
@@ -75,8 +75,11 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
         return grid?.segments ? grid : null;
     };
     // Labels count from the start of the ruler, which is the viewport bounds for a zoomed one,
-    // as line coordinates may be absolute timestamps
-    const origin = zoom ? bounds.start : createState(range).range.start;
+    // as line coordinates may be absolute timestamps. Their unit follows the whole scale, so zooming in
+    // adds fraction digits for the steps of markers instead of switching to a smaller unit
+    const scale = zoom ? bounds : createState(range).range;
+    const origin = scale.start;
+    const scaleLength = scale.end - scale.start;
     let updatingRangeManager = false;
 
     return this.render(el, {
@@ -93,11 +96,11 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
             : segments,
         multiple,
         selection: rangeManager ? readSelection() : selection,
-        formatLabel: formatLabel || ((value, range) =>
+        formatLabel: formatLabel || ((value, range, step) =>
             scopeLine.type === 'memline'
-                ? formatMemory(value - origin, range.end - range.start)
+                ? formatMemory(value - origin, scaleLength, step)
                 : scopeLine.type === 'timeline'
-                    ? formatMicrosecondsTime(value - origin, range.end - range.start)
+                    ? formatMicrosecondsTime(value - origin, scaleLength, false, step)
                     : String(value - origin)
         ),
         details: details && {

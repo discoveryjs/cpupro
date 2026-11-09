@@ -102,7 +102,7 @@ function renderMarkers(el, view) {
 
             markers[count].hidden = false;
             markers[count].style.setProperty('--offset', (value - state.range.start) / state.length);
-            markers[count].dataset.title = formatLabel(value, state.range);
+            markers[count].dataset.title = formatLabel(value, state.range, rulerStep);
             count++;
         }
     }

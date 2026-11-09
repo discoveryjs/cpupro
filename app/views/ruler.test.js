@@ -23,9 +23,9 @@ test('renders numeric labels without a profile and accepts an external label for
     const markers = element.children.filter(child => child.className === 'interval-marker');
     assert.deepEqual(markers.map(marker => marker.dataset.title), ['0', '10', '20', '30', '40', '50', '60', '70', '80', '90']);
     const formatted = harness.createElement('ruler');
-    harness.render(formatted, { range: 100, formatLabel: (value, range) => `${value}/${range.end}` }, null, {});
+    harness.render(formatted, { range: 100, formatLabel: (value, range, step) => `${value}/${range.end}/${step}` }, null, {});
     assert.deepEqual(formatted.children.filter(child => child.className === 'interval-marker').map(marker => marker.dataset.title), [
-        '0/100', '10/100', '20/100', '30/100', '40/100', '50/100', '60/100', '70/100', '80/100', '90/100'
+        '0/100/10', '10/100/10', '20/100/10', '30/100/10', '40/100/10', '50/100/10', '60/100/10', '70/100/10', '80/100/10', '90/100/10'
     ]);
 });
 

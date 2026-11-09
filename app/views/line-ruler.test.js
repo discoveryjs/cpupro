@@ -3,7 +3,7 @@ import { test } from 'vitest';
 import { createRulerHarness } from '../../test/helpers/ruler.js';
 import { createLineFixture, createProfileFixture, denseValues } from '../../test/fixtures/profile.js';
 import { resolveScopeProfileLine } from '../jora/profile.js';
-import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
+import { formatMicrosecondsTime, stepFractionDigits } from '../prepare/misc/time-utils.js';
 import { createState, rangeToSegments } from './ruler-range.js';
 import { binsPerColumn } from './bins-histogram/index.js';
 import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
@@ -19,7 +19,7 @@ evaluateModule(new URL('./line-ruler.js', import.meta.url), {
         viewOptions = options;
     } } },
     require: () => ({
-        resolveScopeProfileLine, lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom, formatMicrosecondsTime,
+        resolveScopeProfileLine, lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom, formatMicrosecondsTime, stepFractionDigits,
         createState, rangeToSegments, binsPerColumn
     })
 });
@@ -31,12 +31,12 @@ test('forwards resolved props and callbacks without a container or a second sele
     const context = { primaryProfile: profile, primaryLineType: 'timeline' };
     assert.equal(viewOptions.tag, false);
     for (const [line, range, expected] of [
-        [undefined, 1_000_000, formatMicrosecondsTime(100_000, 1_000_000)],
+        [undefined, 1_000_000, '0.1s'],
         ['memline', 100_000, '10Kb'],
         [profile.memline, 1_000_000, '0.1Mb'],
         // Labels count from the start of the range
-        [undefined, { start: 1000, end: 2000 }, formatMicrosecondsTime(100, 1000)],
-        [undefined, [1000, 2000], formatMicrosecondsTime(100, 1000)]
+        [undefined, { start: 1000, end: 2000 }, '0.1ms'],
+        [undefined, [1000, 2000], '0.1ms']
     ]) {
         const element = harness.createElement('ruler');
         const rangeManager = profile.timeline.range;
@@ -414,7 +414,7 @@ test('labels and detail labels of a zoomed ruler count from the viewport bounds 
 
     const titles = element.children.filter(child => child.className === 'interval-marker' && !child.hidden).map(marker => marker.dataset.title);
 
-    assert.deepEqual(titles.slice(0, 2), [formatMicrosecondsTime(10, 20), formatMicrosecondsTime(12.5, 20)]);
+    assert.deepEqual(titles.slice(0, 2), ['0.0100ms', '0.0125ms']);
     harness.move({ x: 50, y: 5 });
     harness.showTooltip();
     assert.deepEqual([detailsContext.labelStart, detailsContext.labelEnd], [20, 21]);
@@ -436,4 +436,51 @@ test('labels and detail labels of a zoomed ruler count from the viewport bounds 
     harness.destroy(element);
     harness.destroy(shifted);
     line.zoom.resetRange();
+});
+
+test('labels of a zoomed ruler keep the unit of its bounds and take the fraction digits of their steps', async () => {
+    const { profile } = await createProfileFixture({ startTime: 456_706_000_000 });
+    const line = profile.timeline;
+    const harness = createRulerHarness();
+    const start = lineViewportBounds(line).start;
+    // Profiles widen the bounds of time lines to 30 seconds
+    const context = { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles: [{ timeline: { axisStart: start, axisEnd: start + 30_000_000 } }] } };
+    const titles = (viewport) => {
+        const element = harness.createElement('ruler');
+
+        element.width = 100;
+        harness.createElement('parent').appendChild(element);
+        line.zoom.selection.setRange(start + viewport[0], start + viewport[1]);
+        renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
+            element, { zoom: true }, null, context);
+        const result = element.children.filter(child => child.className === 'interval-marker' && !child.hidden).map(marker => marker.dataset.title);
+        harness.destroy(element);
+
+        return result.slice(0, 3);
+    };
+
+    assert.deepEqual(titles([0, 30_000_000]), ['0s', '5s', '10s']);
+    assert.deepEqual(titles([10_000_000, 12_000_000]), ['10.00s', '10.25s', '10.50s']);
+    assert.deepEqual(titles([10_000_000, 10_001_000]), ['10.0000s', '10.0001s', '10.0002s']);
+    line.zoom.resetRange();
+
+    // Bytes of a memline alike, 160 bytes in kilobytes
+    const memline = profile.memline;
+    const memlineTitles = (viewport) => {
+        const element = harness.createElement('ruler');
+
+        element.width = 100;
+        harness.createElement('parent').appendChild(element);
+        memline.zoom.selection.setRanges(viewport && [{ start: viewport[0], end: viewport[1] }]);
+        renderLineRuler.call({ render: (el, props, data, scope) => harness.render(el, props, data, scope) },
+            element, { line: memline, zoom: true }, null, context);
+        const result = element.children.filter(child => child.className === 'interval-marker' && !child.hidden).map(marker => marker.dataset.title);
+        harness.destroy(element);
+
+        return result.slice(0, 3);
+    };
+
+    assert.deepEqual(memlineTitles(null), ['0.000Kb', '0.025Kb', '0.050Kb']);
+    assert.deepEqual(memlineTitles([10, 12]), ['0.01000Kb', '0.01025Kb', '0.01050Kb']);
+    memline.zoom.resetRange();
 });
