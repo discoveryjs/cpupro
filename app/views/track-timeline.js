@@ -1,4 +1,5 @@
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
+import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
 import { TrackTimeline } from './track-timeline/index.js';
 import Tooltip from './track-timeline/tooltip.js';
 import { utils } from '@discoveryjs/discovery';
@@ -11,6 +12,9 @@ const defaultTooltipContent = [
 discovery.view.define('track-timeline', function(el, config, data, context) {
     const scopeLine = resolveScopeProfileLine(config.line, context);
     const viewport = resolveScopeViewport(config.viewport, context);
+    const profiles = context.data?.profiles;
+    // With zoom the view follows the line viewport within its bounds
+    const bounds = config.zoom ? lineViewportBounds(scopeLine, profiles) : viewport;
     const { range } = scopeLine;
     const { selection } = range;
     const {
@@ -21,8 +25,8 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
         intervals = [],
         groups = false,
         unit = 'us',
-        minX = viewport.start,
-        maxX = viewport.end
+        minX = bounds.start,
+        maxX = bounds.end
     } = config;
 
     const tooltip = new Tooltip(discovery, (el, span) =>
@@ -71,18 +75,31 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     });
 
     let rangeSubscription = null;
+    let viewportSubscription = null;
     destroyEl.onConnect = () => {
         rangeSubscription = selection.subscribe(syncSelection);
         syncSelection();
+
+        if (config.zoom) {
+            viewportSubscription = scopeLine.viewport.subscribe(syncViewport);
+            syncViewport();
+        }
     };
     destroyEl.onDestroy = () => {
         rangeSubscription?.();
+        viewportSubscription?.();
         trackTimeline.destroy();
         tooltip.destroy();
     };
 
     function syncSelection() {
         trackTimeline.setSelection(selection.ranges);
+    }
+
+    function syncViewport() {
+        const { start, end } = lineViewport(scopeLine, profiles);
+
+        trackTimeline.setView(start, end);
     }
 });
 

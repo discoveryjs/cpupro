@@ -230,14 +230,14 @@
     user-select: none;
 }
 
-.page-default .category-timelines > .view-ruler {
+.page-default .category-timelines-window > .view-ruler {
     grid-column: 3 / 4;
     box-sizing: border-box;
     margin: 0 1px;
     --overlay-offset-top: -1px;
     --overlay-offset-bottom: -3px;
 }
-.page-default .category-timelines > .view-ruler .interval-marker:first-child {
+.page-default .category-timelines-window > .view-ruler .interval-marker:first-child {
     margin-left: -1px;
 }
 .page-default .category-timelines > .events-x {
@@ -248,33 +248,23 @@
     inset: 0;
     overflow: hidden;
 }
-.page-default .category-timelines > .events-x > .event-x.gc-event-x {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: var(--start);
-    width: var(--duration);
-    pointer-events: none;
-    background: var(--color, #8888);
-    opacity: 0.35;
-}
 
-.page-default .category-timelines > .view-expand {
+.page-default :is(.category-timelines, .category-timelines-window) > .view-expand {
     display: contents;
 }
-.page-default .category-timelines > .view-expand > .header {
+.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .header {
     grid-column: 1/4;
     position: relative;
     z-index: 1;
     margin-top: 1px;
 }
-.page-default .category-timelines > .view-expand > .header > .header-content {
+.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .header > .header-content {
     display: flex;
 }
-.page-default .category-timelines > .view-expand > .content {
+.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .content {
     display: contents;
 }
-.page-default .category-timelines > .view-expand > .content > .category-timelines-item:first-child > * {
+.page-default :is(.category-timelines, .category-timelines-window) > .view-expand > .content > .category-timelines-item:first-child > * {
     margin-top: 1px;
 }
 .page-default .category-timelines > .view-expand .view-cpupro-chart {

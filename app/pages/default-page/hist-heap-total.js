@@ -155,6 +155,7 @@ function histHeapTotalBody() {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     className: 'mem-bins',
                     height: 36,
                     extent: '=extent',
@@ -184,6 +185,7 @@ function histHeapTotalBody() {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     className: 'mem-bins',
                     extent: '=extent',
                     bins: '=new',
@@ -210,6 +212,7 @@ function histHeapTotalBody() {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     className: 'mem-bins heap-delete-chunks',
                     extent: '=extent',
                     bins: '=delete',

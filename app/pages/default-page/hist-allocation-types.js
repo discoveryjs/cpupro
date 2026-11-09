@@ -68,6 +68,7 @@ export const histAllocationTypes = {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     bins: '=bins',
                     max: '=max',
                     scale: '=step ? "linear" : "sqrt"',

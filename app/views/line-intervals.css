@@ -1,0 +1,11 @@
+.view-line-intervals {
+    pointer-events: none;
+}
+.view-line-intervals > .interval {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc((var(--start) - var(--display-start, 0)) * var(--display-scale, 1) * 100%);
+    width: calc((var(--end) - var(--start)) * var(--display-scale, 1) * 100%);
+    background: var(--color, #8888);
+}

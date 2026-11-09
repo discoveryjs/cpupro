@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { afterEach, test, vi } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
+import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import { TrackTimeline as CanvasTrackTimeline } from './track-timeline/index.js';
 import { layoutSpans } from './track-timeline/layout.js';
@@ -350,7 +351,7 @@ async function renderTimeline(config = {}, scopeViewport) {
     const destroyElement = {};
 
     evaluateModule(new URL('./track-timeline.js', import.meta.url), {
-        resolveScopeProfileLine, resolveScopeViewport,
+        resolveScopeProfileLine, resolveScopeViewport, lineViewport, lineViewportBounds,
         discovery: { view: { define: (_, callback) => render = callback } },
         utils: { createElement: name => name === 'destroy-track-timeline' ? destroyElement : element },
         HTMLElement: class {}, customElements: { define() {} },
@@ -360,6 +361,10 @@ async function renderTimeline(config = {}, scopeViewport) {
                     options,
                     setSelection(selection) {
                         this.selection = selection;
+                    },
+                    views: [],
+                    setView(start, end) {
+                        this.views.push({ start, end });
                     },
                     destroy() {}
                 };
@@ -376,7 +381,7 @@ async function renderTimeline(config = {}, scopeViewport) {
     });
     render.call({ render: (_, config, data, context) => tooltipContext = context }, element, config, null, context);
     destroyElement.onConnect();
-    return { timeline, selection, destroyElement, hover: span => {
+    return { timeline, scopeLine, selection, destroyElement, hover: span => {
         hover(element, span);
         return tooltipContext;
     } };
@@ -396,6 +401,48 @@ test('uses the common viewport or its scoped and explicit overrides', async () =
         assert.equal(tooltipContext.spanStart, 135 - expected.start);
         assert.equal(tooltipContext.spanEnd, 145 - expected.start);
     }
+});
+
+test('zoom bounds the timeline by the viewport bounds and follows the line viewport until destroyed', async () => {
+    const { timeline, scopeLine, destroyElement, hover } = await renderTimeline({ zoom: true }, { start: 130, end: 160 });
+
+    assert.equal(timeline.options.minX, 100);
+    assert.equal(timeline.options.maxX, 200);
+    assert.equal(hover({ start: 135, end: 145 }).spanStart, 35);
+    assert.deepEqual(timeline.views, [{ start: 100, end: 200 }]);
+
+    scopeLine.viewport.selection.setRange(140, 150);
+    assert.deepEqual(timeline.views.at(-1), { start: 140, end: 150 });
+    scopeLine.viewport.resetRange();
+    assert.deepEqual(timeline.views.at(-1), { start: 100, end: 200 });
+    destroyElement.onDestroy();
+    scopeLine.viewport.selection.setRange(140, 150);
+    assert.equal(timeline.views.length, 3);
+    scopeLine.viewport.resetRange();
+
+    const { timeline: unzoomed, scopeLine: line } = await renderTimeline({}, undefined);
+
+    line.viewport.selection.setRange(140, 150);
+    assert.deepEqual(unzoomed.views, []);
+    line.viewport.resetRange();
+});
+
+test('an outside view applies to the canvas once sized and keeps it on resize', () => {
+    const { timeline, flush } = createCanvasTimeline({ minX: 0, maxX: 1000 });
+
+    timeline.setView(250, 500);
+    assert.equal(timeline.offsetMs, 250);
+    assert.equal(timeline.pxPerMs, 4);
+    flush();
+    assert.equal(timeline.offsetMs, 250);
+
+    timeline.width = 0;
+    timeline.setView(100, 300);
+    assert.equal(timeline.offsetMs, 250);
+    timeline.resize();
+    assert.equal(timeline.offsetMs, 100);
+    assert.equal(timeline.pxPerMs, 5);
+    timeline.destroy();
 });
 
 test('preserves absolute selection on span clicks, external changes and reset', async () => {

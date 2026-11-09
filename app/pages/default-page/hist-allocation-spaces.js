@@ -60,6 +60,7 @@ export const histAllocationSpaces = {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     bins: '=bins',
                     max: '=max',
                     binsMax: true,

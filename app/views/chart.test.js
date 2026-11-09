@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { setRangeCoverage } from './misc/range-coverage.js';
+import { resolveScopeProfileLine } from '../jora/profile.js';
+import { lineViewport } from '../jora/viewport.js';
+import { createLineFixture } from '../../test/fixtures/profile.js';
 import usage from './chart.usage.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
-function createElement() {
-    return {
+function createElement(tagName) {
+    const element = {
+        tagName,
         children: [], attributes: new Map(), styles: new Map(), classList: new Set(),
-        style: { setProperty() {} },
+        style: { setProperty(name, value) {
+            element.styles.set(name, value);
+        } },
         setAttribute(name, value) {
             this.attributes.set(name, value);
         },
@@ -15,6 +21,8 @@ function createElement() {
             this.children.push(...children);
         }
     };
+
+    return element;
 }
 
 let renderChart;
@@ -23,8 +31,11 @@ const generateCurve = evaluateModule(new URL('./chart.js', import.meta.url), {
     discovery: { view: { define(name, render) {
         renderChart = render;
     } } },
-    usage, setRangeCoverage,
-    document: { createElement, createElementNS: createElement }
+    usage, setRangeCoverage, resolveScopeProfileLine, lineViewport,
+    utils: { createElement },
+    HTMLElement: class {},
+    customElements: { define() {} },
+    document: { createElement, createElementNS: (_, tagName) => createElement(tagName) }
 }, 'generateCurve');
 
 test('uses point bounds by default and caller-supplied minX/maxX independently of context', () => {
@@ -91,4 +102,38 @@ test('uses the viewport as coverage when no extent is supplied', () => {
 
     assert.ok(curve.startsWith('M 0 '));
     assert.ok(curve.endsWith('H 1000'));
+});
+
+test('zoom draws the range and displays the line viewport within it until destroyed', async () => {
+    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+    const element = createElement();
+
+    line.viewport.selection.setRange(110, 160);
+    renderChart(element, {
+        minX: 100, maxX: 200, extent: { start: 120, end: 200 }, zoom: true, height: 50,
+        points: [{ x: 120, y: 10 }, { x: 180, y: 20 }]
+    }, null, { scopeLine: line });
+
+    const svg = element.children.find(child => child.tagName === 'svg');
+    const destroyEl = element.children.at(-1);
+
+    assert.equal(destroyEl.tagName, 'destroy-cpupro-chart');
+    assert.equal(svg.attributes.get('viewBox'), '0 0 1000 50');
+    destroyEl.onConnect();
+    assert.equal(svg.attributes.get('viewBox'), '100 0 500 50');
+    assert.equal(element.styles.get('--range-pad-start'), 0.2);
+    assert.equal(element.styles.get('--range-pad-end'), 0);
+
+    line.viewport.resetRange();
+    assert.equal(svg.attributes.get('viewBox'), '0 0 1000 50');
+    assert.equal(element.styles.get('--range-pad-start'), 0.2);
+
+    destroyEl.onDestroy();
+    line.viewport.selection.setRange(150, 200);
+    assert.equal(svg.attributes.get('viewBox'), '0 0 1000 50');
+
+    const unzoomed = createElement();
+
+    renderChart(unzoomed, { minX: 100, maxX: 200, points: [{ x: 120, y: 10 }] }, null, { scopeLine: line });
+    assert.ok(unzoomed.children.every(child => child.tagName !== 'destroy-cpupro-chart'));
 });

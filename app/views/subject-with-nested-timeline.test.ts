@@ -16,7 +16,7 @@ test('matches the default page category bins under the computed common viewport'
     const timeline = evaluateModule(new URL('../pages/default.js', import.meta.url), {
         require: () => ({ supportedFormats: [], sessionExpandState: () => ({}) }),
         discovery: { nav: { primary: { append() {} } }, page: { define() {} } }
-    }, 'categoriesTimeline');
+    }, 'categoriesTimelineWindow');
     const { profile } = await createProfileFixture({ cpuOnly: true });
     const context = {
         primaryProfile: profile, primaryLineType: 'timeline',
@@ -28,11 +28,21 @@ test('matches the default page category bins under the computed common viewport'
     const tree = profile.timeline!.breakdowns[0].categories!.all.nodes;
     const data = query(definition.data)({ subject: row.category, tree }, context);
 
+    // The default page computes up to 2000 bins for its window, at the whole viewport they show merged into columns
+    const columns = (bins: ArrayLike<number>, merge: (a: number, b: number) => number) =>
+        Array.from({ length: data.binCount }, (_, index) =>
+            Array.from(bins).slice(index * size, index * size + size).reduce(merge, 0));
+    const size = row.bins.length / data.binCount;
+
     assert.equal(data.duration, 1000);
     assert.equal(data.binCount, 500);
-    assert.equal(data.binSize, row.binSize);
-    assert.deepEqual(data.bins, row.bins);
-    assert.deepEqual(data.totalValueBins.map((value: number) => value > 0 ? 1 : 0), Array.from(row.nestedPresence));
+    assert.equal(size, 2);
+    assert.equal(data.binSize, row.binSize * size);
+    assert.deepEqual(Array.from(data.bins), columns(row.bins, (sum, value) => sum + value));
+    assert.deepEqual(
+        data.totalValueBins.map((value: number) => value > 0 ? 1 : 0),
+        columns(row.nestedPresence, (max, value) => Math.max(max, value))
+    );
     assert.equal(definition.content[2].content.view, 'line-histogram');
     assert.equal(definition.content[3].content.view, 'line-histogram');
     assert.equal(definition.content[4].item.view, 'line-histogram');

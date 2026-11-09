@@ -42,6 +42,7 @@ function userTimingsTimelineBody() {
     return [
         {
             view: 'track-timeline',
+            zoom: true,
             spans: '=spans',
             intervals: '=intervals',
             tooltipClassName: 'events-track-timeline-tooltip',

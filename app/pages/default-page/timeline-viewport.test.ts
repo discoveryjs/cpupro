@@ -24,7 +24,7 @@ const methods = {
 };
 
 const detailRenders = [];
-const timeline = evaluateModule(new URL('../default.js', import.meta.url), {
+const { timeline, section } = evaluateModule(new URL('../default.js', import.meta.url), {
     require: () => ({ supportedFormats: [], sessionExpandState: () => ({}), chartUsedHeap, userTimingsTimeline }),
     discovery: {
         nav: { primary: { append() {} } },
@@ -34,7 +34,7 @@ const timeline = evaluateModule(new URL('../default.js', import.meta.url), {
             render: (...args) => detailRenders.push(args)
         }
     }
-}, 'categoriesTimeline');
+}, '({ timeline: categoriesTimelineWindow, section: categoriesTimeline })');
 const query = jora.setup({ methods: { ...methods, marker: () => ({ href: '#' }) } });
 
 test('tooltip dispatch selects one section and uses its current local data and scope', () => {
@@ -472,7 +472,8 @@ test.each([100, 1000])('shares viewport coordinates while details count actual e
     const ruler = timeline.content[0];
     assert.deepEqual(query(ruler.range.slice(1))({}, context), viewport);
     const binCount = query(ruler.segments.slice(1))({}, context);
-    assert.equal(binCount, Math.min(500, duration));
+    assert.equal(binCount, Math.min(2000, duration));
+    assert.equal(ruler.zoom, true);
     const range = query(ruler.rangeManager.slice(1))({ line }, context);
     assert.equal(range, line.range.selection);
     range.setRange(origin + duration * 0.1, origin + duration * 0.4);
@@ -510,7 +511,7 @@ test('profile time charts keep their viewport and selection owner when the prima
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     memline.range.setRange(2, 5);
     const memorySelection = memline.range.selection.ranges;
-    const charts = timeline.content.at(-1);
+    const charts = section.content.at(-1);
     assert.equal(charts.content[0], chartUsedHeap);
     assert.equal(charts.content[1], userTimingsTimeline);
 
@@ -548,22 +549,43 @@ test('profile time charts keep their viewport and selection owner when the prima
     }
 });
 
-test('a nested viewport reaches bins, ruler and time charts without being recomputed', async () => {
+test('only bins and their ruler are rendered again for the line window, GC events and time charts follow the viewport', async () => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
     const other = await createLineFixture({ values: new Uint32Array([100]) });
-    const scopeViewport = { start: 15, end: 25 };
     const parent = {
         primaryProfile: profile, primaryLineType: 'timeline',
         data: { profiles: [profile, other.profile] }
     };
-    const context = query(timeline.context)(profile, { ...parent, scopeViewport });
+    const line = profile.timeline;
+    const bounds = methods.lineViewportBounds(line, parent.data.profiles);
+
+    line.viewport.selection.setRange(15, 25);
+
+    const [windowPart, events, charts] = section.content;
+    const context = query(timeline.context)(profile, parent);
     const panel = query(timeline.data)(profile, context);
     const ruler = timeline.content[0];
-    const chartsContext = query(timeline.content.at(-1).context)(panel, context);
+    const window = methods.lineWindow(line, parent.data.profiles);
 
-    assert.equal(query('scopeViewport()')(panel, context), scopeViewport);
-    assert.equal(query(ruler.range.slice(1))(panel, context), scopeViewport);
-    assert.equal(panel.samples[0].bins.length, 10);
-    assert.equal(query('scopeViewport()')(panel, chartsContext), scopeViewport);
+    assert.equal(windowPart.view, 'update-on-line-metrics-changes');
+    assert.equal(windowPart.className, 'category-timelines-window');
+    assert.equal(query(windowPart.metrics.slice(1))(profile, parent), line.breakdowns[0].populationWindow);
+    assert.equal(windowPart.content, timeline);
+    assert.deepEqual(query('scopeViewport()')(panel, context), window);
+    assert.notDeepEqual(window, { start: 15, end: 25 });
+    assert.ok(window.start <= 15 && window.end >= 25);
+    assert.deepEqual(query(ruler.range.slice(1))(panel, context), window);
+    assert.equal(ruler.zoom, true);
+    assert.equal(panel.samples[0].bins.length, context.binCount);
+    assert.equal(context.binCount, Math.min(2000, Math.floor(window.end - window.start)));
+
+    // Rendered once for the viewport bounds, they display the viewport within them
+    assert.equal(events.view, 'line-intervals');
+    assert.equal(events.zoom, true);
+    assert.deepEqual(query('scopeViewport()')(profile, query(events.context)(profile, parent)), bounds);
+    assert.deepEqual(query('scopeViewport()')(profile, query(charts.context)(profile, parent)), bounds);
+    assert.equal(chartUsedHeap.content.content[0].content[0].zoom, true);
+    assert.equal(userTimingsTimeline.content.content[0].content[0].zoom, true);
+    line.viewport.resetRange();
     assert.deepEqual(query('scopeViewport()')({}, parent), { start: 0, end: 100 });
 });

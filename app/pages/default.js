@@ -46,10 +46,14 @@ function toggleFullPageFlamechart(fullpageMode) {
     }, 10);
 }
 
-const categoriesTimeline = {
-    view: 'block',
-    className: 'category-timelines',
-    context: '{ ...#, binCount: 500.binCount() }',
+// Bins are computed for a window of the line viewport, zooming and panning within it only change their display.
+// The window part is rendered again when the window population changes, other parts follow the viewport.
+const categoriesTimelineWindow = {
+    view: 'context',
+    context: `
+        $window: scopeLine().lineWindow(#.data.profiles);
+        { ...#, scopeViewport: $window, binCount: 2000.binCount($window) }
+    `,
     data: `
         $scopeBreakdown: scopeBreakdown();
         $scopeLine: $scopeBreakdown.line;
@@ -83,6 +87,7 @@ const categoriesTimeline = {
             view: 'line-ruler',
             range: '=scopeViewport()',
             segments: '=#.binCount',
+            zoom: true,
             rangeManager: '=line.range.selection',
             details: {
                 view: 'context',
@@ -212,30 +217,6 @@ const categoriesTimeline = {
         },
         {
             view: 'list',
-            className: 'events-x',
-            when: 'scopeLine().type = "timeline"',
-            data: `scopeProfile() |
-                $start: scopeViewport().start;
-                $total: scopeViewport().end - $start;
-                thread.events.[name in ["MinorGC", "MajorGC"]]
-                    .[tm < scopeViewport().end and tm + duration > $start]
-                    .({ ..., start: [tm - $start, 0].max(),
-                        duration: [tm + duration, scopeViewport().end].min() - [tm, $start].max(), $total })
-            `,
-            whenData: true,
-            limit: false,
-            itemConfig: {
-                view: 'block',
-                className: 'event-x gc-event-x',
-                postRender: (el, _, data) => {
-                    el.style.setProperty('--start', (100 * data.start / data.total).toFixed(4) + '%');
-                    el.style.setProperty('--duration', (100 * data.duration / data.total).toFixed(4) + '%');
-                    el.style.setProperty('--color', data.name === 'MinorGC' ? '#f7b26ba0' : data.name === 'MajorGC' ? '#f78c6ba0' : data.name === 'Layout' ? '#6ba0f7a0' : '#6bf78ca0');
-                }
-            }
-        },
-        {
-            view: 'list',
             className: 'category-timelines-list',
             data: 'samples',
             item: {
@@ -255,6 +236,7 @@ const categoriesTimeline = {
                     },
                     {
                         view: 'line-histogram',
+                        zoom: true,
                         bins: '=bins',
                         max: '=binSize',
                         binsMax: true,
@@ -305,6 +287,7 @@ const categoriesTimeline = {
                                 },
                                 {
                                     view: 'line-histogram',
+                                    zoom: true,
                                     bins: '=bins',
                                     max: '=max',
                                     scale: '=step ? "linear" : "sqrt"',
@@ -329,10 +312,41 @@ const categoriesTimeline = {
         histAllocationLifespan,
         histAllocationGcs,
         histAllocationCodeType,
-        histAllocationSpaces,
+        histAllocationSpaces
+    ]
+};
+
+const categoriesTimeline = {
+    view: 'block',
+    className: 'category-timelines',
+    content: [
+        {
+            view: 'update-on-line-metrics-changes',
+            className: 'category-timelines-window',
+            metrics: '=scopeBreakdown().populationWindow',
+            content: categoriesTimelineWindow
+        },
+        {
+            view: 'line-intervals',
+            className: 'events-x',
+            when: 'scopeLine().type = "timeline"',
+            context: '{ ...#, scopeViewport: scopeLine().lineViewportBounds(#.data.profiles) }',
+            zoom: true,
+            data: `
+                scopeProfile().thread.events.[name in ["MinorGC", "MajorGC"]].({
+                    start: tm,
+                    end: tm + duration,
+                    color: name = "MinorGC" ? "#f7b26b38" : "#f78c6b38"
+                })
+            `,
+            whenData: true
+        },
         {
             view: 'context',
-            context: '{ ...#, scopeLine: scopeProfile().timeline, scopeBreakdown: null }',
+            context: `
+                $timeline: scopeProfile().timeline;
+                { ...#, scopeLine: $timeline, scopeBreakdown: null, scopeViewport: $timeline.lineViewportBounds(#.data.profiles) }
+            `,
             content: [chartUsedHeap, userTimingsTimeline]
         }
     ]
@@ -499,11 +513,7 @@ const pageContent = [
         ...sessionExpandState('default-timelines', true),
         className: 'timelines trigger-outside',
         header: categoriesFractionBars,
-        content: {
-            view: 'update-on-line-metrics-changes',
-            metrics: '=scopeBreakdown().populationViewport',
-            content: categoriesTimeline
-        }
+        content: categoriesTimeline
     },
 
     hierarchicalComponentsTables,

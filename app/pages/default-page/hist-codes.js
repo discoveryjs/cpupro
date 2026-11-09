@@ -158,6 +158,7 @@ function histFunctionCodesBody() {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     extent: '=extent',
                     bins: '=compilationBins',
                     color: '="compilation".color()'
@@ -181,6 +182,7 @@ function histFunctionCodesBody() {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     extent: '=extent',
                     bins: '=totalBins',
                     color: '=totalColor'
@@ -208,6 +210,7 @@ function histFunctionCodesBody() {
                     },
                     {
                         view: 'line-histogram',
+                        zoom: true,
                         extent: '=extent',
                         bins: '=bins',
                         max: '=maxTotal',

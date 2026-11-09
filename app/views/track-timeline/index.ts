@@ -99,6 +99,8 @@ export class TrackTimeline {
     #layoutScheduled: ReturnType<typeof setTimeout> | null = null;
     #destroyed = false;
     #events = new AbortController();
+    // A view within the bounds set from outside, applied once the width is known
+    #view: { start: number; end: number } | null = null;
 
     // Wheel gesture tracking
     private lastWheelAction: 'zoom' | 'pan' | 'vscroll' | null = null;
@@ -216,6 +218,12 @@ export class TrackTimeline {
         this.#scheduleRender();
     }
 
+    public setView(start: number, end: number): void {
+        this.#view = { start, end };
+        this.applyView();
+        this.#scheduleRender();
+    }
+
     public destroy(): void {
         this.#destroyed = true;
         this.#events.abort();
@@ -293,6 +301,7 @@ export class TrackTimeline {
             this.pxPerMs *= this.width / prevWidth;
         } else {
             this.resetView(false);
+            this.applyView();
         }
 
         this.handleVerticalScroll(0);
@@ -416,6 +425,13 @@ export class TrackTimeline {
         }
 
         this.#scheduleRender();
+    }
+
+    private applyView(): void {
+        if (this.#view !== null && this.width > 0) {
+            this.offsetMs = this.#view.start;
+            this.pxPerMs = this.width / (this.#view.end - this.#view.start);
+        }
     }
 
     private msToX(ms: number): number {

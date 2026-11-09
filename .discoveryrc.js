@@ -92,6 +92,8 @@ module.exports = {
             './views/labeled-value.js',
             './views/line-histogram.css',
             './views/line-histogram.js',
+            './views/line-intervals.css',
+            './views/line-intervals.js',
             './views/metric.css',
             './views/metric.js',
             './views/nested-timings-tree.js',

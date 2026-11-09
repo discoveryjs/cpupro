@@ -89,6 +89,7 @@ export const histAllocationLifespan = {
                 },
                 {
                     view: 'line-histogram',
+                    zoom: true,
                     bins: '=bins',
                     max: '=max',
                     binsMax: true,

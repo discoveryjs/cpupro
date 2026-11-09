@@ -62,6 +62,7 @@ function chartUsedHeapBody() {
             extent: '=extent',
             minX: '=scopeViewport().start',
             maxX: '=scopeViewport().end',
+            zoom: true,
             points: '=points',
             pointsTotal: '=pointsTotal',
             labelFormat: '==>bytes()',

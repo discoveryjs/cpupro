@@ -1,9 +1,12 @@
+import { utils } from '@discoveryjs/discovery';
+import { resolveScopeProfileLine } from '../jora/profile.js';
+import { lineViewport } from '../jora/viewport.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import usage from './chart.usage.js';
 
 const pad = 0.03;
 
-discovery.view.define('cpupro-chart', function(el, config, data) {
+discovery.view.define('cpupro-chart', function(el, config, data, context) {
     const points = ensureArray(config.points || data);
     const x = points.map(p => p.x ?? p[0]);
     const y = points.map(p => p.y ?? p[1]);
@@ -48,6 +51,28 @@ discovery.view.define('cpupro-chart', function(el, config, data) {
 
     el.append(...generateYLabels(ticks, config.labelFormat));
     el.append(svgEl);
+
+    // With zoom the chart is drawn for its range and displays the line viewport within it
+    if (config.zoom) {
+        const line = resolveScopeProfileLine(config.line, context);
+        const profiles = context.data?.profiles;
+        const destroyEl = utils.createElement('destroy-cpupro-chart');
+        const followViewport = () => {
+            const display = lineViewport(line, profiles);
+            const scale = 1000 / (maxX - minX);
+
+            setRangeCoverage(el, extent, display);
+            svgEl.setAttribute('viewBox', `${(display.start - minX) * scale} 0 ${(display.end - display.start) * scale} ${height}`);
+        };
+        let unsubscribe = null;
+
+        destroyEl.onConnect = () => {
+            unsubscribe = line.viewport.subscribe(followViewport);
+            followViewport();
+        };
+        destroyEl.onDestroy = () => unsubscribe();
+        el.append(destroyEl);
+    }
 }, { usage });
 
 function ensureArray(value) {
@@ -159,3 +184,16 @@ function generateCurve(x, y, height, minX, maxX, minY, maxY, line = false, exten
 
     return d;
 }
+
+class ChartElement extends HTMLElement {
+    connectedCallback() {
+        this.onConnect();
+        this.onConnect = null;
+    }
+    disconnectedCallback() {
+        this.onDestroy();
+        this.onDestroy = null;
+    }
+}
+
+customElements.define('destroy-cpupro-chart', ChartElement);

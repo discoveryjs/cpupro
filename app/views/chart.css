@@ -12,9 +12,11 @@
 .view-cpupro-chart path.line {
     fill: none;
     stroke: var(--color, #888);
+    vector-effect: non-scaling-stroke;
 }
 .view-cpupro-chart .y-tick {
     stroke: #555;
+    vector-effect: non-scaling-stroke;
 }
 .view-cpupro-chart .y-tick-label {
     position: absolute;
