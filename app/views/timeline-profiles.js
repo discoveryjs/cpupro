@@ -1,3 +1,6 @@
+import { utils } from '@discoveryjs/discovery';
+import { lineViewport, lineViewportBounds } from '../jora/viewport.js';
+
 const profileTooltip = [
     'text:name',
     { view: 'block', content: [
@@ -37,6 +40,8 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
     // const activeProfiles = bucketProfiles.filter(profile => !profile.disabled);
 
     el.style.setProperty('--range', range);
+
+    let primaryBarEl = null;
 
     for (const { disabled, profile } of bucketProfiles) {
         const barEl = document.createElement('div');
@@ -78,6 +83,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
 
         if (context.primaryProfile === profile) {
             barEl.classList.add('selected');
+            primaryBarEl = barEl;
         } else {
             barEl.addEventListener('click', () => {
                 discovery.action.call('selectProfile', profile);
@@ -120,5 +126,79 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
             scale: '=step ? "linear" : "sqrt"',
             color: '#eee8'
         }, { profiles: bucketProfiles, profile }, context);
+    }
+
+    // The viewport and selected ranges of the primary profile timeline are shown over all profiles,
+    // the viewport is changed by selecting, moving or resizing a range on the primary profile
+    // (other profiles are selected by a click)
+    const line = context.primaryProfile?.timeline;
+
+    if (line && primaryBarEl !== null && range > 0) {
+        const profiles = context.data?.profiles;
+        const selectionsEl = utils.createElement('div', 'selections');
+        const viewportEl = utils.createElement('div', 'viewport-window');
+        const readViewport = () => line.viewport.selection.ranges ? lineViewport(line, profiles) : null;
+        const renderViewport = () => {
+            const viewport = readViewport();
+
+            viewportEl.hidden = viewport === null;
+            viewportEl.style.setProperty('--x1', viewport ? (viewport.start - min) / range : 0);
+            viewportEl.style.setProperty('--x2', viewport ? (viewport.end - min) / range : 1);
+        };
+        const renderSelections = () => {
+            selectionsEl.replaceChildren(...(line.range.selection.ranges || []).map(({ start, end }) => {
+                const selectionEl = utils.createElement('div', 'selection');
+
+                selectionEl.style.setProperty('--x1', (start - min) / range);
+                selectionEl.style.setProperty('--x2', (end - min) / range);
+
+                return selectionEl;
+            }));
+        };
+        let updatingViewport = false;
+
+        renderSelections();
+        renderViewport();
+        el.append(selectionsEl, viewportEl);
+
+        return this.render(primaryBarEl, {
+            view: 'ruler',
+            range: { start: min, end: max },
+            labels: false,
+            grid: false,
+            selection: readViewport(),
+            onInit(api) {
+                const unsubscribeViewport = line.viewport.subscribe(() => {
+                    renderViewport();
+
+                    if (!updatingViewport) {
+                        api.setSelection(readViewport());
+                    }
+                });
+                const unsubscribeSelection = line.range.selection.subscribe(renderSelections);
+
+                return () => {
+                    unsubscribeViewport();
+                    unsubscribeSelection();
+                };
+            },
+            onChange(api) {
+                const viewport = api.state.selection;
+                const bounds = lineViewportBounds(line, profiles);
+
+                updatingViewport = true;
+
+                try {
+                    // The whole bounds are no request, the viewport keeps following them
+                    if (viewport === null || (viewport.start <= bounds.start && viewport.end >= bounds.end)) {
+                        line.viewport.selection.resetRange();
+                    } else {
+                        line.viewport.selection.setRange(viewport.start, viewport.end);
+                    }
+                } finally {
+                    updatingViewport = false;
+                }
+            }
+        }, data, context);
     }
 });

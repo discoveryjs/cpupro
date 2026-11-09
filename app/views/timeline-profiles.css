@@ -97,3 +97,35 @@
     background-color: #6d9ec988;
     cursor: pointer;
 }
+
+.view-timeline-profiles > .selections {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.view-timeline-profiles > .selections > .selection {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(100% * var(--x1));
+    right: calc(100% * (1 - var(--x2)));
+    box-shadow: inset 1px 0 #268feacc, inset -1px 0 #268feacc;
+    background-color: #268fea22;
+}
+.view-timeline-profiles > .viewport-window {
+    --start: calc(100% * var(--x1));
+    --end: calc(100% * var(--x2));
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to right,
+        #0006 var(--start), #ffd800aa var(--start) calc(var(--start) + 1px),
+        transparent calc(var(--start) + 1px) calc(var(--end) - 1px),
+        #ffd800aa calc(var(--end) - 1px) var(--end), #0006 var(--end));
+}
+.view-timeline-profiles > .viewport-window[hidden] {
+    display: none;
+}
+.view-timeline-profiles > .profile > .view-ruler {
+    z-index: 1;
+}
