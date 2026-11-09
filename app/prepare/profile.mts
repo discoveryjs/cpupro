@@ -23,6 +23,7 @@ import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { prepareLineFilters } from './lines/filters.js';
+import { EventSignatures } from './lines/event-signatures.js';
 import { prepareLineRange } from './lines/range.js';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
@@ -424,6 +425,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
         prepareLineFilters(line);
         prepareLineRange(line);
+        line.signatures = await work(`compute ${line.type} event signatures`, () => new EventSignatures(line));
     }
 
     return profile;

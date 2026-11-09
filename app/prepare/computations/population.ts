@@ -68,6 +68,7 @@ export class PopulationFiltered extends Observer {
     buffer: PopulationBufferMap;
     #recompute: (clear?: boolean) => void;
     #hasMask = false;
+    #hasRawMask = false;
     #acceptedEvents: EventAcceptance | null = null;
     #unsubscribe: () => void;
     #boundaryCuts: { index: number; value: number }[] = [];
@@ -205,6 +206,15 @@ export class PopulationFiltered extends Observer {
         });
     }
 
+    // Event acceptance follows from registered filters alone: no raw mask bits and no index or value constraints
+    get acceptsByFilters() {
+        return !this.#hasRawMask &&
+            this.indexStart === null &&
+            this.indexEnd === null &&
+            this.valueMin === null &&
+            this.valueMax === null;
+    }
+
     hasMask() {
         return this.#hasMask;
     }
@@ -213,6 +223,7 @@ export class PopulationFiltered extends Observer {
         const hadMask = this.#hasMask;
 
         maskFn(this.samplesMask);
+        this.#hasRawMask = hasBitsOutside(this.samplesMask, this.filter.sampleBits);
         this.#hasMask = this.#acceptedEvents !== null || !isMaskEmpty(this.samplesMask);
 
         if (!this.#hasMask && !hadMask) {
@@ -671,6 +682,16 @@ function findMaxId(samples: Uint32Array) {
     }
 
     return maxSampleId;
+}
+
+function hasBitsOutside(mask: Uint32Array, bits: number) {
+    for (let i = 0; i < mask.length; i++) {
+        if ((mask[i] & ~bits) !== 0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function isMaskEmpty(mask: Uint32Array) {

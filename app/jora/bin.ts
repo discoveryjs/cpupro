@@ -10,6 +10,7 @@ import { binningRange, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
 import { findCumulativeBoundary, type PopulationFiltered } from '../prepare/computations/population.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
+import type { BinRecords, BinRecordsGrid, EventSignatures } from '../prepare/lines/event-signatures.js';
 
 function getCallStackPopulation(line: ProfileLine) {
     return line.breakdowns.find(tree => tree.kind === 'call-stack')!.population;
@@ -150,6 +151,66 @@ type BinGrid = {
     skip: number;
 };
 
+// Aggregation of whole events by their signatures: records of the grid's spans, and acceptance and
+// group (track or tree node) of every signature for the aggregated population
+type SignatureGrouping = {
+    signatures: EventSignatures;
+    records: BinRecords;
+    accepted: Uint8Array;
+    groups: Uint32Array;
+    span: number;
+};
+
+function createSignatureGrouping(
+    line: ProfileLine,
+    groupValues: Uint8Array | Uint32Array,
+    viewport: PopulationFiltered,
+    key: string,
+    grid: BinRecordsGrid
+): SignatureGrouping | null {
+    const { signatures } = line;
+
+    if (signatures === null) {
+        return null;
+    }
+
+    const groups = signatures.valuesOf(groupValues);
+    const accepted = signatures.acceptance(viewport);
+
+    return groups !== null && accepted !== null
+        ? { signatures, records: signatures.binRecords(key, grid), accepted, groups, span: 0 }
+        : null;
+}
+
+// Adds the accepted records of the next span to a bin; the first aggregation over the grid records
+// the span from events [first, last) of the line
+function addSpanRecords(grouping: SignatureGrouping, weights: Uint32Array, tracks: BinTrack[], first: number, last: number, binIndex: number) {
+    const { signatures, records, accepted, groups } = grouping;
+    const span = grouping.span++;
+
+    if (!records.complete) {
+        records.addSpan(signatures, weights, first, last);
+    }
+
+    for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
+        const signature = records.signatures[record];
+
+        if (accepted[signature] === 1) {
+            const track = tracks[groups[signature]];
+            const weight = records.weights[record];
+
+            track.value += weight;
+            track.bins[binIndex] += weight;
+        }
+    }
+}
+
+function finishRecords(grouping: SignatureGrouping | null) {
+    if (grouping !== null && !grouping.records.complete) {
+        grouping.records.finish();
+    }
+}
+
 // PERF: Keeping this loop out of the coordinator removes its repeated OSR exits in Node 26 (V8 14.6).
 function addBins(target: Uint32Array, source: Uint32Array | Float64Array) {
     for (let index = 0; index < target.length; index++) {
@@ -194,7 +255,8 @@ function binPopulation(
     viewport: PopulationFiltered,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
-    { total, step, skip }: BinGrid
+    { total, step, skip }: BinGrid,
+    grouping: SignatureGrouping | null = null
 ) {
     const { samples, values: acceptedValues, sinkId, ranges, population } = viewport;
     const { values, cumulative, cumulativeEnd } = population;
@@ -251,7 +313,15 @@ function binPopulation(
             const boundary = Math.floor(cumulative[index] + (step - binValue));
             const stop = Math.min(last, Math.max(index, findCumulativeBoundary(cumulative, boundary, false) - 1));
 
-            binValue = binPopulationBin(samples, values, acceptedValues, sinkId, tracks, groups, index, stop, binIndex, binValue);
+            if (grouping === null) {
+                binValue = binPopulationBin(samples, values, acceptedValues, sinkId, tracks, groups, index, stop, binIndex, binValue);
+            } else {
+                addSpanRecords(grouping, values, tracks, index, stop, binIndex);
+                // Equals the per-event sum: within a bin every partial sum stays below the step and is a multiple
+                // of ulp(step), so integer weights add exactly in any grouping
+                binValue += cumulative[stop] - cumulative[index];
+            }
+
             index = stop;
 
             if (index === last) {
@@ -290,9 +360,13 @@ function binPopulation(
             addBoundary(last, 0, endCut);
         }
     }
+
+    finishRecords(grouping);
 }
 
-function createTargetBinReader(axis: PopulationFiltered, cumulative: Uint32Array, { total, step, skip }: BinGrid) {
+// Bin of a target on the axis grid, -1 outside the viewport and axis ranges or for a zero-weight target;
+// acceptsSinks also places targets the axis filters reject
+function createTargetBinReader(axis: PopulationFiltered, cumulative: Uint32Array, { total, step, skip }: BinGrid, acceptsSinks = false) {
     const { samples, values, sinkId, ranges } = axis;
     // IMPORTANT: Targets must be visited in nondecreasing order; this cursor never moves backward.
     let rangeIndex = 0;
@@ -306,7 +380,7 @@ function createTargetBinReader(axis: PopulationFiltered, cumulative: Uint32Array
             return -1;
         }
 
-        if (samples[target] === sinkId || values[target] === 0) {
+        if ((!acceptsSinks && samples[target] === sinkId) || values[target] === 0) {
             return -1;
         }
 
@@ -326,18 +400,111 @@ function createTargetBinReader(axis: PopulationFiltered, cumulative: Uint32Array
     };
 }
 
+// Events [first, last) are wholly in the source range; their bins follow their mapped targets
+function binMappedEvents(
+    viewport: PopulationFiltered,
+    tracks: BinTrack[],
+    groups: Uint8Array | Uint32Array | null,
+    mapping: Uint32Array,
+    targetBin: (target: number) => number,
+    first: number,
+    last: number
+) {
+    const { samples, values: acceptedValues, sinkId } = viewport;
+    let previousTarget = -1;
+    let binIndex = -1;
+
+    for (let index = first; index < last; index++) {
+        const target = mapping[index];
+
+        // PERF: Many allocations share one CPU event; resolve its bin once per consecutive run.
+        if (target !== previousTarget) {
+            previousTarget = target;
+            binIndex = targetBin(target);
+        }
+
+        if (binIndex !== -1 && samples[index] !== sinkId) {
+            const groupIndex = groups ? groups[index] : 0;
+            const track = tracks[groupIndex];
+            const value = acceptedValues[index];
+
+            track.bins[binIndex] += value;
+            track.value += value;
+        }
+    }
+}
+
+// Mapped aggregation of whole events: records are grouped by the signatures of the events and of their mapped
+// targets, so filters of both lines apply per record
+type MappedSignatureGrouping = SignatureGrouping & {
+    axisSignatures: EventSignatures;
+    axisAccepted: Uint8Array;
+    // Places targets by position and axis ranges only; axis filters apply through axisAccepted
+    targetPosition: () => (target: number) => number;
+};
+
+function createMappedSignatureGrouping(
+    line: ProfileLine,
+    attribute: ProfileLineAttribute,
+    viewport: PopulationFiltered,
+    axisLine: ProfileLine,
+    axisViewport: PopulationFiltered,
+    axisCumulative: Uint32Array,
+    grid: BinGrid,
+    count: number
+): MappedSignatureGrouping | null {
+    const axisSignatures = axisLine.signatures;
+    const axisAccepted = axisSignatures?.acceptance(axisViewport) ?? null;
+    const grouping = createSignatureGrouping(line, attribute.values, viewport, `mapped:${axisLine.type}:${count}`, {
+        ...grid,
+        ranges: viewport.ranges,
+        axisRanges: axisViewport.ranges
+    });
+
+    return grouping !== null && axisSignatures !== null && axisAccepted !== null
+        ? {
+            ...grouping,
+            axisSignatures,
+            axisAccepted,
+            targetPosition: () => createTargetBinReader(axisViewport, axisCumulative, grid, true)
+        }
+        : null;
+}
+
+// Events [first, last) are wholly in the source range: adds the accepted records of the next span to the bins
+// of their targets; the first aggregation over the grid records the span
+function addMappedSpanRecords(grouping: MappedSignatureGrouping, weights: Uint32Array, tracks: BinTrack[], mapping: Uint32Array, first: number, last: number) {
+    const { signatures, records, accepted, groups, axisSignatures, axisAccepted } = grouping;
+    const span = grouping.span++;
+
+    if (!records.complete) {
+        records.addMappedSpan(signatures, weights, first, last, mapping, axisSignatures, grouping.targetPosition());
+    }
+
+    for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
+        const signature = records.signatures[record];
+
+        if (accepted[signature] === 1 && axisAccepted[records.axisSignatures[record]] === 1) {
+            const track = tracks[groups[signature]];
+            const weight = records.weights[record];
+
+            track.bins[records.bins[record]] += weight;
+            track.value += weight;
+        }
+    }
+}
+
 function binMappedPopulation(
     line: ProfileLine,
     viewport: PopulationFiltered,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
     mapping: Uint32Array,
-    targetBin: (target: number) => number
+    targetBin: (target: number) => number,
+    grouping: MappedSignatureGrouping | null = null
 ) {
     const { values, axisTotal } = line;
     const { samples, values: acceptedValues, sinkId, ranges, cumulative } = viewport;
-    let previousTarget = -1;
-    let binIndex = -1;
     // IMPORTANT: Disjoint source ranges can cut the same event. Emit their combined value once.
     let boundaryIndex = -1;
     let boundaryValue = 0;
@@ -379,23 +546,10 @@ function binMappedPopulation(
 
         flushBoundary();
 
-        for (let index = first + 1; index < last; index++) {
-            const target = mapping[index];
-
-            // PERF: Many allocations share one CPU event; resolve its bin once per consecutive run.
-            if (target !== previousTarget) {
-                previousTarget = target;
-                binIndex = targetBin(target);
-            }
-
-            if (binIndex !== -1 && samples[index] !== sinkId) {
-                const groupIndex = groups ? groups[index] : 0;
-                const track = tracks[groupIndex];
-                const value = acceptedValues[index];
-
-                track.bins[binIndex] += value;
-                track.value += value;
-            }
+        if (grouping === null) {
+            binMappedEvents(viewport, tracks, groups, mapping, targetBin, first + 1, last);
+        } else {
+            addMappedSpanRecords(grouping, values, tracks, mapping, first + 1, last);
         }
 
         boundaryIndex = last;
@@ -403,6 +557,7 @@ function binMappedPopulation(
     }
 
     flushBoundary();
+    finishRecords(grouping);
 }
 
 function sumMappedValues(viewport: PopulationFiltered, mapping: Uint32Array, acceptedTargets: Uint8Array) {
@@ -496,6 +651,25 @@ function sumTreeEvents(
     }
 }
 
+// Interval [first, last) of whole events: adds the accepted records of the next span to the tree node totals;
+// the first aggregation over the grid records the span
+function sumTreeRecords(grouping: SignatureGrouping, weights: Uint32Array, totals: Float64Array, first: number, last: number) {
+    const { signatures, records, accepted, groups } = grouping;
+    const span = grouping.span++;
+
+    if (!records.complete) {
+        records.addSpan(signatures, weights, first, last);
+    }
+
+    for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
+        const signature = records.signatures[record];
+
+        if (accepted[signature] === 1) {
+            totals[groups[signature]] += records.weights[record];
+        }
+    }
+}
+
 type TreeBin = {
     bins: Float64Array;
     nestedPresence: Uint8Array;
@@ -557,7 +731,8 @@ function sumTreeRange(
     sampleToNode: Uint32Array,
     totals: Float64Array,
     start: number,
-    end: number
+    end: number,
+    grouping: SignatureGrouping | null
 ) {
     const { samples, values, sinkId, population } = viewport;
     const { cumulative, cumulativeEnd } = population;
@@ -584,7 +759,11 @@ function sumTreeRange(
         return;
     }
 
-    sumTreeEvents(samples, values, sampleToNode, sinkId, totals, first + 1, last);
+    if (grouping === null) {
+        sumTreeEvents(samples, values, sampleToNode, sinkId, totals, first + 1, last);
+    } else {
+        sumTreeRecords(grouping, population.values, totals, first + 1, last);
+    }
 
     const lastSample = samples[last];
 
@@ -595,7 +774,13 @@ function sumTreeRange(
     }
 }
 
-function binTreePopulation(viewport: PopulationFiltered, metrics: SampledTree<unknown>, count: number, grid: BinGrid) {
+function binTreePopulation(
+    viewport: PopulationFiltered,
+    metrics: SampledTree<unknown>,
+    count: number,
+    grid: BinGrid,
+    grouping: SignatureGrouping | null = null
+) {
     const { tree, sampleToNode } = metrics;
     const { nodes, dictionary } = tree;
     const { total, step, skip } = grid;
@@ -631,7 +816,7 @@ function binTreePopulation(viewport: PopulationFiltered, metrics: SampledTree<un
             const right = Math.min(end, interval.end);
 
             if (left < right) {
-                sumTreeRange(viewport, sampleToNode, totals, left, right);
+                sumTreeRange(viewport, sampleToNode, totals, left, right, grouping);
             }
         }
 
@@ -641,6 +826,8 @@ function binTreePopulation(viewport: PopulationFiltered, metrics: SampledTree<un
             result[entry].value += result[entry].bins[bin];
         }
     }
+
+    finishRecords(grouping);
 
     return result;
 }
@@ -672,12 +859,15 @@ export const methods = {
     binTreeSamples(treeMetrics: SampledTree<unknown>, n = 500, breakdown?: ProfileLineBreakdown | string) {
         const resolved = resolveScopeProfileLineBreakdown(breakdown, null, this.context) as ProfileLineBreakdown;
         const { total, skip } = binningRange(resolved.line, resolveScopeViewport(null, this.context), n);
-
-        return binTreePopulation(resolved.populationViewport, treeMetrics, n, {
-            total,
-            skip,
-            step: sampleBinStep(total, n)
+        const grid = { total, skip, step: sampleBinStep(total, n) };
+        const viewport = resolved.populationViewport;
+        const grouping = createSignatureGrouping(resolved.line, treeMetrics.sampleToNode, viewport, `tree:${n}`, {
+            ...grid,
+            ranges: viewport.ranges,
+            axisRanges: null
         });
+
+        return binTreePopulation(viewport, treeMetrics, n, grid, grouping);
     },
 
     binCount(maxCount: number, rangeOrLength?: Range | number) {
@@ -863,21 +1053,33 @@ export const methods = {
             const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0]).populationViewport;
             const coversAxis = skip >= 0 && skip + axisViewport.cumulativeEnd <= total;
             const targetBin = createTargetBinReader(axisViewport, cumulative, grid);
+            const grouping = attribute !== null
+                ? createMappedSignatureGrouping(valuesLine, attribute, viewport, axisLine, axisViewport, cumulative, grid, n)
+                : null;
 
-            if (n === 1 && sourceRanges === null && coversAxis) {
+            // Signature records already sum events; the totals shortcut is for event scans
+            if (grouping !== null) {
+                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin, grouping);
+            } else if (n === 1 && sourceRanges === null && coversAxis) {
                 binMappedTotals(viewport, tracks, attributeValues, mappingToLine, axisViewport.samples.length, targetBin);
             } else {
                 binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin);
             }
-        } else if (n === 1 && attribute && sourceRanges === null && coversSource) {
-            const { samplesTotal } = viewport.aggregateBy(attribute.values, attribute.dict.length);
-
-            for (let index = 0; index < tracks.length; index++) {
-                tracks[index].value = samplesTotal[index];
-                tracks[index].bins[0] = samplesTotal[index];
-            }
         } else {
-            binPopulation(viewport, tracks, attributeValues, grid);
+            const grouping = attribute !== null
+                ? createSignatureGrouping(valuesLine, attribute.values, viewport, `own:${n}`, { ...grid, ranges: viewport.ranges, axisRanges: null })
+                : null;
+
+            if (grouping === null && n === 1 && attribute && sourceRanges === null && coversSource) {
+                const { samplesTotal } = viewport.aggregateBy(attribute.values, attribute.dict.length);
+
+                for (let index = 0; index < tracks.length; index++) {
+                    tracks[index].value = samplesTotal[index];
+                    tracks[index].bins[0] = samplesTotal[index];
+                }
+            } else {
+                binPopulation(viewport, tracks, attributeValues, grid, grouping);
+            }
         }
 
         if (attribute) {

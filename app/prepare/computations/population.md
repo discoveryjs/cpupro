@@ -57,6 +57,8 @@ filtered.updateMask(mask => {
 });
 ```
 
+`acceptsByFilters` is true while no raw mask bits, index or value constraints are set: event acceptance then follows from registered filters alone, so consumers may aggregate events grouped by the values of those filters (see line `signatures`).
+
 The callback evaluates bucket-level predicates over ordinary sample IDs. Compilation then maps each source event's sample ID to itself or `sinkId`. An incoming sink stays sink without consulting local masks or event predicates. Changing ranges does not rerun this callback. Source filters and their bit assignments are not copied into the child. Different attribution domains may have different masks even when their filter descriptions are shared.
 
 The hot aggregation kernels retain their current operations: sum input values and count nonzero input values. The boundary patch produces effective totals and counts after this accumulation. No filter predicates are evaluated by these kernels.

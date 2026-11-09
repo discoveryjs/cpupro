@@ -1,0 +1,256 @@
+import assert from 'node:assert/strict';
+import { test } from 'vitest';
+import { SourceMapGenerator } from 'source-map-js';
+import { Dictionary } from '../dictionary.js';
+import { createProfile } from '../profile.mjs';
+import { noopWorkHandler } from '../misc/work.js';
+import { methods } from '../../jora/bin.js';
+import { EventSignatures } from './event-signatures.js';
+import type { V8CpuProfile } from '../types.js';
+import type { SetAttributeFilter } from '../computations/attribute-filter.js';
+import type { ProfileLine } from './types.js';
+
+// Deterministic pseudo-random sequence
+function sequence(seed: number) {
+    return (max: number) => {
+        seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+
+        return (seed >>> 8) % max;
+    };
+}
+
+// Source maps add source-mapped breakdowns with their own category distributions
+function createSourceMap() {
+    const generator = new SourceMapGenerator({ file: 'a.js' });
+
+    for (const column of [0, 10, 20]) {
+        generator.addMapping({
+            generated: { line: 1, column },
+            original: { line: column / 10 + 1, column: 0 },
+            source: 'original.js'
+        });
+    }
+
+    return JSON.parse(generator.toString());
+}
+
+// Allocations spread over CPU samples; some samples have no allocations, one has many
+async function createSignaturesProfile({ mapped = true } = {}) {
+    const random = sequence(7);
+    const sampleCount = 400;
+    const allocationCount = 5000;
+    const allocationIds = Array.from({ length: allocationCount }, (_, index) => index + 1);
+    const mapping: number[] = [];
+    let lastId = 0;
+
+    for (let sample = 0; sample < sampleCount; sample++) {
+        const allocations = sample === 170 ? 600 : random(3) === 0 ? 0 : 1 + random(20);
+
+        lastId = Math.min(allocationCount, lastId + allocations);
+        mapping.push(lastId);
+    }
+
+    const data: V8CpuProfile = {
+        startTime: 0,
+        endTime: 10 * sampleCount + 10,
+        nodes: [
+            { id: 1, callFrame: { scriptId: 0, url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 }, children: [2, 3, 4] },
+            { id: 2, callFrame: { scriptId: 1, url: '/a.js', functionName: 'first', lineNumber: 0, columnNumber: 0 } },
+            { id: 3, callFrame: { scriptId: 1, url: '/a.js', functionName: 'second', lineNumber: 0, columnNumber: 20 } },
+            { id: 4, callFrame: { scriptId: 0, url: '', functionName: '(garbage collector)', lineNumber: -1, columnNumber: -1 } }
+        ],
+        samples: Array.from({ length: sampleCount }, () => 2 + random(3)),
+        timeDeltas: Array.from({ length: sampleCount }, () => 5 + random(10)),
+        _samplePositions: Array.from({ length: sampleCount }, () => 10 * random(3)),
+        _scripts: [{ id: 1, url: '/a.js', source: '', sourceMap: createSourceMap() }],
+        _cpuproAllocationMapping: mapped ? mapping : undefined,
+        _cpuproAllocationIds: allocationIds,
+        _cpuproAllocationSizes: Array.from({ length: allocationCount }, () => random(5) === 0 ? 0 : 1 + random(300)),
+        // GC code: epoch << 2 | 1 (minor) or 2 (major), 0 for alive allocations
+        _cpuproAllocationGc: Array.from({ length: allocationCount }, () => random(2) === 0 ? 0 : (1 + random(3)) << 2 | (1 + random(2))),
+        _cpuproAllocationSpaces: Array.from({ length: allocationCount }, () => random(3)),
+        _cpuproAllocationSpaceNames: { 0: 'new_space', 1: 'old_space', 2: 'code_space' },
+        _cpuproAllocationScriptIds: Array.from({ length: allocationCount }, () => random(2)),
+        _cpuproAllocationLocations: Array.from({ length: allocationCount }, () => 10 * random(3)),
+        _cpuproAllocationContextInfo: Array.from({ length: allocationCount }, () => random(3)),
+        _cpuproAllocationVmStateNames: { 1: 'gc', 2: 'parser' }
+    } as V8CpuProfile;
+    const dictionary = new Dictionary();
+
+    return createProfile(data, { dictionary, work: noopWorkHandler });
+}
+
+test('signatures group allocations by equal attribute, category and filter values', async () => {
+    const { memline, timeline } = await createSignaturesProfile();
+    const signatures = memline!.signatures!;
+    const columns = [
+        ...memline!.attributes.map(attribute => (event: number) => attribute.values[event]),
+        ...memline!.breakdowns.map(({ categories, population }) => (event: number) => categories!.sampleToNode[population.samples[event]])
+    ];
+
+    assert.deepEqual(memline!.breakdowns.map(breakdown => breakdown.kind), ['call-stack', 'location', 'call-stack-sm', 'location-sm']);
+    assert.ok(signatures.count > 1 && signatures.count < memline!.values.length);
+    assert.ok(timeline!.signatures!.count > 1);
+
+    for (let event = 0; event < memline!.values.length; event++) {
+        const signature = signatures.ids[event];
+        const first = signatures.events[signature];
+
+        assert.ok(first <= event);
+        for (const column of columns) {
+            assert.equal(column(event), column(first));
+        }
+    }
+
+    for (const attribute of memline!.attributes) {
+        const values = signatures.valuesOf(attribute.values)!;
+
+        for (let signature = 0; signature < signatures.count; signature++) {
+            assert.equal(values[signature], attribute.values[signatures.events[signature]]);
+        }
+    }
+
+    for (const { categories, population } of memline!.breakdowns) {
+        const nodes = signatures.valuesOf(categories!.sampleToNode)!;
+
+        for (let signature = 0; signature < signatures.count; signature++) {
+            assert.equal(nodes[signature], categories!.sampleToNode[population.samples[signatures.events[signature]]]);
+        }
+    }
+});
+
+test('signature IDs widen when signatures outgrow 16 bits', () => {
+    const count = 70000;
+    const values = Uint32Array.from({ length: 2 * count }, (_, event) => event % count);
+    const line = {
+        values: new Uint32Array(values.length),
+        attributes: [{ name: 'allocationType', values, dict: [] }],
+        breakdowns: []
+    } as unknown as ProfileLine;
+    const signatures = new EventSignatures(line);
+
+    assert.ok(signatures.ids instanceof Uint32Array);
+    assert.equal(signatures.count, count);
+    assert.deepEqual(Array.from(signatures.ids), Array.from(values));
+});
+
+test('bin records are shared by aggregations over a grid and replaced when the grid changes', async () => {
+    const profile = await createSignaturesProfile();
+    const memline = profile.memline!;
+    const [breakdown] = memline.breakdowns;
+    const context = { scopeLine: memline, scopeBreakdown: breakdown, data: { profiles: [profile] } };
+    const [type, space] = memline.attributes;
+    const signatures = memline.signatures!;
+    const grid = () => ({ total: memline.axisTotal, step: memline.axisTotal / 64, skip: 0, ranges: breakdown.populationViewport.ranges, axisRanges: null });
+
+    methods.binLineToAxisLine.call({ context }, memline, type, memline, 64);
+    const records = signatures.binRecords('own:64', grid());
+
+    assert.ok(records.complete && records.count > 0 && records.count < memline.values.length);
+    methods.binLineToAxisLine.call({ context }, memline, space, memline, 64);
+    (memline.filters.get('category') as SetAttributeFilter).setSelection('exclude', ['script']);
+    methods.binLineToAxisLine.call({ context }, memline, type, memline, 64);
+    assert.equal(signatures.binRecords('own:64', grid()), records);
+
+    memline.viewport.setRange(memline.axisTotal * 0.2, memline.axisTotal * 0.7);
+    methods.binLineToAxisLine.call({ context }, memline, type, memline, 64);
+    assert.notEqual(signatures.binRecords('own:64', grid()), records);
+});
+
+test.each([
+    { name: 'mapped to a timeline', mapped: true },
+    { name: 'without a timeline mapping', mapped: false }
+])('allocation summaries and category bins from signatures equal event aggregation across filters, ranges and grids ($name)', async options => {
+    const profile = await createSignaturesProfile(options);
+    const memline = profile.memline!;
+    const timeline = profile.timeline!;
+    const signatures = memline.signatures!;
+    const axisLines = options.mapped ? [timeline, memline] : [memline];
+    const filter = (line: ProfileLine, key: string) => line.filters.get(key) as SetAttributeFilter;
+    const states: [string, () => void][] = [
+        ['unfiltered', () => {}],
+        ['memline category', () => filter(memline, 'category').setSelection('exclude', [filter(memline, 'category').options[0].key])],
+        ['memline liveness and space', () => {
+            filter(memline, 'allocationLiveness').setSelection('include', ['alive']);
+            filter(memline, 'allocationSpace').setSelection('exclude', ['old_space']);
+        }],
+        ['timeline category', () => filter(timeline, 'category').setSelection('include', [filter(timeline, 'category').options[0].key])],
+        ['memline zoom', () => memline.viewport.setRange(memline.axisTotal * 0.23, memline.axisTotal * 0.61)],
+        // A narrow gap rejects CPU events between accepted ones that share a bin
+        ['timeline ranges with a gap', () => timeline.viewport.setRanges([
+            { start: timeline.axisTotal * 0.05, end: timeline.axisTotal * 0.5 },
+            { start: timeline.axisTotal * 0.51, end: timeline.axisTotal * 0.95 }
+        ])],
+        ['timeline zoom with category', () => {
+            timeline.viewport.setRange(timeline.axisTotal * 0.31, timeline.axisTotal * 0.74);
+            filter(timeline, 'category').setSelection('exclude', [filter(timeline, 'category').options[0].key]);
+        }],
+        ['memline narrow zoom with category', () => {
+            memline.viewport.setRange(memline.axisTotal * 0.4, memline.axisTotal * 0.41);
+            filter(memline, 'category').setSelection('include', [filter(memline, 'category').options[0].key]);
+        }]
+    ];
+    let groupedCalls = 0;
+
+    for (const [name, apply] of states) {
+        memline.filters.allowAll();
+        timeline.filters.allowAll();
+        memline.viewport.resetRange();
+        timeline.viewport.resetRange();
+        apply();
+
+        for (const axisLine of axisLines) {
+            for (const breakdown of axisLine === memline ? memline.breakdowns : timeline.breakdowns.slice(0, 1)) {
+                const context = { scopeLine: axisLine, scopeBreakdown: breakdown, data: { profiles: [profile] } };
+                const viewport = (axisLine === memline ? breakdown : memline.breakdowns[0]).populationViewport;
+
+                groupedCalls += signatures.acceptance(viewport) !== null ? 1 : 0;
+
+                for (const attribute of memline.attributes) {
+                    for (const count of [1, 3, 7, 64]) {
+                        const grouped = methods.binLineToAxisLine.call({ context }, memline, attribute, axisLine, count);
+
+                        memline.signatures = null;
+                        const direct = methods.binLineToAxisLine.call({ context }, memline, attribute, axisLine, count);
+                        memline.signatures = signatures;
+
+                        assert.deepEqual(grouped, direct, `${name}, ${axisLine.type} ${breakdown.kind}, ${attribute.name}, ${count} bins`);
+                    }
+                }
+
+                if (axisLine === memline) {
+                    for (const count of [1, 3, 7, 64]) {
+                        const grouped = methods.binTreeSamples.call({ context }, breakdown.categories!.all.nodes, count, breakdown);
+
+                        memline.signatures = null;
+                        const direct = methods.binTreeSamples.call({ context }, breakdown.categories!.all.nodes, count, breakdown);
+                        memline.signatures = signatures;
+
+                        assert.deepEqual(grouped, direct, `${name}, ${breakdown.kind} categories, ${count} bins`);
+                    }
+                }
+            }
+        }
+    }
+
+    assert.ok(groupedCalls > 0);
+});
+
+test('signatures leave acceptance to events when a population has constraints beyond its filters', async () => {
+    const { memline } = await createSignaturesProfile();
+    const signatures = memline!.signatures!;
+    const viewport = memline!.breakdowns[0].populationViewport;
+
+    assert.notEqual(signatures.acceptance(viewport), null);
+    viewport.updateMask(mask => {
+        mask[0] |= 0x80000000;
+    });
+    assert.equal(signatures.acceptance(viewport), null);
+    viewport.resetMask();
+    assert.notEqual(signatures.acceptance(viewport), null);
+    viewport.setValueRange(10, null);
+    assert.equal(signatures.acceptance(viewport), null);
+    viewport.resetValueRange();
+    viewport.filter.set({ key: 'other', domain: 'event', size: viewport.samples.length, accepts: new Uint8Array(viewport.samples.length) });
+    assert.equal(signatures.acceptance(viewport), null);
+});

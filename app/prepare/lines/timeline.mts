@@ -95,6 +95,7 @@ export async function createTimeline(
         range,
         breakdowns: [],
         mappings: Object.create(null),
+        signatures: null,
 
         // Important: The methods MUST be defined outside of the function to avoid retaining
         // the context of this function, which would prevent garbage collection of the temporary data

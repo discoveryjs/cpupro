@@ -1,6 +1,7 @@
 import { CallTree } from '../computations/call-tree';
 import type { FilterSet } from '../computations/filter-set.js';
 import type { RangeView } from '../computations/range.js';
+import type { EventSignatures } from './event-signatures.js';
 import type { TreeSource } from '../computations/build-trees';
 import { DictionaryMetrics, TreeMetrics } from '../computations/metrics';
 import { TreeValueBounds } from '../computations/tree-node-bounds';
@@ -148,6 +149,9 @@ export type ProfileLine = {
 
     // Mappings to other lines (key = target line kind)
     mappings: Record<ProfileLineType, ProfileLineMapping>;
+
+    // Signatures of the line events for repeated aggregation, once breakdowns and filters are prepared
+    signatures: EventSignatures | null;
 } & ProfileLineMethods;
 
 export type TimelineLine = ProfileLine & {
