@@ -477,7 +477,7 @@ export class Dictionary {
         }
 
         if (scriptOffset !== -1 && resolvedScript !== null) {
-            locationIndex = this.#locationsByScriptOffset.get(resolvedScript)?.get(scriptOffset) ?? -1;
+            locationIndex = this.#findScriptLocationIndex(resolvedScript, scriptOffset, line, column);
 
             // resolve line and column if possible to store the full location (offset, line, column)
             if (locationIndex === -1 && line === -1 && resolvedScript.source !== null) {
@@ -489,7 +489,7 @@ export class Dictionary {
                 }
             }
         } else if (line !== -1 && resolvedScript !== null) {
-            locationIndex = this.#locationsByScriptLineColumn.get(resolvedScript)?.get(line)?.get(column) ?? -1;
+            locationIndex = this.#findScriptLocationIndex(resolvedScript, scriptOffset, line, column);
 
             // resolve offset if possible to store the full location (offset, line, column)
             if (locationIndex === -1 && scriptOffset === -1 && resolvedScript.source !== null) {
@@ -504,15 +504,19 @@ export class Dictionary {
             return this.#unknownLocationIndex;
         }
 
-        if (locationIndex === -1) {
-            if (!callFrame) {
-                callFrame = resolvedScript !== null && (scriptOffset === 0 || (line === 0 && column === 0))
-                    ? this.callFrames[this.resolveScriptCallFrameIndex(resolvedScript)]
-                    : this.#unknownCallFrame;
+        if (locationIndex === -1 && !callFrame) {
+            if (resolvedScript !== null && (scriptOffset === 0 || (line === 0 && column === 0))) {
+                callFrame = this.callFrames[this.resolveScriptCallFrameIndex(resolvedScript)];
+                // a new call frame of the script adds the location of the script's start, which is the requested one
+                locationIndex = this.#findScriptLocationIndex(resolvedScript, scriptOffset, line, column);
+            } else {
+                callFrame = this.#unknownCallFrame;
             }
+        }
 
+        if (locationIndex === -1) {
             locationIndex = this.#addLocation(
-                callFrame,
+                callFrame!,
                 resolvedScript,
                 scriptOffset,
                 line,
@@ -521,6 +525,12 @@ export class Dictionary {
         }
 
         return locationIndex;
+    }
+
+    #findScriptLocationIndex(script: CpuProScript, scriptOffset: number, line: number, column: number) {
+        return scriptOffset !== -1
+            ? this.#locationsByScriptOffset.get(script)?.get(scriptOffset) ?? -1
+            : this.#locationsByScriptLineColumn.get(script)?.get(line)?.get(column) ?? -1;
     }
 
     resolveLocation(
