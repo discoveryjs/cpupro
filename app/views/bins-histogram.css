@@ -9,3 +9,8 @@
     width: 100%;
 }
 
+
+.view-bins-histogram-zoom-demo {
+    position: relative;
+    height: 20px;
+}
