@@ -111,6 +111,9 @@ export type ProfileLineMethods = {
     // A resolution is the smallest difference of values to tell apart, by default a tenth of a unit
     formatValue(value: number, resolution?: number): string;
     valueWithUnit(value: number, resolution?: number): { value: string; unit: string };
+    // A value on a scale of a length, e.g. a ruler label: the unit follows the scale length rather than the value,
+    // a step of the scale gives the fraction digits that tell steps apart
+    formatScaleValue(value: number, scaleLength: number, step?: number): string;
     metricName(metric: Metric): string;
     metricDefinition(metric: Metric): string;
 }

@@ -10,6 +10,7 @@ import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { asUint32Array, fractionDigits, sum } from '../misc/utils.js';
+import { stepFractionDigits } from '../misc/time-utils.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import {
@@ -60,6 +61,14 @@ const memlineMethods: ProfileLineMethods = {
             value: (value / 1000).toFixed(fractionDigits(resolution, 1000)),
             unit: 'Kb'
         };
+    },
+    formatScaleValue(value: number, scaleLength: number, step?: number): string {
+        const unit = scaleLength < 1_000_000 ? 1_000 : 1_000_000;
+        const scaled = step !== undefined
+            ? (value / unit).toFixed(stepFractionDigits(step, unit))
+            : (value / unit).toFixed(1).replace(/\.0$/, '');
+
+        return `${scaled}${unit === 1_000 ? 'Kb' : 'Mb'}`;
     },
     metricName(metric: Metric): string {
         return metricName[metric];

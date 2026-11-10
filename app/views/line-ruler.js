@@ -1,18 +1,7 @@
 const { resolveScopeProfileLine } = require('../jora/profile.js');
 const { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } = require('../jora/viewport.js');
-const { formatMicrosecondsTime, stepFractionDigits } = require('../prepare/misc/time-utils.js');
 const { createState, rangeToSegments } = require('./ruler-range.js');
 const { binsPerColumn } = require('./bins-histogram/index.js');
-
-// The unit follows the total of a scale, a step gives the fraction digits that tell steps apart
-function formatMemory(size, total, step) {
-    const unit = total < 1_000_000 ? 1_000 : 1_000_000;
-    const value = step !== undefined
-        ? (size / unit).toFixed(stepFractionDigits(step, unit))
-        : (size / unit).toFixed(1).replace(/\.0$/, '');
-
-    return `${value}${unit === 1_000 ? 'Kb' : 'Mb'}`;
-}
 
 // Columns of histograms with bins over the grid showing a range: segments at boundaries of the columns
 // within the range, the edge ones may be clipped
@@ -85,6 +74,7 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
     const scale = zoom ? bounds : createState(range).range;
     const origin = scale.start;
     const scaleLength = scale.end - scale.start;
+    const formatScaleLabel = (value, range, step) => scopeLine.formatScaleValue(value - origin, scaleLength, step);
     let updatingRangeManager = false;
 
     return this.render(el, {
@@ -101,13 +91,7 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
             : segments,
         multiple,
         selection: rangeManager ? readSelection() : selection,
-        formatLabel: formatLabel || ((value, range, step) =>
-            scopeLine.type === 'memline'
-                ? formatMemory(value - origin, scaleLength, step)
-                : scopeLine.type === 'timeline'
-                    ? formatMicrosecondsTime(value - origin, scaleLength, false, step)
-                    : String(value - origin)
-        ),
+        formatLabel: formatLabel || formatScaleLabel,
         details: details && {
             view: 'context',
             context(data, context) {

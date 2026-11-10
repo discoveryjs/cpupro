@@ -8,6 +8,7 @@ import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { fractionDigits } from '../misc/utils.js';
+import { formatMicrosecondsTime } from '../misc/time-utils.js';
 
 export type CreateTimelineOptions = {
     work: WorkHandler;
@@ -46,6 +47,9 @@ const timelineMethods: ProfileLineMethods = {
             value: (value / 1000).toFixed(fractionDigits(resolution, 1000)),
             unit: 'ms'
         };
+    },
+    formatScaleValue(value: number, scaleLength: number, step?: number) {
+        return formatMicrosecondsTime(value, scaleLength, false, step);
     },
     metricName(metric: Metric): string {
         return metricName[metric];

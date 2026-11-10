@@ -3,7 +3,6 @@ import { test } from 'vitest';
 import { createRulerHarness } from '../../test/helpers/ruler.js';
 import { createLineFixture, createProfileFixture, denseValues } from '../../test/fixtures/profile.js';
 import { resolveScopeProfileLine } from '../jora/profile.js';
-import { formatMicrosecondsTime, stepFractionDigits } from '../prepare/misc/time-utils.js';
 import { createState, rangeToSegments } from './ruler-range.js';
 import { binsPerColumn } from './bins-histogram/index.js';
 import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
@@ -19,14 +18,20 @@ evaluateModule(new URL('./line-ruler.js', import.meta.url), {
         viewOptions = options;
     } } },
     require: () => ({
-        resolveScopeProfileLine, lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom, formatMicrosecondsTime, stepFractionDigits,
+        resolveScopeProfileLine, lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom,
         createState, rangeToSegments, binsPerColumn
     }),
     window: { devicePixelRatio: 1 }
 });
 
 const data = { data: true };
-const timelineScope = { scopeLine: { type: 'timeline' } };
+// A line formats the labels of its rulers
+const timelineScope = {
+    scopeLine: {
+        type: 'timeline',
+        formatScaleValue: String
+    }
+};
 
 // Renders a line ruler of the width with a harness, keeping the forwarded config and the API of the ruler
 function mount(harness, props, context, width = 100) {
@@ -154,6 +159,21 @@ test.each([
     const { element } = mount(harness, { line, range }, { primaryProfile: profile });
 
     assert.equal(harness.labels(element)[1], label);
+});
+
+// Lines of any type format the labels of their rulers, the view knows nothing of their units
+test('labels are values of the line on the scale: from its start, with its length and the step', () => {
+    const harness = createRulerHarness();
+    const formatScaleValue = (value, scaleLength, step) => `${value}/${scaleLength}/${step}`;
+    const scope = {
+        scopeLine: {
+            type: 'other',
+            formatScaleValue
+        }
+    };
+    const { element } = mount(harness, { range: [100, 200] }, scope);
+
+    assert.deepEqual(harness.labels(element).slice(0, 3), ['0/100/10', '10/100/10', '20/100/10']);
 });
 
 // A label formatter may be called without a step, as by a ruler of the documented signature
