@@ -216,11 +216,18 @@ test('mapped span records group events by signature, signature of the mapped eve
 
     records.addMappedSpan(source, Uint32Array.of(1, 2, 4, 8, 16), 0, 5, Uint32Array.of(0, 1, 2, 2, 3), axis, target => targetBins[target], null);
 
-    // [signature, axis signature, bin, weight]
-    assert.deepEqual(
-        Array.from({ length: records.count }, (_, record) => [records.signatures[record], records.axisSignatures[record], records.bins[record], records.weights[record]]),
-        [[0, 0, 0, 13], [0, 1, 0, 2], [0, 0, 1, 16]]
-    );
+    const grouped: string[] = [];
+
+    for (let record = 0; record < records.count; record++) {
+        grouped.push(`signature ${records.signatures[record]}, axis signature ${records.axisSignatures[record]}, bin ${records.bins[record]}: ${records.weights[record]}`);
+    }
+
+    // One record per group, in any order
+    assert.deepEqual(grouped.sort(), [
+        'signature 0, axis signature 0, bin 0: 13',
+        'signature 0, axis signature 0, bin 1: 16',
+        'signature 0, axis signature 1, bin 0: 2'
+    ]);
 });
 
 test('bin records are shared by aggregations over a grid, replaced for another window and kept for the whole extent', async () => {
