@@ -249,30 +249,31 @@
     overflow: hidden;
 }
 
-.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand {
+/* Sections lay out in the grid of the timelines at any depth: views providing values around them render as their contents */
+.page-default .category-timelines .view-expand {
     display: contents;
 }
-.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .header {
+.page-default .category-timelines .view-expand > .header {
     grid-column: 1/4;
     position: relative;
     z-index: 1;
     margin-top: 1px;
 }
-.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .header > .header-content {
+.page-default .category-timelines .view-expand > .header > .header-content {
     display: flex;
 }
-.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .content {
+.page-default .category-timelines .view-expand > .content {
     display: contents;
 }
-.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .content > .category-timelines-item:first-child > *,
-.page-default :is(.category-timelines, .category-timelines-window, .category-timelines-window > .view-line-metrics-value) > .view-expand > .content > .category-timelines-item:first-child > .view-update-on-line-metrics-changes > * {
+.page-default .category-timelines .view-expand > .content > .category-timelines-item:first-child > *,
+.page-default .category-timelines .view-expand > .content > .category-timelines-item:first-child > .view-update-on-line-metrics-changes > * {
     margin-top: 1px;
 }
-.page-default .category-timelines > .view-expand .view-cpupro-chart {
+.page-default .category-timelines .view-expand .view-cpupro-chart {
     grid-column: 3 / 4;
 }
-.page-default .category-timelines > .user-timings-timeline .view-track-timeline,
-.page-default .category-timelines > .compile-timeline .view-track-timeline {
+.page-default .category-timelines .user-timings-timeline .view-track-timeline,
+.page-default .category-timelines .compile-timeline .view-track-timeline {
     grid-column: 3 / 4;
 }
 .page-default .category-timelines .data-unavailable {
@@ -297,7 +298,7 @@
     color: inherit;
     display: contents;
 }
-.page-default .category-timelines > .user-timings-timeline .view-track-timeline,
+.page-default .category-timelines .user-timings-timeline .view-track-timeline,
 .page-default .category-timelines-item .view-line-histogram {
     margin: 0 1px;
 }
