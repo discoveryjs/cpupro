@@ -80,17 +80,26 @@ test('the samples page keeps its local ruler and bins in one explicit context', 
     assert.equal(query('scopeViewport()')({}, parent), parent.scopeViewport);
 });
 
-test('values are formatted in the unit of a line with digits to tell apart a resolution', async () => {
-    const { line: timeline } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
-    const { line: memline } = await createLineFixture({ type: 'memline', values: new Uint32Array([500]) });
+test.each([
+    ['timeline', '2420275.formatValue()', '2420.3 ms'],
+    ['timeline', '2420275.formatValue(33.6)', '2420.28 ms'],
+    ['timeline', '2420275.formatValue(5000)', '2420.3 ms'],
+    ['memline', '2420275.formatValue()', '2420.3Kb'],
+    ['memline', '2420275.formatValue(33.6)', '2420.28Kb'],
+    ['memline', '2420275.formatValue(5000)', '2420.3Kb']
+] as const)('on a %s %s is %s', async (type, formatQuery, expected) => {
+    const { line } = await createLineFixture({ type, values: new Uint32Array([500]) });
 
-    for (const [line, unit] of [[timeline, ' ms'], [memline, 'Kb']] as const) {
-        const context = { scopeLine: line };
+    assert.equal(query(formatQuery)(null, { scopeLine: line }), expected);
+});
 
-        assert.equal(query('2420275.formatValue()')(null, context), '2420.3' + unit);
-        assert.equal(query('2420275.formatValue(33.6)')(null, context), '2420.28' + unit);
-        assert.equal(query('2420275.formatValue(5000)')(null, context), '2420.3' + unit);
-        assert.deepEqual(line.valueWithUnit(336, 3.36), { value: '0.336', unit: unit.trim() });
-        assert.deepEqual(line.valueWithUnit(336), { value: '0.3', unit: unit.trim() });
-    }
+test.each([
+    ['timeline', 3.36, { value: '0.336', unit: 'ms' }],
+    ['timeline', undefined, { value: '0.3', unit: 'ms' }],
+    ['memline', 3.36, { value: '0.336', unit: 'Kb' }],
+    ['memline', undefined, { value: '0.3', unit: 'Kb' }]
+] as const)('on a %s 336 with a resolution of %s is %o', async (type, resolution, expected) => {
+    const { line } = await createLineFixture({ type, values: new Uint32Array([500]) });
+
+    assert.deepEqual(line.valueWithUnit(336, resolution), expected);
 });
