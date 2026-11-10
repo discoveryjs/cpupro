@@ -6,7 +6,7 @@ import { createProfile } from '../profile.mjs';
 import { noopWorkHandler } from '../misc/work.js';
 import { methods } from '../../jora/bin.js';
 import { lineWindow } from '../../jora/viewport.js';
-import { EventSignatures } from './event-signatures.js';
+import { BinRecords, EventSignatures } from './event-signatures.js';
 import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
 import type { ProfileLine } from './types.js';
@@ -168,19 +168,59 @@ test('filter classes group events with equal values of every registered event fi
     }
 });
 
-test('signature IDs widen when signatures outgrow 16 bits', () => {
-    const count = 70000;
-    const values = Uint32Array.from({ length: 2 * count }, (_, event) => event % count);
-    const line = {
-        values: new Uint32Array(values.length),
-        attributes: [{ name: 'allocationType', values, dict: [] }],
+// A line of events with the given attribute values and no breakdowns
+function createAttributesLine(...columns: ArrayLike<number>[]) {
+    const names = ['allocationType', 'allocationSpace'];
+
+    return {
+        values: new Uint32Array(columns[0].length),
+        attributes: columns.map((values, index) => ({ name: names[index], values: Uint32Array.from(values), dict: [] })),
         breakdowns: []
     } as unknown as ProfileLine;
-    const signatures = new EventSignatures(line);
+}
 
-    assert.ok(signatures.ids instanceof Uint32Array);
+test.each([
+    { count: 0x10000, ids: Uint16Array },
+    { count: 0x10001, ids: Uint32Array }
+])('signature IDs widen only when signatures outgrow 16 bits ($count signatures)', ({ count, ids }) => {
+    const values = Uint32Array.from({ length: 2 * count }, (_, event) => event % count);
+    const signatures = new EventSignatures(createAttributesLine(values));
+
+    assert.ok(signatures.ids instanceof ids);
     assert.equal(signatures.count, count);
     assert.deepEqual(Array.from(signatures.ids), Array.from(values));
+});
+
+test('events with equal key hashes but different keys get different signatures', () => {
+    // Both keys hash to 3592732872 and differ in every column
+    const signatures = new EventSignatures(createAttributesLine([79780, 264364, 79780], [3077, 3837, 3077]));
+
+    assert.deepEqual(Array.from(signatures.ids), [0, 1, 0]);
+});
+
+test.each([
+    { name: 'as many events as a window takes', cumulative: [0, 1, 2, 3], cumulativeEnd: 4, windowEvents: 4 },
+    { name: 'an empty axis', cumulative: [0, 0, 0, 0], cumulativeEnd: 0, windowEvents: 2 }
+])('a line with $name has no cell records', ({ cumulative, cumulativeEnd, windowEvents }) => {
+    const line = createAttributesLine([0, 1, 0, 1]);
+    const signatures = new EventSignatures(line);
+
+    assert.equal(signatures.cellRecords(Float64Array.from(cumulative), cumulativeEnd, line.values, windowEvents), null);
+});
+
+test('mapped span records group events by signature, signature of the mapped event and bin', () => {
+    const source = new EventSignatures(createAttributesLine([0, 0, 0, 0, 0]));
+    const axis = new EventSignatures(createAttributesLine([0, 1, 0, 0]));
+    const targetBins = [0, 0, 0, 1];
+    const records = new BinRecords({ total: 2, step: 1, skip: 0, ranges: null, axisRanges: null }, source.count);
+
+    records.addMappedSpan(source, Uint32Array.of(1, 2, 4, 8, 16), 0, 5, Uint32Array.of(0, 1, 2, 2, 3), axis, target => targetBins[target], null);
+
+    // [signature, axis signature, bin, weight]
+    assert.deepEqual(
+        Array.from({ length: records.count }, (_, record) => [records.signatures[record], records.axisSignatures[record], records.bins[record], records.weights[record]]),
+        [[0, 0, 0, 13], [0, 1, 0, 2], [0, 0, 1, 16]]
+    );
 });
 
 test('bin records are shared by aggregations over a grid, replaced for another window and kept for the whole extent', async () => {
