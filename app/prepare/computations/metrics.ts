@@ -264,12 +264,12 @@ export type DictionaryMetric<T> = {
 
 export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     dictionary: T[];
-    #entries: DictionaryMetric<T>[];
+    #entries: DictionaryMetric<T>[] | null = null;
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
     #samplesCount: Uint32Array;
     #selfValues: Float64Array;
     #totalValues: Float64Array;
-    // Brings stale values and entries up to date before they are read
+    // Brings stale values up to date before they are read
     #refresh: (() => void) | null;
 
     constructor(
@@ -286,15 +286,6 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
         this.#selfValues = selfValues;
         this.#totalValues = totalValues;
         this.#refresh = refresh;
-
-        this.#entries = this.dictionary.map((entry, entryIndex) => ({
-            entryIndex,
-            entry,
-            samples: samplesCount[entryIndex],
-            selfValue: selfValues[entryIndex],
-            nestedValue: totalValues[entryIndex] - selfValues[entryIndex],
-            totalValue: totalValues[entryIndex]
-        }));
         exposeGetters(this, DictionaryMetrics.prototype, ['samplesCount', 'selfValues', 'totalValues', 'entries']);
     }
 
@@ -313,9 +304,64 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
         return this.#totalValues;
     }
 
+    // Entries are created on the first read, since views read the entries of a few dictionaries. Their fields
+    // read the dictionary's values, so an entry kept by a consumer is current after a change; the fields are own
+    // accessors since Jora reads own properties
     get entries() {
-        this.#refresh?.();
+        if (this.#entries === null) {
+            const { dictionary } = this;
+            const fields = this.#entryFields();
+            const entries: DictionaryMetric<T>[] = new Array(dictionary.length);
+
+            for (let i = 0; i < dictionary.length; i++) {
+                entries[i] = Object.defineProperties({
+                    entryIndex: i,
+                    entry: dictionary[i]
+                }, fields) as DictionaryMetric<T>;
+            }
+
+            this.#entries = entries;
+        }
+
         return this.#entries;
+    }
+
+    #entryFields(): PropertyDescriptorMap {
+        const refresh = this.#refresh;
+        const samplesCount = this.#samplesCount;
+        const selfValues = this.#selfValues;
+        const totalValues = this.#totalValues;
+
+        return {
+            samples: {
+                enumerable: true,
+                get(this: DictionaryMetric<T>) {
+                    refresh?.();
+                    return samplesCount[this.entryIndex];
+                }
+            },
+            selfValue: {
+                enumerable: true,
+                get(this: DictionaryMetric<T>) {
+                    refresh?.();
+                    return selfValues[this.entryIndex];
+                }
+            },
+            nestedValue: {
+                enumerable: true,
+                get(this: DictionaryMetric<T>) {
+                    refresh?.();
+                    return totalValues[this.entryIndex] - selfValues[this.entryIndex];
+                }
+            },
+            totalValue: {
+                enumerable: true,
+                get(this: DictionaryMetric<T>) {
+                    refresh?.();
+                    return totalValues[this.entryIndex];
+                }
+            }
+        };
     }
 
     get entriesMap() {
@@ -332,24 +378,6 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     }
     getEntry(sourceEntry: T): DictionaryMetric<T> | null {
         return this.entriesMap.get(sourceEntry) || null;
-    }
-
-    sync() {
-        const entries = this.#entries;
-        const samplesCount = this.#samplesCount;
-        const selfValues = this.#selfValues;
-        const totalValues = this.#totalValues;
-
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            const selfValue = selfValues[i];
-            const totalValue = totalValues[i];
-
-            entry.samples = samplesCount[i];
-            entry.selfValue = selfValue;
-            entry.nestedValue = totalValue - selfValue;
-            entry.totalValue = totalValue;
-        }
     }
 }
 
@@ -541,11 +569,13 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
     // Filtered metrics follow population changes when they are read: a line computes its breakdowns over
     // shared populations, while views read the metrics of the displayed breakdown only
     let samplesStale = false;
-    const staleDimensions = new Set<number>();
+    const staleDimensions = new Uint8Array(dimensions.length);
     const refreshDimension = (index: number) => {
-        if (!staleDimensions.delete(index)) {
+        if (staleDimensions[index] === 0) {
             return;
         }
+
+        staleDimensions[index] = 0;
 
         if (samplesStale) {
             samplesStale = false;
@@ -557,7 +587,6 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
 
         computeApi.computeTreeMetrics(treeMap, true);
         computeApi.computeDictionaryMetrics(dictMap, true);
-        dimensionsWithStructure[index].dict.filtered.sync();
     };
 
     // Build dimensions with dict/tree separation
@@ -567,14 +596,11 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
 
     const recomputeMetrics = () => {
         samplesStale = true;
+        staleDimensions.fill(1);
 
-        for (let index = 0; index < dimensions.length; index++) {
-            staleDimensions.add(index);
-        }
-
-        for (const dimension of dimensionsWithStructure) {
-            dimension.tree.filtered.notify();
-            dimension.dict.filtered.notify();
+        for (let i = 0; i < dimensionsWithStructure.length; i++) {
+            dimensionsWithStructure[i].tree.filtered.notify();
+            dimensionsWithStructure[i].dict.filtered.notify();
         }
     };
 

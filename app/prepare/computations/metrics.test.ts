@@ -39,6 +39,38 @@ test('filtered metrics of every breakdown of a population follow its changes whe
     assert.deepEqual([...original.callFrames!.filtered.dict.selfValues], [...original.callFrames!.all.dict.selfValues]);
 });
 
+test('a kept dictionary entry is current after a change without reading the entries again', async () => {
+    const { profile } = await createProfileFixture();
+    const breakdown = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
+    const population = breakdown.populationFiltered;
+    const { dict } = breakdown.callFrames!.filtered;
+    const entries = dict.entries;
+    const kept = entries.map(entry => entry.selfValue);
+    const sampleCount = population.samplesMask.length;
+
+    population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: sampleCount,
+        accepts: new Uint8Array(sampleCount)
+    });
+
+    // The kept entries are read before anything reads the dictionary
+    for (let i = 0; i < entries.length; i++) {
+        assert.equal(entries[i].selfValue, 0);
+        assert.equal(entries[i].totalValue, 0);
+        assert.equal(entries[i].samples, 0);
+    }
+
+    assert.ok(kept.some(value => value > 0));
+    assert.equal(dict.entries, entries);
+    assert.deepEqual(Object.keys(entries[0]), ['entryIndex', 'entry', 'samples', 'selfValue', 'nestedValue', 'totalValue']);
+
+    population.filter.remove('samples');
+
+    assert.deepEqual(entries.map(entry => entry.selfValue), kept);
+});
+
 test('cumulative values, totals and tree metrics stay exact beyond 2^32', async () => {
     const values = Uint32Array.of(0xffffffff, 0xffffffff, 0xffffffff, 5);
     const { breakdown } = await createLineFixture({ type: 'memline', values, samples: Uint32Array.of(0, 1, 0, 1) });
