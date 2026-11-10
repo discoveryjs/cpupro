@@ -16,8 +16,17 @@ test('enclosing frame links, incomplete events and unknown stages cannot activat
     const { script, scripts } = createScriptFixture(nestedFunctions);
     const [outer, inner] = script.functionRanges!;
     const records = [
-        createCompilationRecord({ name: 'CompileFunction', start: inner.callFrameStart + 1, end: inner.end }),
-        createCompilationRecord({ name: 'CompileFunction', start: outer.callFrameStart, end: outer.end, duration: null }),
+        createCompilationRecord({
+            name: 'CompileFunction',
+            start: inner.callFrameStart + 1,
+            end: inner.end
+        }),
+        createCompilationRecord({
+            name: 'CompileFunction',
+            start: outer.callFrameStart,
+            end: outer.end,
+            duration: null
+        }),
         createCompilationRecord({ name: 'UnknownStage', start: inner.callFrameStart, end: inner.end })
     ];
 
@@ -31,12 +40,21 @@ test('enclosing frame links, incomplete events and unknown stages cannot activat
 test('local script IDs and separate thread event sets do not share compilation state', () => {
     const { script, scripts } = createScriptFixture(nestedFunctions);
     const range = script.functionRanges![0];
+
     scripts.set(8, script);
+
     const first = processScriptCompilation([
         createCompilationRecord({ name: 'CompileFunction', start: range.callFrameStart, end: range.end }),
-        createCompilationRecord({ name: 'PreParse', scriptId: 8, start: range.callFrameStart, end: range.end })
+        createCompilationRecord({
+            name: 'PreParse',
+            scriptId: 8,
+            start: range.callFrameStart,
+            end: range.end
+        })
     ], scripts);
-    const second = processScriptCompilation([createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })], scripts);
+    const second = processScriptCompilation([
+        createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })
+    ], scripts);
 
     assert.equal(first.get(7)!.states[1], 3);
     assert.equal(first.get(8)!.states[1], 1);
@@ -45,21 +63,31 @@ test('local script IDs and separate thread event sets do not share compilation s
     assert.equal('compilation' in script, false);
 });
 
-test.each(['CompileMaglev', 'MaglevConcurrentPrepare', 'CompileOptimized', 'CompileOptimizedOSR', 'Turbofan.OptimizeConcurrentPrepare'])(
-    '%s is compiled evidence but not completed optimization', name => {
-        const { script, scripts } = createScriptFixture(nestedFunctions);
-        const range = script.functionRanges![0];
-        const compilation = processScriptCompilation([createCompilationRecord({ name, start: range.callFrameStart, end: range.end })], scripts).get(7)!;
+test.each([
+    'CompileMaglev',
+    'MaglevConcurrentPrepare',
+    'CompileOptimized',
+    'CompileOptimizedOSR',
+    'Turbofan.OptimizeConcurrentPrepare'
+])('%s is compiled evidence but not completed optimization', name => {
+    const { script, scripts } = createScriptFixture(nestedFunctions);
+    const range = script.functionRanges![0];
+    const compilation = processScriptCompilation([
+        createCompilationRecord({ name, start: range.callFrameStart, end: range.end })
+    ], scripts).get(7)!;
 
-        assert.equal(compilation.states[1], 3);
-        assert.deepEqual(compilation.unknownStages, []);
-    }
-);
+    assert.equal(compilation.states[1], 3);
+    assert.deepEqual(compilation.unknownStages, []);
+});
 
 test('streamed script lookup is recognized without claiming compilation', () => {
     const { script, scripts } = createScriptFixture(nestedFunctions);
     const compilation = processScriptCompilation([
-        createCompilationRecord({ name: 'GetSharedFunctionInfoForStreamedScript', start: 0, end: script.source!.length })
+        createCompilationRecord({
+            name: 'GetSharedFunctionInfoForStreamedScript',
+            start: 0,
+            end: script.source!.length
+        })
     ], scripts).get(7)!;
 
     assert.ok(compilation.states.every(state => state === 0));
@@ -75,7 +103,9 @@ test('whole-script stages take precedence while ambiguous function ranges remain
     ];
 
     assert.deepEqual([...processScriptCompilation(records, scripts).get(7)!.states], [3, 1]);
+
     script.functionRanges!.push({ ...range });
+
     const ambiguous = processScriptCompilation(records, scripts).get(7)!;
 
     assert.deepEqual([...ambiguous.states], [3, 0, 0]);
@@ -85,26 +115,59 @@ test('whole-script stages take precedence while ambiguous function ranges remain
 test('thread script links retain local IDs and isolate events even when Dictionary shares source objects', () => {
     const source = 'function shared() {}';
     const base = { pid: 1, ts: 0, ph: 'P', cat: 'profile' };
-    const raw = extractFromChromiumPerformanceProfile([1, 2].flatMap(tid => [
-        { ...base, tid, id: String(tid), name: 'Profile', args: { data: { startTime: 0 } } },
-        { ...base, tid, name: 'ScriptCatchup', args: { data: { scriptId: tid * 7, url: 'shared.js', sourceText: source } } },
-        { ...base, tid, name: 'ScriptCatchup', args: { data: { scriptId: 100, url: `thread-${tid}.js`, sourceText: '' } } },
-        { ...base, tid, name: tid === 1 ? 'CompileFunction' : 'PreParse', ph: 'X', dur: 1,
+    const threadEvents = (tid: number, stage: string) => [
+        {
+            ...base,
+            tid,
+            id: String(tid),
+            name: 'Profile',
+            args: { data: { startTime: 0 } }
+        },
+        {
+            ...base,
+            tid,
+            name: 'ScriptCatchup',
+            args: { data: { scriptId: tid * 7, url: 'shared.js', sourceText: source } }
+        },
+        {
+            ...base,
+            tid,
+            name: 'ScriptCatchup',
+            args: { data: { scriptId: 100, url: `thread-${tid}.js`, sourceText: '' } }
+        },
+        {
+            ...base,
+            tid,
+            name: stage,
+            ph: 'X',
+            dur: 1,
             cat: 'disabled-by-default-v8.compilation_allocations',
-            args: { data: { scriptId: tid * 7, start: source.indexOf('('), end: source.length } } }
-    ]));
+            args: {
+                data: { scriptId: tid * 7, start: source.indexOf('('), end: source.length }
+            }
+        }
+    ];
+    const raw = extractFromChromiumPerformanceProfile([
+        ...threadEvents(1, 'CompileFunction'),
+        ...threadEvents(2, 'PreParse')
+    ]);
     const before = structuredClone(raw.threads.map(thread => thread.scripts));
     const dictionary = new Dictionary();
     const { profiles } = createProfileSession(raw, dictionary);
     const maps = profiles.map(entry => new ProfileScriptsMap(dictionary, entry.profile._scripts));
     const shared = maps[0].get(7)!;
+
     parseScriptFixture(shared);
 
-    profiles.forEach((entry, index) => linkThreadScripts(entry.thread, maps[index]));
+    for (let i = 0; i < profiles.length; i++) {
+        linkThreadScripts(profiles[i].thread, maps[i]);
+    }
+
     linkThreadScripts(profiles[0].thread, maps[0]);
 
     const first = profiles[0].thread.scripts;
     const second = profiles[1].thread.scripts;
+
     assert.equal(first[0].id, 7);
     assert.equal(second[0].id, 14);
     assert.equal(first[0].script, second[0].script);

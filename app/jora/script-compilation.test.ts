@@ -26,7 +26,13 @@ test('compilation states use exact source identities and exclusive byte contribu
     assert.equal(summary.unmatched, 0);
 
     const optimized = processScriptCompilation([
-        ...records, createCompilationRecord({ name: 'FinalizeMaglevCompilationJob', start: inner.callFrameStart, end: inner.end }), ...records
+        ...records,
+        createCompilationRecord({
+            name: 'FinalizeMaglevCompilationJob',
+            start: inner.callFrameStart,
+            end: inner.end
+        }),
+        ...records
     ], scripts).get(7)!;
 
     assert.deepEqual([...optimized.states], [3, 3, 4]);
@@ -39,15 +45,19 @@ test('unknown coverage differs from unobserved code, and two-byte payload is wei
     const range = script.functionRanges![0];
 
     assert.equal(scriptSourceSummary(script).compiledBytes, null);
-    const compilation = processScriptCompilation([createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })], scripts).get(7)!;
+
+    const compilation = processScriptCompilation([
+        createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })
+    ], scripts).get(7)!;
 
     assert.equal(scriptSourceSummary(script, compilation).compiledBytes, 0);
     assert.equal(scriptSourceSummary(script, compilation).stateSizes![2], range.selfSize * 2);
     assert.equal(scriptSourceSummary(script).byteLength, script.source!.length * 2);
 });
 
-test('observed compiled bytes use script-wide encoding for own sizes even when Unicode is only in an unobserved nested function', () => {
-    const { script, scripts } = createScriptFixture('function outer() { function inner() { return "\u044f\ud83d\ude00"; } return 1; }');
+test('own byte sizes use the script-wide encoding, also when only an unobserved nested function has Unicode', () => {
+    const source = 'function outer() { function inner() { return "\u044f\ud83d\ude00"; } return 1; }';
+    const { script, scripts } = createScriptFixture(source);
     const [outer, inner] = script.functionRanges!;
     const compilation = processScriptCompilation([
         createCompilationRecord({ name: 'CompileCode', start: 0, end: script.source!.length }),
@@ -64,12 +74,20 @@ test('observed compiled bytes use script-wide encoding for own sizes even when U
 
 test('missing and failed parsing never report zero source sizes as known values', () => {
     const { script } = createScriptFixture(nestedFunctions);
+
     script.sourceMetrics = null;
     script.functionRanges = null;
 
     assert.equal(scriptSourceSummary(script).functions, null);
     assert.equal(scriptSourceSummary(script).byteLength, null);
-    script.sourceMetrics = { byteLength: 10, bytesPerChar: 1, nonLatin1CodeUnits: 0, surrogatePairs: 0, selfSize: null };
+
+    script.sourceMetrics = {
+        byteLength: 10,
+        bytesPerChar: 1,
+        nonLatin1CodeUnits: 0,
+        surrogatePairs: 0,
+        selfSize: null
+    };
     assert.equal(scriptSourceSummary(script).compiledBytes, null);
     assert.equal(scriptSourceSummary(script).stateSizes, null);
 });

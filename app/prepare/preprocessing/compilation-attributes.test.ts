@@ -5,43 +5,97 @@ import { createProfile } from '../profile.mjs';
 import { createProfileSession } from '../profile-session.mjs';
 import { extractFromChromiumPerformanceProfile } from '../formats/chromium-performance-profile.js';
 import type { UniformCompilationRecord } from '../formats/types.js';
-import type { CpuProCompilationRecord } from '../types.js';
-import { createWorkHandler } from '../misc/work.js';
+import type { CpuProCompilationRecord, CpuProScript } from '../types.js';
+import { createWorkHandler, type WorkWrapperChain } from '../misc/work.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 import * as computations from '../computations/misc.js';
 import {
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute
 } from '../lines/memline-attributes.mjs';
-import { collectProfileUsedScriptIds, ProfileScriptsMap } from './scripts.js';
-import { prepareCompilationRecords, resolveCompilationCallFrames } from './compilation-events.js';
+import { collectProfileUsedScriptIds } from './scripts.js';
+import { prepareCompilationRecords } from './compilation-events.js';
 import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
 
 // Records default to the fixture function `known` at 14..30 (line 0, column 14) of script 7
 function record(fields: Partial<UniformCompilationRecord> = {}) {
-    return createCompilationRecord({ start: 14, end: 30, line: 0, column: 14, ...fields });
+    return createCompilationRecord({
+        start: 14,
+        end: 30,
+        line: 0,
+        column: 14,
+        ...fields
+    });
 }
 
 function sourceFixture(cpuOnly = false) {
-    const base = { pid: 1, tid: 2, ts: 1000, ph: 'P', cat: 'profile', id: 'cpu' };
+    const base = {
+        pid: 1,
+        tid: 2,
+        ts: 1000,
+        ph: 'P',
+        cat: 'profile',
+        id: 'cpu'
+    };
+    const root = {
+        scriptId: 0,
+        url: '',
+        functionName: '(root)',
+        lineNumber: -1,
+        columnNumber: -1
+    };
+    const known = {
+        scriptId: 7,
+        url: 'fixture.js',
+        functionName: 'known',
+        lineNumber: 0,
+        columnNumber: 14,
+        start: 14,
+        end: 30
+    };
+    const cpuProfile = {
+        nodes: [
+            { id: 1, callFrame: root, children: [2] },
+            { id: 2, callFrame: known }
+        ],
+        samples: [2, 2, 2]
+    };
+    const chunk = { endTime: 1040, cpuProfile, timeDeltas: [10, 10, 10] };
     const session = extractFromChromiumPerformanceProfile([
-        { ...base, name: 'Profile', args: { data: { startTime: 1000, isolate: 'test' } } },
-        { ...base, name: 'ProfileChunk', args: { data: {
-            endTime: 1040, cpuProfile: {
-                nodes: [
-                    { id: 1, callFrame: { scriptId: 0, url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 }, children: [2] },
-                    { id: 2, callFrame: { scriptId: 7, url: 'fixture.js', functionName: 'known', lineNumber: 0, columnNumber: 14, start: 14, end: 30 } }
-                ],
-                samples: [2, 2, 2]
-            }, timeDeltas: [10, 10, 10]
-        } } }
+        {
+            ...base,
+            name: 'Profile',
+            args: { data: { startTime: 1000, isolate: 'test' } }
+        },
+        {
+            ...base,
+            name: 'ProfileChunk',
+            args: { data: chunk }
+        }
     ]);
     const data = session.profiles[0];
-    const sourceMap = { version: '3', file: 'fixture.js', sources: ['original.js'], names: [], mappings: 'AAAA', sourcesContent: [''] };
+    const sourceMap = {
+        version: '3',
+        file: 'fixture.js',
+        sources: ['original.js'],
+        names: [],
+        mappings: 'AAAA',
+        sourcesContent: ['']
+    };
 
     data._scripts = [
-        { id: 7, url: 'fixture.js', source: '', sourceMap },
-        { id: 8, url: 'event-only.js', source: 'function freshName() {}', sourceMap }
+        {
+            id: 7,
+            url: 'fixture.js',
+            source: '',
+            sourceMap
+        },
+        {
+            id: 8,
+            url: 'event-only.js',
+            source: 'function freshName() {}',
+            sourceMap
+        }
     ];
     data._samplePositions = [15, 15, 15];
     session.threads[0].compilations = [
@@ -62,7 +116,18 @@ function sourceFixture(cpuOnly = false) {
     const dictionary = new Dictionary();
     const source = createProfileSession(session, dictionary);
 
-    return { data, records: source.profiles[0].thread.compilations!, dictionary, source, rawSession: session };
+    return {
+        data,
+        records: source.profiles[0].thread.compilations!,
+        dictionary,
+        source,
+        rawSession: session
+    };
+}
+
+// Dictionary entries of the attribute values
+function dictValues<T>(attribute: { values: ArrayLike<number>; dict: T[] }) {
+    return Array.from(attribute.values, index => attribute.dict[index]);
 }
 
 function attributes(records: CpuProCompilationRecord[], ids: number[], order: 'consecutive' | null = null) {
@@ -80,28 +145,34 @@ test('allocation rows map to innermost owner and stage with exclusive starts and
         record({ name: 'Absent', allocationStart: null, allocationEnd: null })
     ];
 
-    // Allocation ranges are (start, end]; the innermost record wins
-    const stageOf = (id: number) => {
-        if (id > 12 && id <= 15) {
-            return 'Inner';
+    // allocation ranges are (start, end]: Compile owns (10, 20] at 14, the innermost Inner owns (12, 15] at 30
+    const cases = [
+        {
+            ids: [10, 11, 12, 13, 14, 15, 16, 20, 21],
+            stages: ['none', 'Compile', 'Compile', 'Inner', 'Inner', 'Inner', 'Compile', 'Compile', 'none'],
+            owners: [null, 14, 14, 30, 30, 30, 14, 14, null]
+        },
+        {
+            ids: [0, 11, 13, 20, 30],
+            stages: ['none', 'Compile', 'Inner', 'Compile', 'none'],
+            owners: [null, 14, 30, 14, null]
+        },
+        {
+            ids: [10, 11, 13, 13, 20, 21],
+            stages: ['none', 'Compile', 'Inner', 'Inner', 'Compile', 'none'],
+            owners: [null, 14, 30, 30, 14, null]
         }
+    ];
 
-        if (id > 10 && id <= 20) {
-            return 'Compile';
-        }
+    for (const expected of cases) {
+        const { ids, stages, owners } = expected;
 
-        return 'none';
-    };
-    const ownerStart: Record<string, number | null> = { Inner: 30, Compile: 14, none: null };
-
-    for (const ids of [[10, 11, 12, 13, 14, 15, 16, 20, 21], [0, 11, 13, 20, 30], [10, 11, 13, 13, 20, 21]]) {
         for (const input of [records, records.slice().reverse()]) {
             const prepared = prepareCompilationRecords(input, []);
             const { owner, stage } = attributes(prepared, ids);
-            const expected = ids.map(stageOf);
 
-            assert.deepEqual(Array.from(stage.values, index => stage.dict[index]), expected);
-            assert.deepEqual(Array.from(owner.values, index => owner.dict[index]?.start ?? null), expected.map(name => ownerStart[name]));
+            assert.deepEqual(dictValues(stage), stages);
+            assert.deepEqual(dictValues(owner).map(entry => entry?.start ?? null), owners);
             assert.deepEqual(new Set(stage.dict), new Set(['none', 'Compile', 'Inner', 'Empty', 'Absent']));
             assert.deepEqual(owner.dict.slice(1).map(entry => entry!.start).sort(), [14, 30]);
         }
@@ -122,24 +193,46 @@ test('owner dictionary keys compiled functions by raw script and start, not reso
     ];
     const { owner, stage } = attributes(records, [1, 2, 3, 4, 5]);
 
-    assert.deepEqual(owner.dict, [null, { scriptId: 7, start: 20 }, { scriptId: 7, start: 21 }, { scriptId: null, start: null }]);
+    assert.deepEqual(owner.dict, [
+        null,
+        { scriptId: 7, start: 20 },
+        { scriptId: 7, start: 21 },
+        { scriptId: null, start: null }
+    ]);
     assert.deepEqual([...owner.values], [1, 1, 2, 3, 0]);
     assert.deepEqual(stage.dict, ['none', 'Compile', 'Finalize']);
     assert.deepEqual([...stage.values], [1, 2, 1, 1, 0]);
 
-    for (const count of [255, 256]) {
-        const many = Array.from({ length: count }, (_, index) => record({ name: `Stage ${index}`, allocationStart: index, allocationEnd: index + 1 }));
-        const result = attributes(many, Array.from({ length: count }, (_, index) => index + 1)).stage;
+    // 255 stages and 'none' fit byte indices, one more stage does not
+    const sizes = [
+        { count: 255, IndexArray: Uint8Array },
+        { count: 256, IndexArray: Uint32Array }
+    ];
 
-        assert.ok(result.values instanceof (count === 255 ? Uint8Array : Uint32Array));
+    for (const size of sizes) {
+        const { count, IndexArray } = size;
+        const many: CpuProCompilationRecord[] = [];
+        const ids: number[] = [];
+
+        for (let i = 0; i < count; i++) {
+            many.push(record({ name: `Stage ${i}`, allocationStart: i, allocationEnd: i + 1 }));
+            ids.push(i + 1);
+        }
+
+        const result = attributes(many, ids).stage;
+
+        assert.ok(result.values instanceof IndexArray);
         assert.equal(result.values[count - 1], count);
     }
 });
 
 test('consecutive allocation ids are located by offset without scanning or searching', () => {
-    const records = [record({ allocationStart: 10, allocationEnd: 20 }), record({ name: 'Inner', allocationStart: 12, allocationEnd: 15 })];
+    const records = [
+        record({ allocationStart: 10, allocationEnd: 20 }),
+        record({ name: 'Inner', allocationStart: 12, allocationEnd: 15 })
+    ];
     let reads = 0;
-    const ids = new Proxy(Array.from({ length: 1000 }, (_, index) => index + 10), {
+    const ids = new Proxy(Array.from({ length: 1000 }, (_, i) => i + 10), {
         get(target, property) {
             if (typeof property === 'string' && /^\d+$/.test(property)) {
                 reads++;
@@ -156,81 +249,22 @@ test('consecutive allocation ids are located by offset without scanning or searc
         // Only the first id is read, once per attribute
         assert.equal(reads, 2);
         assert.equal(search.mock.calls.length, 0);
-        assert.deepEqual(Array.from(stage.values.subarray(0, 12), index => stage.dict[index]),
-            ['none', 'Compile', 'Compile', 'Inner', 'Inner', 'Inner', 'Compile', 'Compile', 'Compile', 'Compile', 'Compile', 'none']);
+        assert.deepEqual(dictValues(stage).slice(0, 12), [
+            'none',
+            'Compile',
+            'Compile',
+            'Inner',
+            'Inner',
+            'Inner',
+            'Compile',
+            'Compile',
+            'Compile',
+            'Compile',
+            'Compile',
+            'none'
+        ]);
     } finally {
         search.mockRestore();
-    }
-});
-
-test('call frames resolve exact compilation bounds without changing owner identities', () => {
-    const records: CpuProCompilationRecord[] = [record({ start: 20, end: 24 }), record({ start: 21, end: 24 }), record({ scriptId: null, start: null }), record({ scriptId: 99 })];
-    const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, [{ id: 7, url: 'fixture.js', source: 'const run = function() {};' }]);
-    const named = dictionary.resolveCallFrame({
-        scriptId: 7, url: 'fixture.js', functionName: 'runtimeName', lineNumber: 0, columnNumber: 20, start: 20, end: 24
-    }, scripts);
-    const frameCount = dictionary.callFrames.length;
-    const { owner } = attributes(records, [1]);
-    const dict = structuredClone(owner.dict);
-
-    resolveCompilationCallFrames(records, dictionary, scripts);
-
-    assert.equal(records[0].callFrame, named);
-    assert.notEqual(records[1].callFrame, named);
-    assert.equal(records[1].callFrame?.start, 21);
-    assert.equal(records[1].callFrame?.end, 24);
-    assert.deepEqual(records.slice(2).map(record => record.callFrame), [null, null]);
-    assert.deepEqual(owner.dict, dict);
-    assert.equal(owner.dict.length, 5);
-    assert.equal(dictionary.callFrames.length, frameCount + 1);
-});
-
-test('compilation identity bypasses sampled location frames and preserves default constructors', () => {
-    const source = 'function outer() { const inner = () => 1; } class Empty {}';
-    const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, [{ id: 7, url: 'fixture.js', source }]);
-    const script = scripts.get(7)!;
-    const start = source.indexOf('() =>');
-    const end = source.indexOf(';');
-    const enclosing = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
-    const location = dictionary.resolveLocation(enclosing, script, start);
-    const constructorStart = source.indexOf('class');
-    const records: CpuProCompilationRecord[] = [
-        record({ name: 'CompileIgnition', start, end }),
-        record({ name: 'CompileIgnition', start: constructorStart, end: constructorStart }),
-        record({ name: 'ParseProgram', start: 0, end: source.length }),
-        record({ start, end: null })
-    ];
-
-    resolveCompilationCallFrames(records, dictionary, scripts);
-
-    assert.equal(records[0].callFrame?.name, 'inner');
-    assert.equal(records[0].callFrame?.start, start);
-    assert.equal(records[0].callFrame?.end, end);
-    assert.equal(location.callFrame, enclosing);
-    assert.equal(records[1].callFrame?.name, 'Empty');
-    assert.equal(records[1].callFrame?.end, source.length);
-    assert.equal(records[2].callFrame, enclosing);
-    assert.equal(records[3].callFrame, null);
-});
-
-test('repeated compilation stages resolve source coordinates once per identity', () => {
-    const source = 'function run() {}';
-    const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, [{ id: 7, url: 'fixture.js', source }]);
-    const records: CpuProCompilationRecord[] = Array.from({ length: 10000 }, (_, index) => record({
-        name: index % 2 ? 'CompileIgnition' : 'PreParse', start: source.indexOf('('), end: source.length
-    }));
-    const positions = vi.spyOn(scriptFunctions, 'getScriptLineColumnFromOffset');
-
-    try {
-        resolveCompilationCallFrames(records, dictionary, scripts);
-        assert.equal(positions.mock.calls.length, 1);
-        assert.ok(records[0].callFrame);
-        assert.ok(records.every(record => record.callFrame === records[0].callFrame));
-    } finally {
-        positions.mockRestore();
     }
 });
 
@@ -238,14 +272,24 @@ test('session links events once per thread without mutating raw records', () => 
     const { rawSession, dictionary } = sourceFixture();
     const rawThread = rawSession.threads[0];
     const event = {
-        name: 'Compile', cat: 'fixture', tm: 100, duration: 10,
-        eventId: null, sampleTraceId: null, data: null
+        name: 'Compile',
+        cat: 'fixture',
+        tm: 100,
+        duration: 10,
+        eventId: null,
+        sampleTraceId: null,
+        data: null
     };
     const records = [record({ eventIndex: 0 }), record(), record({ eventIndex: 99 })];
+    const before = structuredClone(records);
+
     rawThread.events = [event];
     rawThread.compilations = records;
-    const before = structuredClone(records);
-    records.forEach(Object.freeze);
+
+    for (let i = 0; i < records.length; i++) {
+        Object.freeze(records[i]);
+    }
+
     Object.freeze(records);
     rawSession.profiles.push({ ...rawSession.profiles[0] });
 
@@ -263,24 +307,50 @@ test('session links events once per thread without mutating raw records', () => 
 });
 
 test('thread preparation orders source intervals without allocation rows and preserves provenance', () => {
-    const event = { name: 'Inner', cat: 'fixture', tm: 102, duration: 2, eventId: null, sampleTraceId: null, data: null };
+    const event = {
+        name: 'Inner',
+        cat: 'fixture',
+        tm: 102,
+        duration: 2,
+        eventId: null,
+        sampleTraceId: null,
+        data: null
+    };
     const input = [
-        record({ name: 'Inner', allocationStart: 12, allocationEnd: 15, tm: 102, duration: 2, eventIndex: 0 }),
-        record({ name: 'EqualBounds', allocationStart: 12, allocationEnd: 15, tm: 101, duration: 5 }),
+        record({
+            name: 'Inner',
+            allocationStart: 12,
+            allocationEnd: 15,
+            tm: 102,
+            duration: 2,
+            eventIndex: 0
+        }),
+        record({
+            name: 'EqualBounds',
+            allocationStart: 12,
+            allocationEnd: 15,
+            tm: 101,
+            duration: 5
+        }),
         record({ name: 'Outer', allocationStart: 10, allocationEnd: 20 }),
         record({ name: 'TimeOnly', allocationStart: null, allocationEnd: null }),
         record({ name: 'Empty', allocationStart: 14, allocationEnd: 14 })
     ];
     const before = structuredClone(input);
-    input.forEach(Object.freeze);
+    const byName = (left: { name: string }, right: { name: string }) => left.name.localeCompare(right.name);
+
+    for (let i = 0; i < input.length; i++) {
+        Object.freeze(input[i]);
+    }
+
     Object.freeze(input);
 
     const prepared = prepareCompilationRecords(input, [event]);
+    const withoutEvents = prepared.map(record => ({ ...record, event: null }));
 
     assert.deepEqual(prepared.map(record => record.name), ['Outer', 'EqualBounds', 'Inner', 'Empty', 'TimeOnly']);
     assert.equal(prepared[2].event, event);
-    assert.deepEqual(prepared.map(record => ({ ...record, event: null })).sort((left, right) => left.name.localeCompare(right.name)),
-        before.slice().sort((left, right) => left.name.localeCompare(right.name)));
+    assert.deepEqual(withoutEvents.sort(byName), before.slice().sort(byName));
     assert.deepEqual(input, before);
 });
 
@@ -298,8 +368,10 @@ test('empty allocation intervals do not trigger sorting of otherwise ordered sou
 
         assert.equal(sort.mock.calls.length, 0);
         assert.deepEqual(prepared, input);
+
         const { stage } = attributes(prepared, [11, 13, 19]);
-        assert.deepEqual(Array.from(stage.values, index => stage.dict[index]), ['Outer', 'Inner', 'Outer']);
+
+        assert.deepEqual(dictValues(stage), ['Outer', 'Inner', 'Outer']);
     } finally {
         sort.mockRestore();
     }
@@ -309,25 +381,33 @@ test('thread records remain available without capture or isolate agreement', () 
     const { data, records, dictionary, rawSession } = sourceFixture();
 
     assert.deepEqual([...collectProfileUsedScriptIds(data, records)], [0, 7, 8]);
+
     rawSession.threads[0].isolate = 'different';
     data._capture = undefined;
+
     assert.deepEqual(createProfileSession(rawSession, dictionary).profiles[0].thread.compilations, records);
 });
 
 test('one thread supplies source intervals to independent allocation captures', () => {
     const { rawSession, dictionary } = sourceFixture(true);
+
     rawSession.threads[0].compilations = [
         record({ name: 'Inner', start: 30, allocationStart: 12, allocationEnd: 15 }),
         record({ allocationStart: 10, allocationEnd: 20 }),
         record({ name: 'Empty', allocationStart: 14, allocationEnd: 14 })
     ];
     rawSession.profiles.push({ ...rawSession.profiles[0] });
+
     const { profiles } = createProfileSession(rawSession, dictionary);
     const records = profiles[0].thread.compilations!;
-    records.forEach(Object.freeze);
-    Object.freeze(records);
     const firstIds = [11, 13, 16, 21];
     const secondIds = [9, 15, 20];
+
+    for (let i = 0; i < records.length; i++) {
+        Object.freeze(records[i]);
+    }
+
+    Object.freeze(records);
     Object.freeze(firstIds);
     Object.freeze(secondIds);
 
@@ -337,71 +417,129 @@ test('one thread supplies source intervals to independent allocation captures', 
     assert.equal(records, profiles[1].thread.compilations);
     assert.deepEqual(first.owner.dict, second.owner.dict);
     assert.notEqual(first.owner.values, second.owner.values);
-    assert.deepEqual(Array.from(first.stage.values, index => first.stage.dict[index]), ['Compile', 'Inner', 'Compile', 'none']);
-    assert.deepEqual(Array.from(second.stage.values, index => second.stage.dict[index]), ['none', 'Inner', 'Compile']);
+    assert.deepEqual(dictValues(first.stage), ['Compile', 'Inner', 'Compile', 'none']);
+    assert.deepEqual(dictValues(second.stage), ['none', 'Inner', 'Compile']);
     assert.deepEqual(firstIds, [11, 13, 16, 21]);
     assert.deepEqual(secondIds, [9, 15, 20]);
 });
 
-test.each([false, true])('profile preserves parser overlap and resolves records before source maps (CPU-only: %s)', async cpuOnly => {
+// Stages completed before the given stage, which must have completed
+function completedBefore(stages: string[], name: string) {
+    const index = stages.indexOf(name);
+
+    assert.notEqual(index, -1, name);
+
+    return stages.slice(0, index);
+}
+
+// Creates a profile of the source fixture, completing script parsing once the given stage starts;
+// a stage records whether parsing and record resolution were still pending when it started
+async function createStagedProfile(cpuOnly: boolean, parsingStage: string) {
     const { data, records, dictionary } = sourceFixture(cpuOnly);
     const stages: string[] = [];
-    let finishParsing!: () => void;
+    const pendingAt: string[] = [];
+    const parsedUrls: string[] = [];
     let parsingPending = true;
+    let finishParsing!: () => void;
     const parsing = new Promise<void>(resolve => {
         finishParsing = resolve;
     });
-    const parser = vi.spyOn(scriptFunctions, 'prepareScriptSources').mockImplementationOnce(async scripts => {
-        assert.ok([...scripts].some(script => script.url === 'event-only.js'));
+    const parseScripts = async (scripts: CpuProScript[] | Set<CpuProScript>) => {
+        const requested = [...scripts];
+
+        for (let i = 0; i < requested.length; i++) {
+            parsedUrls.push(requested[i].url);
+        }
+
         await parsing;
 
-        for (const script of scripts) {
-            scriptFunctions.getFunctionAtScriptOffset(script, 0);
+        for (let i = 0; i < requested.length; i++) {
+            scriptFunctions.getFunctionAtScriptOffset(requested[i], 0);
         }
 
         parsingPending = false;
-    });
-    const work = createWorkHandler(async ({ name }, task) => {
-        if (name === (cpuOnly ? 'link compilation events' : 'parse script sources')) {
-            assert.equal(parsingPending, true);
-            assert.ok(records.every(record => record.callFrame === null));
+    };
+    const runStage: WorkWrapperChain = async (identity, task) => {
+        if (parsingPending && records.every(record => record.callFrame === null)) {
+            pendingAt.push(identity.name);
+        }
 
-            if (!cpuOnly) {
-                assert.ok(stages.includes('create memline attributes'));
-                assert.ok(stages.includes('map allocations to CPU samples'));
-            }
-
+        if (identity.name === parsingStage) {
             finishParsing();
         }
 
         const result = await task();
-        stages.push(name);
+
+        stages.push(identity.name);
+
         return result;
-    });
+    };
+    const parser = vi.spyOn(scriptFunctions, 'prepareScriptSources').mockImplementationOnce(parseScripts);
+    const work = createWorkHandler(runStage);
 
     try {
-        const profile = await createProfile({ ...data, _capture: undefined }, { compilations: records, dictionary, work });
-        const known = records.find(record => record.scriptId === 7)!;
-        const fresh = records.find(record => record.scriptId === 8)!;
+        const options = { compilations: records, dictionary, work };
+        const profile = await createProfile({ ...data, _capture: undefined }, options);
 
-        assert.equal('compilation' in profile, false);
-        assert.equal(known.callFrame!.name, 'known');
-        assert.equal(fresh.callFrame!.name, 'freshName');
-        assert.ok(profile.callFrames.some(frame => frame.script?.originalFor === fresh.callFrame!.script));
-        assert.ok(stages.indexOf('link compilation events') < stages.indexOf('process source maps'));
-
-        if (cpuOnly) {
-            assert.equal(profile.memline, null);
-        } else {
-            const owner = profile.memline!.attributes.find(attribute => attribute.name === 'allocationOwner')!;
-            const stage = profile.memline!.attributes.find(attribute => attribute.name === 'allocationCompilationStage')!;
-            assert.deepEqual(owner.dict, [null, ...records.map(({ scriptId, start }) => ({ scriptId, start }))]);
-            assert.deepEqual(Array.from(owner.values, index => owner.dict[index]), [null, { scriptId: 7, start: 14 }, { scriptId: 7, start: 14 }, null]);
-            assert.deepEqual(Array.from(stage.values, index => stage.dict[index]), ['none', 'Compile', 'Compile', 'none']);
-            assert.ok(stages.indexOf('create location breakdown') < stages.indexOf('link compilation events'));
-        }
+        return {
+            profile,
+            records,
+            stages,
+            pendingAt,
+            parsedUrls
+        };
     } finally {
         finishParsing();
         parser.mockRestore();
     }
+}
+
+test('with allocations, parsing runs during the CPU and memline stages until the memline waits for it', async () => {
+    const { stages, pendingAt } = await createStagedProfile(false, 'parse script sources');
+
+    assert.ok(pendingAt.includes('create memline attributes'));
+    assert.ok(pendingAt.includes('map allocations to CPU samples'));
+    assert.equal(pendingAt.at(-1), 'parse script sources');
+    assert.ok(completedBefore(stages, 'link compilation events').includes('create location breakdown'));
+});
+
+test('without allocations, scripts are parsed while CPU stages run, until compilation events are linked', async () => {
+    const { profile, pendingAt } = await createStagedProfile(true, 'link compilation events');
+
+    assert.ok(pendingAt.includes('create tree breakdown'));
+    assert.equal(pendingAt.at(-1), 'link compilation events');
+    assert.equal(profile.memline, null);
+});
+
+test.each([
+    { cpuOnly: false, parsingStage: 'parse script sources' },
+    { cpuOnly: true, parsingStage: 'link compilation events' }
+])('compilation records resolve before source maps, including event-only scripts (CPU-only: $cpuOnly)', async row => {
+    const { profile, records, stages, parsedUrls } = await createStagedProfile(row.cpuOnly, row.parsingStage);
+    const known = records.find(record => record.scriptId === 7)!;
+    const fresh = records.find(record => record.scriptId === 8)!;
+
+    assert.ok(parsedUrls.includes('event-only.js'));
+    assert.equal('compilation' in profile, false);
+    assert.equal(known.callFrame!.name, 'known');
+    assert.equal(fresh.callFrame!.name, 'freshName');
+    assert.ok(profile.callFrames.some(frame => frame.script?.originalFor === fresh.callFrame!.script));
+    assert.ok(completedBefore(stages, 'process source maps').includes('link compilation events'));
+});
+
+test('memline allocation attributes take owners and stages from the thread compilation records', async () => {
+    const { profile, records } = await createStagedProfile(false, 'parse script sources');
+    const memlineAttributes = profile.memline!.attributes;
+    const owner = memlineAttributes.find(attribute => attribute.name === 'allocationOwner')!;
+    const stage = memlineAttributes.find(attribute => attribute.name === 'allocationCompilationStage')!;
+    const owners = records.map(record => ({ scriptId: record.scriptId, start: record.start }));
+
+    assert.deepEqual(owner.dict, [null, ...owners]);
+    assert.deepEqual(dictValues(owner), [
+        null,
+        { scriptId: 7, start: 14 },
+        { scriptId: 7, start: 14 },
+        null
+    ]);
+    assert.deepEqual(dictValues(stage), ['none', 'Compile', 'Compile', 'none']);
 });

@@ -13,7 +13,10 @@ import { createScriptFixture } from '../../../test/fixtures/scripts.js';
 function createScriptsMap() {
     const { diagnostics, diagnose } = createDiagnosticsCollector();
 
-    return { diagnostics, ...createScriptFixture('const run = () => 1;', diagnose) };
+    return {
+        diagnostics,
+        ...createScriptFixture('const run = () => 1;', diagnose)
+    };
 }
 
 test('reports used script ids that are not found, except the absent script id 0', () => {
@@ -22,7 +25,12 @@ test('reports used script ids that are not found, except the absent script id 0'
     scripts.getScriptsById([7, 99, 0, '0']);
 
     assert.deepEqual(diagnostics, [
-        { level: 'warn', scope: [], message: 'Script not found for id', details: { scriptId: 99 } }
+        {
+            level: 'warn',
+            scope: [],
+            message: 'Script not found for id',
+            details: { scriptId: 99 }
+        }
     ]);
 });
 
@@ -74,7 +82,11 @@ test('reports a conflicting package name for an origin once and keeps the first 
             level: 'warn',
             scope: [],
             message: 'Package name for origin is already set, new name ignored',
-            details: { origin: 'example.com', packageName: 'First', newPackageName: 'Second' }
+            details: {
+                origin: 'example.com',
+                packageName: 'First',
+                newPackageName: 'Second'
+            }
         }
     ]);
 });
@@ -99,7 +111,7 @@ test('reports function call frame codes of a call frame without a script', () =>
         diagnose
     );
 
-    assert.deepEqual(diagnostics.map(({ message, details }) => [message, details?.name]), [
+    assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.message, diagnostic.details?.name]), [
         ['Script function has no script', 'noScript']
     ]);
 });
@@ -120,12 +132,8 @@ test('reports v8 log codes with unresolvable inlined functions and skips their p
     ], [0, 1, 2], diagnose);
 
     assert.deepEqual(tables.map(table => table !== null), [false, false, true]);
-    assert.deepEqual(diagnostics.map(({ level, message, details }) => [level, message, details]), [
-        ['error', 'Ignoring positions: undefined inlined function', {
-            name: 'broken', func: 0, fns: [null]
-        }],
-        ['error', 'Ignoring positions: unresolved inlined function', {
-            name: 'broken', func: 0, fns: [5]
-        }]
+    assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.level, diagnostic.message, diagnostic.details]), [
+        ['error', 'Ignoring positions: undefined inlined function', { name: 'broken', func: 0, fns: [null] }],
+        ['error', 'Ignoring positions: unresolved inlined function', { name: 'broken', func: 0, fns: [5] }]
     ]);
 });

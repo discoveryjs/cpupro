@@ -56,7 +56,9 @@ class ParseWorker extends EventTarget {
         writeFunctionRanges,
         computeScriptSourceMetrics,
         postMessage: (message: unknown, transfer: ArrayBuffer[]) => {
-            this.dispatchEvent(new MessageEvent('message', { data: structuredClone(message, { transfer }) }));
+            const data = structuredClone(message, { transfer });
+
+            this.dispatchEvent(new MessageEvent('message', { data }));
         }
     }, 'onmessage');
 
@@ -85,14 +87,22 @@ function scriptOfLength(id: number, url: string, length: number) {
     return createScript(id, url, '//'.padEnd(length, 'x'));
 }
 
-// Shortest range with the accepted position, measured from its runtime or source start
-function shortestRange(ranges: FunctionRange[], from: 'callFrameStart' | 'start', accept: (range: FunctionRange) => boolean) {
-    let shortest: FunctionRange | null = null;
+type RangeStart = 'callFrameStart' | 'start';
 
-    for (const range of ranges) {
+// Shortest range with the accepted position, measured from its runtime or source start
+function shortestRange(ranges: FunctionRange[], from: RangeStart, accept: (range: FunctionRange) => boolean) {
+    let shortest: FunctionRange | null = null;
+    let shortestLength = Infinity;
+
+    for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i];
+
         if (accept(range)) {
-            if (shortest === null || range.end - range[from] < shortest.end - shortest[from]) {
+            const length = range.end - range[from];
+
+            if (length < shortestLength) {
                 shortest = range;
+                shortestLength = length;
             }
         }
     }
@@ -138,16 +148,19 @@ test.each([
 ])('agrees with an inclusive runtime-range oracle for %s', source => {
     const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
 
-    for (let offset = 0; offset <= source.length + 1; offset++) {
+    for (let i = 0; i <= source.length + 1; i++) {
+        const startsAt = (range: FunctionRange) => range.callFrameStart === i;
+        const contains = (range: FunctionRange) => range.callFrameStart <= i && i <= range.end;
         // a function starting at the offset takes precedence over one ending there
-        const expected = shortestRange(ranges.ranges, 'callFrameStart', range => range.callFrameStart === offset) ??
-            shortestRange(ranges.ranges, 'callFrameStart', range => range.callFrameStart <= offset && offset <= range.end);
-        const preceding = source.slice(0, offset).split('\n');
+        const expected =
+            shortestRange(ranges.ranges, 'callFrameStart', startsAt) ??
+            shortestRange(ranges.ranges, 'callFrameStart', contains);
+        const preceding = source.slice(0, i).split('\n');
         const line = preceding.length;
-        const column = preceding[line - 1].length + Math.max(0, offset - source.length);
+        const column = preceding[line - 1].length + Math.max(0, i - source.length);
 
-        assert.equal(findFunctionAtPosition(ranges, offset), expected, `offset ${offset}`);
-        assert.equal(findFunctionAtLineColumn(ranges, line, column), expected, `line/column at ${offset}`);
+        assert.equal(findFunctionAtPosition(ranges, i), expected, `offset ${i}`);
+        assert.equal(findFunctionAtLineColumn(ranges, line, column), expected, `line/column at ${i}`);
     }
 });
 
@@ -167,7 +180,13 @@ test('script metadata distinguishes unavailable, empty, invalid and parsed sourc
 
         assert.equal(unavailable.sourceMetrics, null);
         assert.equal(unavailable.functionRanges, null);
-        assert.deepEqual(empty.sourceMetrics, { bytesPerChar: 1, byteLength: 0, nonLatin1CodeUnits: 0, surrogatePairs: 0, selfSize: 0 });
+        assert.deepEqual(empty.sourceMetrics, {
+            bytesPerChar: 1,
+            byteLength: 0,
+            nonLatin1CodeUnits: 0,
+            surrogatePairs: 0,
+            selfSize: 0
+        });
         assert.deepEqual(empty.functionRanges, []);
         assert.equal(invalid.sourceMetrics!.bytesPerChar, 2);
         assert.equal(invalid.sourceMetrics!.selfSize, null);
@@ -180,7 +199,7 @@ test('script metadata distinguishes unavailable, empty, invalid and parsed sourc
     }
 });
 
-test('prepares scripts with source in one worker request, without parsing unavailable, empty or prepared scripts', async () => {
+test('one worker request prepares the scripts with source, skipping unavailable, empty or prepared ones', async () => {
     const { diagnostics, diagnose } = createDiagnosticsCollector();
     const prepared = createScript(1, 'prepared.js', 'function prepared() {}');
 
@@ -194,18 +213,43 @@ test('prepares scripts with source in one worker request, without parsing unavai
 
     await prepareScriptSources([unavailable, prepared, empty, invalid, valid], diagnose);
 
+    const reported = diagnostics.map(diagnostic => [
+        diagnostic.level,
+        diagnostic.message,
+        diagnostic.details?.scriptId,
+        diagnostic.details?.url
+    ]);
+
     assert.equal(parseWorkers.length, 1);
     assert.deepEqual(parseWorkers[0].requests, [['prepared.js'], ['invalid.js', 'valid.js']]);
     assert.equal(prepared.functionRanges, preparedRanges);
     assert.equal(unavailable.functionRanges, null);
     assert.equal(unavailable.sourceMetrics, null);
     assert.deepEqual(empty.functionRanges, []);
-    assert.deepEqual(empty.sourceMetrics, { bytesPerChar: 1, byteLength: 0, nonLatin1CodeUnits: 0, surrogatePairs: 0, selfSize: 0 });
+    assert.deepEqual(empty.sourceMetrics, {
+        bytesPerChar: 1,
+        byteLength: 0,
+        nonLatin1CodeUnits: 0,
+        surrogatePairs: 0,
+        selfSize: 0
+    });
     assert.equal(invalid.functionRanges, null);
-    assert.deepEqual(invalid.sourceMetrics, { bytesPerChar: 2, byteLength: 34, nonLatin1CodeUnits: 1, surrogatePairs: 0, selfSize: null });
+    assert.deepEqual(invalid.sourceMetrics, {
+        bytesPerChar: 2,
+        byteLength: 34,
+        nonLatin1CodeUnits: 1,
+        surrogatePairs: 0,
+        selfSize: null
+    });
     assert.deepEqual(valid.functionRanges, parseScriptSourceRanges(valid.source!, valid.url, true).ranges);
-    assert.deepEqual(valid.sourceMetrics, { bytesPerChar: 1, byteLength: 20, nonLatin1CodeUnits: 0, surrogatePairs: 0, selfSize: 13 });
-    assert.deepEqual(diagnostics.map(({ level, message, details }) => [level, message, details?.scriptId, details?.url]), [
+    assert.deepEqual(valid.sourceMetrics, {
+        bytesPerChar: 1,
+        byteLength: 20,
+        nonLatin1CodeUnits: 0,
+        surrogatePairs: 0,
+        selfSize: 13
+    });
+    assert.deepEqual(reported, [
         ['error', 'Failed to parse script for function ranges', 4, 'invalid.js']
     ]);
 });
@@ -228,18 +272,20 @@ test('runs at most one worker per two hardware threads and queues further reques
     const scripts = [1, 2, 3, 4, 5].map(id => createScript(id, `${id}.js`, `function f${id}() {}`));
     const requests: Promise<void>[] = [];
 
-    for (const script of scripts) {
-        requests.push(prepareScriptSources([script]));
+    for (let i = 0; i < scripts.length; i++) {
+        requests.push(prepareScriptSources([scripts[i]]));
     }
 
     await Promise.all(requests);
 
+    const requested = parseWorkers.flatMap(worker => worker.requests).flat().sort();
+
     // the fifth request waits for a released worker
     assert.equal(parseWorkers.length, 4);
-    assert.deepEqual(parseWorkers.flatMap(worker => worker.requests).flat().sort(), ['1.js', '2.js', '3.js', '4.js', '5.js']);
+    assert.deepEqual(requested, ['1.js', '2.js', '3.js', '4.js', '5.js']);
 
-    for (const script of scripts) {
-        assert.equal(script.functionRanges!.length, 1);
+    for (let i = 0; i < scripts.length; i++) {
+        assert.equal(scripts[i].functionRanges!.length, 1);
     }
 });
 
@@ -250,7 +296,12 @@ test('balances a small payload over idle workers, largest scripts first', async 
         prepareScriptSources([scriptOfLength(3, 'warm-3.js', 10)])
     ]);
 
-    const scripts = [scriptOfLength(4, '10.js', 10), scriptOfLength(5, '40.js', 40), scriptOfLength(6, '20.js', 20), scriptOfLength(7, '30.js', 30)];
+    const scripts = [
+        scriptOfLength(4, '10.js', 10),
+        scriptOfLength(5, '40.js', 40),
+        scriptOfLength(6, '20.js', 20),
+        scriptOfLength(7, '30.js', 30)
+    ];
 
     await prepareScriptSources(scripts);
 
@@ -259,8 +310,8 @@ test('balances a small payload over idle workers, largest scripts first', async 
 
     assert.deepEqual(partition, ['10.js 20.js', '30.js', '40.js']);
 
-    for (const script of scripts) {
-        assert.deepEqual(script.functionRanges, []);
+    for (let i = 0; i < scripts.length; i++) {
+        assert.deepEqual(scripts[i].functionRanges, []);
     }
 });
 
@@ -347,16 +398,19 @@ test.each([
 
     assert.notEqual(script.functionRanges, null);
 
-    for (let offset = 0; offset <= source.length; offset++) {
-        const expected = shortestRange(script.functionRanges!, 'start', range => range.start <= offset && offset < range.end);
-        const preceding = source.slice(0, offset).split('\n');
+    for (let i = 0; i <= source.length; i++) {
+        const contains = (range: FunctionRange) => range.start <= i && i < range.end;
+        const expected = shortestRange(script.functionRanges!, 'start', contains);
+        const preceding = source.slice(0, i).split('\n');
+        const line = preceding.length - 1;
+        const column = preceding[line].length;
 
-        assert.equal(getFunctionAtSourceLineColumn(script, preceding.length - 1, preceding.at(-1)!.length), expected, `offset ${offset}`);
+        assert.equal(getFunctionAtSourceLineColumn(script, line, column), expected, `offset ${i}`);
     }
 });
 
 test('limits source-range refinement to nearby index entries', async () => {
-    const source = Array.from({ length: 1_000 }, (_, index) => `function fn${index}() {}`).join('\n');
+    const source = Array.from({ length: 1_000 }, (_, i) => `function fn${i}() {}`).join('\n');
     const script = createScript(1, 'fixture.js', source);
 
     await prepareScriptSources([script]);
@@ -364,7 +418,8 @@ test('limits source-range refinement to nearby index entries', async () => {
     const target = script.functionRanges![500];
     let startReads = 0;
 
-    for (const range of script.functionRanges!) {
+    for (let i = 0; i < script.functionRanges!.length; i++) {
+        const range = script.functionRanges![i];
         const start = range.start;
 
         Object.defineProperty(range, 'start', {
@@ -384,10 +439,10 @@ test.each([
     { offset: 8, position: { line: 1, column: 2 } },
     { offset: 12, position: { line: 1, column: 6 } },
     { offset: -1, position: null }
-])('converts offset $offset of a script to a zero-based line and column', ({ offset, position }) => {
+])('converts offset $offset of a script to a zero-based line and column', row => {
     const script = createScript(1, 'fixture.js', 'first\nsecond');
 
-    assert.deepEqual(getScriptLineColumnFromOffset(script, offset), position);
+    assert.deepEqual(getScriptLineColumnFromOffset(script, row.offset), row.position);
 });
 
 test('a script without source has no line and column positions', () => {
@@ -401,16 +456,36 @@ test('a script without source has no line and column positions', () => {
 });
 
 test.each([
-    { position: 'the call frame of first', line: 0, column: 14, end: 19 },
-    { position: 'the class Second', line: 1, column: 0, end: 48 },
-    { position: 'the call frame of method', line: 1, column: 21, end: 46 },
-    { position: 'the declaration prefix of first', line: 0, column: 0, end: -1 }
-])('finds the end of a function by the V8 position of $position', async ({ line, column, end }) => {
+    {
+        position: 'the call frame of first',
+        line: 0,
+        column: 14,
+        end: 19
+    },
+    {
+        position: 'the class Second',
+        line: 1,
+        column: 0,
+        end: 48
+    },
+    {
+        position: 'the call frame of method',
+        line: 1,
+        column: 21,
+        end: 46
+    },
+    {
+        position: 'the declaration prefix of first',
+        line: 0,
+        column: 0,
+        end: -1
+    }
+])('finds the end of a function by the V8 position of $position', async row => {
     const script = createScript(1, 'fixture.js', 'function first() {}\nclass Second { method() {} }');
 
     await prepareScriptSources([script]);
 
-    assert.equal(getFunctionEndFromScriptLineColumn(script, line, column), end);
+    assert.equal(getFunctionEndFromScriptLineColumn(script, row.line, row.column), row.end);
 });
 
 test('a function end is unknown without a parsed source', () => {
@@ -422,12 +497,12 @@ test.each([
     { source: null, errors: 0 },
     { source: '', errors: 0 },
     { source: 'function broken(', errors: 1 }
-])('keeps the existing fallback when source is $source', ({ source, errors }) => {
+])('keeps the existing fallback when source is $source', row => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     try {
-        const script = createScript(1, 'fixture.js', source);
+        const script = createScript(1, 'fixture.js', row.source);
         const dictionary = new Dictionary();
 
         assert.equal(isScriptTopLevelOffset(script, 5), false);
@@ -438,7 +513,7 @@ test.each([
         assert.equal(frame.column, 5);
         assert.equal(dictionary.resolveLocationCallFrame(script, 5, 0, 5), frame);
         // a failed parse is reported once for all lookups
-        assert.equal(error.mock.calls.length, errors);
+        assert.equal(error.mock.calls.length, row.errors);
     } finally {
         error.mockRestore();
         warn.mockRestore();
@@ -446,7 +521,9 @@ test.each([
 });
 
 test('classifies only offsets outside of function runtime ranges as top-level', async () => {
-    const source = 'globalThis.value = 1; class Example { field = 2; static other = 3; method() { return 4; } } function known() { return 5; } globalThis.done = 6;';
+    const source =
+        'globalThis.value = 1; class Example { field = 2; static other = 3; method() { return 4; } } ' +
+        'function known() { return 5; } globalThis.done = 6;';
     const { dictionary, script } = createScriptFixture(source);
 
     await prepareScriptSources([script]);
@@ -458,7 +535,9 @@ test('classifies only offsets outside of function runtime ranges as top-level', 
         assert.notEqual(dictionary.resolveLocationCallFrame(script, offset, 0, offset).kind, 'script', text);
     }
 
-    for (const range of script.functionRanges!) {
+    for (let i = 0; i < script.functionRanges!.length; i++) {
+        const range = script.functionRanges![i];
+
         assert.equal(isScriptTopLevelOffset(script, range.callFrameStart), false);
         assert.equal(isScriptTopLevelOffset(script, range.end), false);
     }
@@ -477,11 +556,15 @@ test.each([
     { suffix: '', order: [1, 0] },
     { suffix: '\nfunction known() { return 3; }', order: [0, 1] },
     { suffix: '\nfunction known() { return 3; }', order: [1, 0] }
-])('uses one script frame for top-level locations with $suffix, resolved in order $order', async ({ suffix, order }) => {
-    const source = 'globalThis.first = 1;\nglobalThis.second = 2;' + suffix;
+])('uses one script frame for top-level locations with $suffix, resolved in order $order', async row => {
+    const source = 'globalThis.first = 1;\nglobalThis.second = 2;' + row.suffix;
     const dictionary = new Dictionary();
     const scripts = new ProfileScriptsMap(dictionary, [{
-        id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
+        id: 1,
+        url: 'fixture.js',
+        source,
+        lineOffset: 6,
+        columnOffset: 225
     }]);
     const script = scripts.get(1)!;
     // positions of 1 and 2
@@ -493,7 +576,7 @@ test.each([
 
     await prepareScriptSources([script]);
 
-    for (const index of order) {
+    for (const index of row.order) {
         const { offset, line, column } = positions[index];
         const location = dictionary.resolveLocation(null, script, offset);
 
@@ -510,7 +593,10 @@ test.each([
     assert.equal(locations[0].callFrame, frame);
     assert.equal(locations[1].callFrame, frame);
     assert.equal(dictionary.resolveLocationCallFrame(script, 0, 0, 0), frame);
-    assert.deepEqual([frame.name, frame.start, frame.end, frame.line, frame.column], ['(script)', 0, source.length, 0, 0]);
+    assert.deepEqual(
+        [frame.name, frame.start, frame.end, frame.line, frame.column],
+        ['(script)', 0, source.length, 0, 0]
+    );
     assert.equal(frame.location.scriptOffset, 0);
     assert.equal(frame.location.line, 0);
     assert.equal(frame.location.column, 0);
@@ -524,43 +610,58 @@ test('preserves a known frame before considering a parsed top-level fallback', a
     await prepareScriptSources([script]);
 
     const known = dictionary.resolveCallFrame({
-        scriptId: 7, url: 'fixture.js', functionName: 'provided', lineNumber: 0, columnNumber: 5, start: 5, end: source.length
+        scriptId: 7,
+        url: 'fixture.js',
+        functionName: 'provided',
+        lineNumber: 0,
+        columnNumber: 5,
+        start: 5,
+        end: source.length
     }, scripts);
 
     assert.equal(dictionary.resolveLocation(null, script, source.indexOf('1')).callFrame, known);
     assert.equal(script.callFrames.length, 1);
 });
 
-test.each([false, true])('resolves a declaration prefix to script and its runtime start to the function, script first: %s', async scriptFirst => {
-    const source = 'function first() { return 1; }';
-    const dictionary = new Dictionary();
-    const script = createScript(1, 'fixture.js', source);
+test.each([false, true])(
+    'a declaration prefix resolves to the script, its runtime start to the function (script first: %s)',
+    async scriptFirst => {
+        const source = 'function first() { return 1; }';
+        const dictionary = new Dictionary();
+        const script = createScript(1, 'fixture.js', source);
 
-    script.lineOffset = 4;
-    script.columnOffset = 50;
-    await prepareScriptSources([script]);
+        script.lineOffset = 4;
+        script.columnOffset = 50;
+        await prepareScriptSources([script]);
 
-    if (scriptFirst) {
-        dictionary.resolveScriptCallFrameIndex(script);
+        if (scriptFirst) {
+            dictionary.resolveScriptCallFrameIndex(script);
+        }
+
+        const start = source.indexOf('(');
+        const first = dictionary.resolveLocationCallFrame(script, start, 0, start);
+        const atOrigin = dictionary.resolveLocationCallFrame(script, 0, 0, 0);
+        const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+        const count = dictionary.callFrames.length;
+        const identity = Object.freeze({
+            script,
+            start: 0,
+            end: source.length,
+            line: 0,
+            column: 0
+        });
+
+        assert.equal(first.name, 'first');
+        assert.notEqual(first, scriptFrame);
+        assert.equal(atOrigin, scriptFrame);
+        assert.equal(matchCallFrameIdentity(atOrigin, identity), 'exact');
+        assert.equal(dictionary.resolveLocationCallFrame(script, start - 1, 0, start - 1), scriptFrame);
+        assert.equal(dictionary.resolveLocationCallFrame(script, start, 0, start), first);
+        assert.equal(dictionary.resolveLocation(null, script, 0).callFrame, scriptFrame);
+        assert.equal(dictionary.resolveLocation(null, script, start).callFrame, first);
+        assert.equal(dictionary.callFrames.length, count);
     }
-
-    const start = source.indexOf('(');
-    const first = dictionary.resolveLocationCallFrame(script, start, 0, start);
-    const atOrigin = dictionary.resolveLocationCallFrame(script, 0, 0, 0);
-    const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
-    const count = dictionary.callFrames.length;
-    const identity = Object.freeze({ script, start: 0, end: source.length, line: 0, column: 0 });
-
-    assert.equal(first.name, 'first');
-    assert.notEqual(first, scriptFrame);
-    assert.equal(atOrigin, scriptFrame);
-    assert.equal(matchCallFrameIdentity(atOrigin, identity), 'exact');
-    assert.equal(dictionary.resolveLocationCallFrame(script, start - 1, 0, start - 1), scriptFrame);
-    assert.equal(dictionary.resolveLocationCallFrame(script, start, 0, start), first);
-    assert.equal(dictionary.resolveLocation(null, script, 0).callFrame, scriptFrame);
-    assert.equal(dictionary.resolveLocation(null, script, start).callFrame, first);
-    assert.equal(dictionary.callFrames.length, count);
-});
+);
 
 test.each([
     'class Base {}',
@@ -581,8 +682,22 @@ test.each([
     const line = preceding.length - 1;
     const column = preceding[line].length;
     const frame = dictionary.resolveLocationCallFrame(script, start, line, column);
-    const identity = Object.freeze({ script, start, end: start, line, column });
-    const before = [frame.start, frame.end, frame.line, frame.column, frame.location, dictionary.callFrames.length];
+    const identity = Object.freeze({
+        script,
+        start,
+        end: start,
+        line,
+        column
+    });
+    const frameState = () => [
+        frame.start,
+        frame.end,
+        frame.line,
+        frame.column,
+        frame.location,
+        dictionary.callFrames.length
+    ];
+    const before = frameState();
 
     assert.equal(matchCallFrameIdentity(frame, identity), 'default-constructor');
     assert.equal(matchCallFrameIdentity(frame, { ...identity, end: frame.end }), 'exact');
@@ -590,7 +705,7 @@ test.each([
     assert.equal(matchCallFrameIdentity(frame, { ...identity, column: column + 1 }), null);
     assert.equal(matchCallFrameIdentity(frame, { ...identity, line: line + 1 }), null);
     assert.equal(matchCallFrameIdentity(frame, { ...identity, script: createScript(1, 'fixture.js', source) }), null);
-    assert.deepEqual([frame.start, frame.end, frame.line, frame.column, frame.location, dictionary.callFrames.length], before);
+    assert.deepEqual(frameState(), before);
     assert.ok(frame.end > start);
     assert.equal(identity.end, start);
 });
@@ -606,24 +721,41 @@ test.each([
 
     await prepareScriptSources([script]);
 
-    for (const range of script.functionRanges!) {
+    for (let i = 0; i < script.functionRanges!.length; i++) {
+        const range = script.functionRanges![i];
         const start = range.callFrameStart;
         const line = range.callFrameStartLine - 1;
         const column = range.callFrameStartColumn;
         const frame = dictionary.resolveLocationCallFrame(script, start, line, column);
+        const identity = {
+            script,
+            start,
+            end: start,
+            line,
+            column
+        };
 
-        assert.equal(matchCallFrameIdentity(frame, { script, start, end: start, line, column }), null);
+        assert.equal(matchCallFrameIdentity(frame, identity), null);
     }
 });
 
 test.each([
-    { source: null, diagnostics: [] },
-    { source: '', diagnostics: [] },
-    { source: 'class Broken {', diagnostics: ['Failed to parse script for function ranges'] }
-])('requires parsed class evidence for a different end when source is $source', async ({ source, diagnostics }) => {
+    {
+        source: null,
+        diagnostics: []
+    },
+    {
+        source: '',
+        diagnostics: []
+    },
+    {
+        source: 'class Broken {',
+        diagnostics: ['Failed to parse script for function ranges']
+    }
+])('requires parsed class evidence for a different end when source is $source', async row => {
     const collector = createDiagnosticsCollector();
     const dictionary = new Dictionary();
-    const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source: source! }]);
+    const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source: row.source! }]);
     const script = scripts.get(1)!;
 
     await prepareScriptSources([script], collector.diagnose);
@@ -637,13 +769,19 @@ test.each([
         start: 0,
         end: 20
     }, scripts);
-    const identity = { script, start: 0, end: 0, line: 0, column: 0 };
+    const identity = {
+        script,
+        start: 0,
+        end: 0,
+        line: 0,
+        column: 0
+    };
 
     assert.equal(matchCallFrameIdentity(frame, identity), null);
     assert.equal(matchCallFrameIdentity(frame, { ...identity, end: 20 }), 'exact');
     assert.equal(frame.end, 20);
     assert.equal(script.callFrames.length, 1);
-    assert.deepEqual(collector.diagnostics.map(diagnostic => diagnostic.message), diagnostics);
+    assert.deepEqual(collector.diagnostics.map(diagnostic => diagnostic.message), row.diagnostics);
 });
 
 test('rejects a script frame and a truncated class frame at the constructor position', async () => {
@@ -652,10 +790,22 @@ test('rejects a script frame and a truncated class frame at the constructor posi
 
     await prepareScriptSources([script]);
 
-    const identity = { script, start: 0, end: 0, line: 0, column: 0 };
+    const identity = {
+        script,
+        start: 0,
+        end: 0,
+        line: 0,
+        column: 0
+    };
     const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
     const truncated = dictionary.resolveCallFrame({
-        scriptId: 7, url: script.url, functionName: 'Base', lineNumber: 0, columnNumber: 0, start: 0, end: source.length - 1
+        scriptId: 7,
+        url: script.url,
+        functionName: 'Base',
+        lineNumber: 0,
+        columnNumber: 0,
+        start: 0,
+        end: source.length - 1
     }, scripts);
 
     assert.equal(matchCallFrameIdentity(scriptFrame, identity), null);
@@ -667,19 +817,40 @@ test('compares local identity coordinates and rejects unknown or malformed posit
     const source = 'class Base {}';
     const dictionary = new Dictionary();
     const scripts = new ProfileScriptsMap(dictionary, [{
-        id: 1, url: 'fixture.js', source, lineOffset: 6, columnOffset: 225
+        id: 1,
+        url: 'fixture.js',
+        source,
+        lineOffset: 6,
+        columnOffset: 225
     }]);
     const script = scripts.get(1)!;
 
     await prepareScriptSources([script]);
 
-    const frame = dictionary.callFrames[dictionary.resolveCallFrameIndex({
-        scriptId: 1, url: script.url, functionName: 'Base', lineNumber: 6, columnNumber: 225, start: 0, end: source.length
-    }, scripts, true)];
-    const identity = { script, start: 0, end: 0, line: 0, column: 0 };
+    const frameIndex = dictionary.resolveCallFrameIndex({
+        scriptId: 1,
+        url: script.url,
+        functionName: 'Base',
+        lineNumber: 6,
+        columnNumber: 225,
+        start: 0,
+        end: source.length
+    }, scripts, true);
+    const frame = dictionary.callFrames[frameIndex];
+    const identity = {
+        script,
+        start: 0,
+        end: 0,
+        line: 0,
+        column: 0
+    };
 
     assert.equal(matchCallFrameIdentity(frame, identity), 'default-constructor');
-    assert.equal(matchCallFrameIdentity(frame, { ...identity, line: 6, column: 225 }), null);
+    assert.equal(matchCallFrameIdentity(frame, {
+        ...identity,
+        line: 6,
+        column: 225
+    }), null);
 
     for (const key of ['start', 'end', 'line', 'column'] as const) {
         for (const value of [-1, 0.5, NaN, Infinity]) {
@@ -691,23 +862,72 @@ test('compares local identity coordinates and rejects unknown or malformed posit
 });
 
 test.each([
-    { name: 'all equal', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 0, column: 5 }, match: 'exact' },
-    { name: 'another start', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 6, end: 10, line: 0, column: 5 }, match: null },
-    { name: 'another line', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 1, column: 5 }, match: null },
-    { name: 'another column', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 0, column: 6 }, match: null },
-    { name: 'unknown start', frame: { lineNumber: 0, columnNumber: 5, start: -1, end: -1 }, identity: { start: -1, end: -1, line: 0, column: 5 }, match: null },
-    { name: 'unknown end', frame: { lineNumber: 0, columnNumber: 5, start: 5, end: -1 }, identity: { start: 5, end: -1, line: 0, column: 5 }, match: null },
-    { name: 'unknown line', frame: { lineNumber: -1, columnNumber: 5, start: 5, end: 10 }, identity: { start: 5, end: 10, line: -1, column: 5 }, match: null },
-    { name: 'unknown column', frame: { lineNumber: 0, columnNumber: -1, start: 5, end: 10 }, identity: { start: 5, end: 10, line: 0, column: -1 }, match: null }
-])('an exact identity needs every coordinate known and equal: $name', ({ frame: position, identity, match }) => {
+    {
+        name: 'all equal',
+        frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 },
+        identity: { start: 5, end: 10, line: 0, column: 5 },
+        match: 'exact'
+    },
+    {
+        name: 'another start',
+        frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 },
+        identity: { start: 6, end: 10, line: 0, column: 5 },
+        match: null
+    },
+    {
+        name: 'another line',
+        frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 },
+        identity: { start: 5, end: 10, line: 1, column: 5 },
+        match: null
+    },
+    {
+        name: 'another column',
+        frame: { lineNumber: 0, columnNumber: 5, start: 5, end: 10 },
+        identity: { start: 5, end: 10, line: 0, column: 6 },
+        match: null
+    },
+    {
+        name: 'unknown start',
+        frame: { lineNumber: 0, columnNumber: 5, start: -1, end: -1 },
+        identity: { start: -1, end: -1, line: 0, column: 5 },
+        match: null
+    },
+    {
+        name: 'unknown end',
+        frame: { lineNumber: 0, columnNumber: 5, start: 5, end: -1 },
+        identity: { start: 5, end: -1, line: 0, column: 5 },
+        match: null
+    },
+    {
+        name: 'unknown line',
+        frame: { lineNumber: -1, columnNumber: 5, start: 5, end: 10 },
+        identity: { start: 5, end: 10, line: -1, column: 5 },
+        match: null
+    },
+    {
+        name: 'unknown column',
+        frame: { lineNumber: 0, columnNumber: -1, start: 5, end: 10 },
+        identity: { start: 5, end: 10, line: 0, column: -1 },
+        match: null
+    }
+])('an exact identity needs every coordinate known and equal: $name', row => {
+    const position = row.frame;
     const dictionary = new Dictionary();
     const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'missing.js', source: null! }]);
     const script: CpuProScript = scripts.get(1)!;
-    const frame = dictionary.resolveCallFrame({ scriptId: 1, url: script.url, functionName: 'known', ...position }, scripts);
+    const frame = dictionary.resolveCallFrame({
+        scriptId: 1,
+        url: script.url,
+        functionName: 'known',
+        ...position
+    }, scripts);
 
     // the frame keeps the coordinates as given, unknown ones included
-    assert.deepEqual([frame.start, frame.end, frame.line, frame.column], [position.start, position.end, position.lineNumber, position.columnNumber]);
-    assert.equal(matchCallFrameIdentity(frame, { script, ...identity }), match);
+    assert.deepEqual(
+        [frame.start, frame.end, frame.line, frame.column],
+        [position.start, position.end, position.lineNumber, position.columnNumber]
+    );
+    assert.equal(matchCallFrameIdentity(frame, { script, ...row.identity }), row.match);
 });
 
 test('keeps static initializer identity unresolved without changing class location lookup', async () => {
@@ -719,7 +939,13 @@ test('keeps static initializer identity unresolved without changing class locati
 
     const start = source.indexOf('static field');
     const end = source.indexOf('; }');
-    const identity = { script, start, end, line: 0, column: start };
+    const identity = {
+        script,
+        start,
+        end,
+        line: 0,
+        column: start
+    };
     const locationFrame = dictionary.resolveLocationCallFrame(script, start, 0, start);
     const count = dictionary.callFrames.length;
 
