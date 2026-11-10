@@ -138,28 +138,43 @@ export function findFunctionAtPosition(functionRanges: FunctionRanges, position:
 //     return candidate;
 // }
 
+function comparePositions(lineA: number, columnA: number, lineB: number, columnB: number) {
+    return lineA !== lineB ? lineA - lineB : columnA - columnB;
+}
+
+// The innermost function containing a position, its start and end included;
+// positions are 1-based lines and 0-based columns
 export function findFunctionAtLineColumn(functionRanges: FunctionRanges, line: number, column: number) {
-    const ranges = functionRanges.ranges;
-    let candidate: FunctionRange | null = null;
+    const { ranges, parents } = functionRanges;
+    let left = 0;
+    let right = ranges.length;
 
-    for (let i = 0; i < ranges.length; i++) {
-        const range = ranges[i];
-        const startsBefore = range.callFrameStartLine < line || (range.callFrameStartLine === line && range.callFrameStartColumn <= column);
-        const endsAfter = range.endLine > line || (range.endLine === line && range.endColumn >= column);
-        const startsAtPosition = range.callFrameStartLine === line && range.callFrameStartColumn === column;
+    // the last range starting at or before the position
+    while (left < right) {
+        const middle = (left + right) >>> 1;
+        const range = ranges[middle];
 
-        if (startsBefore && endsAfter) {
-            if (candidate === null ||
-                (startsAtPosition && candidate.callFrameStart !== range.callFrameStart) ||
-                range.end - range.callFrameStart < candidate.end - candidate.callFrameStart) {
-                candidate = range;
-            }
-        } else if (!startsBefore) {
-            break;
+        if (comparePositions(range.callFrameStartLine, range.callFrameStartColumn, line, column) <= 0) {
+            left = middle + 1;
+        } else {
+            right = middle;
         }
     }
 
-    return candidate;
+    // ranges nest, so a range containing the position is the last range starting before it or one of its enclosing ranges
+    let index = left - 1;
+
+    while (index !== -1) {
+        const range = ranges[index];
+
+        if (comparePositions(range.endLine, range.endColumn, line, column) >= 0) {
+            return range;
+        }
+
+        index = parents[index];
+    }
+
+    return null;
 }
 
 export function getFunctionAtScriptOffset(script: CpuProScript | null, offset: number) {

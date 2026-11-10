@@ -208,7 +208,7 @@ test('restores every function range type in place after a transfer', () => {
     }
 
     const message = structuredClone({ ranges: encoded as FunctionRanges<number>, types }, {
-        transfer: [encoded.starts.buffer, encoded.indexes.buffer]
+        transfer: [encoded.starts.buffer, encoded.indexes.buffer, encoded.parents.buffer]
     });
     const received = message.ranges;
     const { ranges, starts, indexes } = received;

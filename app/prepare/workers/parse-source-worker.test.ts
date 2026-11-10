@@ -17,7 +17,7 @@ test('posts one message with type-encoded function ranges and source metrics of 
             const buffers: ArrayBuffer[] = [];
 
             for (const script of message.scripts) {
-                buffers.push(script.ranges.starts.buffer, script.ranges.indexes.buffer);
+                buffers.push(script.ranges.starts.buffer, script.ranges.indexes.buffer, script.ranges.parents.buffer);
             }
 
             // a clone brings the message into this realm, as a worker message does
@@ -37,7 +37,7 @@ test('posts one message with type-encoded function ranges and source metrics of 
     assert.deepEqual(outer.ranges.ranges.map(range => range.type), [0, 1]);
 
     // index buffers of every script are transferred rather than copied
-    assert.equal(transfer.length, 8);
+    assert.equal(transfer.length, 12);
 
     for (let i = 0; i < buffers.length; i++) {
         assert.equal(transfer[i], buffers[i]);

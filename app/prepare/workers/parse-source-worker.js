@@ -31,7 +31,8 @@ onmessage = async function(event) {
         if (functionRanges.starts.buffer) {
             transferable.push(
                 functionRanges.starts.buffer,
-                functionRanges.indexes.buffer
+                functionRanges.indexes.buffer,
+                functionRanges.parents.buffer
             );
         }
     }

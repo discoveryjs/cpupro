@@ -6,6 +6,7 @@ export type FunctionRanges<Type = string> = {
     ranges: FunctionRange<Type>[];
     starts: Uint32Array<ArrayBuffer>;
     indexes: Int32Array<ArrayBuffer>;
+    parents: Int32Array<ArrayBuffer>; // per range: the nearest enclosing range, -1 for a top-level range
 };
 export type FunctionRange<Type = string> = {
     type: Type;
@@ -88,7 +89,8 @@ export function parseScriptSourceRanges(
         parsed: false,
         ranges: [],
         starts: new Uint32Array(),
-        indexes: new Int32Array()
+        indexes: new Int32Array(),
+        parents: new Int32Array()
     };
 
     try {
@@ -287,6 +289,7 @@ function getFunctionName(node: ASTNode, parent: ASTNode | null): string {
 function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
     const rangeStarts: number[] = [0];
     const rangeIndexes: number[] = [-1];
+    const parents = new Int32Array(ranges.length);
     const stack: number[] = [-1];
     let lastPos = 0;
 
@@ -320,6 +323,8 @@ function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
             rangeIndexes[rangeIndexes.length - 1] = i;
         }
 
+        // ranges ending before this one starts are popped, so the stack holds its enclosing ranges
+        parents[i] = stack[stack.length - 1];
         stack.push(i);
     }
 
@@ -340,6 +345,7 @@ function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
 
     return {
         starts: new Uint32Array(rangeStarts),
-        indexes: new Int32Array(rangeIndexes)
+        indexes: new Int32Array(rangeIndexes),
+        parents
     };
 }

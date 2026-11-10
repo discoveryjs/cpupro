@@ -119,6 +119,7 @@ test.each([
     '() => 1',
     'function first(){}function second(){ return 1; }',
     'function outer(){ function inner(){} return 1; }',
+    'function outer(){ function middle(){ function inner(){} } return 1; }',
     'const outer = () => () => 1;',
     'const outer = () => () => 1; function after() {}',
     'class Example { first(){} second(){ return 1; } }',
