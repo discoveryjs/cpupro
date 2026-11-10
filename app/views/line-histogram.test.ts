@@ -8,15 +8,32 @@ import usage from './line-histogram.usage.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
+type Range = { start: number; end: number };
+type Line = Awaited<ReturnType<typeof createLineFixture>>['line'];
 type Render = (element: unknown, props: unknown, data: unknown, context: unknown) => Promise<void>;
+type HistogramConfig = {
+    bins: unknown;
+    range: Range;
+    viewport: Range;
+    onInit: undefined | ((api: { setViewport(viewport: Range): void }) => () => void);
+};
 
-function renderHistogram(props = {}, context = {}) {
+// A line whose extent is the range from start to end
+async function createLine(start: number, end: number) {
+    const { line } = await createLineFixture({ origin: start, values: new Uint32Array([end - start]) });
+
+    return line;
+}
+
+function renderHistogram(props: object, context: object = {}) {
     let render: Render = () => assert.fail('View was not registered');
+
     evaluateModule(new URL('./line-histogram.js', import.meta.url), {
         resolveScopeProfileLine,
         resolveScopeViewport,
         lineExtent,
-        lineZoom, subscribeLineZoom,
+        lineZoom,
+        subscribeLineZoom,
         validateRange,
         usage,
         setRangeCoverage,
@@ -24,156 +41,221 @@ function renderHistogram(props = {}, context = {}) {
             render = callback;
         } } }
     });
-    const styles = new Map();
-    const bins = new Float64Array([0, 2, 4]);
+
+    const data = new Float64Array([0, 2, 4]);
+    const classList = new Set<string>();
+    const styles = new Map<string, number>();
+    const setProperty = (name: string, value: number) => styles.set(name, value);
+    const element = { classList, style: { setProperty } };
     const calls: unknown[][] = [];
-    const element = { classList: new Set(), style: { setProperty: (name: string, value: number) => styles.set(name, value) } };
     const completion = Promise.resolve();
     const result = render.call({ render(...args: unknown[]) {
         calls.push(args);
         return completion;
-    } },
-    element, props, bins, context);
-    assert.equal(result, completion);
-    assert.equal(calls.length, 1);
-    const child = calls[0][1] as {
-        view: string; bins: unknown; range: unknown; viewport: unknown; presence: unknown; peaks: unknown; color: unknown;
-        onInit: false | undefined | ((api: { setViewport(viewport: unknown): void }) => () => void);
+    } }, element, props, data, context);
+
+    return {
+        element,
+        data,
+        classList,
+        styles,
+        calls,
+        result,
+        completion,
+        child: calls[0][1] as HistogramConfig
     };
-    assert.equal(child.view, 'bins-histogram');
-    return { styles, child, bins, calls };
 }
 
-test('renders viewport bins without rebucketing or mutating selection', async () => {
-    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
-    line.range.setRange(10, 20);
-    const requested = line.range.selection.ranges;
-    const presence = new Uint8Array([1, 1, 1]);
-    const { styles, child, bins } = renderHistogram({ presence, peaks: true, color: '#123', height: 30 }, {
-        scopeLine: line, scopeViewport: { start: 100, end: 200 }
-    });
-    assert.equal(styles.get('--range-pad-start'), 0.2);
-    assert.ok(Math.abs(styles.get('--range-pad-end') - 0.2) < 1e-12);
-    assert.equal(child.bins, bins);
-    assert.equal(child.presence, presence);
-    assert.equal(child.peaks, true);
-    assert.equal(child.color, '#123');
-    assert.deepEqual(child.range, { start: 100, end: 200 });
-    assert.equal(child.viewport, child.range);
-    assert.equal(child.onInit, undefined);
-    assert.equal(line.range.selection.ranges, requested);
-});
+// Shares of the displayed range before and after the extent, [start, end]
+function coverage(styles: Map<string, number>) {
+    return [styles.get('--range-pad-start'), styles.get('--range-pad-end')];
+}
 
-test('uses an explicit line or resolves the line from context', async () => {
-    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
-    const { line: other } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
-    const context = {
-        primaryProfile: other.profile, primaryLineType: 'timeline',
-        scopeLine: other, scopeBreakdown: other.breakdowns[0], scopeViewport: { start: 100, end: 200 }
-    };
-    assert.equal(renderHistogram({ line }, context).styles.get('--range-pad-start'), 0.2);
-    assert.equal(renderHistogram({ line: 'timeline' }, {
-        ...context, scopeProfile: line.profile
-    }).styles.get('--range-pad-start'), 0.2);
-
-    for (const scope of [{ scopeLine: line }, {
-        primaryProfile: line.profile, primaryLineType: 'timeline'
-    }, {
-        primaryProfile: other.profile, scopeProfile: line.profile, primaryLineType: 'timeline'
-    }]) {
-        assert.equal(renderHistogram({}, { ...scope, scopeViewport: context.scopeViewport }).styles.get('--range-pad-start'), 0.2);
-    }
-});
-
-
-test('explicit viewport overrides context and local viewport keeps the full width', async () => {
-    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
-    for (const props of [{}, { viewport: { start: 120, end: 180 } }]) {
-        const { styles } = renderHistogram(props, { scopeLine: line });
-        assert.equal(styles.get('--range-pad-start'), 0);
-        assert.equal(styles.get('--range-pad-end'), 0);
-    }
-    const { styles } = renderHistogram({ viewport: { start: 120, end: 180 } }, {
-        scopeLine: line, scopeViewport: { start: 100, end: 200 }
-    });
-    assert.equal(styles.get('--range-pad-start'), 0);
-    assert.equal(styles.get('--range-pad-end'), 0);
-});
-
-test('uses the context line for the default viewport independently of the displayed extent', async () => {
-    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
-    const { line: scopeLine } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
-    const { styles } = renderHistogram({ line }, { scopeLine });
-
-    assert.equal(styles.get('--range-pad-start'), 0.2);
-    assert.equal(styles.get('--range-pad-end'), 0.2);
-});
-
-test('accepts explicit coverage without resolving a line', () => {
+test('renders the bins over the viewport with display props unchanged', () => {
     const viewport = { start: 100, end: 200 };
-    const extent = { start: 110, end: 190 };
-    const { styles, child, bins } = renderHistogram({ extent }, { scopeViewport: viewport });
+    const context = { scopeViewport: viewport };
+    const props = {
+        extent: { start: 120, end: 180 },
+        presence: new Uint8Array([1, 1, 1]),
+        peaks: true,
+        color: '#123',
+        height: 30,
+        max: 8,
+        scaleBins: [new Float64Array([1, 2, 3])],
+        binsMax: true,
+        scale: 'log'
+    };
+    const { element, data, calls, result, completion, child } = renderHistogram(props, context);
 
-    assert.equal(styles.get('--range-pad-start'), 0.1);
-    assert.equal(styles.get('--range-pad-end'), 0.1);
+    assert.equal(result, completion);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], element);
+    assert.equal(calls[0][2], data);
+    assert.equal(calls[0][3], context);
+    assert.equal(child.bins, data);
+    assert.equal(child.range, viewport);
+    assert.equal(child.viewport, viewport);
+    assert.deepEqual({ ...child }, {
+        view: 'bins-histogram',
+        bins: data,
+        range: viewport,
+        viewport,
+        presence: props.presence,
+        peaks: true,
+        color: '#123',
+        height: 30,
+        max: 8,
+        scaleBins: props.scaleBins,
+        binsMax: true,
+        scale: 'log',
+        onInit: undefined
+    });
+});
+
+test('takes bins from the bins prop over the data', () => {
+    const bins = new Float64Array([1, 2]);
+    const { child } = renderHistogram({ bins, extent: { start: 0, end: 10 } });
+
     assert.equal(child.bins, bins);
 });
 
+test.each([
+    [
+        'an explicit line',
+        (line: Line, other: Line) => [{ line }, { scopeLine: other }]
+    ],
+    [
+        'a line type of the scope profile',
+        (line: Line, other: Line) => [
+            { line: 'timeline' },
+            { scopeLine: other, primaryProfile: other.profile, scopeProfile: line.profile }
+        ]
+    ],
+    [
+        'the scope line',
+        (line: Line, other: Line) => [{}, { scopeLine: line, primaryProfile: other.profile }]
+    ],
+    [
+        'the primary line of the scope profile',
+        (line: Line, other: Line) => [{}, { primaryProfile: other.profile, scopeProfile: line.profile }]
+    ],
+    [
+        'the primary line of the primary profile',
+        (line: Line) => [{}, { primaryProfile: line.profile }]
+    ]
+])('shows the coverage of the extent of %s', async (_, scope) => {
+    const line = await createLine(120, 180);
+    const other = await createLine(100, 200);
+    const [props, context] = scope(line, other);
+    const histogramContext = { ...context, primaryLineType: 'timeline', scopeViewport: { start: 100, end: 200 } };
+    const { styles } = renderHistogram(props, histogramContext);
 
-test('validates extent and viewport without normalizing them as one range set', () => {
-    const valid = { start: 0, end: 100 };
-    for (const invalid of [{ start: 2, end: 1 }, { start: NaN, end: 1 }, { start: 0, end: Infinity }]) {
-        assert.throws(() => renderHistogram({ extent: invalid, viewport: valid }), /finite and ordered/);
-        const { styles } = renderHistogram({ extent: valid, viewport: invalid });
-        assert.equal(styles.get('--range-pad-start'), 0);
-        assert.equal(styles.get('--range-pad-end'), 0);
-    }
+    assert.deepEqual(coverage(styles), [0.2, 0.2]);
 });
 
-test('reports full or missing coverage without changing viewport bins', () => {
-    const extent = { start: 120, end: 180 };
-    const { styles } = renderHistogram({ extent, viewport: { start: 150, end: 170 } });
+test.each([
+    [
+        'an explicit viewport over the context',
+        (line: Line) => [
+            { viewport: { start: 120, end: 180 } },
+            { scopeLine: line, scopeViewport: { start: 100, end: 200 } }
+        ],
+        { start: 120, end: 180 },
+        [0, 0]
+    ],
+    [
+        'the context',
+        (line: Line) => [{}, { scopeLine: line, scopeViewport: { start: 100, end: 200 } }],
+        { start: 100, end: 200 },
+        [0.2, 0.2]
+    ],
+    [
+        'the viewport of the context line rather than of an explicit line',
+        (line: Line, other: Line) => [{ line }, { scopeLine: other }],
+        { start: 100, end: 200 },
+        [0.2, 0.2]
+    ],
+    [
+        'the viewport of the line',
+        (line: Line) => [{}, { scopeLine: line }],
+        { start: 120, end: 180 },
+        [0, 0]
+    ],
+    [
+        'the extent instead of an invalid viewport',
+        () => [{ extent: { start: 110, end: 190 }, viewport: { start: 2, end: 1 } }, {}],
+        { start: 110, end: 190 },
+        [0, 0]
+    ],
+    [
+        'the extent without a viewport and a line',
+        () => [{ extent: { start: 110, end: 190 } }, {}],
+        { start: 110, end: 190 },
+        [0, 0]
+    ]
+])('takes the viewport of bins from %s', async (_, scope, range, pads) => {
+    const line = await createLine(120, 180);
+    const other = await createLine(100, 200);
+    const [props, context] = scope(line, other);
+    const { styles, child } = renderHistogram(props, context);
 
-    assert.equal(styles.get('--range-pad-start'), 0);
-    assert.equal(styles.get('--range-pad-end'), 0);
-
-    for (const viewport of [{ start: 0, end: 100 }, { start: 200, end: 300 }, { start: 150, end: 150 }]) {
-        const result = renderHistogram({ extent, viewport });
-        assert.equal(result.styles.get('--range-pad-start') + result.styles.get('--range-pad-end'), 1);
-        assert.ok([...result.styles.values()].every(Number.isFinite));
-    }
+    assert.deepEqual(child.range, range);
+    assert.equal(child.viewport, child.range);
+    assert.deepEqual(coverage(styles), pads);
 });
 
-test('zoom displays the line zoom within the range of bins and follows its changes', async () => {
-    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
-    const window = { start: 100, end: 200 };
+test.each([
+    ['reversed', { start: 2, end: 1 }],
+    ['with a non-finite start', { start: NaN, end: 1 }],
+    ['with an infinite end', { start: 0, end: Infinity }]
+])('rejects an extent %s', (_, extent) => {
+    assert.throws(() => renderHistogram({ extent, viewport: { start: 0, end: 100 } }), /finite and ordered/);
+});
+
+test.each([
+    ['covered in the middle', { start: 100, end: 200 }, [0.2, 0.2]],
+    ['covered wholly', { start: 150, end: 170 }, [0, 0]],
+    ['before the extent', { start: 0, end: 100 }, [1, 0]],
+    ['after the extent', { start: 200, end: 300 }, [0, 1]],
+    ['empty within the extent', { start: 150, end: 150 }, [0, 1]],
+    ['empty at the extent start', { start: 120, end: 120 }, [0, 1]]
+])('pads a viewport %s by its shares not covered by the extent', (_, viewport, pads) => {
+    const { classList, styles } = renderHistogram({ extent: { start: 120, end: 180 }, viewport });
+
+    assert.ok(classList.has('range-coverage'));
+    assert.deepEqual(coverage(styles), pads);
+});
+
+test('with zoom, displays the line zoom within the viewport of bins and follows it until unsubscribed', async () => {
+    const line = await createLine(120, 180);
+    const viewport = { start: 100, end: 200 };
 
     line.zoom.selection.setRange(130, 150);
-    const { styles, child } = renderHistogram({ zoom: true }, { scopeLine: line, scopeViewport: window });
-    const viewports: unknown[] = [];
 
-    assert.equal(child.range, window);
+    const { styles, child } = renderHistogram({ zoom: true }, { scopeLine: line, scopeViewport: viewport });
+    const displayed: unknown[] = [];
+
+    assert.equal(child.range, viewport);
     assert.deepEqual(child.viewport, { start: 130, end: 150 });
-    assert.equal(styles.get('--range-pad-start'), 0);
-    assert.ok(typeof child.onInit === 'function');
+    assert.deepEqual(coverage(styles), [0, 0]);
+    assert.ok(child.onInit);
 
-    const unsubscribe = child.onInit({ setViewport: viewport => viewports.push(viewport) });
+    const setViewport = (display: Range) => displayed.push([display, ...coverage(styles)]);
+    const unsubscribe = child.onInit({ setViewport });
 
     line.zoom.selection.setRange(110, 130);
-    assert.deepEqual(viewports, [{ start: 110, end: 130 }]);
-    assert.equal(styles.get('--range-pad-start'), 0.5);
     line.zoom.resetRange();
-    assert.deepEqual(viewports.at(-1), { start: 120, end: 180 });
-    assert.equal(styles.get('--range-pad-start'), 0);
-    // Without a zoom request the viewport is displayed
     line.viewport.selection.setRange(140, 160);
-    assert.deepEqual(viewports.at(-1), { start: 140, end: 160 });
     line.viewport.resetRange();
-    assert.equal(viewports.length, 4);
-
     unsubscribe();
     line.zoom.selection.setRange(110, 130);
     line.viewport.selection.setRange(140, 160);
-    assert.equal(viewports.length, 4);
-    line.viewport.resetRange();
+
+    // Without a zoom request the line viewport is displayed
+    assert.deepEqual(displayed, [
+        [{ start: 110, end: 130 }, 0.5, 0],
+        [{ start: 120, end: 180 }, 0, 0],
+        [{ start: 140, end: 160 }, 0, 0],
+        [{ start: 120, end: 180 }, 0, 0]
+    ]);
 });

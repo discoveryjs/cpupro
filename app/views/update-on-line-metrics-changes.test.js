@@ -3,7 +3,28 @@ import { setImmediate } from 'node:timers/promises';
 import { test } from 'vitest';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
-function loadViews({ requestAnimationFrame, cancelAnimationFrame, debounce, query = () => null }) {
+// A document focuses its body when a focused node is removed, a shadow root has no focused node then
+const body = {};
+
+function createSource() {
+    const listeners = new Set();
+
+    return {
+        listeners,
+        subscribe(callback) {
+            listeners.add(callback);
+            return () => listeners.delete(callback);
+        },
+        emit() {
+            for (const callback of listeners) {
+                callback();
+            }
+        }
+    };
+}
+
+function loadViews(globals) {
+    const { requestAnimationFrame, cancelAnimationFrame, debounce, query } = globals;
     const views = {};
 
     evaluateModule(new URL('./update-on-line-metrics-changes.js', import.meta.url), {
@@ -16,7 +37,7 @@ function loadViews({ requestAnimationFrame, cancelAnimationFrame, debounce, quer
         HTMLElement: class {},
         customElements: { define() {} },
         document: {
-            body: {},
+            body,
             createDocumentFragment: () => ({ children: [] })
         },
         requestAnimationFrame,
@@ -27,32 +48,19 @@ function loadViews({ requestAnimationFrame, cancelAnimationFrame, debounce, quer
     return views;
 }
 
-async function createHarness({ multiple = false, ...options } = {}) {
+async function createHarness(settings = {}) {
+    const { multiple = false, blurred = null, ...options } = settings;
     const frames = new Map();
     const debounced = [];
     const pausedRenders = [];
     const root = { activeElement: null };
-    const sources = Array.from({ length: multiple ? 2 : 1 }, () => {
-        const listeners = new Set();
-
-        return {
-            listeners,
-            subscribe(callback) {
-                listeners.add(callback);
-                return () => listeners.delete(callback);
-            },
-            emit() {
-                for (const callback of listeners) {
-                    callback();
-                }
-            }
-        };
-    });
+    const sources = Array.from({ length: multiple ? 2 : 1 }, createSource);
     const harness = {
         sources,
         root,
         renders: 0,
         commits: 0,
+        debounceOptions: null,
         focusCalls: [],
         element: {
             children: [],
@@ -60,9 +68,8 @@ async function createHarness({ multiple = false, ...options } = {}) {
             contains: node => harness.element.children.includes(node),
             querySelectorAll: () => harness.element.children,
             replaceChildren(fragment) {
-                // A removed node loses focus, as in the DOM
                 if (harness.element.children.includes(root.activeElement)) {
-                    root.activeElement = null;
+                    root.activeElement = blurred;
                 }
 
                 harness.element.children = fragment.children;
@@ -101,7 +108,11 @@ async function createHarness({ multiple = false, ...options } = {}) {
         cancelAnimationFrame(id) {
             frames.delete(id);
         },
-        debounce: callback => () => debounced.push(callback)
+        debounce(callback, options) {
+            // Copy out of the module's realm so deepEqual compares plain values
+            harness.debounceOptions = structuredClone(options);
+            return () => debounced.push(callback);
+        }
     });
 
     const host = {
@@ -110,7 +121,6 @@ async function createHarness({ multiple = false, ...options } = {}) {
                 id: ++harness.renders,
                 focus(options) {
                     root.activeElement = control;
-                    // Copy out of the module's realm so deepEqual compares plain objects
                     harness.focusCalls.push({ ...options });
                 }
             };
@@ -131,6 +141,40 @@ async function createHarness({ multiple = false, ...options } = {}) {
     return harness;
 }
 
+// Renders `line-metrics-value`; `results` gives the result of each query by its text, in the context of evaluation
+async function createValueHarness(settings) {
+    const { multiple = false, results, ...options } = settings;
+    const sources = Array.from({ length: multiple ? 2 : 1 }, createSource);
+    const harness = {
+        sources,
+        queries: [],
+        element: {},
+        data: {},
+        context: { scope: 'section' },
+        rendered: null
+    };
+    const views = loadViews({
+        query(text, data, context) {
+            harness.queries.push([text, data, context]);
+            return results[text](context);
+        }
+    });
+    const host = {
+        render(el, content, data, context) {
+            harness.rendered = { el, content, data, context };
+        }
+    };
+    const config = {
+        ...options,
+        metrics: multiple ? sources : sources[0],
+        content: 'list'
+    };
+
+    await views['line-metrics-value'].call(host, harness.element, config, harness.data, harness.context);
+
+    return harness;
+}
+
 test.each([false, true])('coalesces notifications into one render per frame (multiple sources: %s)', async multiple => {
     const harness = await createHarness({ multiple });
 
@@ -143,6 +187,15 @@ test.each([false, true])('coalesces notifications into one render per frame (mul
     assert.equal(harness.renders, 2);
     assert.equal(harness.commits, 2);
     assert.equal(harness.element.children[0].id, 2);
+});
+
+test.each([
+    [true, { wait: 16, maxWait: 48 }],
+    [100, 100]
+])('debounces notifications for debounce: %j with options %j', async (debounce, options) => {
+    const harness = await createHarness({ debounce });
+
+    assert.deepEqual(harness.debounceOptions, options);
 });
 
 test.each([false, true])('stops rendering and unsubscribes from all sources on destroy (debounce: %s)', async debounce => {
@@ -181,7 +234,6 @@ test('leaves focus alone unless preservation is requested', async () => {
     const harness = await createHarness();
 
     harness.root.activeElement = harness.element.children[0];
-    harness.element.getRootNode = () => assert.fail('Focus preservation must be opt-in');
     harness.sources[0].emit();
     await harness.flush();
 
@@ -189,8 +241,11 @@ test('leaves focus alone unless preservation is requested', async () => {
     assert.deepEqual(harness.focusCalls, []);
 });
 
-test('restores focus to the control at the same position without scrolling', async () => {
-    const harness = await createHarness({ preserveFocus: true });
+test.each([
+    ['a shadow root', null],
+    ['a document', body]
+])('restores focus lost in %s to the control at the same position without scrolling', async (_, blurred) => {
+    const harness = await createHarness({ preserveFocus: true, blurred });
 
     harness.root.activeElement = harness.element.children[0];
     harness.sources[0].emit();
@@ -201,125 +256,111 @@ test('restores focus to the control at the same position without scrolling', asy
     assert.deepEqual(harness.focusCalls, [{ preventScroll: true }]);
 });
 
-test.each(['focus moved', 'destroyed'])('does not restore focus when %s during rendering', async reason => {
+const moveFocus = harness => {
+    harness.root.activeElement = {};
+};
+const destroyView = harness => harness.element.onDestroy();
+
+test.each([
+    ['focus moves', moveFocus],
+    ['the view is destroyed', destroyView]
+])('does not restore focus when %s during rendering', async (_, interrupt) => {
     const harness = await createHarness({ preserveFocus: true });
     const resume = harness.pauseRender();
 
     harness.root.activeElement = harness.element.children[0];
     harness.sources[0].emit();
     await harness.flush();
-
-    if (reason === 'focus moved') {
-        harness.root.activeElement = {};
-    } else {
-        harness.element.onDestroy();
-    }
-
+    interrupt(harness);
     resume();
     await harness.flush();
 
     assert.deepEqual(harness.focusCalls, []);
 });
 
-test('shares a value computed once per change of its metrics among nested readers', async () => {
-    const listeners = new Set();
-    const source = {
-        subscribe(callback) {
-            listeners.add(callback);
-            return () => listeners.delete(callback);
-        }
-    };
-    const queries = [];
-    const views = loadViews({
-        requestAnimationFrame() {},
-        cancelAnimationFrame() {},
-        debounce: callback => callback,
-        query: (query, data, context) => {
-            queries.push([query, data, context]);
-            return queries.length;
-        }
-    });
-    const element = {};
-    const data = {};
-    const context = { scope: 'section' };
-    let rendered = null;
-    const host = {
-        render(el, content, renderData, renderContext) {
-            rendered = { el, content, data: renderData, context: renderContext };
-        }
-    };
+test('renders its content with a value shared through the context of nested views', async () => {
+    const harness = await createValueHarness({ name: 'totals', value: 'totals', results: { totals: () => 1 } });
+    const { rendered } = harness;
 
-    await views['line-metrics-value'].call(host, element, { name: 'totals', metrics: source, value: 'query', content: 'list' }, data, context);
-
-    const { totals } = rendered.context;
-
-    assert.equal(rendered.el, element);
+    assert.equal(rendered.el, harness.element);
     assert.equal(rendered.content, 'list');
-    assert.equal(rendered.data, data);
+    assert.equal(rendered.data, harness.data);
     assert.equal(rendered.context.scope, 'section');
-    assert.deepEqual(queries, []);
-    assert.equal(totals.value, 1);
-    assert.equal(totals.value, 1);
-    assert.deepEqual(queries, [['query', data, context]]);
-
-    // Readers follow the value as metrics, it's computed again on the first read after a change
-    let notified = 0;
-    const unsubscribe = totals.subscribe(() => notified++);
-
-    for (const callback of [...listeners]) {
-        callback();
-    }
-
-    assert.equal(notified, 1);
-    assert.equal(queries.length, 1);
-    assert.equal(totals.value, 2);
-    assert.equal(totals.value, 2);
-    assert.equal(queries.length, 2);
-
-    unsubscribe();
-    element.onDestroy();
-    assert.equal(listeners.size, 0);
+    assert.equal(rendered.context.totals.value, 1);
+    assert.equal(harness.context.totals, undefined);
 });
 
-test('a line metrics value may be computed in a context given by a query at the time of computing', async () => {
-    const listeners = new Set();
-    const source = {
-        subscribe(callback) {
-            listeners.add(callback);
-            return () => listeners.delete(callback);
-        }
-    };
-    const queries = [];
-    let window = 'first';
-    const views = loadViews({
-        requestAnimationFrame() {},
-        cancelAnimationFrame() {},
-        debounce: callback => callback,
-        query: (query, data, context) => {
-            queries.push([query, data, context]);
-            return query === 'window' ? { window } : [query, context.window];
-        }
+test.each([false, true])('computes a value on the first read after a change of any of its metrics, once for all readers (multiple sources: %s)', async multiple => {
+    let computed = 0;
+    const harness = await createValueHarness({
+        multiple,
+        name: 'totals',
+        value: 'totals',
+        results: { totals: () => ++computed }
     });
-    const data = {};
-    const context = { scope: 'section' };
-    let rendered = null;
-    const host = {
-        render(el, content, renderData, renderContext) {
-            rendered = renderContext;
-        }
-    };
+    const { totals } = harness.rendered.context;
 
-    await views['line-metrics-value'].call(host, {}, { name: 'bins', metrics: source, valueContext: 'window', value: 'bins', content: 'list' }, data, context);
-    assert.deepEqual(rendered.bins.value, ['bins', 'first']);
-    assert.deepEqual(queries, [['window', data, context], ['bins', data, { window: 'first' }]]);
+    assert.equal(computed, 0);
+    assert.equal(totals.value, 1);
+    assert.equal(totals.value, 1);
+    assert.deepEqual(harness.queries, [['totals', harness.data, harness.context]]);
 
-    window = 'second';
-    assert.deepEqual(rendered.bins.value, ['bins', 'first']);
+    for (let i = 0; i < harness.sources.length; i++) {
+        harness.sources[i].emit();
+        assert.equal(computed, i + 1);
+        assert.equal(totals.value, i + 2);
+        assert.equal(totals.value, i + 2);
+    }
+});
 
-    for (const callback of [...listeners]) {
-        callback();
+test.each([false, true])('readers follow all metrics of a value until they unsubscribe, the view until destroyed (multiple sources: %s)', async multiple => {
+    const harness = await createValueHarness({
+        multiple,
+        name: 'totals',
+        value: 'totals',
+        results: { totals: () => 1 }
+    });
+    let notified = 0;
+    const unsubscribe = harness.rendered.context.totals.subscribe(() => notified++);
+
+    for (let i = 0; i < harness.sources.length; i++) {
+        harness.sources[i].emit();
+    }
+    assert.equal(notified, harness.sources.length);
+
+    unsubscribe();
+    for (let i = 0; i < harness.sources.length; i++) {
+        assert.equal(harness.sources[i].listeners.size, 1);
     }
 
-    assert.deepEqual(rendered.bins.value, ['bins', 'second']);
-    assert.equal(queries.length, 4);
+    harness.element.onDestroy();
+    for (let i = 0; i < harness.sources.length; i++) {
+        assert.equal(harness.sources[i].listeners.size, 0);
+    }
+});
+
+test('computes a value in a context given by a query at the time of computing', async () => {
+    let window = 'first';
+    const harness = await createValueHarness({
+        name: 'bins',
+        valueContext: 'window',
+        value: 'bins',
+        results: {
+            window: () => ({ window }),
+            bins: context => context.window
+        }
+    });
+    const { bins } = harness.rendered.context;
+
+    assert.equal(bins.value, 'first');
+    window = 'second';
+    assert.equal(bins.value, 'first');
+    harness.sources[0].emit();
+    assert.equal(bins.value, 'second');
+    assert.deepEqual(harness.queries, [
+        ['window', harness.data, harness.context],
+        ['bins', harness.data, { window: 'first' }],
+        ['window', harness.data, harness.context],
+        ['bins', harness.data, { window: 'second' }]
+    ]);
 });

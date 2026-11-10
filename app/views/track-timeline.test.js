@@ -336,25 +336,39 @@ test.skipIf(!process.env.CPUPRO_TRACK_TIMELINE_FIXTURE)('layout matches the real
 
 afterEach(() => vi.unstubAllGlobals());
 
-async function renderTimeline(config = {}, scopeViewport) {
+// Events at 125–175 with 5 units without samples on each side, and another profile over 100–200
+async function renderTimeline(config = {}, scopeViewport, initialSelection) {
     const { line: scopeLine } = await createLineFixture({ origin: 125, values: denseValues(50), before: 5, after: 5 });
     const { selection } = scopeLine.range;
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const context = { scopeLine, scopeViewport, data: { profiles: [
         scopeLine.profile, other.profile
     ] } };
+    const calls = [];
     let render;
     let timeline;
     let hover;
     let tooltipContext;
-    const element = { classList: new Set(), append() {} };
-    const destroyElement = {};
+    let LifecycleElement;
+    const element = {
+        classList: new Set(),
+        children: [],
+        append(...children) {
+            element.children.push(...children);
+        }
+    };
+    const destroyElement = { name: 'destroy-track-timeline' };
+    const createElement = (name, className) => name === 'destroy-track-timeline'
+        ? destroyElement
+        : { name, className };
 
+    selection.setRanges(initialSelection ?? null);
     evaluateModule(new URL('./track-timeline.js', import.meta.url), {
         resolveScopeProfileLine, resolveScopeViewport, lineZoom, setLineZoom, subscribeLineZoom, lineViewportBounds,
         discovery: { view: { define: (_, callback) => render = callback } },
-        utils: { createElement: name => name === 'destroy-track-timeline' ? destroyElement : element },
-        HTMLElement: class {}, customElements: { define() {} },
+        utils: { createElement },
+        HTMLElement: class {},
+        customElements: { define: (_, Element) => LifecycleElement = Element },
         TrackTimeline: class {
             constructor(_, options) {
                 timeline = {
@@ -366,66 +380,160 @@ async function renderTimeline(config = {}, scopeViewport) {
                     setView(start, end) {
                         this.views.push({ start, end });
                     },
-                    destroy() {}
+                    destroy: () => calls.push('timeline.destroy')
                 };
                 return timeline;
             }
         },
         Tooltip: class {
             constructor(_, callback) {
-                this.el = element;
+                this.el = { classList: new Set() };
                 hover = callback;
+                calls.push(['tooltip', this.el]);
             }
-            destroy() {}
+            show(span) {
+                calls.push(['tooltip.show', span]);
+            }
+            hide() {
+                calls.push('tooltip.hide');
+            }
+            destroy() {
+                calls.push('tooltip.destroy');
+            }
         }
     });
     render.call({ render: (_, config, data, context) => tooltipContext = context }, element, config, null, context);
     destroyElement.onConnect();
-    return { timeline, scopeLine, selection, destroyElement, hover: span => {
+    const hoverSpan = span => {
         hover(element, span);
         return tooltipContext;
-    } };
+    };
+
+    return {
+        timeline,
+        scopeLine,
+        selection,
+        element,
+        destroyElement,
+        calls,
+        LifecycleElement,
+        hover: hoverSpan
+    };
 }
 
-test('uses the common viewport or its scoped and explicit overrides', async () => {
-    for (const [config, scoped, expected] of [
-        [{}, undefined, { start: 100, end: 200 }],
-        [{}, { start: 130, end: 160 }, { start: 130, end: 160 }],
-        [{ viewport: { start: 90, end: 210 } }, { start: 130, end: 160 }, { start: 90, end: 210 }],
-        [{ minX: 10, maxX: 900 }, { start: 130, end: 160 }, { start: 10, end: 900 }]
-    ]) {
-        const { timeline, hover } = await renderTimeline(config, scoped);
-        assert.equal(timeline.options.minX, expected.start);
-        assert.equal(timeline.options.maxX, expected.end);
-        const tooltipContext = hover({ start: 135, end: 145 });
-        assert.equal(tooltipContext.spanStart, 135 - expected.start);
-        assert.equal(tooltipContext.spanEnd, 145 - expected.start);
+test.each([
+    {
+        name: 'the common viewport',
+        config: {},
+        scoped: undefined,
+        bounds: { start: 100, end: 200 }
+    },
+    {
+        name: 'the scoped viewport',
+        config: {},
+        scoped: { start: 130, end: 160 },
+        bounds: { start: 130, end: 160 }
+    },
+    {
+        name: 'an explicit viewport',
+        config: { viewport: { start: 90, end: 210 } },
+        scoped: { start: 130, end: 160 },
+        bounds: { start: 90, end: 210 }
+    },
+    {
+        name: 'explicit bounds',
+        config: { minX: 10, maxX: 900 },
+        scoped: { start: 130, end: 160 },
+        bounds: { start: 10, end: 900 }
+    },
+    {
+        name: 'the viewport bounds with zoom',
+        config: { zoom: true },
+        scoped: { start: 130, end: 160 },
+        bounds: { start: 100, end: 200 }
     }
+])('the timeline takes $name and places tooltip spans from its start', async row => {
+    const { bounds } = row;
+    const { timeline, hover } = await renderTimeline(row.config, row.scoped);
+    const { spanStart, spanEnd } = hover({ start: 135, end: 145 });
+
+    assert.deepEqual([timeline.options.minX, timeline.options.maxX], [bounds.start, bounds.end]);
+    assert.deepEqual([spanStart, spanEnd], [135 - bounds.start, 145 - bounds.start]);
 });
 
-test('zoom bounds the timeline by the viewport bounds and follows the line zoom until destroyed', async () => {
-    const { timeline, scopeLine, destroyElement, hover } = await renderTimeline({ zoom: true }, { start: 130, end: 160 });
+test('the timeline element holds its canvases, timeline options default and the tooltip takes its class', async () => {
+    const { element, timeline, calls } = await renderTimeline({ tooltipClassName: 'custom' });
+    const defaults = [
+        timeline.options.groups,
+        timeline.options.ruler,
+        timeline.options.unit,
+        [...timeline.options.spans],
+        [...timeline.options.intervals]
+    ];
 
-    assert.equal(timeline.options.minX, 100);
-    assert.equal(timeline.options.maxX, 200);
-    assert.equal(hover({ start: 135, end: 145 }).spanStart, 35);
-    assert.deepEqual(timeline.views, [{ start: 100, end: 200 }]);
+    assert.deepEqual([...element.classList], ['no-view-ruler-tooltip']);
+    assert.deepEqual(element.children.map(child => child.className ?? child.name), [
+        'view-track-timeline__canvas', 'view-track-timeline__overlay', 'destroy-track-timeline'
+    ]);
+    assert.deepEqual(defaults, [false, 'relative', 'us', [], []]);
+    assert.deepEqual([...calls[0][1].classList], ['custom']);
+});
+
+test('hovering a span shows the tooltip, leaving it hides; destroying releases the timeline and the tooltip', async () => {
+    const { timeline, destroyElement, calls } = await renderTimeline();
+    const span = { start: 135, end: 145 };
+
+    calls.length = 0;
+    timeline.options.onHover(span);
+    timeline.options.onHover(null);
+    destroyElement.onDestroy();
+
+    assert.deepEqual(calls, [['tooltip.show', span], 'tooltip.hide', 'timeline.destroy', 'tooltip.destroy']);
+});
+
+test('the destroy element calls its connect and destroy hooks once', async () => {
+    const { LifecycleElement } = await renderTimeline();
+    const element = new LifecycleElement();
+    const hooks = [];
+
+    element.onConnect = () => hooks.push('connect');
+    element.onDestroy = () => hooks.push('destroy');
+    element.connectedCallback();
+    element.disconnectedCallback();
+
+    assert.deepEqual(hooks, ['connect', 'destroy']);
+    assert.deepEqual([element.onConnect, element.onDestroy], [null, null]);
+});
+
+test('a selection made before connecting is shown', async () => {
+    const { timeline, selection } = await renderTimeline({}, undefined, [{ start: 130, end: 140 }]);
+
+    assert.equal(timeline.selection, selection.ranges);
+    assert.deepEqual(timeline.selection, [{ start: 130, end: 140 }]);
+});
+
+test('with zoom the view follows the displayed range of the line until destroyed, without zoom there is no view', async () => {
+    const { timeline, scopeLine, destroyElement } = await renderTimeline({ zoom: true });
 
     scopeLine.zoom.selection.setRange(140, 150);
-    assert.deepEqual(timeline.views.at(-1), { start: 140, end: 150 });
     scopeLine.zoom.resetRange();
-    assert.deepEqual(timeline.views.at(-1), { start: 100, end: 200 });
     // Without a zoom request the viewport is displayed
     scopeLine.viewport.selection.setRange(120, 160);
-    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 160 });
     scopeLine.viewport.resetRange();
-    assert.equal(timeline.views.length, 5);
+    assert.deepEqual(timeline.views, [
+        { start: 100, end: 200 },
+        { start: 140, end: 150 },
+        { start: 100, end: 200 },
+        { start: 120, end: 160 },
+        { start: 100, end: 200 }
+    ]);
+
     destroyElement.onDestroy();
     scopeLine.zoom.selection.setRange(140, 150);
     assert.equal(timeline.views.length, 5);
     scopeLine.zoom.resetRange();
 
-    const { timeline: unzoomed, scopeLine: line } = await renderTimeline({}, undefined);
+    const { timeline: unzoomed, scopeLine: line } = await renderTimeline();
 
     line.viewport.selection.setRange(140, 150);
     assert.deepEqual(unzoomed.views, []);
@@ -433,86 +541,68 @@ test('zoom bounds the timeline by the viewport bounds and follows the line zoom 
     line.viewport.resetRange();
 });
 
-test('zoom requests a view of the timeline as the line zoom within the viewport, the whole viewport resets it', async () => {
-    const { timeline, scopeLine } = await renderTimeline({ zoom: true }, undefined);
-    const { onViewChange } = timeline.options;
-
-    onViewChange(120, 150);
-    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 120, end: 150 }]);
-    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 150 });
-    onViewChange(100, 200);
-    assert.equal(scopeLine.zoom.selection.ranges, null);
-    onViewChange(120, 150);
-    onViewChange(99.9, 200.1);
-    assert.equal(scopeLine.zoom.selection.ranges, null);
-    onViewChange(100, 199);
-    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 100, end: 199 }]);
-    assert.equal(scopeLine.viewport.selection.ranges, null);
-
-    // Within a viewport the view is kept inside it and shown as requested inside
-    scopeLine.viewport.selection.setRange(120, 160);
-    assert.equal(scopeLine.zoom.selection.ranges, null);
-    onViewChange(110, 130);
-    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 120, end: 140 }]);
-    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 140 });
-    onViewChange(150, 170);
-    assert.deepEqual(scopeLine.zoom.selection.ranges, [{ start: 140, end: 160 }]);
-    onViewChange(100, 200);
-    assert.equal(scopeLine.zoom.selection.ranges, null);
-    assert.deepEqual(timeline.views.at(-1), { start: 120, end: 160 });
-    scopeLine.viewport.resetRange();
-});
-
-test('an outside owned view zooms and pans by the wheel with a modifier or horizontally, otherwise scrolls', () => {
-    const views = [];
-    const { timeline, overlay } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange: (start, end) => views.push([start, end]) });
-    const wheel = event => {
-        let prevented = false;
-
-        overlay.listeners.get('wheel')({ clientX: 500, deltaX: 0, deltaY: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...event,
-            preventDefault() {
-                prevented = true;
-            } });
-        return prevented;
-    };
-    const view = [timeline.offsetMs, timeline.pxPerMs];
-
-    // A vertical wheel scrolls the page and leaves the view
-    assert.equal(wheel({ deltaY: -100 }), false);
-    assert.deepEqual([timeline.offsetMs, timeline.pxPerMs], view);
-    assert.deepEqual(views, []);
-
-    // Zoom around the pointer is reported as the requested view
-    for (const modifier of ['ctrlKey', 'metaKey']) {
-        assert.equal(wheel({ deltaY: -Math.log(2) / 0.0015, [modifier]: true }), true);
+test.each([
+    {
+        name: 'within the bounds',
+        viewport: null,
+        request: [120, 150],
+        zoom: [{ start: 120, end: 150 }],
+        view: { start: 120, end: 150 }
+    },
+    {
+        name: 'of the bounds',
+        viewport: null,
+        request: [100, 200],
+        zoom: null,
+        view: { start: 100, end: 200 }
+    },
+    {
+        name: 'over the bounds',
+        viewport: null,
+        request: [99.9, 200.1],
+        zoom: null,
+        view: { start: 100, end: 200 }
+    },
+    {
+        name: 'shorter than the bounds',
+        viewport: null,
+        request: [100, 199],
+        zoom: [{ start: 100, end: 199 }],
+        view: { start: 100, end: 199 }
+    },
+    // Within a viewport the view is kept inside it
+    {
+        name: 'before the viewport',
+        viewport: { start: 120, end: 160 },
+        request: [110, 130],
+        zoom: [{ start: 120, end: 140 }],
+        view: { start: 120, end: 140 }
+    },
+    {
+        name: 'after the viewport',
+        viewport: { start: 120, end: 160 },
+        request: [150, 170],
+        zoom: [{ start: 140, end: 160 }],
+        view: { start: 140, end: 160 }
+    },
+    {
+        name: 'over the viewport',
+        viewport: { start: 120, end: 160 },
+        request: [100, 200],
+        zoom: null,
+        view: { start: 120, end: 160 }
     }
-    assert.deepEqual(views.map(([start, end]) => [Math.round(start), Math.round(end)]), [[250, 750], [375, 625]]);
+])('a view request $name is the line zoom within the viewport', async row => {
+    const { viewport, request, zoom, view } = row;
+    const { timeline, scopeLine } = await renderTimeline({ zoom: true });
 
-    assert.equal(wheel({ deltaX: 125, deltaY: 10 }), true);
-    assert.deepEqual(views.at(-1).map(Math.round), [406, 656]);
+    scopeLine.viewport.selection.setRanges(viewport && [viewport]);
+    scopeLine.zoom.selection.setRange(130, 135);
+    timeline.options.onViewChange(...request);
 
-    // With Shift a vertical wheel scrolls the tracks without a view request
-    assert.equal(wheel({ deltaY: 100, shiftKey: true }), true);
-    assert.equal(views.length, 3);
-    timeline.destroy();
-});
-
-test('an outside view applies to the canvas once sized and keeps it on resize', () => {
-    const { timeline, flush } = createCanvasTimeline({ minX: 0, maxX: 1000 });
-
-    timeline.setView(250, 500);
-    assert.equal(timeline.offsetMs, 250);
-    assert.equal(timeline.pxPerMs, 4);
-    flush();
-    assert.equal(timeline.offsetMs, 250);
-
-    timeline.width = 0;
-    timeline.setView(100, 300);
-    assert.equal(timeline.offsetMs, 250);
-    timeline.resize();
-    assert.equal(timeline.offsetMs, 100);
-    assert.equal(timeline.pxPerMs, 5);
-    timeline.destroy();
+    assert.deepEqual(scopeLine.zoom.selection.ranges, zoom);
+    assert.deepEqual(timeline.views.at(-1), view);
+    scopeLine.viewport.resetRange();
 });
 
 test('preserves absolute selection on span clicks, external changes and reset', async () => {
@@ -587,8 +677,103 @@ function createCanvasTimeline(options = {}, height = 100, dpr = 1) {
         }
     };
     flush();
-    return { timeline, base, overlay, fonts, flush, pending: () => Boolean(scheduled || layoutScheduled) };
+    return {
+        timeline,
+        base,
+        overlay,
+        fonts,
+        rect,
+        flush,
+        pending: () => Boolean(scheduled || layoutScheduled)
+    };
 }
+
+function wheelOn(overlay, event) {
+    let prevented = false;
+    const wheelEvent = {
+        clientX: 500,
+        deltaX: 0,
+        deltaY: 0,
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        ...event,
+        preventDefault() {
+            prevented = true;
+        }
+    };
+
+    overlay.listeners.get('wheel')(wheelEvent);
+
+    return prevented;
+}
+
+test('an outside owned view zooms and pans by the wheel with a modifier or horizontally, otherwise scrolls the page', () => {
+    const views = [];
+    const onViewChange = (start, end) => views.push([start, end]);
+    const { timeline, overlay } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange });
+    const view = [timeline.offsetMs, timeline.pxPerMs];
+
+    // A vertical wheel scrolls the page and leaves the view
+    assert.equal(wheelOn(overlay, { deltaY: -100 }), false);
+    assert.deepEqual([timeline.offsetMs, timeline.pxPerMs], view);
+    assert.deepEqual(views, []);
+
+    // Zoom around the pointer is reported as the requested view
+    for (const modifier of ['ctrlKey', 'metaKey']) {
+        assert.equal(wheelOn(overlay, { deltaY: -Math.log(2) / 0.0015, [modifier]: true }), true);
+    }
+    assert.deepEqual(views.map(request => request.map(Math.round)), [[250, 750], [375, 625]]);
+
+    assert.equal(wheelOn(overlay, { deltaX: 125, deltaY: 10 }), true);
+    assert.deepEqual(views.at(-1).map(Math.round), [406, 656]);
+    timeline.destroy();
+});
+
+test.each([
+    { left: 0, clientX: 500 },
+    { left: 200, clientX: 700 }
+])('an outside owned view zooms around the pointer within the overlay at $left', row => {
+    const views = [];
+    const onViewChange = (start, end) => views.push([start, end]);
+    const { timeline, overlay, rect } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange });
+
+    rect.left = row.left;
+    wheelOn(overlay, { clientX: row.clientX, deltaY: -Math.log(2) / 0.0015, ctrlKey: true });
+
+    assert.deepEqual(views.map(request => request.map(Math.round)), [[250, 750]]);
+    timeline.destroy();
+});
+
+test('with Shift a vertical wheel scrolls the tracks of an outside owned view without a view request', () => {
+    const views = [];
+    const spans = Array.from({ length: 50 }, () => ({ start: 120, end: 180 }));
+    const onViewChange = (start, end) => views.push([start, end]);
+    const { timeline, overlay } = createCanvasTimeline({ spans, onViewChange });
+
+    assert.equal(wheelOn(overlay, { deltaY: 30, shiftKey: true }), true);
+    assert.equal(timeline.scrollY, 30);
+    assert.deepEqual(views, []);
+    timeline.destroy();
+});
+
+test('an outside view applies to the canvas once sized and keeps it on resize', () => {
+    const { timeline, flush } = createCanvasTimeline({ minX: 0, maxX: 1000 });
+
+    timeline.setView(250, 500);
+    assert.equal(timeline.offsetMs, 250);
+    assert.equal(timeline.pxPerMs, 4);
+    flush();
+    assert.equal(timeline.offsetMs, 250);
+
+    timeline.width = 0;
+    timeline.setView(100, 300);
+    assert.equal(timeline.offsetMs, 250);
+    timeline.resize();
+    assert.equal(timeline.offsetMs, 100);
+    assert.equal(timeline.pxPerMs, 5);
+    timeline.destroy();
+});
 
 test('publishes a stable prefix of complete groups without exposing partial tracks', () => {
     let clock = 0;

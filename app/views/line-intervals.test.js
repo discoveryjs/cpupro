@@ -37,9 +37,8 @@ function render(config, data, context, renders = []) {
     } }, el, config, data, context);
 
     assert.equal(lifecycle.name, 'destroy-line-intervals');
-    assert.equal(typeof result.then, 'function');
 
-    return el;
+    return { el, result, LifecycleElement: lifecycle.Element };
 }
 
 const styles = el => el.children
@@ -55,20 +54,20 @@ test('places intervals overlapping the range as fractions of it', async () => {
         { start: 190, end: 250, color: 'd' },
         { start: 200, end: 210, color: 'e' }
     ];
-    const el = render({}, intervals, { scopeLine: line, scopeViewport: { start: 100, end: 200 } });
+    const { el } = render({}, intervals, { scopeLine: line, scopeViewport: { start: 100, end: 200 } });
 
+    assert.equal(el.children.length, 3);
     assert.deepEqual(styles(el), [
         { '--start': -0.1, '--end': 0.1, '--color': 'b' },
         { '--start': 0.5, '--end': 0.75, '--color': 'c' },
         { '--start': 0.9, '--end': 1.5, '--color': 'd' }
     ]);
-    assert.equal(el.children.length, 3);
-    assert.deepEqual(styles(render({}, null, { scopeLine: line })), []);
+    assert.deepEqual(render({}, null, { scopeLine: line }).el.children, []);
 });
 
 test('zoom displays the line zoom within the range until destroyed', async () => {
     const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
-    const el = render({ zoom: true }, [{ start: 150, end: 160, color: 'a' }], {
+    const { el } = render({ zoom: true }, [{ start: 150, end: 160, color: 'a' }], {
         scopeLine: line, scopeViewport: { start: 100, end: 200 }
     });
     const destroyEl = el.children.at(-1);
@@ -96,11 +95,36 @@ test('renders an item config into each interval and leaves the band uncolored wi
     const intervals = [{ start: 110, end: 120 }, { start: 300, end: 310 }, { start: 150, end: 160, color: 'x' }];
     const context = { scopeLine: line, scopeViewport: { start: 100, end: 200 } };
     const renders = [];
-    const el = render({ itemConfig }, intervals, context, renders);
+    const { el, result } = render({ itemConfig }, intervals, context, renders);
     const bands = el.children.filter(child => child.className === 'interval');
 
     assert.deepEqual(renders, [[bands[0], itemConfig, intervals[0], context], [bands[1], itemConfig, intervals[2], context]]);
+    assert.deepEqual([...await result], [intervals[0], intervals[2]]);
     assert.equal(bands[0].styles.has('--color'), false);
     assert.equal(bands[1].styles.get('--color'), 'x');
-    assert.deepEqual(render({}, intervals, context, renders) && renders.length, 2);
+});
+
+test('bands without an item config render nothing into them', async () => {
+    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+    const renders = [];
+    const context = { scopeLine: line, scopeViewport: { start: 100, end: 200 } };
+    const { result } = render({}, [{ start: 110, end: 120 }], context, renders);
+
+    assert.deepEqual(renders, []);
+    assert.deepEqual([...await result], []);
+});
+
+test('the destroy element calls its connect and destroy hooks once', () => {
+    const { LifecycleElement } = render({}, [], { scopeViewport: { start: 100, end: 200 } });
+    const element = new LifecycleElement();
+    const calls = [];
+
+    element.onConnect = () => calls.push('connect');
+    element.onDestroy = () => calls.push('destroy');
+    element.connectedCallback();
+    element.disconnectedCallback();
+
+    assert.deepEqual(calls, ['connect', 'destroy']);
+    assert.equal(element.onConnect, null);
+    assert.equal(element.onDestroy, null);
 });
