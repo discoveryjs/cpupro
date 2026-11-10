@@ -434,8 +434,6 @@ export function extractFromChromiumPerformanceProfile(
     events: ChromiumTraceEventsSource | ChromiumTraceEventsSource['traceEvents'],
     diagnose: Diagnose = diagnoseToConsole
 ): UniformProfilingSession {
-    // Chrome tracing contain multiple CpuProfile events
-    const profileById = new Map<string, V8CpuProfile>();
     const profileDataByTid = new Map<string, ChromiumTraceProfileData>();
     const profileDataById = new Map<string, ChromiumTraceProfileData>();
     const profileDataByIsolate = new Map<string, ChromiumTraceProfileData>();
@@ -486,12 +484,7 @@ export function extractFromChromiumPerformanceProfile(
     for (const event of events) {
         switch (event.name) {
             case 'CpuProfile': {
-                // Create an arbitrary profile id.
-                const profileId = `${event.pid}:0x1`;
-                const profile = event.args.data.cpuProfile as V8CpuProfile;
-
-                profileById.set(profileId, profile);
-                // profile.threadId = event.tid;
+                // a profile of a single CpuProfile event (an earlier trace layout) is not extracted
                 break;
             }
 
@@ -500,22 +493,6 @@ export function extractFromChromiumPerformanceProfile(
                 const profileId = `${event.pid}:${event.id}`;
                 const eventChannel = getOrCreateEventChannel(event, eventChannels);
                 const threadId = getEventThreadId(event);
-                const profile: V8CpuProfile = {
-                    _name: null,
-                    _pid: event.pid,
-                    _tid: event.tid,
-                    startTime: 0,
-                    endTime: 0,
-                    nodes: [],
-                    samples: [],
-                    timeDeltas: [],
-                    trace_ids: {},
-                    lines: [],
-                    columns: [],
-                    ...data
-                };
-                profileById.set(threadId, profile);
-
                 const profileData: ChromiumTraceProfileData = {
                     eventChannel,
                     pid: event.pid,
