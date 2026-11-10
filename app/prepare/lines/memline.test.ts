@@ -4,7 +4,11 @@ import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { noopWorkHandler } from '../misc/work.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { createMemline } from './memline.mjs';
-import { createMemlineAllocationLifespanAttribute, createMemlineGcEpochAttribute } from './memline-attributes.mjs';
+import {
+    createMemlineAllocationLifespanAttribute,
+    createMemlineAllocationTypeAttribute,
+    createMemlineGcEpochAttribute
+} from './memline-attributes.mjs';
 
 const noCpuSamples = { startTime: 0, endTime: 0, nodes: [], samples: [], timeDeltas: [] };
 
@@ -24,7 +28,7 @@ test('keeps allocation locations without borrowing a call stack when CPU samples
     assert.deepEqual([...line.values], [16, 32]);
 });
 
-test('remaps allocation attribute codes in place, reading lifespan before GC epochs', async () => {
+test('maps allocation attribute codes to dictionary indices of 1 byte without changing the input', async () => {
     const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
     const sizes = new Uint32Array([16, 32, 48]);
     const types = new Uint32Array([7, 7, 9]);
@@ -43,13 +47,25 @@ test('remaps allocation attribute codes in place, reading lifespan before GC epo
     const attribute = (name: string) => line!.attributes.find(attribute => attribute.name === name)!;
 
     assert.equal(line!.values.buffer, sizes.buffer);
-    assert.equal(attribute('allocationType').values, types);
-    assert.equal(attribute('allocationSpace').values, spaces);
-    assert.equal(attribute('allocationGcEpoch').values, gc);
-    assert.deepEqual([...types], [0, 0, 1]);
-    assert.deepEqual([...spaces], [0, 1, 0]);
-    assert.deepEqual([...gc], [0, 1, 2]);
-    assert.deepEqual([...attribute('allocationLifespan').values], [2, 0, 1]);
+    assert.deepEqual(attribute('allocationType').values, new Uint8Array([0, 0, 1]));
+    assert.deepEqual(attribute('allocationSpace').values, new Uint8Array([0, 1, 0]));
+    assert.deepEqual(attribute('allocationGcEpoch').values, new Uint8Array([0, 1, 2]));
+    assert.deepEqual(attribute('allocationLifespan').values, new Uint8Array([2, 0, 1]));
+    assert.deepEqual([...types], [7, 7, 9]);
+    assert.deepEqual([...spaces], [2, 4, 2]);
+    assert.deepEqual([...gc], [0 << 2 | 2, 1 << 2 | 0, 2 << 2 | 1]);
+});
+
+test('maps attribute codes to 4-byte indices when a dictionary exceeds 256 entries', () => {
+    const typeNames: Record<number, string> = {};
+
+    for (let i = 0; i < 300; i++) {
+        typeNames[i] = `TYPE_${i}`;
+    }
+
+    const attribute = createMemlineAllocationTypeAttribute(new Uint32Array([0, 299]), typeNames)!;
+
+    assert.deepEqual(attribute.values, new Uint32Array([0, 299]));
 });
 
 test('decodes unsigned GC values without losing the high bit', () => {

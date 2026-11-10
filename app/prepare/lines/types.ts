@@ -52,12 +52,12 @@ export type ProfileLineBreakdown = {
 
 export type ProfileLineAllocationTypeAttribute = {
     name: 'allocationType';
-    values: Uint32Array;
+    values: Uint8Array | Uint32Array;
     dict: string[];
 };
 export type ProfileLineAllocationGcEpochAttribute = {
     name: 'allocationGcEpoch';
-    values: Uint32Array;
+    values: Uint8Array | Uint32Array;
     dict: GcEpochDictEntry[];
 };
 export type ProfileLineAllocationLifespanAttribute = {
@@ -67,7 +67,7 @@ export type ProfileLineAllocationLifespanAttribute = {
 };
 export type ProfileLineAllocationSpaceAttribute = {
     name: 'allocationSpace';
-    values: Uint32Array;
+    values: Uint8Array | Uint32Array;
     dict: AllocationSpaceDictEntry[];
 };
 export type ProfileLineAllocationCodeTypeAttribute = {

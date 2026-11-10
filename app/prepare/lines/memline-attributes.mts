@@ -1,6 +1,5 @@
 import { AllocationLifespan, typeColor } from '../const.js';
 import { lowerBound } from '../computations/misc.js';
-import { asUint32Array } from '../misc/utils.js';
 import type {
     AllocationSpaceDictEntry,
     CompilationOwner,
@@ -23,6 +22,14 @@ import type {
     CpuProCompilationRecord,
     V8CpuProfileCpuproExtensions
 } from '../types.js';
+
+// Values of an attribute are indices of its dictionary; a vector of an allocation-sized length takes a quarter
+// of the memory with 1-byte indices, which are enough for most dictionaries
+function createDictIndexVector(length: number, dictLength: number): Uint8Array | Uint32Array {
+    return dictLength <= 256
+        ? new Uint8Array(length)
+        : new Uint32Array(length);
+}
 
 export function createMemlineAllocationOwnerAttribute(
     compilations: CpuProCompilationRecord[] | null,
@@ -80,7 +87,7 @@ export function createMemlineAllocationCompilationStageAttribute(
         }
     }
 
-    const values = dict.length <= 256 ? new Uint8Array(_cpuproAllocationIds.length) : new Uint32Array(_cpuproAllocationIds.length);
+    const values = createDictIndexVector(_cpuproAllocationIds.length, dict.length);
     const firstId = _cpuproAllocationIdsOrder === 'consecutive' ? _cpuproAllocationIds[0] : undefined;
 
     for (const record of compilations) {
@@ -124,8 +131,6 @@ export function createMemlineAllocationTypeAttribute(
     }
 
     const map = new Map<number, number>();
-
-    const allocationTypeVector = asUint32Array(_cpuproAllocationTypes);
     const allocationTypeNames = Object.entries(_cpuproAllocationTypeNames || {})
         .sort((a, b) => Number(a[0]) - Number(b[0]))
         .map(([id, name]) => {
@@ -133,22 +138,23 @@ export function createMemlineAllocationTypeAttribute(
             return name.replace(/_TYPE$/, '');
         });
 
+    const values = createDictIndexVector(_cpuproAllocationTypes.length, allocationTypeNames.length);
     let prevType = -1;
     let prevTypeIndex = 0;
 
     // Consecutive allocations often share a type, so the map is consulted only on value changes
-    for (let i = 0; i < allocationTypeVector.length; i++) {
-        if (allocationTypeVector[i] !== prevType) {
-            prevType = allocationTypeVector[i];
+    for (let i = 0; i < _cpuproAllocationTypes.length; i++) {
+        if (_cpuproAllocationTypes[i] !== prevType) {
+            prevType = _cpuproAllocationTypes[i];
             prevTypeIndex = map.get(prevType) || 0;
         }
 
-        allocationTypeVector[i] = prevTypeIndex;
+        values[i] = prevTypeIndex;
     }
 
     return {
         name: 'allocationType',
-        values: allocationTypeVector,
+        values,
         dict: allocationTypeNames
     };
 }
@@ -160,7 +166,7 @@ export function createMemlineGcEpochAttribute(
         return null;
     }
 
-    const allocationGcEpochs = asUint32Array(_cpuproAllocationGc);
+    const allocationGcEpochs = _cpuproAllocationGc;
     const allocationGcEpochDict: GcEpochDictEntry[] = [];
     const epochToIndex = new Map<number, number>();
     const epochs = new Set<number>();
@@ -200,6 +206,7 @@ export function createMemlineGcEpochAttribute(
         prevEpochId = currentEpochId || prevEpochId;
     }
 
+    const values = createDictIndexVector(allocationGcEpochs.length, allocationGcEpochDict.length);
     let prevEpochIndex = 0;
     prevEpoch = -1;
 
@@ -209,12 +216,12 @@ export function createMemlineGcEpochAttribute(
             prevEpochIndex = epochToIndex.get(prevEpoch)!;
         }
 
-        allocationGcEpochs[i] = prevEpochIndex;
+        values[i] = prevEpochIndex;
     }
 
     return {
         name: 'allocationGcEpoch',
-        values: allocationGcEpochs,
+        values,
         dict: allocationGcEpochDict
     };
 }
@@ -249,7 +256,6 @@ export function createMemlineAllocationSpaceAttribute(
     }
 
     const map = new Map<number, number>();
-    const allocationSpaces = asUint32Array(_cpuproAllocationSpaces);
     const allocationSpaceNames: AllocationSpaceDictEntry[] = Object.entries(_cpuproAllocationSpaceNames || {})
         .sort((a, b) => Number(a[0]) - Number(b[0]))
         .map(([id, name]) => {
@@ -265,23 +271,24 @@ export function createMemlineAllocationSpaceAttribute(
             };
         });
 
+    const values = createDictIndexVector(_cpuproAllocationSpaces.length, allocationSpaceNames.length);
     let prevSpace = -1;
     let prevSpaceIndex = 0;
 
     // Consecutive allocations mostly share a space, so the map is consulted only on value changes
-    for (let i = 0; i < allocationSpaces.length; i++) {
-        if (allocationSpaces[i] !== prevSpace) {
-            prevSpace = allocationSpaces[i];
+    for (let i = 0; i < _cpuproAllocationSpaces.length; i++) {
+        if (_cpuproAllocationSpaces[i] !== prevSpace) {
+            prevSpace = _cpuproAllocationSpaces[i];
             prevSpaceIndex = map.get(prevSpace) || 0;
         }
 
-        allocationSpaces[i] = prevSpaceIndex;
+        values[i] = prevSpaceIndex;
     }
 
     return {
         name: 'allocationSpace',
-        values: allocationSpaces || new Uint32Array(0),
-        dict: allocationSpaceNames || []
+        values,
+        dict: allocationSpaceNames
     };
 }
 

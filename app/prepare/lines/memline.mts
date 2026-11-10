@@ -156,7 +156,6 @@ export async function createMemline(
             data._cpuproAllocationSpaces || null,
             data._cpuproAllocationSpaceNames || null
         ),
-        // Read lifespan bits before GC epoch remapping overwrites the shared vector.
         createMemlineAllocationLifespanAttribute(
             data._cpuproAllocationGc || null
         ),
