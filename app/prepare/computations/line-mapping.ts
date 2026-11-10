@@ -36,7 +36,11 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
             }
         } else if (end > 0 && start < allocationPopulation.cumulativeEnd) {
             const first = Math.max(0, lowerBound(allocationStarts, start, true) - 1);
-            const last = lowerBound(allocationStarts, end);
+            // Allocations without a sample, after the CPU profile ended, have no time
+            const last = Math.min(
+                lowerBound(allocationStarts, end),
+                lowerBound(mapping, timeStarts.length)
+            );
 
             if (first < last) {
                 result.push({
@@ -62,15 +66,14 @@ export function createLineMapping(
     const sourceToDest = new Uint32Array(sourceIds); // [0, 1, 2, 3, 4, ...]
     const destToSource = new Uint32Array(destIds);
     // [0, 0, 1, 1, 1, 3, 3, ...] -> timeline sample ids
-    // we attach memline sample id to the cpu sample id it was recorded after
-
-    const lastDestIndex = destToSource.length - 1;
+    // An allocation maps to the first CPU sample whose last allocation ID is at or after its ID. Allocations
+    // after the last sample's ID were recorded after the CPU profile ended: they map to the sample count, no
+    // sample, rather than to the last sample, so they take no place in time
     for (let i = 0, k = 0; i < sourceToDest.length; i++) {
         const allocId = sourceToDest[i];
-        let lastSeenDestId = destToSource[k];
 
-        while (k < lastDestIndex && allocId > lastSeenDestId) {
-            lastSeenDestId = destToSource[++k];
+        while (k < destToSource.length && allocId > destToSource[k]) {
+            k++;
         }
 
         sourceToDest[i] = k;

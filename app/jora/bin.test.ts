@@ -710,6 +710,22 @@ test('the window of a source line, a range of its own axis, does not narrow its 
     source.breakdowns[0].populationWindow.setRanges(null);
 });
 
+// Allocation 3 is recorded after the last of the three samples of the axis
+test('mapped allocation bins leave out allocations recorded after the last sample', async () => {
+    const context = await createContext();
+    const { source } = await createMappedSource(
+        context.scopeLine,
+        new Uint32Array([3, 4, 5, 6]),
+        new Uint32Array([0, 1, 2, 3])
+    );
+    const [row] = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10);
+    const [total] = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 1);
+
+    assert.deepEqual([...source.mappings.timeline._mapping], [0, 1, 2, 3]);
+    assert.equal(row.value, 12);
+    assert.equal(total.value, 12);
+});
+
 test('mapped allocation bins take source participation of a range inside one allocation and a later range', async () => {
     const context = await createContext();
     const { source, viewport } = await createMappedSource(context.scopeLine);

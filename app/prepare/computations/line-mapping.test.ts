@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { mapLineRanges } from './line-mapping.js';
+import { createLineMapping, mapLineRanges } from './line-mapping.js';
 
 test('maps time by sample timestamps and allocation ranges by overlapping occurrences', async () => {
     const { profile } = await createProfileFixture({ startTime: 100 });
@@ -48,4 +48,19 @@ test('passes unrestricted and empty requests through, and cannot map lines witho
     assert.deepEqual(mapLineRanges(profile.timeline!, profile.memline!, []), []);
     assert.equal(mapLineRanges(unmapped.timeline!, unmapped.memline!, null), undefined);
     assert.equal(mapLineRanges(profile.timeline!, unmapped.memline!, [{ start: 0, end: 40 }]), undefined);
+});
+
+// The last sample of the fixture records allocation 3, so allocation 4 (bytes 96–160) is recorded after it
+test('allocations recorded after the last sample map to no sample and take no time', async () => {
+    const { profile } = await createProfileFixture({ mapping: [1, 2, 3] });
+    const time = profile.timeline!;
+    const allocations = profile.memline!;
+    const { left } = createLineMapping(allocations, [1, 2, 3, 4], time, [1, 2, 3]);
+    const sampled = mapLineRanges(allocations, time, [{ start: 0, end: 96 }]);
+
+    assert.deepEqual([...left._mapping], [0, 1, 2, 3]);
+    assert.deepEqual([...allocations.mappings.timeline._mapping], [0, 1, 2, 3]);
+    assert.deepEqual(mapLineRanges(allocations, time, [{ start: 96, end: 160 }]), []);
+    assert.deepEqual(mapLineRanges(allocations, time, [{ start: 0, end: 160 }]), sampled);
+    assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 1000 }]), [{ start: 0, end: 96 }]);
 });
