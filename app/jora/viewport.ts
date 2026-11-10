@@ -1,4 +1,4 @@
-import { validateRange, type Range } from '../prepare/computations/coordinates.js';
+import type { Range } from '../prepare/computations/coordinates.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
 import { lowerBound } from '../prepare/computations/misc.js';
 
@@ -87,7 +87,8 @@ export function lineZoomMinLength(line: ZoomLine, profiles: readonly { timeline?
 }
 
 // Requests a zoom moved inside the viewport, the length of the viewport or more is no request. A zoom shorter
-// than the shortest one stops at it, scaling the current zoom around the point the request scales it around
+// than the shortest one stops at it: the request is scaled to it around the point it scales the current zoom around
+// when zooming in, around its middle otherwise (e.g. panning a zoom shared by a profile with a shorter one)
 export function setLineZoom(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[], range: Range) {
     const scope = lineViewport(line, profiles);
     const minLength = lineZoomMinLength(line, profiles);
@@ -99,10 +100,11 @@ export function setLineZoom(line: ZoomLine, profiles: readonly { timeline?: View
         const anchor = scale < 1
             ? (requestStart - scale * current.start) / (1 - scale)
             : (requestStart + requestEnd) / 2;
-        const ratio = minLength / (current.end - current.start);
+        // The position of the anchor within the zoom, the same in the current zoom and the request when zooming in
+        const position = scale < 1 ? (anchor - current.start) / (current.end - current.start) : 0.5;
 
-        requestStart = anchor + (current.start - anchor) * ratio;
-        requestEnd = anchor + (current.end - anchor) * ratio;
+        requestStart = anchor - position * minLength;
+        requestEnd = requestStart + minLength;
     }
 
     const length = requestEnd - requestStart;
@@ -120,9 +122,8 @@ export function lineWindow(line: WindowLine, profiles: readonly { timeline?: Vie
     return lineViewport({ ...line, viewport: line.window }, profiles);
 }
 
+// The view rejects a viewport that isn't a finite ordered range
 export function viewportRange(viewport: Range, line: Pick<ProfileLine, 'range'>) {
-    validateRange(viewport);
-
     // Display placement shares the existing selection request; it never moves the population frame.
     return line.range.selection.view(
         { start: 0, end: viewport.end - viewport.start },

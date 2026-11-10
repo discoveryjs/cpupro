@@ -146,6 +146,11 @@ test('zooming in stops at the length holding 500 events at the average density o
     // Panning at the shortest zoom keeps it
     setLineZoom(line, [], { start: 20, end: 25 });
     assert.deepEqual(line.zoom.selection.ranges, [{ start: 20, end: 25 }]);
+    // A zoom below the shortest one (e.g. shared by a profile with denser data) panned to a request shorter than
+    // the shortest one: the shortest zoom around the middle of the request
+    line.zoom.selection.setRange(20, 22);
+    setLineZoom(line, [], { start: 30, end: 32 });
+    assert.deepEqual(line.zoom.selection.ranges, [{ start: 28.5, end: 33.5 }]);
 
     // Sparse data zooms in less, and not at all with fewer events than that in the viewport
     line.viewport.selection.setRange(0, 60);
