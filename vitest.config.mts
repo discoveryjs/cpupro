@@ -45,7 +45,7 @@ export default defineConfig({
     test: {
         environment: 'node',
         globals: false,
-        setupFiles: ['./test/setup/node.ts'],
+        setupFiles: ['./test/setup/node.ts', './test/setup/assert.ts'],
         include: ['app/**/*.test.{js,ts,mts}', 'lib/**/*.test.{js,ts,mts}', 'test/**/*.test.{js,ts,mts}'],
         projects: [false, true].map(useWasm => ({
             extends: true,

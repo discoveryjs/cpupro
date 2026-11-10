@@ -15,7 +15,7 @@ Vitest discovers `*.test.js`, `*.test.ts` and `*.test.mts` next to production mo
 
 ## Adding a test
 
-Put the test next to its module. Import runner functions explicitly and use `node:assert/strict`, not `expect` or Vitest's assertion API. Test globals are disabled; ESLint rejects assertion imports from Vitest.
+Put the test next to its module. Import runner functions explicitly and use `node:assert/strict`, not `expect` or Vitest's assertion API. Test globals are disabled; ESLint rejects assertion imports from Vitest. On a failure node's equality assertions inspect both values in full and Vitest clones and prints them again, which takes seconds and hundreds of MB for values reaching a profile; `test/setup/assert.ts` keeps their semantics and describes failing values at the deepest depth fitting 400 lines, as a line diff. Values that differ only deeper, or different objects with equal descriptions, are reported as such; narrow such an assertion to the fields that matter.
 
 ```js
 import assert from 'node:assert/strict';
