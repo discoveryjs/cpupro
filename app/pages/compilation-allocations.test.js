@@ -178,7 +178,13 @@ test('uses selected memory population and compiled-function identities without l
         assert.deepEqual(result[0].records, [records[0], records[1], records[3]]);
 
         const other = contextFor(profile, 'call-stack');
-        other.allocationPopulation.updateMask(mask => mask.fill(0x80000000));
+        const sampleCount = other.allocationPopulation.samplesMask.length;
+        other.allocationPopulation.filter.set({
+            key: 'samples',
+            domain: 'sample',
+            size: sampleCount,
+            accepts: new Uint8Array(sampleCount)
+        });
         assert.equal(rows(null, other).reduce((total, row) => total + row.size, 0), 0);
         assert.equal(rows(null, context).reduce((total, row) => total + row.size, 0), 96);
 

@@ -263,7 +263,7 @@ test('keeps one key per sample and class beyond the initial capacity of the key 
 test.each([
     { name: 'small values', scale: 1 },
     { name: 'record sums beyond 2^32', scale: 4_000_000 }
-])('metrics from records equal event aggregation through filter, mask, range and constraint changes: $name', ({ scale }) => {
+])('metrics from records equal event aggregation through filter and range changes: $name', ({ scale }) => {
     const { population, lifespan, space, other, records } = createFixture(scale);
     const { cumulative } = population;
     const total = population.cumulativeEnd;
@@ -285,9 +285,6 @@ test.each([
         ['lifespan filter', () => both(p => p.filter.set({ key: 'lifespan', domain: 'event', size: lifespan.length, values: lifespan, accepts: Uint8Array.of(1, 0, 1) }))],
         ['two event filters', () => both(p => p.filter.set({ key: 'space', domain: 'event', size: space.length, values: space, accepts: Uint8Array.of(1, 1, 0, 1, 0) }))],
         ['sample filter', () => both(p => p.filter.set({ key: 'sample', domain: 'sample', size: 50, accepts: Uint8Array.from({ length: 50 }, (_, sample) => sample % 7 === 0 ? 0 : 1) }))],
-        ['raw mask', () => both(p => p.updateMask(mask => {
-            mask[3] |= 0x80000000;
-        }))],
         ['single range', () => both(p => p.setRange(total * 0.13 + 0.5, total * 0.71))],
         ['shifted range', () => both(p => p.setRange(total * 0.2 + 0.25, total * 0.78 + 0.5))],
         ['narrow range', () => both(p => p.setRange(total * 0.5, total * 0.5 + 3000))],
@@ -304,16 +301,9 @@ test.each([
             { start: cumulative[inner] + 0.25, end: cumulative[inner] + 0.75 },
             { start: total * 0.6, end: total * 0.8 }
         ]))],
-        ['value minimum', () => both(p => p.setValueRange(100 * scale, null))],
-        ['value maximum', () => both(p => p.setValueRange(null, 500 * scale))],
-        ['without value constraint', () => both(p => p.resetValueRange())],
-        ['index start', () => both(p => p.setIndexRange(1000, null))],
-        ['index end', () => both(p => p.setIndexRange(null, 7000))],
-        ['without index constraint', () => both(p => p.resetIndexRange())],
         ['event filter over values of no class', () => both(p => p.filter.set({ key: 'other', domain: 'event', size: other.length, values: other, accepts: Uint8Array.of(0, 1) }))],
         ['without event filter over values of no class', () => both(p => p.filter.remove('other'))],
         ['empty ranges', () => both(p => p.setRanges([]))],
-        ['reset mask', () => both(p => p.resetMask())],
         ['without filters', () => both(p => {
             p.filter.remove('lifespan');
             p.filter.remove('space');

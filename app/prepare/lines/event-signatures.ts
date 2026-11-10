@@ -143,9 +143,9 @@ export class EventSignatures {
     }
 
     // Acceptance of every signature by a population of the line, or null when the population may accept
-    // events of one signature differently: a raw mask, index/value constraints or a filter over other values
+    // events of one signature differently: a filter over other values
     acceptance(population: PopulationFiltered) {
-        if (population.source !== population.population || !population.acceptsByFilters) {
+        if (population.source !== population.population) {
             return null;
         }
 

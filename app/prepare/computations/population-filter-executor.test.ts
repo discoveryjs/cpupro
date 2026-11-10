@@ -71,7 +71,7 @@ test('batches prepared predicates, ignores identical inputs and keeps event and 
     assert.deepEqual(Array.from(acceptsEvent!.values, value => acceptsEvent!.accepts[value]), [1, 1, 0, 0]);
 });
 
-test.each(['sample', 'event'] as const)('preserves prepared %s acceptance when resetting raw mask and range', domain => {
+test.each(['sample', 'event'] as const)('preserves prepared %s acceptance when resetting the range', domain => {
     const population = new PopulationFiltered(new Population(new Uint32Array([0, 1, 0]), new Uint32Array([10, 20, 30])));
     const prepared: PreparedAttributeFilter = {
         key: 'attribute', domain, size: domain === 'sample' ? 2 : 3, accepts: Uint8Array.of(1, 0, 1).subarray(0, domain === 'sample' ? 2 : 3)
@@ -80,13 +80,7 @@ test.each(['sample', 'event'] as const)('preserves prepared %s acceptance when r
     population.filter.set(prepared);
     assert.deepEqual([...population.samplesTotal], [10, 0]);
     assert.equal(population.sink.total, 20);
-    population.updateMask(mask => {
-        mask[0] |= 0x80000000;
-    });
-    assert.equal(population.sink.total, 30);
-    population.resetMask();
     assert.equal(population.filter.get('attribute'), prepared);
-    assert.equal(population.sink.total, 20);
     population.filter.set({ ...prepared, accepts: new Uint8Array(prepared.size) });
     assert.equal(population.sink.total, 30);
     population.filter.remove('attribute');

@@ -3,7 +3,7 @@ import { Observer } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi, type ComputeApi } from './compute-wasm-wrapper.js';
 import { PopulationFilter, type EventAcceptance } from './population-filter.js';
 import { RecordsAggregate, type PopulationRecords } from './population-records.js';
-import { normalizeRanges, intersectRanges, equalRanges, validateRangeBounds, type RangeSet } from './coordinates.js';
+import { normalizeRanges, intersectRanges, equalRanges, type RangeSet } from './coordinates.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
 
@@ -100,7 +100,6 @@ export class PopulationFiltered extends Observer {
     #totals: Float64Array;     // size of samples plus the sink
     #recompute: (clear?: boolean) => void;
     #hasMask = false;
-    #hasRawMask = false;
     #acceptedEvents: EventAcceptance | null = null;
     #unsubscribe: () => void;
     #boundaryCuts: { index: number; value: number }[] = [];
@@ -119,10 +118,6 @@ export class PopulationFiltered extends Observer {
     #ranges: RangeSet | null = null;
     #effectiveRanges: RangeSet | null = null;
     rangeSamples: number | null = null;
-    indexStart: number | null = null;
-    indexEnd: number | null = null;
-    valueMin: number | null = null;
-    valueMax: number | null = null;
 
     constructor(source: Population | PopulationFiltered) {
         super();
@@ -179,7 +174,7 @@ export class PopulationFiltered extends Observer {
             this.population.values.length,
             (updateMask, acceptedEvents) => {
                 this.#acceptedEvents = acceptedEvents;
-                this.updateMask(updateMask);
+                this.#updateMask(updateMask);
             }
         );
 
@@ -238,7 +233,7 @@ export class PopulationFiltered extends Observer {
         return this.buffer.samples;
     }
 
-    // Values of events after ranges and constraints; edge events keep whole values (see boundaryCuts)
+    // Values of events after ranges; edge events keep whole values (see boundaryCuts)
     get values(): Uint32Array {
         if (this.#valuesStale) {
             this.#valuesStale = false;
@@ -316,34 +311,10 @@ export class PopulationFiltered extends Observer {
         };
     }
 
-    resetMask() {
-        const { sampleBits } = this.filter;
-
-        this.updateMask(mask => {
-            for (let sampleId = 0; sampleId < mask.length; sampleId++) {
-                mask[sampleId] &= sampleBits;
-            }
-        });
-    }
-
-    // Event acceptance follows from registered filters alone: no raw mask bits and no index or value constraints
-    get acceptsByFilters() {
-        return !this.#hasRawMask &&
-            this.indexStart === null &&
-            this.indexEnd === null &&
-            this.valueMin === null &&
-            this.valueMax === null;
-    }
-
-    hasMask() {
-        return this.#hasMask;
-    }
-
-    updateMask(maskFn: MaskFunction) {
+    #updateMask(maskFn: MaskFunction) {
         const hadMask = this.#hasMask;
 
         maskFn(this.samplesMask);
-        this.#hasRawMask = hasBitsOutside(this.samplesMask, this.filter.sampleBits);
         this.#hasMask = this.#acceptedEvents !== null || !isMaskEmpty(this.samplesMask);
 
         if (!this.#hasMask && !hadMask) {
@@ -385,7 +356,7 @@ export class PopulationFiltered extends Observer {
         const originalSamples = this.source.samples;
         const samples = this.buffer.samples;
 
-        // Without own sample or event constraints every event keeps the source destination
+        // Without own masks and event acceptance every event keeps the source destination
         if (!this.#hasMask) {
             samples.set(originalSamples);
             this.samplesRevision++;
@@ -415,14 +386,9 @@ export class PopulationFiltered extends Observer {
         return changed;
     }
 
-    // Without own constraints destinations, values and boundary cuts equal the source ones, and so do the metrics
+    // Without own masks and ranges destinations, values and boundary cuts equal the source ones, and so do the metrics
     #adoptsSource() {
-        return !this.#hasMask &&
-            this.#ranges === null &&
-            this.indexStart === null &&
-            this.indexEnd === null &&
-            this.valueMin === null &&
-            this.valueMax === null;
+        return !this.#hasMask && this.#ranges === null;
     }
 
     #adoptSourceMetrics() {
@@ -435,12 +401,11 @@ export class PopulationFiltered extends Observer {
     }
 
     // Per-sample masks and event acceptances along the source chain, when metrics can come from records:
-    // records are set, every event acceptance is constant within an event class and no index or value
-    // constraint changes values
+    // records are set and every event acceptance is constant within an event class
     #recordsTables(): RecordsTables | null {
         const aggregate = this.#aggregate;
 
-        if (aggregate === null || this.#hasConstraints()) {
+        if (aggregate === null) {
             return null;
         }
 
@@ -461,13 +426,6 @@ export class PopulationFiltered extends Observer {
         }
 
         return { masks: [...source.masks, this.samplesMask], events };
-    }
-
-    #hasConstraints() {
-        return this.indexStart !== null ||
-            this.indexEnd !== null ||
-            this.valueMin !== null ||
-            this.valueMax !== null;
     }
 
     // Covers the events of the effective ranges by records and computes boundary cuts and rangeSamples
@@ -608,51 +566,6 @@ export class PopulationFiltered extends Observer {
         this.notify();
     }
 
-    setIndexRange(start: number | null, end: number | null) {
-        validateRangeBounds(start, end);
-
-        if ((start !== null && !Number.isInteger(start)) || (end !== null && !Number.isInteger(end))) {
-            throw new RangeError('Index range boundaries must be integers');
-        }
-
-        const length = this.population.values.length;
-
-        start = start === null ? null : Math.max(0, Math.min(length, start));
-        end = end === null ? null : Math.max(0, Math.min(length, end));
-
-        if (this.indexStart === start && this.indexEnd === end) {
-            return;
-        }
-
-        this.indexStart = start;
-        this.indexEnd = end;
-        this.#updateValues();
-        this.#recompute();
-        this.notify();
-    }
-
-    resetIndexRange() {
-        this.setIndexRange(null, null);
-    }
-
-    setValueRange(min: number | null, max: number | null) {
-        validateRangeBounds(min, max);
-
-        if (this.valueMin === min && this.valueMax === max) {
-            return;
-        }
-
-        this.valueMin = min;
-        this.valueMax = max;
-        this.#updateValues();
-        this.#recompute();
-        this.notify();
-    }
-
-    resetValueRange() {
-        this.setValueRange(null, null);
-    }
-
     #compileValues() {
         this.#boundaryCuts.length = 0;
 
@@ -665,36 +578,23 @@ export class PopulationFiltered extends Observer {
         const originalValues = this.source.values;
         const values = this.buffer.values;
         const { cumulative, rangeStart, rangeEnd } = this;
-        const indexStart = this.indexStart ?? 0;
-        const indexEnd = this.indexEnd ?? values.length;
-        const min = this.valueMin ?? -Infinity;
-        const max = this.valueMax ?? Infinity;
-        const hasRange = rangeStart !== null && rangeEnd !== null;
         let rangeSamples = 0;
 
-        if (!hasRange && this.indexStart === null && this.indexEnd === null && this.valueMin === null && this.valueMax === null) {
+        if (rangeStart === null || rangeEnd === null) {
             values.set(originalValues);
             this.rangeSamples = null;
             return;
         }
 
-        let first = 0;
-        let last = values.length;
-
-        if (hasRange) {
-            if (rangeStart === rangeEnd) {
-                values.fill(0);
-                this.rangeSamples = 0;
-                return;
-            }
-
-            // Zero-sized events repeat coordinates: start uses upper_bound - 1, end uses lower_bound for [start, end).
-            first = Math.max(0, findCumulativeBoundary(cumulative, rangeStart, true) - 1);
-            last = findCumulativeBoundary(cumulative, rangeEnd, false);
-        } else {
-            first = indexStart;
-            last = Math.max(first, indexEnd);
+        if (rangeStart === rangeEnd) {
+            values.fill(0);
+            this.rangeSamples = 0;
+            return;
         }
+
+        // Zero-sized events repeat coordinates: start uses upper_bound - 1, end uses lower_bound for [start, end).
+        const first = Math.max(0, findCumulativeBoundary(cumulative, rangeStart, true) - 1);
+        const last = findCumulativeBoundary(cumulative, rangeEnd, false);
 
         // Clear outside in bulk; interior events need no per-event overlap calculation.
         values.fill(0, 0, first);
@@ -703,19 +603,17 @@ export class PopulationFiltered extends Observer {
         for (let index = first; index < last; index++) {
             const originalValue = originalValues[index];
 
-            // Count coordinate participation before index/value/mask filtering and fractional-weight truncation.
+            // Count coordinate participation before mask filtering and fractional-weight truncation.
             if (originalValue > 0) {
                 rangeSamples++;
             }
 
-            values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
-                ? originalValue
-                : 0;
+            values[index] = originalValue;
         }
 
         // Keep admitted edge weights whole; patch aggregates after accumulation. A single-event range is
         // clipped once from its full weight, never by subtracting from an already truncated Uint32 value.
-        if (hasRange && first < last) {
+        if (first < last) {
             if (values[first] !== 0) {
                 this.#addBoundaryCut(first, Math.min(cumulative[first] + originalValues[first], rangeEnd) - Math.max(cumulative[first], rangeStart));
             }
@@ -725,17 +623,13 @@ export class PopulationFiltered extends Observer {
             }
         }
 
-        this.rangeSamples = hasRange ? rangeSamples : null;
+        this.rangeSamples = rangeSamples;
     }
 
     #compileMultipleRanges(ranges: RangeSet) {
         const values = this.buffer.values;
         const { cumulative } = this;
         const originalValues = this.source.values;
-        const indexStart = this.indexStart ?? 0;
-        const indexEnd = this.indexEnd ?? values.length;
-        const min = this.valueMin ?? -Infinity;
-        const max = this.valueMax ?? Infinity;
         let clearedEnd = 0;
         let boundaryIndex = -1;
         let boundaryValue = 0;
@@ -757,8 +651,7 @@ export class PopulationFiltered extends Observer {
             }
 
             boundaryValue += contribution;
-            values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
-                ? originalValue : 0;
+            values[index] = originalValue;
         };
 
         // Normalized ranges are ordered and disjoint. Seek each interval; do not scan events in the gaps.
@@ -776,10 +669,9 @@ export class PopulationFiltered extends Observer {
             for (let index = first + 1; index < last; index++) {
                 const originalValue = originalValues[index];
 
-                // Count participation before other constraints; all nonzero interior events are wholly covered.
+                // All nonzero interior events are wholly covered.
                 rangeSamples += originalValue > 0 ? 1 : 0;
-                values[index] = index >= indexStart && index < indexEnd && originalValue >= min && originalValue < max
-                    ? originalValue : 0;
+                values[index] = originalValue;
             }
 
             if (last !== first) {
@@ -823,7 +715,7 @@ type RecordsAcceptance = {
 };
 
 // Event intervals whose values ranges keep, and boundary cuts of their edge events: the same coverage as
-// PopulationFiltered#compileValues without index or value constraints
+// PopulationFiltered#compileValues
 function computeCoverage(ranges: RangeSet | null, cumulative: Float64Array, values: Uint32Array) {
     const coverage: [number, number][] = [];
     const cuts: { index: number; value: number }[] = [];
@@ -1046,16 +938,6 @@ function findMaxId(samples: Uint32Array) {
     }
 
     return maxSampleId;
-}
-
-function hasBitsOutside(mask: Uint32Array, bits: number) {
-    for (let i = 0; i < mask.length; i++) {
-        if ((mask[i] & ~bits) !== 0) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 function isMaskEmpty(mask: Uint32Array) {

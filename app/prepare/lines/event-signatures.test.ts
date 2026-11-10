@@ -362,21 +362,12 @@ test.each([
     assert.ok(groupedCalls > 0);
 });
 
-test('signatures leave acceptance to events when a population has constraints beyond its filters', async () => {
+test('signatures leave acceptance to events when a population filters values that signatures do not keep', async () => {
     const { memline } = await createSignaturesProfile();
     const signatures = memline!.signatures!;
     const viewport = memline!.breakdowns[0].populationViewport;
 
     assert.notEqual(signatures.acceptance(viewport), null);
-    viewport.updateMask(mask => {
-        mask[0] |= 0x80000000;
-    });
-    assert.equal(signatures.acceptance(viewport), null);
-    viewport.resetMask();
-    assert.notEqual(signatures.acceptance(viewport), null);
-    viewport.setValueRange(10, null);
-    assert.equal(signatures.acceptance(viewport), null);
-    viewport.resetValueRange();
     viewport.filter.set({ key: 'other', domain: 'event', size: viewport.samples.length, accepts: new Uint8Array(viewport.samples.length) });
     assert.equal(signatures.acceptance(viewport), null);
 });

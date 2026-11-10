@@ -90,8 +90,6 @@ test('inherits sink destinations and unconstrained source metrics without replay
     assert.deepEqual([...selection.samplesTotal], [0, 30]);
     assert.deepEqual(selection.sink, { count: 2, total: 30 });
     selection.resetRange();
-    selection.updateMask(mask => mask.fill(1));
-    selection.resetMask();
     selection.filter.remove('own-event');
     selection.filter.remove('own');
     assert.deepEqual([...selection.samples], [0, 2, 1, 2]);
@@ -159,31 +157,16 @@ test('materializes disjoint intervals without filling gaps or double-counting bo
     assert.deepEqual([...values], [10, 0, 30]);
     assert.deepEqual([...filtered.samplesTotal], [14, 0]);
     assert.equal(filtered.rangeSamples, 2);
-    filtered.setIndexRange(1, 3);
-    assert.deepEqual([...values], [0, 0, 30]);
-    assert.deepEqual([...filtered.samplesTotal], [10, 0]);
-    assert.equal(filtered.rangeSamples, 2);
-    filtered.resetIndexRange();
-    assert.deepEqual([...values], [10, 0, 30]);
-    assert.deepEqual([...filtered.samplesTotal], [14, 0]);
     filtered.setRanges([{ start: 0.1, end: 0.7 }, { start: 1.1, end: 1.7 }]);
     assert.deepEqual([...values], [10, 0, 0]);
     assert.deepEqual([...filtered.samplesTotal], [1, 0]);
     assert.equal(filtered.rangeSamples, 1);
-    filtered.setValueRange(20, null);
-    assert.deepEqual([...values], [0, 0, 0]);
-    assert.equal(filtered.rangeSamples, 1);
-    // The minimum value is accepted inside an interval (event 1) and at an interval edge
-    filtered.setRanges([{ start: 2, end: 4 }, { start: 5, end: 35 }]);
-    assert.deepEqual([...values], [0, 20, 30]);
-    assert.deepEqual([...filtered.samplesTotal], [5, 20]);
-    filtered.setRanges([{ start: 12, end: 14 }, { start: 35, end: 40 }]);
-    assert.deepEqual([...values], [0, 20, 30]);
-    assert.deepEqual([...filtered.samplesTotal], [5, 2]);
-    filtered.resetValueRange();
     filtered.setRanges([{ start: -2, end: 5 }, { start: 40, end: 100 }]);
-    filtered.updateMask(mask => {
-        mask[0] = 1;
+    filtered.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: 2,
+        accepts: Uint8Array.of(0, 1)
     });
     assert.deepEqual([...values], [10, 0, 30]);
     assert.equal(filtered.sink.total, 25);
@@ -204,9 +187,10 @@ test.each([
     { name: 'repeated coordinates', weights: [0, 0, 10, 0, 20, 0, 0, 30, 0, 40, 0] },
     { name: 'uint32 boundary', weights: [0xfffffffe, 1, 0] },
     { name: 'beyond uint32', weights: [0xffffffff, 0xffffffff, 3, 0, 0xffffffff, 7] }
-])('matches per-event overlap through range, mask, index and value transitions: $name', ({ weights }) => {
+])('matches per-event overlap through range and mask transitions: $name', ({ weights }) => {
     const base = new Population(Uint32Array.from(weights, (_, index) => index % 3), Uint32Array.from(weights));
     const filtered = new PopulationFiltered(base);
+    const sampleCount = filtered.samplesMask.length;
     const values = filtered.values;
     const destinations = filtered.samples;
     const total = base.cumulativeEnd;
@@ -226,8 +210,6 @@ test.each([
         for (let index = 0; index < weights.length; index++) {
             const value = base.values[index];
             const start = base.cumulative[index];
-            const accepted = index >= (filtered.indexStart ?? 0) && index < (filtered.indexEnd ?? weights.length) &&
-                value >= (filtered.valueMin ?? -Infinity) && value < (filtered.valueMax ?? Infinity);
             let contribution = value;
 
             if (filtered.ranges !== null) {
@@ -238,7 +220,7 @@ test.each([
                 rangeSamples += contribution > 0 ? 1 : 0;
             }
 
-            if (accepted && contribution > 0) {
+            if (contribution > 0) {
                 // Totals are integral, an event is counted when its truncated contribution remains
                 const effectiveValue = Math.trunc(contribution);
 
@@ -263,8 +245,14 @@ test.each([
         coordinates.push(start - 0.25, start, start + 0.25, start + weights[index] / 2);
     }
 
-    filtered.updateMask(mask => {
-        mask[0] = 1;
+    const accepts = new Uint8Array(sampleCount).fill(1);
+
+    accepts[0] = 0;
+    filtered.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: sampleCount,
+        accepts
     });
 
     for (let pass = 0; pass < 120; pass++) {
@@ -274,18 +262,8 @@ test.each([
 
             return { start: Math.min(start, end), end: Math.max(start, end) };
         });
-        const first = random(weights.length + 1);
-        const last = random(weights.length + 1);
 
         filtered.setRanges(ranges);
-        verify();
-        filtered.setIndexRange(Math.min(first, last), Math.max(first, last));
-        verify();
-        filtered.setValueRange(pass % 2 ? null : 10, pass % 3 ? null : 30);
-        verify();
-        filtered.resetIndexRange();
-        verify();
-        filtered.resetValueRange();
         verify();
         filtered.resetRange();
         verify();

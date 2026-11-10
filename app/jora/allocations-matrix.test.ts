@@ -29,15 +29,23 @@ test.each([
     addTypesAndLifespans(profile, [0, 0, 0, 0], [0, 0, 0, 0]);
     assert.deepEqual(sums(), [160]);
 
-    population.updateMask(mask => {
-        mask[0] = 0x80000000;
+    const sampleCount = population.samplesMask.length;
+    const firstRejected = new Uint8Array(sampleCount).fill(1);
+    const setSampleFilter = (accepts: Uint8Array) => population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: sampleCount,
+        accepts
     });
+
+    firstRejected[0] = 0;
+    setSampleFilter(firstRejected);
     assert.deepEqual(sums(), masked);
 
-    population.updateMask(mask => mask.fill(0x80000000));
+    setSampleFilter(new Uint8Array(sampleCount));
     assert.deepEqual(sums(), []);
 
-    population.resetMask();
+    population.filter.remove('samples');
     assert.deepEqual(sums(), [160]);
 });
 
@@ -133,12 +141,14 @@ test('selects compilation owners and stages without losing allocation filters', 
     assert.deepEqual(matrix(), []);
     population.resetRange();
 
-    population.setIndexRange(1, 3);
-    assert.deepEqual(matrix()[0].total, { count: 1, sum: 48, min: 48, max: 48 });
-    population.resetIndexRange();
-    population.updateMask(mask => mask.fill(0x80000000));
+    population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: population.samplesMask.length,
+        accepts: new Uint8Array(population.samplesMask.length)
+    });
     assert.deepEqual(matrix(), []);
-    population.resetMask();
+    population.filter.remove('samples');
     assert.equal(matrix()[0].total.sum, 64);
     const all = methods.allocationsMatrix.call({ context: {} }, attribute, population, (owner: unknown) => owner !== null, profile);
     assert.equal(all.reduce((sum, entry) => sum + entry.total.sum, 0), 96);
@@ -157,6 +167,11 @@ test('attribute sample totals honor ranges and stage filters without partial-obj
     assert.deepEqual(totals()[1], { entry: owners.dict[1], count: 1, size: 5 });
     population.setRanges([{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 20, end: 24 }]);
     assert.deepEqual(totals().map(row => [row.count, row.size]), [[0, 0], [1, 4], [1, 4]]);
-    population.updateMask(mask => mask.fill(0x80000000));
+    population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: population.samplesMask.length,
+        accepts: new Uint8Array(population.samplesMask.length)
+    });
     assert.ok(totals().every(row => row.count === 0 && row.size === 0));
 });

@@ -1,22 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { CoordinateFrame, normalizeRanges, equalRanges, isRange, validateRange, validateRangeBounds } from './coordinates.js';
+import { CoordinateFrame, normalizeRanges, equalRanges, isRange, validateRange } from './coordinates.js';
 
-test('allows open constraint bounds without accepting them as coordinate ranges', () => {
+test('accepts finite ordered ranges and rejects open bounds', () => {
     for (const [start, end] of [[null, null], [null, -1], [-1, null]] as const) {
-        assert.doesNotThrow(() => validateRangeBounds(start, end));
         assert.equal(isRange({ start, end }), false);
     }
     for (const range of [{ start: -2, end: 1 }, { start: 0, end: 0 }, { start: 0.5, end: 1.5 }]) {
-        assert.doesNotThrow(() => validateRangeBounds(range.start, range.end));
         assert.doesNotThrow(() => validateRange(range));
         assert.equal(isRange(range), true);
     }
 });
 
-test('rejects non-finite and reversed constraint bounds, including one-sided constraints', () => {
+test('rejects non-finite, reversed and malformed ranges', () => {
     for (const [start, end] of [[NaN, null], [null, Infinity], [-Infinity, null], [null, NaN], [2, 1]] as const) {
-        assert.throws(() => validateRangeBounds(start, end), RangeError);
         assert.equal(isRange({ start, end }), false);
     }
     for (const value of [undefined, null, {}, [], { start: 0 }, { start: '0', end: 1 }]) {

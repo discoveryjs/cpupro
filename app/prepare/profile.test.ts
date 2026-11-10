@@ -91,8 +91,15 @@ describe('profile breakdowns', () => {
             const populations = new Set(line.breakdowns.map(breakdown => breakdown.populationFiltered));
             for (const population of populations) {
                 population.setRange(5, 20);
-                population.updateMask(mask => {
-                    mask[0] |= 0x80000000;
+                const sampleCount = population.samplesMask.length;
+                const accepts = new Uint8Array(sampleCount).fill(1);
+
+                accepts[0] = 0;
+                population.filter.set({
+                    key: 'samples',
+                    domain: 'sample',
+                    size: sampleCount,
+                    accepts
                 });
                 const accepted = population.samplesTotal.reduce((sum, value) => sum + value, 0);
                 assert.equal(accepted + population.sink.total, 15);
@@ -110,7 +117,7 @@ describe('profile breakdowns', () => {
                         assert.equal(dimension.bounds.lastSeen[0], population.cumulative[population.cumulative.length - 1]);
                     }
                 }
-                population.resetMask();
+                population.filter.remove('samples');
                 population.resetRange();
                 assert.deepEqual(population.samplesTotal, population.population.samplesTotal);
             }

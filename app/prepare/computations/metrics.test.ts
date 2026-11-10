@@ -13,8 +13,16 @@ test('filtered metrics of every breakdown of a population follow its changes whe
 
     mapped.callFrames!.filtered.dict.subscribe(() => notifications.mapped++);
     other.callFrames!.filtered.dict.subscribe(() => notifications.other++);
-    population.updateMask(mask => {
-        mask[0] = 1;
+    const sampleCount = population.samplesMask.length;
+
+    const accepts = new Uint8Array(sampleCount).fill(1);
+
+    accepts[0] = 0;
+    population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: sampleCount,
+        accepts
     });
 
     assert.deepEqual(notifications, { mapped: 1, other: 0 });
@@ -26,9 +34,7 @@ test('filtered metrics of every breakdown of a population follow its changes whe
         assert.equal(dict.totalValues.length, dict.dictionary.length);
     }
 
-    population.updateMask(mask => {
-        mask[0] = 0;
-    });
+    population.filter.remove('samples');
 
     assert.deepEqual([...original.callFrames!.filtered.dict.selfValues], [...original.callFrames!.all.dict.selfValues]);
 });

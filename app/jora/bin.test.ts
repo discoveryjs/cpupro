@@ -317,29 +317,6 @@ test('viewport bins and counters preserve coordinates, disjoint coverage and sou
     assert.deepEqual([...samplesMethods.countSamples.call({ context }, 10)], empty);
 });
 
-test.each([
-    [5, [0, 10, 10, 0, 0]],
-    [1, [20]]
-])('sample, own allocation and tree bins in %i bins skip events an index constraint leaves without weight', async (count, expected) => {
-    const context = await createContext({ origin: 0, values: new Uint32Array([10, 10, 10, 10, 10]), samples: new Uint32Array(5) }, { start: 0, end: 50 });
-    const viewport = context.scopeBreakdown.populationWindow;
-    const line = context.scopeLine;
-    const metrics = { tree: createTree(['all'], new Uint32Array([0]), new Uint32Array([0])), sampleToNode: new Uint32Array([0]) };
-
-    // Range edges cut the first and the last events, which the constraint leaves without weight
-    viewport.setRanges([{ start: 5, end: 45 }]);
-    viewport.setIndexRange(1, 3);
-
-    const [own] = methods.binLineToAxisLine.call({ context }, line, null, line, count);
-    const [tree] = methods.binTreeSamples.call({ context }, metrics, count);
-
-    assert.deepEqual(methods.binCallsFromMask.call({ context }, new Uint8Array([1]), count), expected);
-    assert.deepEqual([...own.bins], expected);
-    assert.equal(own.value, 20);
-    assert.deepEqual([...tree.bins], expected);
-    assert.equal(tree.value, 20);
-});
-
 test('clipped sample bins match scalar intersections across masks, offsets and bin counts', async () => {
     const values = new Uint32Array([0, 10, 270, 5, 400, 315]);
     const samples = new Uint32Array([0, 1, 0, 1, 1, 0]);
@@ -382,8 +359,11 @@ test('matches scalar bins and counters across disjoint ranges without shifting f
         viewport.setRanges(ranges);
 
         for (const filtered of [false, true]) {
-            viewport.updateMask(mask => {
-                mask[1] = filtered ? 1 : 0;
+            viewport.filter.set({
+                key: 'samples',
+                domain: 'sample',
+                size: 2,
+                accepts: Uint8Array.of(1, filtered ? 0 : 1)
             });
 
             for (const [start, end] of [[0, 1000], [-30, 170], [900, 1100]]) {
@@ -730,15 +710,12 @@ test('the window of a source line, a range of its own axis, does not narrow its 
     source.breakdowns[0].populationWindow.setRanges(null);
 });
 
-test.each([
-    { name: 'a range inside one allocation and a later range', ranges: [{ start: 1, end: 2 }, { start: 4, end: 12 }], indexRange: [null, null], expected: [0, 0, 1, 3, 5, 0, 0, 0, 0, 0] },
-    { name: 'edge allocations an index constraint leaves without weight', ranges: [{ start: 1, end: 10 }], indexRange: [1, 2], expected: [0, 0, 0, 4, 0, 0, 0, 0, 0, 0] }
-] as const)('mapped allocation bins take source participation of $name', async ({ ranges, indexRange: [indexStart, indexEnd], expected }) => {
+test('mapped allocation bins take source participation of a range inside one allocation and a later range', async () => {
     const context = await createContext();
     const { source, viewport } = await createMappedSource(context.scopeLine);
+    const expected = [0, 0, 1, 3, 5, 0, 0, 0, 0, 0];
 
-    viewport.setRanges([...ranges]);
-    viewport.setIndexRange(indexStart, indexEnd);
+    viewport.setRanges([{ start: 1, end: 2 }, { start: 4, end: 12 }]);
 
     const [row] = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10);
 
@@ -1296,8 +1273,14 @@ test.skipIf(!process.env.CPUPRO_BIN_BENCH)('measures viewport binning on seven m
 
     for (const constrained of [false, true]) {
         if (constrained) {
-            viewport.updateMask(bits => {
-                bits[0] = 1;
+            const accepts = new Uint8Array(viewport.samplesMask.length).fill(1);
+
+            accepts[0] = 0;
+            viewport.filter.set({
+                key: 'samples',
+                domain: 'sample',
+                size: accepts.length,
+                accepts
             });
             viewport.setRanges(Array.from({ length: 32 }, (_, index) => ({ start: index * 200_000 + 1000, end: index * 200_000 + 2000 })));
         }

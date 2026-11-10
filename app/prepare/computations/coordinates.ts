@@ -4,20 +4,6 @@ export type CoordinateSpace = Readonly<{ name: string; unit: string }>;
 export type Range = Readonly<{ start: number; end: number }>;
 export type RangeSet = readonly Range[];
 
-function areRangeBoundsValid(start: number | null, end: number | null): boolean {
-    return (
-        (start === null || Number.isFinite(start)) &&
-        (end === null || Number.isFinite(end)) &&
-        (start === null || end === null || start <= end)
-    );
-}
-
-export function validateRangeBounds(start: number | null, end: number | null): void {
-    if (!areRangeBoundsValid(start, end)) {
-        throw new RangeError('Range boundaries must be finite and ordered');
-    }
-}
-
 export function isRange(value: unknown): value is Range {
     if (!value || typeof value !== 'object') {
         return false;
