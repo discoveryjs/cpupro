@@ -37,3 +37,23 @@ test.each([
     assert.deepEqual(Array.from(methods.countSamples.call({ context }, count)), intersecting);
     assert.deepEqual(Array.from(methods.countSamplesDiscrete.call({ context }, count, undefined)), starts);
 });
+
+// Index and value constraints leave the events they reject in place with no weight: counters skip them
+test.each([
+    { name: 'an index range of the last two events', constrain: (viewport: PopulationFiltered) => viewport.setIndexRange(1, 3), intersecting: [0, 0, 0, 1, 2], starts: [0, 0, 0, 1, 1] },
+    { name: 'an index range of the first two events', constrain: (viewport: PopulationFiltered) => viewport.setIndexRange(0, 2), intersecting: [0, 0, 1, 2, 1], starts: [0, 0, 1, 1, 0] },
+    { name: 'a minimal value', constrain: (viewport: PopulationFiltered) => viewport.setValueRange(10, null), intersecting: [0, 0, 1, 2, 1], starts: [0, 0, 1, 1, 0] },
+    // The second event ends the first range and starts the second one in the same bin; the third event alone is accepted
+    { name: 'a value range over ranges cutting an event', constrain: (viewport: PopulationFiltered) => {
+        viewport.setRanges([{ start: 0, end: 13 }, { start: 14, end: 25 }]);
+        viewport.setValueRange(null, 6);
+    }, intersecting: [0, 0, 0, 0, 1], starts: [0, 0, 0, 0, 1] }
+])('sample counters skip events rejected by $name', async ({ constrain, intersecting, starts }) => {
+    // Events at 125–135, 135–145 and 145–150 of values 10, 10 and 5; bins of 10 from 100
+    const { profile, line, breakdown } = await createLineFixture({ origin: 125 });
+    const context = { scopeViewport: { start: 100, end: 150 }, scopeLine: line, scopeProfile: profile, scopeBreakdown: breakdown };
+
+    constrain(breakdown.populationWindow);
+    assert.deepEqual(Array.from(methods.countSamples.call({ context }, 5)), intersecting);
+    assert.deepEqual(Array.from(methods.countSamplesDiscrete.call({ context }, 5, undefined)), starts);
+});
