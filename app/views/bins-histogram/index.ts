@@ -13,11 +13,18 @@ export type BinsHistogramOptions = {
     max?: number;
     // Series sharing the scale (e.g. the total of tracks), the highest of their visible columns is the full height
     scaleBins?: ArrayLike<number>[] | null;
-    binsMax?: boolean;
+    // The highest column of a duration over all the data the bins are a window of (e.g. the line viewport) is the full
+    // height: panning never changes the scale, columns of another merge level get a maximum of their own
+    scaleMax?: ColumnMaxFn | null;
+    // A shadow of the bins scaled to their own maximum as if they were alone, it shows the unevenness of bins low on
+    // a shared scale. A function gives the highest column of a duration over all the data, as scaleMax does
+    binsMax?: boolean | ColumnMaxFn;
     scale?: BinsScale;
 };
 
 type ScaleFn = (value: number, max: number) => number;
+// Columns of a duration start at multiples of it from a column start
+type ColumnMaxFn = (columnDuration: number, columnStart: number) => number;
 type ColumnValueFn = (bins: ArrayLike<number>, start: number, size: number) => number;
 type Columns = {
     // Bins per column
@@ -56,6 +63,7 @@ export function drawBinsHistogram(
         peaks = false,
         max,
         scaleBins = null,
+        scaleMax = null,
         binsMax,
         scale = 'linear'
     }: BinsHistogramOptions,
@@ -78,12 +86,23 @@ export function drawBinsHistogram(
 
     columns.size = binsPerColumn(columns.count, bins.length, width / dpr, dpr);
 
-    // Without a maximum of a bin, the scale depends only on the visible columns rather than on the range of bins,
-    // which follows the viewport in steps and may hold columns far higher than any visible one
-    const columnsMax = visibleColumnsMax(bins, columns, columnValue);
+    // Bins split the range in durations, or are units of their own
+    const columnDuration = range && range.end > range.start
+        ? columns.size * (range.end - range.start) / bins.length
+        : columns.size;
+    const columnStart = range ? range.start : 0;
+    // Without a maximum over all the data, the scale depends only on the visible columns rather than on the range
+    // of bins, which follows the viewport in steps and may hold columns far higher than any visible one
+    const columnsMax = typeof binsMax === 'function'
+        ? binsMax(columnDuration, columnStart)
+        : visibleColumnsMax(bins, columns, columnValue);
 
     if (max && !peaks) {
         max *= columns.size;
+    }
+
+    if (!max && scaleMax !== null) {
+        max = scaleMax(columnDuration, columnStart);
     }
 
     if (!max && scaleBins !== null) {

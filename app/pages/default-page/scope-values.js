@@ -35,9 +35,20 @@ export function withViewportAttributeTotals(attributeName, content) {
         scopeProfile().memline.breakdowns[0].populationViewport
     ].[$]`, `
         $tracks: "${attributeName}".viewportAllocationAttribute();
-        { tracks: $tracks, total: $tracks.sum(=> value) or 0 }
+        {
+            tracks: $tracks,
+            total: $tracks.sum(=> value) or 0,
+            columnMax: "${attributeName}".allocationAttributeColumnMax()
+        }
     `, content);
 }
+
+// Scales of the histogram of a row (by its dictionary index) over the whole line viewport: the total of tracks
+// for its columns and the track itself for their shadow, at the duration of the columns shown
+export const viewportTrackScales = {
+    scaleMax: '=#.viewportTotals.value.columnMax.total',
+    binsMax: '=#.viewportTotals.value.columnMax.tracks[index]'
+};
 
 // Share of a row's attribute value (by its dictionary index) among the viewport totals, in percent
 export const viewportShare = '$viewport: #.viewportTotals.value; $viewport.total ? 100 * $viewport.tracks[index].value / $viewport.total : 0';

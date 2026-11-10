@@ -893,6 +893,81 @@ function binTreePopulation(
     return result;
 }
 
+// Columns over a line viewport are binned by spans of this many of them, the bins of a line window
+const COLUMN_SPAN = 2000;
+
+type ColumnMax = {
+    origin: number;
+    total: number;
+    tracks: Float64Array;
+};
+
+// The highest columns of a duration starting at multiples of it from an origin over the extent in the viewport
+// populations, of each track and of their total
+function attributeColumnMax(
+    context: unknown,
+    line: ProfileLine,
+    attribute: ProfileLineAttribute,
+    extent: Range,
+    duration: number,
+    origin: number
+): ColumnMax {
+    const tracks = new Float64Array(attribute.dict.length);
+    const spanLength = COLUMN_SPAN * duration;
+    const firstSpan = origin + Math.floor((extent.start - origin) / spanLength) * spanLength;
+    let total = 0;
+
+    for (let i = 0; firstSpan + i * spanLength < extent.end; i++) {
+        const start = firstSpan + i * spanLength;
+        const spanContext = {
+            context: {
+                ...context as object,
+                scopeViewport: {
+                    start,
+                    end: start + spanLength
+                }
+            }
+        };
+        const span = methods.binLineToAxisLine.call(
+            spanContext,
+            line,
+            attribute,
+            undefined,
+            COLUMN_SPAN,
+            'populationViewport'
+        );
+
+        for (let j = 0; j < span.length; j++) {
+            tracks[j] = Math.max(tracks[j], arrayMax(span[j].bins));
+        }
+
+        total = Math.max(total, arrayMax(span[0].totalBins));
+    }
+
+    return {
+        origin,
+        total,
+        tracks
+    };
+}
+
+// Columns of a duration from either origin have the same boundaries
+function sameColumns(origin: number, otherOrigin: number, duration: number) {
+    const offset = (origin - otherOrigin) / duration;
+
+    return Math.abs(offset - Math.round(offset)) < 1e-6;
+}
+
+function arrayMax(values: ArrayLike<number>) {
+    let max = 0;
+
+    for (let i = 0; i < values.length; i++) {
+        max = Math.max(max, values[i]);
+    }
+
+    return max;
+}
+
 type BinOptions = {
     test?: unknown;
     n?: number;
@@ -951,6 +1026,47 @@ export const methods = {
         const context = { ...this.context, scopeViewport: lineViewport(scopeLine, this.context.data?.profiles) };
 
         return methods.binLineToAxisLine.call({ ...this, context }, line, attribute, undefined, 1, 'populationViewport');
+    },
+
+    // The highest column of a duration over the line viewport, of each track of an allocation attribute and of their
+    // total. Histograms of any window of the viewport scale to them, so panning never changes a scale, and columns
+    // of another merge level get maximums of their own. Columns of a duration share their boundaries: the cells of
+    // zoomed windows, or the bounds of the viewport without a zoom. A duration is computed on its first read and kept
+    // as long as the functions are, the holder of them follows the viewport populations
+    allocationAttributeColumnMax(name: ProfileLineAttribute['name']) {
+        const scopeLine = resolveScopeProfileLine(null, this.context);
+        const line = resolveScopeProfileLine('memline', this.context);
+        const attribute = line?.attributes.find(attribute => attribute.name === name);
+
+        if (!scopeLine || !line || !attribute) {
+            return null;
+        }
+
+        const extent = lineViewport(scopeLine, this.context.data?.profiles);
+        const maxByDuration = new Map<number, ColumnMax>();
+        const columnMax = (duration: number, origin: number) => {
+            let max = maxByDuration.get(duration);
+
+            if (max === undefined || !sameColumns(origin, max.origin, duration)) {
+                max = attributeColumnMax(this.context, line, attribute, extent, duration, origin);
+                maxByDuration.set(duration, max);
+            }
+
+            return max;
+        };
+        const total = (duration: number, origin: number) => columnMax(duration, origin).total;
+        const tracks: ((duration: number, origin: number) => number)[] = [];
+
+        for (let i = 0; i < attribute.dict.length; i++) {
+            const track = (duration: number, origin: number) => columnMax(duration, origin).tracks[i];
+
+            tracks.push(track);
+        }
+
+        return {
+            total,
+            tracks
+        };
     },
 
     binTreeSamples(treeMetrics: SampledTree<unknown>, n = 500, breakdown?: ProfileLineBreakdown | string) {

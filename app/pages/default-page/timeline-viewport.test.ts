@@ -580,8 +580,8 @@ test('allocation sections are empty without the attribute or the memline', async
 
     profile.memline!.attributes = [];
 
-    assert.deepEqual(sectionData(pageContext(profile)), [[], [], { tracks: [], total: 0 }]);
-    assert.deepEqual(sectionData(pageContext(cpuProfile)), [[], [], { tracks: [], total: 0 }]);
+    assert.deepEqual(sectionData(pageContext(profile)), [[], [], { tracks: [], total: 0, columnMax: null }]);
+    assert.deepEqual(sectionData(pageContext(cpuProfile)), [[], [], { tracks: [], total: 0, columnMax: null }]);
 });
 
 test('allocation type rows and labels take their color or a random one of the entry', () => {

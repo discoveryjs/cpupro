@@ -208,6 +208,31 @@ test('series sharing the scale make the highest of their visible columns the ful
     ]);
 });
 
+test('maximums of a column duration over all the data are the full height of columns and their shadow anywhere', () => {
+    const range = { start: 5, end: 85 };
+    const bins = [10, 0, 0, 0, 2, 1, 1, 0];
+    const durations = [];
+    const scaleMax = (duration, start) => {
+        durations.push([duration, start]);
+        return 20;
+    };
+    const binsMax = () => 10;
+    const layers = (width, viewport) => draw(width, 20, {
+        bins,
+        range,
+        viewport,
+        scaleMax,
+        binsMax
+    }).map(layer => heights(layer.rects));
+
+    // Panning keeps both scales, whichever columns are visible: the shadow, then the columns
+    assert.deepEqual(layers(8, { start: 45, end: 85 }), [[4, 2, 2], [2, 1, 1]]);
+    assert.deepEqual(layers(8, { start: 5, end: 45 }), [[20], [10]]);
+    // Bins merged by 2 on a narrower canvas are columns of a twice longer duration, from the start of the bins
+    layers(4, { start: 45, end: 85 });
+    assert.deepEqual(durations, [[10, 5], [10, 5], [20, 5]]);
+});
+
 test('the viewport places columns aligned to their bins and clips the edges', () => {
     const bins = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     const range = { start: 100, end: 200 };
@@ -457,7 +482,7 @@ test('draws on a canvas sized to its CSS box and pixel ratio while connected', (
     ]);
     assert.deepEqual({ ...histogram.drawn[0].options }, {
         bins, range: undefined, viewport: undefined,
-        presence, peaks: undefined, max: 5, scaleBins: undefined, binsMax: true, scale: 'log'
+        presence, peaks: undefined, max: 5, scaleBins: undefined, scaleMax: undefined, binsMax: true, scale: 'log'
     });
     assert.equal(histogram.drawn[1].options, histogram.drawn[0].options);
 

@@ -953,6 +953,36 @@ test.each([
     assert.deepEqual(methods[method].call({ context: memline }, 'allocationSpace'), []);
 });
 
+test('column maximums of an allocation attribute are of the line viewport at a column duration, not of a window', async () => {
+    const { profile, line, breakdown } = await createLineFixture({ type: 'memline', values: new Uint32Array([16, 32, 48, 64]) });
+    const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
+    const read = (columnMax: ReturnType<typeof methods.allocationAttributeColumnMax>, duration: number, origin = 0) => [
+        columnMax!.total(duration, origin),
+        columnMax!.tracks.map(track => track(duration, origin))
+    ];
+
+    line.attributes = [{ name: 'allocationType', values: Uint32Array.of(0, 1, 1, 0), dict: ['array', 'string'] }];
+
+    const columnMax = methods.allocationAttributeColumnMax.call({ context }, 'allocationType');
+
+    // Columns of [0, 80) and [80, 160) hold 16 + 64 bytes of each type
+    assert.deepEqual(read(columnMax, 80), [80, [64, 64]]);
+    assert.deepEqual(read(columnMax, 20), [20, [20, 20]]);
+    // Columns from 40 hold 16, 24 and 40 bytes of one type and 24, 56 and 0 of the other one
+    assert.deepEqual(read(columnMax, 80, 40), [80, [40, 56]]);
+
+    // Neither the window population nor a window as the scope viewport change them
+    breakdown.populationWindow.setRanges([{ start: 0, end: 20 }]);
+    assert.deepEqual(read(methods.allocationAttributeColumnMax.call({ context: { ...context, scopeViewport: { start: 0, end: 20 } } }, 'allocationType'), 80), [80, [64, 64]]);
+
+    // A new viewport gives new maximums, a duration read once is kept by its functions
+    line.viewport.setRange(0, 48);
+    breakdown.populationViewport.setRanges([{ start: 0, end: 48 }]);
+    assert.deepEqual(read(methods.allocationAttributeColumnMax.call({ context }, 'allocationType'), 80), [48, [16, 32]]);
+    assert.deepEqual(read(columnMax, 80, 40), [80, [40, 56]]);
+    assert.equal(methods.allocationAttributeColumnMax.call({ context }, 'allocationSpace'), null);
+});
+
 //
 // Timestamp streams: heap events and function codes
 //

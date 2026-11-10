@@ -15,6 +15,7 @@ discovery.view.define('bins-histogram', function(el, config, data, context) {
         peaks: config.peaks,
         max: config.max,
         scaleBins: config.scaleBins,
+        scaleMax: config.scaleMax,
         binsMax: config.binsMax,
         scale: config.scale // 'linear', 'log', 'sqrt'
     };

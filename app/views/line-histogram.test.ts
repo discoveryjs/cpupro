@@ -82,6 +82,7 @@ test('renders the bins over the viewport with display props unchanged', () => {
         height: 30,
         max: 8,
         scaleBins: [new Float64Array([1, 2, 3])],
+        scaleMax: () => 4,
         binsMax: true,
         scale: 'log'
     };
@@ -106,6 +107,7 @@ test('renders the bins over the viewport with display props unchanged', () => {
         height: 30,
         max: 8,
         scaleBins: props.scaleBins,
+        scaleMax: props.scaleMax,
         binsMax: true,
         scale: 'log',
         onInit: undefined

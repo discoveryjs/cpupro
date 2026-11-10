@@ -1,6 +1,6 @@
 import { sessionExpandState } from '../common.js';
 import { withLineWindowValue, lineWindowHistogram } from '../../views/misc/line-window.js';
-import { viewportShare, viewportShareText, withViewportAttributeTotals } from './scope-values.js';
+import { viewportShare, viewportShareText, withViewportAttributeTotals, viewportTrackScales } from './scope-values.js';
 
 export const histAllocationSpaces = withViewportAttributeTotals('allocationSpace', {
     view: 'expand',
@@ -59,8 +59,7 @@ export const histAllocationSpaces = withViewportAttributeTotals('allocationSpace
                 },
                 lineWindowHistogram('attributeBins', '$track: #.attributeBins.value[index]; { ..., bins: $track.bins, totalBins: $track.totalBins, step: $track.step }', {
                     bins: '=bins',
-                    scaleBins: '=[totalBins]',
-                    binsMax: true,
+                    ...viewportTrackScales,
                     scale: '=step ? "linear" : "sqrt"',
                     color: '=color'
                 })
