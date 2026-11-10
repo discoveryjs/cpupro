@@ -11,7 +11,7 @@ npm test -- -t "preserves span"
 npm run test:lint
 ```
 
-Vitest discovers `*.test.js`, `*.test.ts` and `*.test.mts` next to production modules under `app/` and `lib/`. It does not scan `tmp/`, migration scripts or generated output. No dev server, profile downloads, generated WASM files or git history are required.
+Vitest discovers `*.test.js`, `*.test.ts` and `*.test.mts` next to production modules under `app/` and `lib/`, and next to shared fixtures under `test/`. It does not scan `tmp/`, migration scripts or generated output. No dev server, profile downloads, generated WASM files or git history are required.
 
 ## Adding a test
 
@@ -30,7 +30,7 @@ test('restores an exact half-open range', () => {
 
 Use small deterministic inputs and assert the intended contract. Prefer invariants and concrete values over large snapshots. Assertions about shared objects should use `assert.equal`; array contents should use `assert.deepEqual`.
 
-Fixtures shared by several modules live in `test/fixtures/`; reusable adapters live in `test/helpers/`. Module-specific fixtures can stay beside their test. Nothing in production imports the test directories.
+Fixtures shared by several modules live in `test/fixtures/`, with tests of their contracts beside them; reusable adapters live in `test/helpers/`. Module-specific fixtures can stay beside their test. Nothing in production imports the test directories.
 
 Views, pages and workers that depend on Discovery or browser globals are evaluated with `evaluateModule(url, globals, binding?)` from `test/helpers/evaluate-module.ts`. It removes the module's import declarations, so a test supplies the imported bindings and globals explicitly.
 
