@@ -4,8 +4,10 @@ import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fix
 import { createProfile } from './profile.mjs';
 import { noopWorkHandler } from './misc/work.js';
 import type { V8CpuProfile } from './types.js';
+import type { ProfileLineBreakdown } from './lines/types.js';
 
 const dimensions = ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners'] as const;
+type Dimension = typeof dimensions[number];
 const allKinds = {
     timeline: ['call-stack', 'call-stack-sm'],
     memline: ['call-stack', 'location', 'call-stack-sm', 'location-sm']
@@ -132,10 +134,11 @@ describe('profile breakdowns', () => {
         }
     });
 
+    // CPU sample IDs 0 and 1 are of the three CPU samples, ID 2 is of allocations recorded after the last one
     test.each([
-        { name: 'uncovered tail', mapping: [1, 2, 2], expected: [0, 1, 0, 0] },
+        { name: 'uncovered tail', mapping: [1, 2, 2], expected: [0, 1, 2, 2] },
         { name: 'short mapping', mapping: [1, 2], expected: [0, 1, 0, 0] },
-        { name: 'no allocation captured by a CPU sample', mapping: [0, 0, 0], expected: [0, 0, 0, 0] },
+        { name: 'no allocation captured by a CPU sample', mapping: [0, 0, 0], expected: [2, 2, 2, 2] },
         { name: 'missing intermediate mapping', mapping: Object.assign(new Array<number>(3), { 0: 1, 2: 4 }), expected: [0, 0, 0, 0] }
     ])('preserves allocation weights and attributes to CPU samples: $name', async ({ mapping, expected }) => {
         const { profile } = await createProfileFixture({ mapping });
@@ -149,6 +152,27 @@ describe('profile breakdowns', () => {
         assert.equal(stack.population.cumulative, locations.population.cumulative);
         const metrics = stack.callFrames!.all.nodes;
         assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], 160);
+    });
+
+    test('allocations after the last CPU sample belong to an unknown call frame', async () => {
+        // The last CPU sample records allocation 2, allocations 3 and 4 (48 and 64 bytes) follow it
+        const { profile } = await createProfileFixture({ mapping: [1, 2, 2] });
+        const stack = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
+        const timeline = profile.timeline!.breakdowns[0];
+        const selfValue = (breakdown: ProfileLineBreakdown, dimension: Dimension, name: string) => {
+            const { entries } = breakdown[dimension]!.all.dict;
+
+            return entries.find(entry => entry.entry.name === name)!.selfValue;
+        };
+
+        assert.equal(selfValue(stack, 'callFrames', '(after profile end)'), 112);
+        assert.equal(selfValue(stack, 'modules', '(after profile end)'), 112);
+        assert.equal(selfValue(stack, 'packages', '(unknown)'), 112);
+        assert.equal(selfValue(stack, 'categories', 'unknown'), 112);
+        assert.deepEqual([...timeline.population.values], [10, 10, 10, 0]);
+        assert.equal(selfValue(timeline, 'callFrames', '(after profile end)'), 0);
+        assert.deepEqual([...profile.memline!.mappings.timeline._mapping], [0, 1, 3, 3]);
+        assert.deepEqual([...profile.timeline!.mappings.memline._mapping], [1, 2, 2]);
     });
 
     test.each([

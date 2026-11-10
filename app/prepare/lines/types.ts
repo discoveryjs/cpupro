@@ -121,8 +121,8 @@ export type ProfileLineMethods = {
 export type ProfileLineMapping = {
     line: ProfileLine;
     inverse: ProfileLineMapping;
-    // Target of every event; an event without a target maps to the count of targets, e.g. an allocation
-    // recorded after the last CPU sample
+    // Target of every event; an event after the recorded targets maps to their count, e.g. an allocation
+    // recorded after the last CPU sample maps to the sample of no time a profile ends with
     _mapping: Uint32Array;
     // Targets never decrease along the events, so events with targets in a range are one interval
     nondecreasing: boolean;

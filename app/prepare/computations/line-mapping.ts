@@ -67,8 +67,8 @@ export function createLineMapping(
     const destToSource = new Uint32Array(destIds);
     // [0, 0, 1, 1, 1, 3, 3, ...] -> timeline sample ids
     // An allocation maps to the first CPU sample whose last allocation ID is at or after its ID. Allocations
-    // after the last sample's ID were recorded after the CPU profile ended: they map to the sample count, no
-    // sample, rather than to the last sample, so they take no place in time
+    // after the last sample's ID were recorded after the CPU profile ended: they map to the sample count, the
+    // sample of no time a profile ends with for them, rather than to the last sample
     for (let i = 0, k = 0; i < sourceToDest.length; i++) {
         const allocId = sourceToDest[i];
 

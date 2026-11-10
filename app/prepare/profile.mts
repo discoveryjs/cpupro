@@ -180,9 +180,28 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         );
     }
 
+    // Allocations recorded after the last CPU sample have no call stack. The profile ends with a sample of no
+    // time of the "(after profile end)" call frame: allocations map to it, the sample after the recorded ones,
+    // rather than to the last sample's stack, as long gaps without samples are samples of "(no samples)".
+    // When the last samples have no recorded allocation ID, the allocations map to them
+    const allocationIds = data._cpuproAllocationIds ?? null;
+    let afterProfileSample = false;
+
+    if (allocationIds !== null && allocationMapping !== null && allocationMapping.length === dataSamples.length) {
+        const lastAllocationId = allocationIds[allocationIds.length - 1];
+        const lastSampleAllocationId = allocationMapping[allocationMapping.length - 1];
+
+        afterProfileSample = lastAllocationId > lastSampleAllocationId;
+    }
+
     // convert arrays into TypedArrays;
     // after this point these arrays will not change their length
-    const extraLength = longDeltas?.longTimeDeltasCount ?? 0;
+    let extraLength = longDeltas?.longTimeDeltasCount ?? 0;
+
+    if (afterProfileSample) {
+        extraLength++;
+    }
+
     const {
         timeDeltas,
         samples,
@@ -206,6 +225,19 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
         return nodeIndexById;
     });
+
+    // The sample of allocations after the profile follows the samples of the profile with no time
+    if (afterProfileSample) {
+        samples[dataSamples.length] = generatedNodes.addNode(
+            dictionary.callFrames.wellKnownIndex['after-profile-end'],
+            1, // parentId = root
+            -1 // parentScriptOffset
+        );
+
+        if (sampleScriptOffsets !== null) {
+            sampleScriptOffsets[dataSamples.length] = -1;
+        }
+    }
 
     // process long time deltas if needed
     if (longDeltas !== null) {

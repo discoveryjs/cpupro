@@ -50,8 +50,9 @@ test('passes unrestricted and empty requests through, and cannot map lines witho
     assert.equal(mapLineRanges(profile.timeline!, unmapped.memline!, [{ start: 0, end: 40 }]), undefined);
 });
 
-// The last sample of the fixture records allocation 3, so allocation 4 (bytes 96–160) is recorded after it
-test('allocations recorded after the last sample map to no sample and take no time', async () => {
+// The last sample of the fixture records allocation 3, so allocation 4 (bytes 96–160) is recorded after it and
+// maps to the sample after the recorded ones, which the profile adds with no time at its end
+test('allocations after the last sample map to the sample after the recorded ones', async () => {
     const { profile } = await createProfileFixture({ mapping: [1, 2, 3] });
     const time = profile.timeline!;
     const allocations = profile.memline!;
@@ -62,5 +63,7 @@ test('allocations recorded after the last sample map to no sample and take no ti
     assert.deepEqual([...allocations.mappings.timeline._mapping], [0, 1, 2, 3]);
     assert.deepEqual(mapLineRanges(allocations, time, [{ start: 96, end: 160 }]), []);
     assert.deepEqual(mapLineRanges(allocations, time, [{ start: 0, end: 160 }]), sampled);
-    assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 1000 }]), [{ start: 0, end: 96 }]);
+    assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 40 }]), [{ start: 0, end: 96 }]);
+    // A range past the end of the recording covers the instant of its end
+    assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 1000 }]), [{ start: 0, end: 160 }]);
 });

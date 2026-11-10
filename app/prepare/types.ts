@@ -190,6 +190,7 @@ export type WellKnownName =
     | '(internals)'
     | '(idle)'
     | '(no samples)'
+    | '(after profile end)'
     | '(parser)'
     | '(bytecode compiler)'
     | '(compiler)'
@@ -198,6 +199,7 @@ export type WellKnownName =
     | '(idle external)'
     ;
 export type WellKnownType = // alphabetical order
+    | 'after-profile-end'
     | 'atomics-wait'
     | 'bytecode-compiler'
     | 'compiler'
