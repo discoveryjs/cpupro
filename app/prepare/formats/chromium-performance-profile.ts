@@ -12,16 +12,9 @@ import type {
     UniformTraceEvent
 } from './types.js';
 import type {
-    AllocationCodeTypeVector,
-    AllocationContextInfoVector,
-    AllocationGcVector,
     AllocationIdVector,
-    AllocationSizeVector,
-    AllocationSpaceVector,
-    AllocationTypeVector,
     ColumnNumberVector,
     LineNumberVector,
-    ScriptOffsetVector,
     SourceMap,
     TimeDeltaVector,
     V8CpuProfile,
@@ -43,7 +36,7 @@ type AllocationVectorEntry = {
     pid: number;
     tid: number;
     name: string;
-    data: TraceAllocationIdVector | Int32Array;
+    data: TraceVector;
 };
 export type ChromiumTraceEventsSource = {
     traceEvents: ChromiumTraceEvent[];
@@ -77,30 +70,31 @@ type ScriptSourceChunks = Map<V8CpuProfileScript, {
     splitCount: number;
     chunks: Map<number, string>;
 }>;
-type TraceAllocationIdVector = AllocationIdVector; // Exclude<AllocationIdVector, Uint32Array>;
-type TraceScriptIdVector = number[] | Int32Array;
+// A vector of a trace is decoded into the 32-bit integer vector of its values whatever its form: a decoder
+// (e.g. jsonxl) chooses a typed array by the range of the values, regardless of whether they are signed
+type TraceVector = number[] | Int32Array | Uint32Array | Float64Array;
 // Each ProfileChunk holds a segment of the capture's allocation vectors, encoded as an array
 // of numbers or as JSON.stringify(numbers). The jsonxl layout holds null instead and stores
 // whole vectors in trace metadata (see AllocationVectorEntry).
 type AllocationSamples = {
-    ids?: TraceAllocationIdVector | string | null;
-    sizes?: AllocationSizeVector | string | null;
-    scriptIds?: TraceScriptIdVector | string | null;
-    scriptOffsets?: ScriptOffsetVector | string | null;
-    contextInfo?: AllocationContextInfoVector | string | null; // vm state + builtin id
+    ids?: TraceVector | string | null;
+    sizes?: TraceVector | string | null;
+    scriptIds?: TraceVector | string | null;
+    scriptOffsets?: TraceVector | string | null;
+    contextInfo?: TraceVector | string | null; // vm state + builtin id
     builtinsDict?: Record<number, string>;
     vmStatesDict?: Record<number, string>;
-    types?: AllocationTypeVector | string | null;
+    types?: TraceVector | string | null;
     typesDict?: Record<string, string>;
-    spaces?: AllocationSpaceVector | string | null;
+    spaces?: TraceVector | string | null;
     spacesDict?: Record<string, string>;
-    codeTypes?: AllocationCodeTypeVector | string | null;
+    codeTypes?: TraceVector | string | null;
     codeTypesDict?: Record<string, string>;
-    gc?: AllocationGcVector | string | null;
+    gc?: TraceVector | string | null;
 };
 // Allocation ids per GC (the key)
 type AllocationGc = {
-    [key: string]: TraceAllocationIdVector | Int32Array | string | null;
+    [key: string]: TraceVector | string | null;
 };
 type AllocationSampleVectors = {
     ids?: Uint32Array;
@@ -135,7 +129,7 @@ type ChromiumTraceProfileChunkEventData = {
     endTime: number;
     isolate?: string;
     // Combined profile allocation data
-    allocationSampleIds?: TraceAllocationIdVector | Int32Array;
+    allocationSampleIds?: AllocationIdVector | Int32Array;
     allocationSamples?: AllocationSamples;
     allocationGc?: AllocationGc;
 };
@@ -1018,7 +1012,7 @@ function decodeAllocationGc(allocationGc: AllocationGc): DecodedAllocationGc {
 }
 
 function decodeChunkVector<Vector extends Int32Array | Uint32Array>(
-    source: number[] | Int32Array | Uint32Array | Float64Array | string,
+    source: TraceVector | string,
     VectorType: {
         new(values: number[] | Int32Array | Uint32Array | Float64Array): Vector;
         new(buffer: ArrayBufferLike, byteOffset: number, length: number): Vector;
