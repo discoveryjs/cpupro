@@ -174,6 +174,8 @@ test('without a maximum of a bin, columns scale to the highest visible column', 
     assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 30, end: 70 } })), [4, 4, 8]);
     assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 40, end: 80 } })), [8, 8]);
     assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 0, end: 40 } })), [8]);
+    // Neither do bins right after the viewport
+    assert.deepEqual(heights(bars(8, 8, { bins: [1, 1, 2, 0, 9, 0, 0, 0], range, viewport: { start: 0, end: 40 } })), [4, 4, 8]);
 
     // A partially visible column counts with its whole value
     assert.deepEqual(heights(bars(16, 8, { bins, range, viewport: { start: 5, end: 45 } })), [8, 1]);
