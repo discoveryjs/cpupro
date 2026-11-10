@@ -171,7 +171,15 @@ export function processTicks(
 
     function createNextNode(currentNode: CallNode<number>, callFrameIndex: number, parentScriptOffset: number) {
         const nextNode = createNode(nodes.length + 1, callFrameIndex, parentScriptOffset);
-        const newChildrenLength = currentNode.children.push(nextNode.id);
+        const newChildrenLength = currentNode.children.length + 1;
+
+        // PERF: The first push into an empty array allocates room for 16 elements, while most nodes of the tree
+        // get a single child, so the first child makes an array of one element
+        if (newChildrenLength === 1) {
+            currentNode.children = [nextNode.id];
+        } else {
+            currentNode.children.push(nextNode.id);
+        }
 
         nodes.push(nextNode);
 
