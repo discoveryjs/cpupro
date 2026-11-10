@@ -246,7 +246,7 @@ test('histograms follow the window of the zoom with the viewport filters', async
     assert.equal(windowUpdates, 1);
     assert.deepEqual([...windowBins()], bins);
 
-    (line.filters.get('allocationLiveness') as SetAttributeFilter).setEnabled('gced', false);
+    (line.filters.get('allocationLifespan') as SetAttributeFilter).setSelection('include', ['alive']);
     assert.ok(populationWindow.sink.total > 0);
     // At the whole extent the window and the viewport are the same filtered population
     line.zoom.resetRange();

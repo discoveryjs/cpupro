@@ -11,7 +11,7 @@ import { createTimeline } from './timeline.mjs';
 import { prepareLineFilters } from './filters.js';
 
 // Fixture allocation events weigh 16, 32, 48 and 64 bytes.
-// Events 0 and 2 are alive; events 0 and 1 are in new space.
+// Events 0 and 2 are alive, event 1 is short-lived and event 3 long-lived; events 0 and 1 are in new space.
 const allocationEvents = {
     allocationGc: [0, 1, 0, 2],
     allocationSpaces: [1, 1, 2, 2],
@@ -47,9 +47,17 @@ test('a created timeline has no filters until they are prepared from its attribu
 });
 
 test.each([
-    { order: 'input', reverse: false, expected: ['category', 'allocationSpace', 'allocationLiveness'] },
-    { order: 'reversed', reverse: true, expected: ['category', 'allocationLiveness', 'allocationSpace'] }
-])('registers category and handled attribute filters in $order attribute order', async ({ reverse, expected }) => {
+    {
+        order: 'input',
+        reverse: false,
+        expected: ['category', 'allocationSpace', 'allocationLifespan', 'allocationGcEpoch']
+    },
+    {
+        order: 'reversed',
+        reverse: true,
+        expected: ['category', 'allocationGcEpoch', 'allocationLifespan', 'allocationSpace']
+    }
+])('registers category and attribute filters in $order attribute order', async ({ reverse, expected }) => {
     const { profile } = await createProfileFixture(allocationEvents);
     const attributes = [...profile.memline!.attributes];
     const line = { ...profile.memline!, filters: new FilterSet(), attributes: reverse ? attributes.reverse() : attributes };
@@ -61,13 +69,53 @@ test.each([
 });
 
 test.each([
-    { name: 'liveness without a value for every event', options: { allocationGc: [0] } },
+    { name: 'lifespan and GC epoch without a value for every event', options: { allocationGc: [0] } },
     { name: 'space without a value for every event', options: { allocationSpaces: [1], allocationSpaceNames: { 1: 'new_space' } } },
     { name: 'space without option names', options: { allocationSpaces: [1, 1, 1, 1] } }
 ])('skips $name', async ({ options }) => {
     const { profile } = await createProfileFixture(options);
 
     assert.deepEqual(profile.memline!.filters.filters.map(filter => filter.key), ['category']);
+});
+
+test('every attribute but identity-like ones gets a filter with an option per dictionary entry', async () => {
+    const { profile } = await createProfileFixture();
+    const attributes = [
+        {
+            name: 'allocationType' as const,
+            values: Uint32Array.of(0, 1, 1, 0),
+            dict: ['STRING', 'FIXED_ARRAY']
+        },
+        {
+            name: 'allocationCodeType' as const,
+            values: Uint8Array.of(0, 0, 1, 2),
+            dict: ['Ignition', 'Turbofan', 'Builtin']
+        },
+        {
+            name: 'allocationOwner' as const,
+            values: Uint32Array.of(0, 1, 2, 3),
+            dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 10 }, { scriptId: 2, start: 0 }]
+        }
+    ];
+    const line = { ...profile.memline!, filters: new FilterSet(), attributes };
+
+    prepareLineFilters(line);
+
+    const typeFilter = line.filters.get('allocationType') as SetAttributeFilter;
+    const codeTypeFilter = line.filters.get('allocationCodeType') as SetAttributeFilter;
+
+    assert.deepEqual(
+        line.filters.filters.map(filter => filter.key),
+        ['category', 'allocationType', 'allocationCodeType']
+    );
+    assert.deepEqual(
+        typeFilter.options.map(option => option.key),
+        ['STRING', 'FIXED_ARRAY']
+    );
+    assert.deepEqual(
+        codeTypeFilter.options.map(option => option.label),
+        ['Ignition', 'Turbofan', 'Builtin']
+    );
 });
 
 test.each([
@@ -129,11 +177,12 @@ test('event filters select individual allocations of a shared sample', async () 
     // Every allocation of the call-stack breakdown is attributed to the same sample
     const { profile } = await createProfileFixture({ mapping: [0, 4, 4], ...allocationEvents });
     const line = profile.memline!;
-    const liveness = line.filters.get('allocationLiveness') as SetAttributeFilter;
+    const lifespan = line.filters.get('allocationLifespan') as SetAttributeFilter;
     const space = line.filters.get('allocationSpace') as SetAttributeFilter;
 
     line.filters.batch(() => {
-        liveness.setEnabled('gced', false);
+        lifespan.setEnabled('short-lived', false);
+        lifespan.setEnabled('long-lived', false);
         space.setEnabled('old_space', false);
     });
 
@@ -150,7 +199,7 @@ test('event filters select individual allocations of a shared sample', async () 
 test('a settings batch updates each population once and recompiles only changed settings', async () => {
     const { profile } = await createProfileFixture(allocationEvents);
     const line = profile.memline!;
-    const liveness = line.filters.get('allocationLiveness') as SetAttributeFilter;
+    const lifespan = line.filters.get('allocationLifespan') as SetAttributeFilter;
     const space = line.filters.get('allocationSpace') as SetAttributeFilter;
     const populations = [...new Set(line.breakdowns.map(breakdown => breakdown.populationViewport))];
     const categories = populations.map(population => population.filter.get('category'));
@@ -161,7 +210,7 @@ test('a settings batch updates each population once and recompiles only changed 
     }
 
     line.filters.batch(() => {
-        liveness.setSelection('include', ['alive']);
+        lifespan.setSelection('include', ['alive']);
         space.setSelection('exclude', ['old_space']);
     });
 
@@ -170,12 +219,12 @@ test('a settings batch updates each population once and recompiles only changed 
         assert.equal(population.filter.get('category'), categories[index]);
     }
 
-    const result = populations[0].filter.get('allocationLiveness');
+    const result = populations[0].filter.get('allocationLifespan');
 
-    liveness.setSelection('include', ['alive']);
+    lifespan.setSelection('include', ['alive']);
 
     assert.deepEqual(updates, [1, 1]);
-    assert.equal(populations[0].filter.get('allocationLiveness'), result);
+    assert.equal(populations[0].filter.get('allocationLifespan'), result);
 });
 
 test('later attribution adds category options without replacing the settings or their selection', async () => {

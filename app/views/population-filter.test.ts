@@ -62,7 +62,12 @@ test('lists the set filters registered for the line', async () => {
     breakdown.line.filters.add(range);
     const filters = evaluate(populationFilter.filters, breakdown) as SetAttributeFilter[];
 
-    assert.deepEqual(filters, [filter('category'), filter('allocationSpace'), filter('allocationLiveness')]);
+    assert.deepEqual(filters, [
+        filter('category'),
+        filter('allocationSpace'),
+        filter('allocationLifespan'),
+        filter('allocationGcEpoch')
+    ]);
 });
 
 test('a filter group keeps the outer context and exposes its filter', async () => {
@@ -90,30 +95,30 @@ test('checkboxes show and change whether an option is admitted', async () => {
 test('Only admits just its option and keeps the other filters', async () => {
     const { breakdown, filter } = await createBreakdown();
     const space = filter('allocationSpace');
-    const liveness = filter('allocationLiveness');
+    const lifespan = filter('allocationLifespan');
 
-    liveness.setEnabled('gced', false);
+    lifespan.setSelection('include', ['alive']);
     renderOptions(breakdown, space)[1].only();
 
     assert.equal(space.mode, 'include');
     assert.deepEqual(space.selectedKeys, ['old_space']);
-    assert.equal(liveness.isEnabled('gced'), false);
+    assert.deepEqual(lifespan.selectedKeys, ['alive']);
     assert.deepEqual(summarize(breakdown), { included: 48, excluded: 112 });
 });
 
 test('All admits every option of its filter and keeps the other filters', async () => {
     const { breakdown, filter } = await createBreakdown();
     const space = filter('allocationSpace');
-    const liveness = filter('allocationLiveness');
+    const lifespan = filter('allocationLifespan');
 
     breakdown.line.filters.batch(() => {
         space.setSelection('include', []);
-        liveness.setEnabled('gced', false);
+        lifespan.setSelection('include', ['alive']);
     });
     evaluate(resetAttribute.onClick, space)();
 
     assert.equal(space.active, false);
-    assert.equal(liveness.isEnabled('gced'), false);
+    assert.deepEqual(lifespan.selectedKeys, ['alive']);
     assert.deepEqual(summarize(breakdown), { included: 64, excluded: 96 });
 });
 
@@ -123,7 +128,7 @@ test('the summary counts the viewport population and its reset admits everything
 
     breakdown.line.filters.batch(() => {
         filter('allocationSpace').setEnabled('old_space', false);
-        filter('allocationLiveness').setEnabled('gced', false);
+        filter('allocationLifespan').setSelection('include', ['alive']);
     });
     breakdown.line.range.setRange(80, 120);
 

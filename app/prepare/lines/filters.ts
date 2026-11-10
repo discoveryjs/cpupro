@@ -1,17 +1,10 @@
 import { SetAttributeFilter, type PreparedAttributeFilter } from '../computations/attribute-filter.js';
 import type { PopulationFilter } from '../computations/population-filter.js';
-import type { ProfileLine, ProfileLineAttribute } from './types.js';
+import type { ProfileLine } from './types.js';
 import type { FilterComputation } from './filters/types.js';
 import { createCategoryFilter } from './filters/category.js';
-import { createAllocationLivenessFilter } from './filters/allocation-liveness.js';
-import { createAllocationSpaceFilter } from './filters/allocation-space.js';
-import { createAllocationCompilationStageFilter } from './filters/allocation-compilation-stage.js';
+import { createAttributeFilter } from './filters/attribute.js';
 
-const attributeFilterFactories: Partial<Record<ProfileLineAttribute['name'], (attribute: ProfileLineAttribute, eventCount: number) => FilterComputation | null>> = {
-    allocationLifespan: createAllocationLivenessFilter,
-    allocationSpace: createAllocationSpaceFilter,
-    allocationCompilationStage: createAllocationCompilationStageFilter
-};
 const breakdownFilterFactories = {
     categories: createCategoryFilter
 };
@@ -66,11 +59,7 @@ export function prepareLineFilters(line: ProfileLine) {
         }
 
         for (const attribute of attributes) {
-            const createFilter = attributeFilterFactories[attribute.name];
-
-            if (createFilter) {
-                include(createFilter(attribute, line.values.length), targets);
-            }
+            include(createAttributeFilter(attribute, line.values.length), targets);
         }
     });
 

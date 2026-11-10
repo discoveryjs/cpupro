@@ -32,33 +32,17 @@ function aggregateFilterOptions(
         return totals;
     }
 
-    const attributeName = filter.key === 'allocationLiveness' ? 'allocationLifespan' : filter.key;
-    const attribute = line.attributes.find(attribute => attribute.name === attributeName);
+    const attribute = line.attributes.find(attribute => attribute.name === filter.key);
 
     if (!attribute) {
         return totals;
     }
 
+    // Options of an attribute filter follow the attribute's dictionary
     const values = population.aggregateBy(attribute.values, attribute.dict.length)[metric];
 
-    for (let index = 0; index < values.length; index++) {
-        let key: string;
-
-        switch (attribute.name) {
-            case 'allocationSpace':
-                key = attribute.dict[index].code;
-                break;
-            case 'allocationLifespan':
-                key = index === 0 ? 'alive' : 'gced';
-                break;
-            case 'allocationCompilationStage':
-                key = attribute.dict[index];
-                break;
-            default:
-                continue;
-        }
-
-        totals.set(key, (totals.get(key) || 0) + values[index]);
+    for (let i = 0; i < filter.options.length; i++) {
+        totals.set(filter.options[i].key, values[i]);
     }
 
     return totals;

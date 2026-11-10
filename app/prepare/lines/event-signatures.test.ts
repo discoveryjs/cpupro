@@ -296,8 +296,8 @@ test.each([
     const states: [string, () => void][] = [
         ['unfiltered', () => {}],
         ['memline category', () => filter(memline, 'category').setSelection('exclude', [filter(memline, 'category').options[0].key])],
-        ['memline liveness and space', () => {
-            filter(memline, 'allocationLiveness').setSelection('include', ['alive']);
+        ['memline lifespan and space', () => {
+            filter(memline, 'allocationLifespan').setSelection('include', ['alive']);
             filter(memline, 'allocationSpace').setSelection('exclude', ['old_space']);
         }],
         ['timeline category', () => filter(timeline, 'category').setSelection('include', [filter(timeline, 'category').options[0].key])],

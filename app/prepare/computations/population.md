@@ -23,7 +23,7 @@ Category values are collected locally per population and united in the line's se
 | Setting | Values and predicate basis |
 | --- | --- |
 | `category` | All attribution sources of each population, including values introduced by source resolution. CPU-stack and allocation-location populations keep their own lookups and contribute to one option set. |
-| `allocationLiveness`, `allocationSpace` | Allocation-event attributes, shared between both memline attribution paths. |
+| `allocationType`, `allocationSpace`, `allocationLifespan`, `allocationGcEpoch`, `allocationCodeType`, `allocationCompilationStage` | Allocation-event attributes, shared between both memline attribution paths: one filter per attribute with an option per dictionary entry. Identity-like attributes (`allocationOwner`) have no filter. |
 
 There is one category condition per population, not one per representation. A sample may have categories from several attributions: include accepts it if any category is selected, and exclude rejects it if any category is selected. Attribution lookups are kept local; a category available only in another population does not match this one. Breakdown order and kind do not affect acceptance. A shared executor applies the resulting participation to all its representations. Matching category selections across the two memline populations still need not accept identical events. Package/module/function conditions and profile-level aggregation are not implemented here.
 

@@ -4,8 +4,9 @@ import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 import { filterOptionTotals, filterOptions } from './filters.js';
 
-// Fixture allocation events weigh 16, 32, 48 and 64 bytes. Events 0 and 2 are alive, events 0 and 1 are in
-// new space, and a CPU sample 0 mapping attributes every allocation of the call-stack breakdown to one sample.
+// Fixture allocation events weigh 16, 32, 48 and 64 bytes. Events 0 and 2 are alive, event 1 is short-lived and
+// event 3 long-lived, events 0 and 1 are in new space, and a CPU sample 0 mapping attributes every allocation of
+// the call-stack breakdown to one sample.
 const allocationEvents = {
     mapping: [0, 4, 4],
     allocationGc: [0, 1, 0, 2],
@@ -36,7 +37,7 @@ test('options are the values present in the line, regardless of filters and view
     const expected = {
         category: ['script'],
         allocationSpace: ['new_space', 'old_space'],
-        allocationLiveness: ['alive']
+        allocationLifespan: ['alive']
     };
 
     assert.ok(filter('category').options.length > 1);
@@ -47,7 +48,7 @@ test('options are the values present in the line, regardless of filters and view
     }
 
     filter('allocationSpace').setEnabled('old_space', false);
-    filter('allocationLiveness').setSelection('include', []);
+    filter('allocationLifespan').setSelection('include', []);
     breakdown.line.viewport.setRange(0, 16);
 
     for (const [key, keys] of Object.entries(expected)) {
@@ -74,22 +75,29 @@ test.each([
 ])('option totals are taken from the viewport population after the other filters, with $selection', async ({ prepare }) => {
     const { breakdown, filter } = await createBreakdown('call-stack');
     const space = filter('allocationSpace');
-    const liveness = filter('allocationLiveness');
+    const lifespan = filter('allocationLifespan');
 
     breakdown.line.filters.batch(() => {
         prepare(space);
-        prepare(liveness);
+        prepare(lifespan);
     });
 
     assert.deepEqual(filterOptionTotals(breakdown, space), new Map([['new_space', 48], ['old_space', 112], ['code_space', 0]]));
-    assert.deepEqual(filterOptionTotals(breakdown, liveness), new Map([['alive', 64], ['gced', 96]]));
+    assert.deepEqual(
+        filterOptionTotals(breakdown, lifespan),
+        new Map([['alive', 64], ['short-lived', 32], ['long-lived', 64]])
+    );
 
     // An option's own exclusion shows as zero, the other filter totals shrink to the admitted events
     space.setEnabled('old_space', false);
     assert.deepEqual(filterOptionTotals(breakdown, space), new Map([['new_space', 48], ['old_space', 0], ['code_space', 0]]));
-    assert.deepEqual(filterOptionTotals(breakdown, liveness), new Map([['alive', 16], ['gced', 32]]));
+    assert.deepEqual(
+        filterOptionTotals(breakdown, lifespan),
+        new Map([['alive', 16], ['short-lived', 32], ['long-lived', 0]])
+    );
 
-    liveness.setEnabled('gced', false);
+    lifespan.setEnabled('short-lived', false);
+    lifespan.setEnabled('long-lived', false);
     assert.deepEqual(filterOptionTotals(breakdown, space), new Map([['new_space', 16], ['old_space', 0], ['code_space', 0]]));
 
     // The selection range does not limit totals, the viewport does
@@ -100,7 +108,10 @@ test.each([
 
     breakdown.line.filters.allowAll();
     assert.deepEqual(filterOptionTotals(breakdown, space), new Map([['new_space', 40], ['old_space', 52], ['code_space', 0]]));
-    assert.deepEqual(filterOptionTotals(breakdown, liveness), new Map([['alive', 56], ['gced', 36]]));
+    assert.deepEqual(
+        filterOptionTotals(breakdown, lifespan),
+        new Map([['alive', 56], ['short-lived', 32], ['long-lived', 4]])
+    );
 });
 
 test.each(['timeline', 'memline'] as const)('category totals partition the viewport population of every %s breakdown', async lineType => {
@@ -139,6 +150,6 @@ test('compilation stage totals count only admitted allocations', async () => {
 
     assert.deepEqual(filterOptionTotals(breakdown, stages), new Map([['none', 64], ['Compile', 64], ['Finalize', 32]]));
 
-    filter('allocationLiveness').setEnabled('gced', false);
+    filter('allocationLifespan').setSelection('include', ['alive']);
     assert.deepEqual(filterOptionTotals(breakdown, stages), new Map([['none', 0], ['Compile', 64], ['Finalize', 0]]));
 });
