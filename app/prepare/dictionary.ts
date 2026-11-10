@@ -398,23 +398,6 @@ export class Dictionary {
 
         this.locations.push(location);
 
-        if (callFrame === this.#unknownCallFrame && script !== null) {
-            Object.defineProperty(location, 'callFrame', {
-                get: () => {
-                    const callFrame = this.resolveLocationCallFrame(
-                        script,
-                        scriptOffset,
-                        line,
-                        column
-                    );
-
-                    Object.defineProperty(location, 'callFrame', { value: callFrame });
-
-                    return callFrame;
-                }
-            });
-        }
-
         if (scriptOffset !== -1 && script !== null) {
             let byOffset = this.#locationsByScriptOffset.get(script);
 
@@ -443,6 +426,17 @@ export class Dictionary {
 
         if (callFrame && !hasLoc) {
             this.#locationsByNoScriptCallFrame.set(callFrame, locationIndex);
+        }
+
+        // The call frame of a location in a script is resolved once the location is registered: resolving
+        // may add the call frame, which takes the location as its start when they share a position
+        if (callFrame === this.#unknownCallFrame && script !== null) {
+            location.callFrame = this.resolveLocationCallFrame(
+                script,
+                scriptOffset,
+                line,
+                column
+            );
         }
 
         return locationIndex;
