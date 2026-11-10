@@ -54,13 +54,15 @@ describe('numeric vector views', () => {
     });
 });
 
-test('fraction digits tell apart a resolution in a unit and keep at least one', () => {
-    assert.equal(fractionDigits(100, 1000), 1);
-    assert.equal(fractionDigits(1000, 1000), 1);
-    assert.equal(fractionDigits(1e6, 1000), 1);
-    assert.equal(fractionDigits(99, 1000), 2);
-    assert.equal(fractionDigits(33.6, 1000), 2);
-    assert.equal(fractionDigits(10, 1000), 2);
-    assert.equal(fractionDigits(9.9, 1000), 3);
-    assert.equal(fractionDigits(0.5, 1000), 4);
+test.each([
+    [100, 1],
+    [1000, 1],
+    [1e6, 1],
+    [99, 2],
+    [33.6, 2],
+    [10, 2],
+    [9.9, 3],
+    [0.5, 4]
+])('a resolution of %d in a unit of 1000 takes %i fraction digits, at least one', (resolution, digits) => {
+    assert.equal(fractionDigits(resolution, 1000), digits);
 });

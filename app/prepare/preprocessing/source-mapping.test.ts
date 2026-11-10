@@ -8,7 +8,7 @@ import type { CpuProLocation } from '../types.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 
 // Function ranges of original scripts are parsed on demand instead of parse workers
-vi.spyOn(scriptFunctions, 'prepareScriptSources').mockResolvedValue(undefined);
+const prepareScriptSources = vi.spyOn(scriptFunctions, 'prepareScriptSources').mockResolvedValue(undefined);
 
 const originalA = 'function outer() {\n  return [1].map(function inner(x) { return x; });\n}';
 const originalB = 'function helper() { return 2; }';
@@ -136,4 +136,89 @@ test('a dictionary without source maps maps locations to themselves', async () =
     assert.equal(sourceMapping.hasSourceMaps, false);
     assert.equal(originalLocations[location], location);
     assert.deepEqual([...originalLocations], dictionary.locations.map((_, index) => index));
+});
+
+// Generated scripts with the source map, and locations of each script at the columns of line 0
+function createScriptLocations(sourceMap: unknown, scriptCount: number, columns: number[]) {
+    const dictionary = new Dictionary();
+    const createScript = (_: unknown, index: number) => ({
+        id: index + 1,
+        url: `bundle-${index}.js`,
+        source: ' '.repeat(80),
+        sourceMap
+    });
+    const scripts = Array.from({ length: scriptCount }, createScript);
+    const scriptsMap = new ProfileScriptsMap(dictionary, scripts as ConstructorParameters<typeof ProfileScriptsMap>[1]);
+    const locateColumns = (_: unknown, index: number) => {
+        const script = scriptsMap.get(index + 1)!;
+
+        return columns.map(column => dictionary.resolveLocationIndex(null, script, -1, 0, column));
+    };
+    const locations = Array.from({ length: scriptCount }, locateColumns);
+
+    return { dictionary, locations };
+}
+
+test.each([
+    // column 0 is mapped, column 10 has no original position
+    { name: 'a segment without an original position', mappings: 'AAAA,U', sources: ['a.js'], column: 10 },
+    { name: 'a source index missing from the map', mappings: 'ACAA', sources: ['a.js'], column: 0 }
+])('a location on $name maps to itself', async row => {
+    const { mappings, sources, column } = row;
+    const sourceMap = {
+        version: 3,
+        sources,
+        sourcesContent: sources.map(() => originalB),
+        names: [],
+        mappings
+    };
+    const { dictionary, locations: [[location]] } = createScriptLocations(sourceMap, 1, [column]);
+    const originalLocations = await new SourceMapping(dictionary).mapLocations();
+
+    assert.equal(originalLocations[location], location);
+});
+
+test('a source listed twice gives one original script per generated script', async () => {
+    const sourceMap = {
+        version: 3,
+        sources: ['a.js', 'a.js'],
+        sourcesContent: [originalB, originalB],
+        names: [],
+        mappings: 'AAAA,UCAA'
+    };
+    const { dictionary, locations } = createScriptLocations(sourceMap, 2, [0, 10]);
+    const originalLocations = await new SourceMapping(dictionary).mapLocations();
+    const originalScript = (location: number) => dictionary.locations[originalLocations[location]].script;
+    const originalScripts = locations.map(scriptLocations => scriptLocations.map(originalScript));
+    const scriptsOfSource = dictionary.scripts.filter(script => script.url === 'a.js');
+
+    assert.equal(originalScripts[0][0], originalScripts[0][1]);
+    assert.equal(originalScripts[1][0], originalScripts[1][1]);
+    assert.notEqual(originalScripts[0][0], originalScripts[1][0]);
+    assert.deepEqual(scriptsOfSource.map(script => script.originalFor!.url), ['bundle-0.js', 'bundle-1.js']);
+});
+
+test('original scripts start parsing once per lookup, mapping waits for the parsing', async () => {
+    let finishParsing = () => {};
+    const { dictionary } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
+    const parsing = new Promise<undefined>(resolve => finishParsing = () => resolve(undefined));
+
+    prepareScriptSources.mockClear();
+    prepareScriptSources.mockReturnValueOnce(parsing);
+
+    let mapped = false;
+    const mapping = sourceMapping.mapLocations().then(() => mapped = true);
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(mapped, false);
+    finishParsing();
+    await mapping;
+
+    assert.equal(prepareScriptSources.mock.calls.length, 1);
+    assert.deepEqual([...prepareScriptSources.mock.calls[0][0]].map(script => script.url), ['a.js', 'b.js', 'c.js']);
+
+    // Without new locations there is nothing to parse
+    await sourceMapping.mapLocations();
+    assert.equal(prepareScriptSources.mock.calls.length, 1);
 });
