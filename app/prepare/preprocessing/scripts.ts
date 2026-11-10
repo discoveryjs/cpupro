@@ -96,7 +96,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
 
             if (script) {
                 scripts.push(script);
-            } else if (id !== 0 && id !== '0') {
+            } else if (!isNoScriptId(id)) {
                 this.diagnose('warn', 'Script not found for id', { scriptId: id });
             }
         }
@@ -184,12 +184,17 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     }
 }
 
+// Script ids come as numbers or as strings (e.g. in profiles of the DevTools protocol), 0 denotes no script in both forms
+export function isNoScriptId(scriptId: string | number) {
+    return scriptId === 0 || scriptId === '0';
+}
+
 export function scriptFromScriptId(
     scriptId: string | number,
     url: string | null,
     scriptsMap: IProfileScriptsMap
 ): CpuProScript | null {
-    if (scriptId === 0 || scriptId === '0') {
+    if (isNoScriptId(scriptId)) {
         return null;
     }
 

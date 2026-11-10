@@ -1,5 +1,6 @@
 import type { V8CpuProfileCallFrame, V8CpuProfileNode } from '../types.js';
 import { GeneratedNodes } from './nodes.js';
+import { isNoScriptId } from './scripts.js';
 
 // The distribution of GC samples based on their location in the previous call frame appears too arbitrary.
 // As a result, GC samples (typically the smaller ones) are allocated within the function code as nested operations,
@@ -115,7 +116,7 @@ function findRootGcNodeIdWithCallFrames(
             ? callFrames[callFrameOrIndex]
             : callFrameOrIndex;
 
-        if (callFrame.scriptId === 0 &&
+        if (isNoScriptId(callFrame.scriptId) &&
             callFrame.functionName === '(garbage collector)' &&
             rootChildren.has(node.id)) {
             return i;
@@ -132,7 +133,7 @@ function findRootGcNodeId(nodes: V8CpuProfileNode[]) {
         const node = nodes[i];
         const callFrame = node.callFrame;
 
-        if (callFrame.scriptId === 0 &&
+        if (isNoScriptId(callFrame.scriptId) &&
             callFrame.functionName === '(garbage collector)' &&
             rootChildren.has(node.id)) {
             return i;
