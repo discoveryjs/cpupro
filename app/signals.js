@@ -11,17 +11,21 @@ export const signalScopeLabel = `[
 `;
 
 export const compilationPopulation = `
-    (thread.compilations or []).group(=>name).({
-        name: key,
-        count: value.size(),
-        timed: value.[duration > 0 and tm is number].size(),
-        instant: value.[duration = 0 and tm is number].size(),
-        unfinished: value.[duration is not number or duration < 0 or tm is not number].size(),
-        duration: value.[duration > 0].duration.sum() or 0,
-        maxDuration: value.[duration is number].duration.max(),
-        first: value.[tm is number].tm.min(),
-        last: value.[tm is number].(tm + (duration > 0 ? duration : 0)).max()
-    }).sort(count desc)
+    (thread.compilations or []).group(=>name).(
+        // durations are known for timed and instant events only, the rest are unfinished
+        $known: value.[tm is number and duration is number and duration >= 0];
+        {
+            name: key,
+            count: value.size(),
+            timed: $known.[duration > 0].size(),
+            instant: $known.[duration = 0].size(),
+            unfinished: value.size() - $known.size(),
+            duration: $known.duration.sum() or 0,
+            maxDuration: $known.duration.max(),
+            first: value.[tm is number].tm.min(),
+            last: value.[tm is number].(tm + (duration > 0 ? duration : 0)).max()
+        }
+    ).sort(count desc)
 `;
 
 export const signalWindows = `

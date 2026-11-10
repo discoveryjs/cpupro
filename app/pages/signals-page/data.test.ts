@@ -76,6 +76,60 @@ describe('signals data', () => {
         assert.deepEqual(query(compilationPopulation)({}), []);
     });
 
+    test('event durations are summed and maximized over the timed and instant events they are counted as', () => {
+        const compilations = [
+            { name: 'Parse', tm: 5, duration: -3 },
+            { name: 'Parse', tm: 6, duration: -1 },
+            { name: 'Compile', tm: 10, duration: 30 },
+            { name: 'Compile', tm: null, duration: 100 },
+            { name: 'Compile', tm: 20, duration: 0 },
+            { name: 'Compile', tm: 30, duration: null },
+            { name: 'Instant', tm: 40, duration: 0 }
+        ];
+        const profile = {
+            thread: {
+                compilations
+            }
+        };
+
+        // a negative duration or an event without a start is unfinished and has no known duration
+        assert.deepEqual(query(compilationPopulation)(profile), [
+            {
+                name: 'Compile',
+                count: 4,
+                timed: 1,
+                instant: 1,
+                unfinished: 2,
+                duration: 30,
+                maxDuration: 30,
+                first: 10,
+                last: 40
+            },
+            {
+                name: 'Parse',
+                count: 2,
+                timed: 0,
+                instant: 0,
+                unfinished: 2,
+                duration: 0,
+                maxDuration: undefined,
+                first: 5,
+                last: 6
+            },
+            {
+                name: 'Instant',
+                count: 1,
+                timed: 0,
+                instant: 1,
+                unfinished: 0,
+                duration: 0,
+                maxDuration: 0,
+                first: 40,
+                last: 40
+            }
+        ]);
+    });
+
     test('a fixture profile has CPU samples and allocations with their windows', async () => {
         const { profile } = await createProfileFixture();
         const [cpu, allocations] = read(profile).signals;
