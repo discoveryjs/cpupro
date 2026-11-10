@@ -116,7 +116,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
                         $tree,
                         $skip,
                         total: $max - $min,
-                        $binCount
+                        n: $binCount
                     })
                 }
             `,
