@@ -305,8 +305,8 @@ export function createVectorLocations(
     // let prevContextInfo = 0;
     let prevLocationIndex = -1;
     let nodeIndex = 0;
-    // Allocation locations change far more often than they are new (e.g. 17.8M changes vs 312K distinct
-    // script offsets over 34M allocations), so location indices are kept per script to avoid
+    // Allocation locations change far more often than they are new (tens of millions of changes vs hundreds
+    // of thousands of distinct script offsets on large traces), so location indices are kept per script to avoid
     // the generic dictionary resolution on every change
     const locationIndexByScript = new Map<CpuProScript | null, Map<number, number>>();
     let prevScriptLocationIndex = new Map<number, number>();
