@@ -25,21 +25,16 @@ function attributeEntryColor(entry: ProfileLineAttribute['dict'][number]) {
 }
 
 // Totals of the attribute's values over the whole line, regardless of the viewport and filters
-function lineAttributeTotals(line: ProfileLine, attribute: ProfileLineAttribute) {
-    const signatureValues = line.signatures?.valuesOf(attribute.values) ?? null;
+export function lineAttributeTotals(line: ProfileLine, attribute: ProfileLineAttribute) {
+    const { values, dict } = attribute;
+    const signatureTotals = line.signatures?.totalsBy(values, dict.length, line.values) ?? null;
 
-    if (signatureValues === null) {
-        return line.breakdowns[0].population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+    if (signatureTotals !== null) {
+        return signatureTotals;
     }
 
-    const signatureTotals = line.signatures!.totals(line.values);
-    const totals = new Float64Array(attribute.dict.length);
-
-    for (let signature = 0; signature < signatureTotals.length; signature++) {
-        totals[signatureValues[signature]] += signatureTotals[signature];
-    }
-
-    return totals;
+    // Values that are not a column of the signatures are aggregated over the line's events
+    return line.breakdowns[0].population.aggregateBy(values, dict.length).samplesTotal;
 }
 
 function timestampBins(line: ProfileLine, viewport: Range | null, count: number, lastTime: number, origin = line.axisStart) {

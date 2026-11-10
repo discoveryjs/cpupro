@@ -1,28 +1,28 @@
 import { SetAttributeFilter, type AttributeFilterSettings } from '../prepare/computations/attribute-filter.js';
-import type { Population, PopulationFiltered } from '../prepare/computations/population.js';
-import type { ProfileLineBreakdown } from '../prepare/lines/types.js';
+import type { ProfileLineAttribute, ProfileLineBreakdown } from '../prepare/lines/types.js';
+import { lineAttributeTotals } from './bin.js';
 
+// Totals of the options of a filter: categories from per-sample totals, attribute values from totals by value
 function aggregateFilterOptions(
     breakdown: ProfileLineBreakdown,
     filter: SetAttributeFilter,
-    population: Population | PopulationFiltered,
-    metric: 'samplesCount' | 'samplesTotal'
+    sampleTotals: ArrayLike<number>,
+    attributeTotals: (attribute: ProfileLineAttribute) => ArrayLike<number>
 ) {
     const totals = new Map(filter.options.map(option => [option.key, 0]));
     const { source, line } = breakdown;
 
     if (filter.key === 'category') {
-        const values = population[metric];
         const { dictionary, nodes, sourceIdToNode } = source;
 
-        for (let sampleId = 0; sampleId < values.length; sampleId++) {
-            const value = values[sampleId];
+        for (let i = 0; i < sampleTotals.length; i++) {
+            const value = sampleTotals[i];
 
             if (value === 0) {
                 continue;
             }
 
-            const entry = dictionary[nodes[sourceIdToNode[sampleId]]];
+            const entry = dictionary[nodes[sourceIdToNode[i]]];
             const callFrame = 'callFrame' in entry ? entry.callFrame : entry;
             const key = callFrame.category.name;
 
@@ -39,7 +39,7 @@ function aggregateFilterOptions(
     }
 
     // Options of an attribute filter follow the attribute's dictionary
-    const values = population.aggregateBy(attribute.values, attribute.dict.length)[metric];
+    const values = attributeTotals(attribute);
 
     for (let i = 0; i < filter.options.length; i++) {
         totals.set(filter.options[i].key, values[i]);
@@ -49,13 +49,30 @@ function aggregateFilterOptions(
 }
 
 export function filterOptionTotals(breakdown: ProfileLineBreakdown, filter: SetAttributeFilter) {
-    return aggregateFilterOptions(breakdown, filter, breakdown.populationViewport, 'samplesTotal');
+    const { populationViewport } = breakdown;
+    const attributeTotals = (attribute: ProfileLineAttribute) =>
+        populationViewport.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+
+    return aggregateFilterOptions(
+        breakdown,
+        filter,
+        populationViewport.samplesTotal,
+        attributeTotals
+    );
 }
 
+// Options present in the line: totals count events of nonzero values only, so an option with events has a total
 export function filterOptions(breakdown: ProfileLineBreakdown, filter: SetAttributeFilter) {
-    const counts = aggregateFilterOptions(breakdown, filter, breakdown.population, 'samplesCount');
+    const attributeTotals = (attribute: ProfileLineAttribute) =>
+        lineAttributeTotals(breakdown.line, attribute);
+    const totals = aggregateFilterOptions(
+        breakdown,
+        filter,
+        breakdown.population.samplesTotal,
+        attributeTotals
+    );
 
-    return filter.options.filter(option => counts.get(option.key)! > 0);
+    return filter.options.filter(option => totals.get(option.key)! > 0);
 }
 
 export const assertions = {

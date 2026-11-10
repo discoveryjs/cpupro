@@ -142,6 +142,25 @@ export class EventSignatures {
         return totals;
     }
 
+    // Weight of the line's events by a column's values, from the weights of signatures; null when the values are
+    // not a column of the signatures
+    totalsBy(values: SignatureColumn['values'], valueCount: number, weights: Uint32Array) {
+        const signatureValues = this.valuesOf(values);
+
+        if (signatureValues === null) {
+            return null;
+        }
+
+        const signatureTotals = this.totals(weights);
+        const totals = new Float64Array(valueCount);
+
+        for (let i = 0; i < signatureTotals.length; i++) {
+            totals[signatureValues[i]] += signatureTotals[i];
+        }
+
+        return totals;
+    }
+
     // Acceptance of every signature by a population of the line, or null when the population may accept
     // events of one signature differently: a filter over other values
     acceptance(population: PopulationFiltered) {

@@ -371,3 +371,22 @@ test('signatures leave acceptance to events when a population filters values tha
     viewport.filter.set({ key: 'other', domain: 'event', size: viewport.samples.length, accepts: new Uint8Array(viewport.samples.length) });
     assert.equal(signatures.acceptance(viewport), null);
 });
+
+test('line totals by an attribute are the totals of its signatures', async () => {
+    const profile = await createSignaturesProfile();
+    const memline = profile.memline!;
+    const signatures = memline.signatures!;
+
+    for (let i = 0; i < memline.attributes.length; i++) {
+        const { name, values, dict } = memline.attributes[i];
+        const expected = new Float64Array(dict.length);
+
+        for (let j = 0; j < values.length; j++) {
+            expected[values[j]] += memline.values[j];
+        }
+
+        assert.deepEqual(signatures.totalsBy(values, dict.length, memline.values), expected, name);
+    }
+
+    assert.equal(signatures.totalsBy(new Uint32Array(memline.values.length), 1, memline.values), null);
+});

@@ -115,7 +115,7 @@ A line groups the events of each Base by sample and event class into `Population
 
 - takes the acceptance of samples (masks along the source chain) and of event classes (event filters along the chain) and the whole parts and partial events of its coverage (`records.cover()`);
 - sums the records of whole parts into `samplesCount`, `samplesTotal` and the sink by that acceptance, and into accepted sums per event class, in one pass; adds events of partial parts and subtracts boundary cuts, so the integer sums equal the event pass;
-- aggregates groupings constant within an event class (`aggregateBy()` over the values of a registered event filter, such as filter option totals) from the per-class sums;
+- aggregates groupings constant within an event class (`aggregateBy()` over the values of a registered event filter, such as filter option totals) from the per-class sums. Totals over a whole line by an attribute (option presence, attribute totals) are the line's: `EventSignatures.totalsBy()` sums its signature totals;
 - counts `rangeSamples` from per-part counts and partial events;
 - compiles `samples` and `values` only when a consumer reads them. Consumers of a few events (range and bin edges) use `eventReader()`, which derives destinations and values of single events without compiling all of them.
 
