@@ -1,4 +1,3 @@
-import { CallTree } from '../computations/call-tree.js';
 import { scriptFromScriptId } from './scripts.js';
 import { GeneratedNodes } from './nodes.js';
 import type { Dictionary } from '../dictionary.js';
@@ -20,59 +19,11 @@ function locationNodeRef(nodeIndex: number, scriptOffset: number) {
 }
 
 /**
- * Ensure sampleLocations exist by deriving from call frame definitions if not provided.
- *
- * Profiles can provide sample locations in three ways:
- * 1. Precise execution points (scriptOffset) - use directly
- * 2. No location data - derive from call frame definitions (this function)
- * 3. Mixed - some samples have locations, others don't
- *
- * When deriving from call frames, we use the function definition location:
- *   - scriptOffset comes from callFrame.start (or -1 if not available)
- *   - line/column will come from callFrame.line/column (in processLocations)
- *
- * Returns Int32Array of script offsets, or null if no data available.
- */
-export function ensureLocations(
-    samples: Uint32Array,
-    sampleLocations: Int32Array | null,
-    sampleToNode: Uint32Array,
-    callFramesTree: CallTree<CpuProCallFrame> | null
-): Int32Array | null {
-    // If we already have sample locations (precise execution points), use them
-    if (sampleLocations !== null) {
-        return sampleLocations;
-    }
-
-    // No explicit locations provided - derive from call frame definitions
-    if (callFramesTree === null) {
-        return null; // No data to derive from
-    }
-
-    // Build location offsets from call frame definitions
-    const locations = new Int32Array(samples.length);
-    const { nodes, dictionary } = callFramesTree;
-
-    for (let i = 0; i < samples.length; i++) {
-        const sampleId = samples[i];
-        const nodeIdx = sampleToNode[sampleId];
-        const callFrameIdx = nodes[nodeIdx];
-        const callFrame = dictionary[callFrameIdx];
-
-        // Use call frame's definition scriptOffset (start), or -1 if not available
-        // processLocations will create full location objects with line/column from callFrame
-        locations[i] = callFrame.start !== -1 ? callFrame.start : -1;
-    }
-
-    return locations;
-}
-
-/**
  * Process sample locations to build a location tree.
  *
  * Locations represent execution points that can be:
  * - Precise execution locations within functions (from profile data)
- * - Call frame definition locations (derived via ensureLocations)
+ * - Call frame definition locations
  *
  * Each location combines:
  * - callFrame: The function being executed
@@ -348,7 +299,8 @@ export function createVectorLocations(
         }
 
         if (locationIndex === -1) {
-            if (scriptId !== 0) {
+            // a script id may be a string, so the resolved script tells a location in a script
+            if (prevScript !== null) {
                 // Normal location in a script
                 locationIndex = prevScriptLocationIndex.get(scriptOffset) ?? -1;
 
@@ -398,11 +350,18 @@ export function createVectorLocations(
     if (contextInfo !== null) {
         const nodesCount = generatedNodes.count;
         const contextNodesMap = new Map<number, number>();
+        let prevScriptId = scriptIds.length > 0 ? scriptIds[0] : 0;
+        let inScript = scriptFromScriptId(prevScriptId, null, scriptsMap) !== null;
 
         for (let i = 0; i < contextInfo.length; i++) {
             const contextInfoValue = contextInfo[i];
 
-            if (contextInfoValue !== 0 && scriptIds[i] !== 0) {
+            if (scriptIds[i] !== prevScriptId) {
+                prevScriptId = scriptIds[i];
+                inScript = scriptFromScriptId(prevScriptId, null, scriptsMap) !== null;
+            }
+
+            if (contextInfoValue !== 0 && inScript) {
                 const ref = nodesCount * contextInfoValue + sampleToNode[i];
                 let contextNodeIndex = contextNodesMap.get(ref);
 
