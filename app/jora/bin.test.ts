@@ -61,7 +61,7 @@ async function createMappedSource(axis: ProfileLine, values = new Uint32Array([3
     const { left, right } = createLineMapping(source, Array.from(mapping), axis, Array.from({ length: axis.values.length }, (_, index) => index));
     source.mappings[axis.type] = left;
     axis.mappings[source.type] = right;
-    return { source, viewport: breakdown.populationWindow };
+    return { source, viewport: breakdown.populationViewport };
 }
 
 test('bins a short population on the viewport grid instead of stretching its local bins', async () => {
@@ -574,6 +574,23 @@ test('allocation bins apply source and axis viewport participation without affec
     const own = methods.binLineToAxisLine.call({ context }, context.scopeLine, null, context.scopeLine, 10)[0];
     assert.deepEqual([...own.bins], [0, 0, 2, 0, 3, 0, 0, 0, 0, 0]);
     assert.deepEqual([...context.scopeLine.values], [10, 10, 5]);
+});
+
+test('the window of a source line, a range of its own axis, does not narrow its bins on another axis', async () => {
+    const context = await createContext();
+    const { source } = await createMappedSource(context.scopeLine);
+    const mapped = () => [...methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10)[0].bins];
+    const ownContext = { ...context, scopeLine: source, scopeBreakdown: source.breakdowns[0], scopeViewport: undefined };
+    const ownTotal = () => methods.binLineToAxisLine.call({ context: ownContext }, source, null, source, 12)[0].bins.reduce((sum, value) => sum + value, 0);
+    const bins = mapped();
+
+    assert.equal(ownTotal(), 12);
+    // E.g. a memline window following a zoom synchronized through time, cells of halvings of the bytes extent
+    source.breakdowns[0].populationWindow.setRanges([{ start: 3, end: 4 }]);
+    assert.deepEqual(mapped(), bins);
+    // On its own axis the window is the range of histogram data
+    assert.equal(ownTotal(), 1);
+    source.breakdowns[0].populationWindow.setRanges(null);
 });
 
 test('preserves heap boundary events and the final event without a viewport', async () => {

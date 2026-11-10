@@ -1134,11 +1134,13 @@ export const methods = {
 
         const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, this.context);
         const populationBreakdown = scopeBreakdown?.line === valuesLine ? scopeBreakdown : valuesLine.breakdowns[0];
-        const viewport = populationBreakdown[scope];
-        const { ranges: sourceRanges } = viewport;
         const lineMapping = valuesLine !== axisLine
             ? valuesLine.mappings[axisLine.type]
             : null;
+        // A window is a range of its line's own axis: events binned on another axis are those of the viewport,
+        // the window of the axis line places them
+        const viewport = populationBreakdown[lineMapping === null ? scope : 'populationViewport'];
+        const { ranges: sourceRanges } = viewport;
         const mappingToLine = lineMapping?._mapping ?? null;
         const grid = binningRange(axisLine, resolveScopeViewport(null, this.context), n);
         const { total, step, skip } = grid;

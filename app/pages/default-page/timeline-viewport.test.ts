@@ -432,7 +432,7 @@ test('mapped allocation summaries follow source constraints and axis participati
     ];
     source.attributes = attributes;
     const context = { scopeProfile: profile, scopeLine: axis, scopeBreakdown: axis.breakdowns[0] };
-    const viewport = source.breakdowns[0].populationWindow;
+    const viewport = source.breakdowns[0].populationViewport;
     const values = viewport.values;
     const totals = () => attributes.map(attribute => methods.binLineToAxisLine.call({ context }, source, attribute, axis, 1).map(row => row.value));
     const initial = totals();
