@@ -1,5 +1,5 @@
 import type { Profile } from '../profile.mjs';
-import type { CpuProCompilationRecord, V8CpuProfile } from '../types.js';
+import type { AllocationIdVector, CpuProCompilationRecord, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineMethods, ProfileMemline } from './types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import type { Population } from '../computations/population.js';
@@ -79,6 +79,7 @@ export async function createMemline(
     profileScriptsMap: ProfileScriptsMap,
     cpuPopulation: Population | null,
     callStackTreeSet: SampledTreeSet | null,
+    allocationMapping: AllocationIdVector | null, // per CPU sample: the last allocation id recorded before the sample
     preparseScriptSourcesResult: Promise<void>,
     options?: Partial<CreateMemlineOptions>
 ): Promise<ProfileMemline | null> {
@@ -87,7 +88,6 @@ export async function createMemline(
         compilations = null
     } = options || {};
     const {
-        _cpuproAllocationMapping,
         _cpuproAllocationIds,
         _cpuproAllocationSizes,
         _cpuproAllocationScriptIds = null,
@@ -215,12 +215,12 @@ export async function createMemline(
         ...memlineMethods
     };
 
-    if (cpuPopulation && callStackTreeSet && _cpuproAllocationMapping && _cpuproAllocationIds) {
+    if (cpuPopulation && callStackTreeSet && allocationMapping && _cpuproAllocationIds) {
         const cpuSamplesBreakdown = await work('map allocations to CPU samples', () => {
             return createMemlineCpuSamplesBreakdown(
                 'call-stack',
                 line,
-                _cpuproAllocationMapping,
+                allocationMapping,
                 _cpuproAllocationIds,
                 allocationSizes,
                 cpuPopulation,

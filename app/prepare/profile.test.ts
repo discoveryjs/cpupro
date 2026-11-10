@@ -3,6 +3,7 @@ import { describe, test } from 'vitest';
 import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fixtures/profile.js';
 import { createProfile } from './profile.mjs';
 import { noopWorkHandler } from './misc/work.js';
+import type { V8CpuProfile } from './types.js';
 
 const dimensions = ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners'] as const;
 const allKinds = {
@@ -60,7 +61,7 @@ describe('profile breakdowns', () => {
             children,
             callFrame: { scriptId: 0, url: '', functionName, lineNumber: -1, columnNumber: -1 }
         });
-        const profile = await createProfile({
+        const data: V8CpuProfile = {
             startTime: 0,
             endTime: 40,
             nodes: [
@@ -71,18 +72,25 @@ describe('profile breakdowns', () => {
             ],
             samples: [2, 3, 4],
             timeDeltas: [10, 20, -5],
-            _samplePositions: [0, 0, 0],
+            _samplePositions: [0, 1, 2],
             _samplesInterval: 10,
             // sample "c" was taken before sample "b" despite their order in the input
             _cpuproAllocationMapping: [1, 4, 2],
             _cpuproAllocationIds: [1, 2, 3, 4],
             _cpuproAllocationSizes: [16, 32, 48, 64]
-        }, { work: noopWorkHandler });
+        };
+        const profile = await createProfile(data, { work: noopWorkHandler });
         const sampleToAllocation = profile.timeline!.mappings.memline._mapping;
         const allocationToSample = profile.memline!.mappings.timeline._mapping;
 
         assert.deepEqual([...sampleToAllocation], [1, 2, 4]);
         assert.deepEqual([...allocationToSample], [0, 1, 2, 2]);
+
+        // the order is fixed in the model, the input stays as is
+        assert.deepEqual(data.samples, [2, 3, 4]);
+        assert.deepEqual(data.timeDeltas, [10, 20, -5]);
+        assert.deepEqual(data._samplePositions, [0, 1, 2]);
+        assert.deepEqual(data._cpuproAllocationMapping, [1, 4, 2]);
     });
 
     test('keeps sink outside breakdown metrics and preserves baseline bounds', async () => {

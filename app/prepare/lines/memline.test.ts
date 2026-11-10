@@ -17,7 +17,7 @@ test('keeps allocation locations without borrowing a call stack when CPU samples
         _cpuproAllocationSizes: [16, 32],
         _cpuproAllocationScriptIds: [1, 1],
         _cpuproAllocationLocations: [10, 20]
-    }, dictionary, scriptsMap, null, null, Promise.resolve(), { work: noopWorkHandler });
+    }, dictionary, scriptsMap, null, null, null, Promise.resolve(), { work: noopWorkHandler });
 
     assert.ok(line);
     assert.deepEqual(line.breakdowns.map(breakdown => breakdown.kind), ['location']);
@@ -39,7 +39,7 @@ test('remaps allocation attribute codes in place, reading lifespan before GC epo
         _cpuproAllocationTypeNames: { 7: 'FIRST_TYPE', 9: 'SECOND_TYPE' },
         _cpuproAllocationSpaces: spaces,
         _cpuproAllocationSpaceNames: { 2: 'new_space', 4: 'old_space' }
-    }, dictionary, scriptsMap, null, null, Promise.resolve());
+    }, dictionary, scriptsMap, null, null, null, Promise.resolve());
     const attribute = (name: string) => line!.attributes.find(attribute => attribute.name === name)!;
 
     assert.equal(line!.values.buffer, sizes.buffer);

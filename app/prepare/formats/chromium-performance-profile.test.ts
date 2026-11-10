@@ -501,7 +501,7 @@ test('allocation vectors parse JSON chunks once and preserve unsigned 32-bit IDs
     }
 });
 
-test('tracing preserves signed CPU time deltas across chunks and repeated extraction', async () => {
+test('tracing preserves signed CPU time deltas across chunks, repeated extraction and preparation', async () => {
     const nodes = [
         { id: 1, callFrame: { functionName: '(root)', scriptId: 0, url: '', lineNumber: -1, columnNumber: -1 }, children: [11, 22, 33, 44] },
         ...[11, 22, 33, 44].map(id => ({
@@ -529,8 +529,10 @@ test('tracing preserves signed CPU time deltas across chunks and repeated extrac
         const prepared = await createProfile(profile);
         const timeline = prepared.timeline!;
 
-        assert.deepEqual(profile.samples, new Uint32Array([11, 33, 22, 44]));
-        assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([10, 30, 20, 40]));
+        // the order of samples is fixed in the model, while the extracted profile stays as is
+        assert.deepEqual(profile.timeDeltas, new Int32Array([100, 120, -20, 110]));
+        assert.deepEqual(profile.samples, new Uint32Array([11, 22, 33, 44]));
+        assert.deepEqual(profile._cpuproAllocationMapping, new Uint32Array([10, 20, 30, 40]));
         assert.deepEqual(timeline.values, new Uint32Array([100, 20, 90, 90]));
         assert.equal(timeline.axisTotal, 300);
         assert.equal(timeline.axisStartNoSamples, 100);

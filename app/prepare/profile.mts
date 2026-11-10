@@ -121,7 +121,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     // Extract script offset first, since they depends on timestamps order,
     // and should be moved together with timeDeltas if the order is adjusted in fixTimeDeltasOrderIfNeeded()
-    const _dataScriptOffsets = data._samplePositions || await work('extract sample script offsets', () =>
+    const dataScriptOffsets = data._samplePositions?.slice() || await work('extract sample script offsets', () =>
         scriptOffsetsFromLineColumns(
             data.nodes,
             data.samples,
@@ -136,43 +136,46 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     // Process profile samples & time stamps
     //
 
+    // The input data is not modified, so the vectors following the order of samples are copied
+    // before the order is fixed; copies keep the element types of the input vectors
+    const dataTimeDeltas = data.timeDeltas.slice();
+    const dataSamples = data.samples.slice();
+    const allocationMapping = data._cpuproAllocationMapping?.slice() ?? null;
+
     // preprocess timeDeltas, fix order if necessary
-    // FIXME: avoid mutation of samples/timeDeltas/scriptOffsets
     await work('ensure correct time deltas order', () =>
         fixTimeDeltasOrderIfNeeded(
-            data.timeDeltas,
-            data.samples,
-            _dataScriptOffsets,
-            data._cpuproAllocationMapping ?? null
+            dataTimeDeltas,
+            dataSamples,
+            dataScriptOffsets,
+            allocationMapping
         )
     );
 
     // create samples axis
     const axis = profileType === 'time'
         ? await work('process time deltas', () =>
-            // FIXME: avoid mutation of timeDeltas
             createTimelineAxis(
                 data.startTime,
                 data.endTime,
-                data.timeDeltas,
+                dataTimeDeltas,
                 data._samplesInterval // could be computed on V8 log convertation into cpuprofile
             )
         )
         : await work('process memory allocations', () =>
             processMemoryAllocations(
-                data.timeDeltas,
+                dataTimeDeltas,
                 data._samplesInterval // could be computed on profile's preprocessing
             )
         );
 
     // normalize long samples (time deltas)
-    // FIXME: avoid mutation of samples/timeDeltas/scriptOffsets
     let longDeltas: LongTimeDeltas | null = null;
     if (experimentalFeatures && profileType === 'time') {
         longDeltas = await work('enumerate long time deltas', () =>
             enumerateLongTimeDeltas(
                 axis.samplesInterval,
-                data.timeDeltas
+                dataTimeDeltas
             )
         );
     }
@@ -185,10 +188,10 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         samples,
         sampleScriptOffsets
     } = await work('convert vectors into TypedArrays', () => ({
-        timeDeltas: convertToUint32Array(data.timeDeltas, extraLength),
-        samples: convertToUint32Array(data.samples, extraLength),
-        sampleScriptOffsets: Array.isArray(_dataScriptOffsets)
-            ? convertToInt32Array(_dataScriptOffsets, extraLength)
+        timeDeltas: convertToUint32Array(dataTimeDeltas, extraLength),
+        samples: convertToUint32Array(dataSamples, extraLength),
+        sampleScriptOffsets: Array.isArray(dataScriptOffsets)
+            ? convertToInt32Array(dataScriptOffsets, extraLength)
             : null
     }));
 
@@ -331,6 +334,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         profileScriptsMap,
         cpuSamplesPopulation,
         callStackSampledTreeSet,
+        allocationMapping,
         preparseScriptSourcesResult,
         { work, compilations }
     );
@@ -341,12 +345,12 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     // Create mappings between lines if both exist and allocation mapping is present
     if (memline && timeline) {
-        if (data._cpuproAllocationMapping && data._cpuproAllocationIds) {
+        if (allocationMapping && data._cpuproAllocationIds) {
             const { left, right } = createLineMapping(
                 memline,
                 data._cpuproAllocationIds,
                 timeline,
-                data._cpuproAllocationMapping
+                allocationMapping
             );
 
             memline.mappings.timeline = left;
