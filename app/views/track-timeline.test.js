@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 import { afterEach, test, vi } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
@@ -10,6 +11,8 @@ import { SpanIndex } from './track-timeline/span-index.js';
 import { SpanLabels } from './track-timeline/labels.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
+afterEach(() => vi.unstubAllGlobals());
+
 test('label thresholds reuse full and first-grapheme widths without ellipsis-only output', () => {
     const labels = new SpanLabels();
     const ctx = { measureText: vi.fn(text => ({ width: text.length * 6 })) };
@@ -19,15 +22,19 @@ test('label thresholds reuse full and first-grapheme widths without ellipsis-onl
     assert.equal(labels.fit(ctx, 'WXYZ', 18), 'WX\u2026');
     assert.equal(labels.fit(ctx, 'WXYZ', 23), 'WX\u2026');
     assert.equal(labels.fit(ctx, 'WXYZ', 24), 'WXYZ');
+
     const calls = ctx.measureText.mock.calls.length;
+
     assert.equal(labels.fit(ctx, 'WXYZ', 11), '');
     assert.equal(labels.fit(ctx, 'WXYZ', 24), 'WXYZ');
     assert.equal(ctx.measureText.mock.calls.length, calls);
     assert.equal(labels.fit(ctx, 'W', 6), 'W');
     assert.equal(labels.fit(ctx, 'W', 5), '');
     assert.equal(labels.fit(ctx, '', 24), '');
+
     labels.clear();
     labels.fit(ctx, 'WXYZ', 11);
+
     assert.ok(ctx.measureText.mock.calls.length > calls);
 });
 
@@ -35,7 +42,15 @@ test('label truncation keeps graphemes intact and measures composed text', () =>
     const labels = new SpanLabels();
     const grapheme = 'e\u0301';
     const emoji = '\ud83d\udc69\u200d\ud83d\udcbb';
-    const ctx = { measureText: vi.fn(text => ({ width: text === grapheme + '\u2026' || text === emoji + '\u2026' ? 9 : text.length * 10 })) };
+    // A whole grapheme with an ellipsis measures 9px; any other text measures 10px per code unit.
+    const measureText = text => {
+        if (text === grapheme + '\u2026' || text === emoji + '\u2026') {
+            return { width: 9 };
+        }
+
+        return { width: text.length * 10 };
+    };
+    const ctx = { measureText: vi.fn(measureText) };
 
     assert.equal(labels.fit(ctx, grapheme + 'abcd', 9), grapheme + '\u2026');
     assert.equal(labels.fit(ctx, emoji + 'abcd', 9), emoji + '\u2026');
@@ -44,82 +59,107 @@ test('label truncation keeps graphemes intact and measures composed text', () =>
 });
 
 test('render index progressively reveals dense spans without changing their identity', () => {
-    const spans = Array.from({ length: 64 }, (_, index) => Object.freeze({ start: index * 2, end: index * 2 + 1 }));
+    const spans = Array.from({ length: 64 }, (_, i) => Object.freeze({ start: i * 2, end: i * 2 + 1 }));
     const index = new SpanIndex(Object.freeze(spans));
     const counts = [];
+    let visible;
 
     // The view ends exactly at the last span: nodes reaching it are still fully visible
     for (const minDuration of [256, 32, 31, 8, 2, 0]) {
-        const visible = [];
-        index.forEachVisible(0, 127, minDuration, (span, start, end) => {
+        const collect = (span, start, end) => {
             visible.push(span);
             assert.equal(span.start, start);
             assert.ok(end >= span.end);
             assert.ok(end === span.end || end - start < minDuration);
-        });
+        };
+
+        visible = [];
+        index.forEachVisible(0, 127, minDuration, collect);
         counts.push(visible.length);
-        if (minDuration === 0) {
-            visible.forEach((span, position) => assert.equal(span, spans[position]));
-        }
     }
 
     // A 16-span node extends exactly 31: collapsing requires a strictly shorter extent
     assert.deepEqual(counts, [1, 4, 8, 16, 64, 64]);
+
+    // Without a minimum duration every span is visited in order
+    for (let i = 0; i < visible.length; i++) {
+        assert.equal(visible[i], spans[i]);
+    }
 });
 
 test('render index preserves large spans, gaps, points and partially visible ranges', () => {
-    const spans = [{ start: 0, end: 100 }, { start: 100, end: 100 },
-        { start: 100, end: 99 }, { start: 200, end: 201 }];
+    const spans = [
+        { start: 0, end: 100 },
+        { start: 100, end: 100 },
+        { start: 100, end: 99 },
+        { start: 200, end: 201 }
+    ];
     const index = new SpanIndex(spans);
     const visible = [];
 
     index.forEachVisible(99, 202, 10, (span, start, end) => visible.push([span, start, end]));
+
     assert.equal(visible[0][0], spans[0]);
     assert.equal(visible.at(-1)[0], spans[3]);
     assert.ok(visible.every(([, start, end]) => !(start < 200 && end > 100)));
 
     const point = [];
+
     index.forEachVisible(100, 101, 1, span => point.push(span));
+
     assert.ok(point.includes(spans[1]));
+
     index.forEachVisible(50, 50, 1, () => assert.fail('Empty view'));
     new SpanIndex([]).forEachVisible(0, 1, 1, () => assert.fail('Empty track'));
 });
 
 test('render index skips offscreen history and collapsed descendants', () => {
     let reads = 0;
-    const spans = Array.from({ length: 65536 }, (_, index) => ({
+    const spans = Array.from({ length: 65536 }, (_, i) => ({
         get start() {
             reads++;
-            return index * 2;
+            return i * 2;
         },
-        end: index * 2 + 1
+        end: i * 2 + 1
     }));
     const index = new SpanIndex(spans);
+    const visible = [];
 
     reads = 0;
-    const visible = [];
     index.forEachVisible(120000, 120010, 0, span => visible.push(span));
+
     assert.equal(visible.length, 5);
     assert.ok(reads < 100);
 
     reads = 0;
     index.forEachVisible(0, 131072, 262144, span => assert.equal(span, spans[0]));
+
     assert.equal(reads, 1);
 });
 
+// Spans overlap when each starts before the other ends, with ends corrected to a minimum duration of 0.001.
+const overlaps = (left, right) =>
+    left.start < Math.max(right.end, right.start + 0.001) &&
+    right.start < Math.max(left.end, left.start + 0.001);
+
+// First fit by descending duration; the sort is stable, so equal durations keep their input order.
 function referenceLayout(spans) {
+    const sorted = [...spans].sort((left, right) => (right.end - right.start) - (left.end - left.start));
     const tracks = [];
 
-    for (const span of [...spans].sort((left, right) => (right.end - right.start) - (left.end - left.start))) {
-        let track = tracks.find(candidate => !candidate.some(existing =>
-            existing.start < Math.max(span.end, span.start + 0.001) &&
-            span.start < Math.max(existing.end, existing.start + 0.001)
-        ));
+    for (let i = 0; i < sorted.length; i++) {
+        const span = sorted[i];
+        let track = 0;
 
-        if (!track) {
-            tracks.push(track = []);
+        while (track < tracks.length && tracks[track].some(existing => overlaps(existing, span))) {
+            track++;
         }
-        track.push(span);
+
+        if (track === tracks.length) {
+            tracks.push([]);
+        }
+
+        tracks[track].push(span);
     }
 
     return tracks.map(track => track.sort((left, right) => left.start - right.start));
@@ -127,9 +167,10 @@ function referenceLayout(spans) {
 
 function assertTracks(actual, expected) {
     assert.deepEqual(actual, expected);
-    for (let trackIndex = 0; trackIndex < actual.length; trackIndex++) {
-        for (let index = 0; index < actual[trackIndex].length; index++) {
-            assert.equal(actual[trackIndex][index], expected[trackIndex][index]);
+
+    for (let i = 0; i < actual.length; i++) {
+        for (let j = 0; j < actual[i].length; j++) {
+            assert.equal(actual[i][j], expected[i][j]);
         }
     }
 }
@@ -141,40 +182,61 @@ function assertLayout(spans) {
     assert.deepEqual(spans, original);
 }
 
+// Reproducible integers in [0, limit) from a linear congruential generator
+function createRandom(seed) {
+    let state = seed;
+
+    return limit => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+
+        return Math.floor(state / 2 ** 32 * limit);
+    };
+}
+
+// Disjoint unit spans with unit gaps, starting at 0
+function unitSpans(count) {
+    return Array.from({ length: count }, (_, i) => ({ start: i * 2, end: i * 2 + 1 }));
+}
+
 test('layout preserves duration priority, stable ties, nesting and partial overlaps', () => {
     for (const coordinates of [
-        [], [[0, 2], [1, 5], [4, 10]],
+        [],
+        [[0, 2], [1, 5], [4, 10]],
         [[0, 100], [0, 50], [50, 100], [10, 20], [10, 20], [60, 70]],
         [[0, 0], [0, 0.0005], [0.0005, 0.0005], [0.001, 0.002], [0, -1]],
         [[1e14, 1e14], [1e14, 1e14 + 1], [1e14 + 1, 1e14 + 1]],
         [[1e14, 1e14], [1e14, 1e14], [1e14, 1e14 - 1]]
     ]) {
         const spans = coordinates.map(([start, end]) => Object.freeze({ start, end }));
+
         assertLayout(Object.freeze(spans));
         assertLayout(Object.freeze(spans.slice().reverse()));
     }
 });
 
 test('layout matches first-fit on reproducible mixed intervals', () => {
-    let seed = 61453;
-    const random = limit => Math.floor(((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32) * limit);
+    const random = createRandom(61453);
 
-    for (let trial = 0; trial < 1000; trial++) {
-        const origin = [0, -100, 1e12, 1e14][trial % 4];
-        const scale = trial % 3 === 0 ? 0.0001 : 1;
-        const spans = Array.from({ length: random(60) }, () => {
+    for (let i = 0; i < 1000; i++) {
+        const origin = [0, -100, 1e12, 1e14][i % 4];
+        const scale = i % 3 === 0 ? 0.0001 : 1;
+        const createSpan = () => {
             const start = origin + random(120) * scale;
-            return { start, end: start + (random(45) - 5) * scale };
-        });
 
-        assertLayout(spans);
+            return { start, end: start + (random(45) - 5) * scale };
+        };
+
+        assertLayout(Array.from({ length: random(60) }, createSpan));
     }
 });
 
 test('nested layout keeps stable ties and falls back without publishing a partial result', () => {
-    const spans = Array.from({ length: 2000 }, (_, index) => ({ start: index * 2, end: index * 2 + 1 }));
-
-    assertLayout([...spans, { start: 4000, end: 4002 }, { start: 4001, end: 4005 }, { start: 4004, end: 4010 }]);
+    assertLayout([
+        ...unitSpans(2000),
+        { start: 4000, end: 4002 },
+        { start: 4001, end: 4005 },
+        { start: 4004, end: 4010 }
+    ]);
     assertLayout([
         { start: 0, end: 100 },
         { start: 10, end: 20 },
@@ -187,22 +249,35 @@ test('nested layout keeps stable ties and falls back without publishing a partia
 });
 
 test('deep nesting requires linear checkpoints after sorting, also below sparse crossings', () => {
-    const nest = (start, depth) => Array.from({ length: depth }, (_, index) => ({ start: start + index, end: start + 2 * depth - index }));
+    const nest = (start, depth) => Array.from(
+        { length: depth },
+        (_, i) => ({ start: start + i, end: start + 2 * depth - i })
+    );
+    const ownTracks = spans => spans.map(span => [span]);
     const nested = nest(0, 10000);
     const roots = [{ start: 0, end: 100 }, { start: 50, end: 150 }];
     const sparse = nest(200, 3000);
-    const sharedEnd = Array.from({ length: 3000 }, (_, index) => ({ start: 200 + index, end: 6200 }));
+    const sharedEnd = Array.from({ length: 3000 }, (_, i) => ({ start: 200 + i, end: 6200 }));
     const buried = [{ start: 0, end: 10 }, { start: 5, end: 100000 }];
     const underBuried = nest(20, 3000);
 
     for (const [spans, expected] of [
-        [nested, nested.map(span => [span])],
+        [nested, ownTracks(nested)],
         // Only the crossing roots form the core; the nest is placed chronologically from its parent's track
-        [[...roots, ...sparse], [[roots[0], sparse[0]], [roots[1], sparse[1]], ...sparse.slice(2).map(span => [span])]],
+        [
+            [...roots, ...sparse],
+            [[roots[0], sparse[0]], [roots[1], sparse[1]], ...ownTracks(sparse.slice(2))]
+        ],
         // Equal ends are containment, not crossings
-        [[...roots, ...sharedEnd], [[roots[0], sharedEnd[0]], [roots[1], sharedEnd[1]], ...sharedEnd.slice(2).map(span => [span])]],
+        [
+            [...roots, ...sharedEnd],
+            [[roots[0], sharedEnd[0]], [roots[1], sharedEnd[1]], ...ownTracks(sharedEnd.slice(2))]
+        ],
         // The first root expires inside the active stack before the nest starts under the second one
-        [[...buried, ...underBuried], [[buried[1]], [buried[0], underBuried[0]], ...underBuried.slice(1).map(span => [span])]]
+        [
+            [...buried, ...underBuried],
+            [[buried[1]], [buried[0], underBuried[0]], ...ownTracks(underBuried.slice(1))]
+        ]
     ]) {
         const tracks = [];
         let checkpoints = 0;
@@ -253,36 +328,40 @@ test('crossing core includes containing ancestors and preserves original equal-d
     }
 
     const repeated = Object.freeze({ start: 10, end: 30 });
+
     assertLayout([repeated, { start: 20, end: 50 }, repeated, { start: 22, end: 25 }]);
 });
 
 test('crossing core preserves layout beyond a machine-word number of tracks', () => {
-    const spans = Array.from({ length: 40 }, (_, index) => ({ start: index, end: 100 + index }));
+    const spans = Array.from({ length: 40 }, (_, i) => ({ start: i, end: 100 + i }));
 
     assertLayout([...spans, { start: 50, end: 60 }, { start: 51, end: 59 }]);
 });
 
 test('crossing core reconstructs shuffled nested forests with sparse crossings', () => {
-    let seed = 8128;
-    const random = limit => Math.floor(((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32) * limit);
+    const random = createRandom(8128);
 
-    for (let trial = 0; trial < 100; trial++) {
+    for (let i = 0; i < 100; i++) {
         const spans = [{ start: 0, end: 500 }, { start: 100, end: 600 }];
 
-        for (let block = 0; block < 12; block++) {
-            const start = block * 50;
+        for (let j = 0; j < 12; j++) {
+            const start = j * 50;
+
             spans.push({ start, end: start + 40 });
-            for (let depth = 0; depth < 6; depth++) {
-                spans.push({ start: start + depth, end: start + 20 - depth });
+
+            for (let k = 0; k < 6; k++) {
+                spans.push({ start: start + k, end: start + 20 - k });
             }
+
             if (random(4) === 0) {
                 spans.push({ start: start + 10, end: start + 45 });
             }
         }
 
-        for (let index = spans.length - 1; index > 0; index--) {
-            const other = random(index + 1);
-            [spans[index], spans[other]] = [spans[other], spans[index]];
+        for (let j = spans.length - 1; j > 0; j--) {
+            const other = random(j + 1);
+
+            [spans[j], spans[other]] = [spans[other], spans[j]];
         }
 
         assertLayout(spans);
@@ -290,16 +369,18 @@ test('crossing core reconstructs shuffled nested forests with sparse crossings',
 });
 
 test('layout yields within a large track and leaves published tracks unchanged', () => {
-    const spans = Array.from({ length: 10000 }, (_, index) => ({ start: index * 2, end: index * 2 + 1 }));
+    const spans = unitSpans(10000);
     const layout = layoutSpans(spans);
+    const tracks = [];
 
     assert.equal(layout.next().value, null);
-    const tracks = [];
+
     for (const track of layout) {
         if (track) {
             tracks.push(Object.freeze(track));
         }
     }
+
     assert.deepEqual(tracks, [spans]);
 });
 
@@ -307,7 +388,8 @@ test.skipIf(!process.env.CPUPRO_TRACK_TIMELINE_FIXTURE)('layout matches the real
     const groups = JSON.parse(readFileSync(process.env.CPUPRO_TRACK_TIMELINE_FIXTURE, 'utf8'));
     const measurements = [];
 
-    for (const { tid, events } of groups) {
+    for (let i = 0; i < groups.length; i++) {
+        const events = groups[i].events;
         const referenceStart = performance.now();
         const expected = referenceLayout(events);
         const referenceMs = performance.now() - referenceStart;
@@ -321,33 +403,48 @@ test.skipIf(!process.env.CPUPRO_TRACK_TIMELINE_FIXTURE)('layout matches the real
         }
 
         const layoutMs = performance.now() - layoutStart;
+
         assert.equal(actual.length, expected.length);
-        for (let trackIndex = 0; trackIndex < actual.length; trackIndex++) {
-            assert.equal(actual[trackIndex].length, expected[trackIndex].length);
-            for (let index = 0; index < actual[trackIndex].length; index++) {
-                assert.equal(actual[trackIndex][index], expected[trackIndex][index]);
+
+        for (let j = 0; j < actual.length; j++) {
+            assert.equal(actual[j].length, expected[j].length);
+
+            for (let k = 0; k < actual[j].length; k++) {
+                assert.equal(actual[j][k], expected[j][k]);
             }
         }
-        measurements.push({ tid, spans: events.length, tracks: actual.length, referenceMs, layoutMs });
+
+        measurements.push({
+            tid: groups[i].tid,
+            spans: events.length,
+            tracks: actual.length,
+            referenceMs,
+            layoutMs
+        });
     }
 
     console.table(measurements);
 });
 
-afterEach(() => vi.unstubAllGlobals());
-
 // Events at 125–175 with 5 units without samples on each side, and another profile over 100–200
 async function renderTimeline(config = {}, scopeViewport, initialSelection) {
-    const { line: scopeLine } = await createLineFixture({ origin: 125, values: denseValues(50), before: 5, after: 5 });
+    const { line: scopeLine } = await createLineFixture({
+        origin: 125,
+        values: denseValues(50),
+        before: 5,
+        after: 5
+    });
     const { selection } = scopeLine.range;
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
-    const context = { scopeLine, scopeViewport, data: { profiles: [
-        scopeLine.profile, other.profile
-    ] } };
+    const context = {
+        scopeLine,
+        scopeViewport,
+        data: { profiles: [scopeLine.profile, other.profile] }
+    };
     const calls = [];
     let render;
     let timeline;
-    let hover;
+    let renderTooltip;
     let tooltipContext;
     let LifecycleElement;
     const element = {
@@ -361,10 +458,21 @@ async function renderTimeline(config = {}, scopeViewport, initialSelection) {
     const createElement = (name, className) => name === 'destroy-track-timeline'
         ? destroyElement
         : { name, className };
+    // The view renders tooltip content through its host; the host keeps the context of the last render
+    const host = {
+        render(el, content, data, renderContext) {
+            tooltipContext = renderContext;
+        }
+    };
 
     selection.setRanges(initialSelection ?? null);
     evaluateModule(new URL('./track-timeline.js', import.meta.url), {
-        resolveScopeProfileLine, resolveScopeViewport, lineZoom, setLineZoom, subscribeLineZoom, lineViewportBounds,
+        resolveScopeProfileLine,
+        resolveScopeViewport,
+        lineZoom,
+        setLineZoom,
+        subscribeLineZoom,
+        lineViewportBounds,
         discovery: { view: { define: (_, callback) => render = callback } },
         utils: { createElement },
         HTMLElement: class {},
@@ -382,32 +490,32 @@ async function renderTimeline(config = {}, scopeViewport, initialSelection) {
                     },
                     destroy: () => calls.push('timeline.destroy')
                 };
+
                 return timeline;
             }
         },
         Tooltip: class {
             constructor(_, callback) {
                 this.el = { classList: new Set() };
-                hover = callback;
+                renderTooltip = callback;
                 calls.push(['tooltip', this.el]);
             }
+
             show(span) {
                 calls.push(['tooltip.show', span]);
             }
+
             hide() {
                 calls.push('tooltip.hide');
             }
+
             destroy() {
                 calls.push('tooltip.destroy');
             }
         }
     });
-    render.call({ render: (_, config, data, context) => tooltipContext = context }, element, config, null, context);
+    render.call(host, element, config, null, context);
     destroyElement.onConnect();
-    const hoverSpan = span => {
-        hover(element, span);
-        return tooltipContext;
-    };
 
     return {
         timeline,
@@ -417,7 +525,11 @@ async function renderTimeline(config = {}, scopeViewport, initialSelection) {
         destroyElement,
         calls,
         LifecycleElement,
-        hover: hoverSpan
+        hover(span) {
+            renderTooltip(element, span);
+
+            return tooltipContext;
+        }
     };
 }
 
@@ -607,76 +719,145 @@ test.each([
 
 test('preserves absolute selection on span clicks, external changes and reset', async () => {
     const { timeline, selection, destroyElement } = await renderTimeline();
+
     timeline.options.onClick({ start: 110, end: 140 });
+
     assert.deepEqual(selection.ranges, [{ start: 110, end: 140 }]);
     assert.equal(timeline.selection, selection.ranges);
+
     selection.setRanges([{ start: 105, end: 115 }, { start: 150, end: 160 }]);
+
     assert.equal(timeline.selection, selection.ranges);
     assert.equal(timeline.selection.length, 2);
+
     timeline.options.onClick(null);
+
     assert.equal(selection.ranges, null);
     assert.equal(timeline.selection, null);
+
     destroyElement.onDestroy();
     selection.setRange(120, 130);
+
     assert.equal(timeline.selection, null);
 });
 
 function createCanvasTimeline(options = {}, height = 100, dpr = 1) {
+    const rect = { left: 0, top: 0, width: 1000, height };
+    const fonts = new EventTarget();
     let scheduled;
     let layoutScheduled;
+    const createCanvas = () => {
+        const listeners = new Map();
+        const context = {
+            fillRect: vi.fn(),
+            strokeRect: vi.fn(),
+            clearRect: vi.fn(),
+            drawImage: vi.fn(),
+            scale() {},
+            save() {},
+            restore() {},
+            beginPath() {},
+            closePath() {},
+            rect() {},
+            clip() {},
+            moveTo() {},
+            lineTo() {},
+            stroke() {},
+            fill() {},
+            fillText() {},
+            measureText: text => ({ width: text.length * 6 })
+        };
+
+        return {
+            context,
+            listeners,
+            style: {},
+            getContext: () => context,
+            getBoundingClientRect: () => rect,
+            addEventListener: (name, callback) => listeners.set(name, callback)
+        };
+    };
+
     vi.stubGlobal('window', { devicePixelRatio: dpr });
     vi.stubGlobal('ResizeObserver', class {
-        observe() {} disconnect() {}
+        observe() {}
+        disconnect() {}
     });
     vi.stubGlobal('requestAnimationFrame', callback => {
         scheduled = callback;
+
         return 1;
     });
     vi.stubGlobal('cancelAnimationFrame', () => scheduled = null);
     vi.stubGlobal('setTimeout', callback => {
         layoutScheduled = callback;
+
         return 1;
     });
     vi.stubGlobal('clearTimeout', () => layoutScheduled = null);
-    const rect = { left: 0, top: 0, width: 1000, height };
-    const createCanvas = () => {
-        const context = {
-            fillRect: vi.fn(), strokeRect: vi.fn(), clearRect: vi.fn(),
-            drawImage: vi.fn(),
-            scale() {}, save() {}, restore() {}, beginPath() {}, closePath() {},
-            rect() {}, clip() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {}, fillText() {},
-            measureText: text => ({ width: text.length * 6 })
-        };
-        const listeners = new Map();
-        return { context, listeners, style: {}, getContext: () => context,
-            getBoundingClientRect: () => rect,
-            addEventListener: (name, callback) => listeners.set(name, callback)
-        };
-    };
+
     const base = createCanvas();
     const overlay = createCanvas();
-    const fonts = new EventTarget();
-    vi.stubGlobal('document', { createElement: createCanvas, fonts });
-    const timeline = new CanvasTrackTimeline({
+    const container = {
         querySelector: selector => selector.endsWith('__canvas') ? base : overlay,
         getBoundingClientRect: () => rect
-    }, { minX: 100, maxX: 200, spans: [{ start: 120, end: 180 }], ...options });
+    };
+
+    vi.stubGlobal('document', { createElement: createCanvas, fonts });
+
+    const timeline = new CanvasTrackTimeline(container, {
+        minX: 100,
+        maxX: 200,
+        spans: [{ start: 120, end: 180 }],
+        ...options
+    });
     const flush = () => {
         base.context.fillRect.mockClear();
         overlay.context.fillRect.mockClear();
         overlay.context.clearRect.mockClear();
+
         if (layoutScheduled) {
             const callback = layoutScheduled;
+
             layoutScheduled = null;
             callback();
         }
+
         if (scheduled) {
             const callback = scheduled;
+
             scheduled = null;
             callback();
         }
     };
+    const pointer = (type, clientX, clientY) => overlay.listeners.get(type)({
+        button: 0,
+        clientX,
+        clientY,
+        stopPropagation() {}
+    });
+    // Returns whether the wheel event was taken from the page
+    const wheel = event => {
+        let prevented = false;
+
+        overlay.listeners.get('wheel')({
+            clientX: 500,
+            deltaX: 0,
+            deltaY: 0,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            ...event,
+            preventDefault() {
+                prevented = true;
+            }
+        });
+
+        return prevented;
+    };
+
     flush();
+
     return {
         timeline,
         base,
@@ -684,49 +865,36 @@ function createCanvasTimeline(options = {}, height = 100, dpr = 1) {
         fonts,
         rect,
         flush,
-        pending: () => Boolean(scheduled || layoutScheduled)
+        pending: () => Boolean(scheduled || layoutScheduled),
+        pointer,
+        click(clientX, clientY) {
+            pointer('pointerdown', clientX, clientY);
+            pointer('pointerup', clientX, clientY);
+        },
+        wheel
     };
-}
-
-function wheelOn(overlay, event) {
-    let prevented = false;
-    const wheelEvent = {
-        clientX: 500,
-        deltaX: 0,
-        deltaY: 0,
-        shiftKey: false,
-        ctrlKey: false,
-        metaKey: false,
-        ...event,
-        preventDefault() {
-            prevented = true;
-        }
-    };
-
-    overlay.listeners.get('wheel')(wheelEvent);
-
-    return prevented;
 }
 
 test('an outside owned view zooms and pans by the wheel with a modifier or horizontally, otherwise scrolls the page', () => {
     const views = [];
     const onViewChange = (start, end) => views.push([start, end]);
-    const { timeline, overlay } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange });
+    const { timeline, wheel } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange });
     const view = [timeline.offsetMs, timeline.pxPerMs];
 
     // A vertical wheel scrolls the page and leaves the view
-    assert.equal(wheelOn(overlay, { deltaY: -100 }), false);
+    assert.equal(wheel({ deltaY: -100 }), false);
     assert.deepEqual([timeline.offsetMs, timeline.pxPerMs], view);
     assert.deepEqual(views, []);
 
     // Zoom around the pointer is reported as the requested view
     for (const modifier of ['ctrlKey', 'metaKey']) {
-        assert.equal(wheelOn(overlay, { deltaY: -Math.log(2) / 0.0015, [modifier]: true }), true);
+        assert.equal(wheel({ deltaY: -Math.log(2) / 0.0015, [modifier]: true }), true);
     }
-    assert.deepEqual(views.map(request => request.map(Math.round)), [[250, 750], [375, 625]]);
 
-    assert.equal(wheelOn(overlay, { deltaX: 125, deltaY: 10 }), true);
+    assert.deepEqual(views.map(request => request.map(Math.round)), [[250, 750], [375, 625]]);
+    assert.equal(wheel({ deltaX: 125, deltaY: 10 }), true);
     assert.deepEqual(views.at(-1).map(Math.round), [406, 656]);
+
     timeline.destroy();
 });
 
@@ -736,12 +904,13 @@ test.each([
 ])('an outside owned view zooms around the pointer within the overlay at $left', row => {
     const views = [];
     const onViewChange = (start, end) => views.push([start, end]);
-    const { timeline, overlay, rect } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange });
+    const { timeline, rect, wheel } = createCanvasTimeline({ minX: 0, maxX: 1000, onViewChange });
 
     rect.left = row.left;
-    wheelOn(overlay, { clientX: row.clientX, deltaY: -Math.log(2) / 0.0015, ctrlKey: true });
+    wheel({ clientX: row.clientX, deltaY: -Math.log(2) / 0.0015, ctrlKey: true });
 
     assert.deepEqual(views.map(request => request.map(Math.round)), [[250, 750]]);
+
     timeline.destroy();
 });
 
@@ -749,11 +918,12 @@ test('with Shift a vertical wheel scrolls the tracks of an outside owned view wi
     const views = [];
     const spans = Array.from({ length: 50 }, () => ({ start: 120, end: 180 }));
     const onViewChange = (start, end) => views.push([start, end]);
-    const { timeline, overlay } = createCanvasTimeline({ spans, onViewChange });
+    const { timeline, wheel } = createCanvasTimeline({ spans, onViewChange });
 
-    assert.equal(wheelOn(overlay, { deltaY: 30, shiftKey: true }), true);
+    assert.equal(wheel({ deltaY: 30, shiftKey: true }), true);
     assert.equal(timeline.scrollY, 30);
     assert.deepEqual(views, []);
+
     timeline.destroy();
 });
 
@@ -761,59 +931,81 @@ test('an outside view applies to the canvas once sized and keeps it on resize', 
     const { timeline, flush } = createCanvasTimeline({ minX: 0, maxX: 1000 });
 
     timeline.setView(250, 500);
+
     assert.equal(timeline.offsetMs, 250);
     assert.equal(timeline.pxPerMs, 4);
+
     flush();
+
     assert.equal(timeline.offsetMs, 250);
 
     timeline.width = 0;
     timeline.setView(100, 300);
+
     assert.equal(timeline.offsetMs, 250);
+
     timeline.resize();
+
     assert.equal(timeline.offsetMs, 100);
     assert.equal(timeline.pxPerMs, 5);
+
     timeline.destroy();
 });
 
 test('publishes a stable prefix of complete groups without exposing partial tracks', () => {
     let clock = 0;
+
     vi.stubGlobal('performance', { now: () => clock += 4 });
-    const spans = Array.from({ length: 6000 }, (_, index) => ({ start: index * 2, end: index * 2 + 1 }));
-    const { timeline, base, overlay, flush, pending } = createCanvasTimeline({ groups: true, spans: [
-        { name: 'First', spans: [{ start: 120, end: 180 }] },
-        { name: 'Large', spans },
-        { name: 'Collapsed', collapsed: true, spans },
-        { name: 'Empty', spans: [] },
-        { name: 'Last', spans: [{ start: 130, end: 150 }] }
-    ] });
+
+    const spans = unitSpans(6000);
+    const { timeline, base, overlay, flush, pending } = createCanvasTimeline({
+        groups: true,
+        spans: [
+            { name: 'First', spans: [{ start: 120, end: 180 }] },
+            { name: 'Large', spans },
+            { name: 'Collapsed', collapsed: true, spans },
+            { name: 'Empty', spans: [] },
+            { name: 'Last', spans: [{ start: 130, end: 150 }] }
+        ]
+    });
     const firstGroup = timeline.groups[0];
     const geometry = [firstGroup.startY, firstGroup.endY];
     const firstTracks = timeline.tracks.slice();
 
     assert.deepEqual(timeline.visibleGroups.map(group => group.name), ['First']);
     assert.equal(firstTracks.length, 2);
+
     flush();
+
     assert.equal(base.context.fillRect.mock.calls.length, 0);
     assert.equal(overlay.context.clearRect.mock.calls.length, 0);
 
     let previousCount = timeline.visibleGroups.length;
-    let batches = 0;
-    while (pending() && batches++ < 100) {
+
+    for (let i = 0; i < 100 && pending(); i++) {
         flush();
+
+        const visibleGroups = timeline.visibleGroups;
+
         assert.deepEqual([firstGroup.startY, firstGroup.endY], geometry);
         assert.equal(timeline.tracks[1], firstTracks[1]);
-        assert.ok(timeline.visibleGroups.length >= previousCount);
-        previousCount = timeline.visibleGroups.length;
-        for (const group of timeline.visibleGroups) {
-            assert.ok(group.complete || group.collapsed);
+        assert.ok(visibleGroups.length >= previousCount);
+        previousCount = visibleGroups.length;
+
+        for (let j = 0; j < visibleGroups.length; j++) {
+            assert.ok(visibleGroups[j].complete || visibleGroups[j].collapsed);
         }
     }
 
     assert.equal(pending(), false);
-    assert.deepEqual(timeline.visibleGroups.map(group => group.name), ['First', 'Large', 'Collapsed', 'Empty', 'Last']);
+    assert.deepEqual(
+        timeline.visibleGroups.map(group => group.name),
+        ['First', 'Large', 'Collapsed', 'Empty', 'Last']
+    );
     assert.deepEqual(timeline.groups[1].tracks[0].spans, spans);
     assert.equal(timeline.groups[2].layout, null);
     assert.equal(timeline.groups[2].complete, false);
+
     timeline.destroy();
 });
 
@@ -822,88 +1014,113 @@ test('lays out small groups in one batch and reuses their tracks after collapse'
         { name: 'First', spans: [{ start: 120, end: 180 }] },
         { name: 'Second', spans: [{ start: 130, end: 160 }] }
     ];
-    const { timeline, overlay, flush, pending } = createCanvasTimeline({ spans: groups, groups: true });
+    const { timeline, flush, pending, click } = createCanvasTimeline({ spans: groups, groups: true });
 
     assert.equal(timeline.groups[0].complete, true);
     assert.equal(timeline.groups[1].complete, true);
     assert.equal(pending(), false);
+
     const tracks = timeline.groups.map(group => group.tracks[0]);
-    const pointer = { button: 0, clientX: 20, clientY: 35, stopPropagation() {} };
 
     for (const collapsed of [true, false]) {
-        overlay.listeners.get('pointerdown')(pointer);
-        overlay.listeners.get('pointerup')(pointer);
+        click(20, 35);
         flush();
+
         assert.equal(timeline.groups[0].collapsed, collapsed);
         assert.equal(timeline.groups[0].tracks[0], tracks[0]);
         assert.equal(timeline.groups[1].tracks[0], tracks[1]);
         assert.equal(timeline.tracks.includes(tracks[0]), !collapsed);
         assert.equal(timeline.tracks.at(-1), tracks[1]);
     }
+
     timeline.destroy();
 });
 
 test('yields within a group and discards pending layout on replacement or destroy', () => {
     let clock = 0;
+
     vi.stubGlobal('performance', { now: () => clock++ });
-    const spans = Array.from({ length: 10000 }, (_, index) => ({ start: index * 2, end: index * 2 + 1 }));
+
+    const spans = unitSpans(10000);
     const { timeline, flush, pending } = createCanvasTimeline({ spans, minX: undefined, maxX: undefined });
 
     assert.equal(timeline.minX, 0);
     assert.equal(timeline.maxX, 19999);
     assert.equal(pending(), true);
     assert.equal(timeline.groups[0].complete, false);
+
     const oldLayout = timeline.groups[0].layout;
     const replacement = { start: 10, end: 20 };
 
     timeline.setSpans([replacement]);
+
     assert.equal(oldLayout.next().done, true);
+
     flush();
+
     assert.deepEqual(timeline.tracks.map(track => track.spans), [[replacement]]);
     assert.equal(pending(), false);
 
     timeline.setSpans(spans);
     flush();
+
     const pendingLayout = timeline.groups[0].layout;
+
     timeline.setSelection([{ start: 10, end: 20 }]);
+
     assert.equal(pending(), true);
+
     timeline.destroy();
+
     assert.equal(pendingLayout.next().done, true);
     assert.equal(pending(), false);
+
     timeline.setSelection(null);
+
     assert.equal(pending(), false);
 });
 
 test('pauses a collapsed group and resumes its existing iterator on expansion', () => {
     let clock = 0;
+
     vi.stubGlobal('performance', { now: () => clock += 4 });
-    const spans = Array.from({ length: 10000 }, (_, index) => ({ start: index * 2, end: index * 2 + 1 }));
-    const { timeline, flush, pending } = createCanvasTimeline({ groups: true, spans: [
-        { name: 'Large', collapsed: true, spans },
-        { name: 'Small', spans: [{ start: 120, end: 180 }] }
-    ] });
+
+    const spans = unitSpans(10000);
+    const { timeline, flush, pending } = createCanvasTimeline({
+        groups: true,
+        spans: [
+            { name: 'Large', collapsed: true, spans },
+            { name: 'Small', spans: [{ start: 120, end: 180 }] }
+        ]
+    });
+
     timeline.handleGroupTitleClick(10, 35);
     flush();
+
     const layout = timeline.groups[0].layout;
-    assert.ok(layout);
     const otherTrack = timeline.groups[1].tracks[0];
     const otherOffset = timeline.groups[1].startY;
+
+    assert.ok(layout);
     assert.equal(timeline.tracks.length, 3);
 
     timeline.handleGroupTitleClick(10, 35);
     flush();
+
     assert.equal(timeline.groups[0].layout, layout);
     assert.equal(timeline.groups[1].complete, true);
     assert.equal(pending(), false);
 
     timeline.handleGroupTitleClick(10, 35);
     flush();
+
     assert.equal(timeline.groups[0].layout, layout);
-    let frames = 0;
-    while (pending() && frames++ < 100) {
+
+    for (let i = 0; i < 100 && pending(); i++) {
         if (!timeline.groups[0].complete) {
             assert.equal(timeline.groups[1].startY, otherOffset);
         }
+
         flush();
     }
 
@@ -912,24 +1129,35 @@ test('pauses a collapsed group and resumes its existing iterator on expansion', 
     assert.deepEqual(timeline.groups[0].tracks[0].spans, spans);
     assert.equal(timeline.groups[1].tracks[0], otherTrack);
     assert.ok(timeline.groups[1].startY > otherOffset);
+
     timeline.destroy();
 });
 
 test('bounds include collapsed and pending groups and handle empty data', () => {
-    const { timeline, flush } = createCanvasTimeline({ groups: true, minX: undefined, maxX: undefined, spans: [
-        { name: 'Hidden', collapsed: true, spans: [{ start: -20, end: 300 }] },
-        { name: 'Visible', spans: [{ start: 100, end: 200 }] }
-    ] });
+    const { timeline, flush } = createCanvasTimeline({
+        groups: true,
+        minX: undefined,
+        maxX: undefined,
+        spans: [
+            { name: 'Hidden', collapsed: true, spans: [{ start: -20, end: 300 }] },
+            { name: 'Visible', spans: [{ start: 100, end: 200 }] }
+        ]
+    });
 
     assert.equal(timeline.minX, -20);
     assert.equal(timeline.maxX, 300);
     assert.equal(timeline.groups[0].layout, null);
     assert.equal(timeline.groups[0].tracks.length, 0);
+
     timeline.setSpans([{ name: 'Earlier', spans: [{ start: -50, end: 300 }] }]);
+
     assert.deepEqual([timeline.minX, timeline.maxX], [-50, 300]);
+
     timeline.setSpans([]);
     flush();
+
     assert.deepEqual([timeline.minX, timeline.maxX, timeline.pxPerMs], [0, 1, 1000]);
+
     timeline.destroy();
 
     // A missing bound comes from the spans; an empty range is widened to one unit
@@ -938,46 +1166,56 @@ test('bounds include collapsed and pending groups and handle empty data', () => 
         [undefined, 300, [], [299, 300]],
         [undefined, undefined, [{ start: 150, end: 150 }], [150, 151]]
     ]) {
-        const { timeline } = createCanvasTimeline({ minX, maxX, spans });
+        const bounded = createCanvasTimeline({ minX, maxX, spans }).timeline;
 
-        assert.deepEqual([timeline.minX, timeline.maxX], expected);
-        timeline.destroy();
+        assert.deepEqual([bounded.minX, bounded.maxX], expected);
+
+        bounded.destroy();
     }
 });
 
 test('renders only visible tracks and keeps group intervals when the title is offscreen', () => {
     const spans = Array.from({ length: 20 }, () => ({ start: 110, end: 190 }));
-    const { timeline, base, flush } = createCanvasTimeline({ groups: true, spans: [{
-        name: 'Group', spans, intervals: [{ start: 120, end: 140, color: '#123' }]
-    }] });
+    const { timeline, base, flush } = createCanvasTimeline({
+        groups: true,
+        spans: [{
+            name: 'Group',
+            spans,
+            intervals: [{ start: 120, end: 140, color: '#123' }]
+        }]
+    });
     const renderTrack = vi.spyOn(timeline, 'renderTrack');
+    const groupInterval = [200, -75, 200, 344];
 
     timeline.handleVerticalScroll(105);
     flush();
+
     assert.deepEqual(timeline.getVisibleTrackRange(), { start: 6, end: 10 });
     assert.equal(renderTrack.mock.calls.length, 4);
-    assert.ok(base.context.fillRect.mock.calls.some(([left, top, width, height]) =>
-        left === 200 && top === -75 && width === 200 && height === 344
-    ));
+    assert.ok(base.context.fillRect.mock.calls.some(call => isDeepStrictEqual(call, groupInterval)));
     assert.equal(timeline.hitTest(200, 35), spans[5]);
     assert.equal(timeline.hitTest(200, 45), null);
 
     // The next track begins exactly at the bottom edge of the content area
     timeline.handleVerticalScroll(4);
     flush();
+
     assert.deepEqual(timeline.getVisibleTrackRange(), { start: 6, end: 10 });
     assert.equal(renderTrack.mock.calls.length, 4);
+
     timeline.destroy();
 });
 
 test('renders global intervals in z-order and skips those outside the viewport', () => {
-    const { timeline, base, flush } = createCanvasTimeline({ intervals: [
-        { start: 50, end: 90, color: '#a' },
-        { start: 140, end: 160, color: '#b', zIndex: 1 },
-        { start: 130, end: 170, color: '#c' },
-        { start: 150, end: 150, color: '#d' },
-        { offset: 120 }
-    ] });
+    const { timeline, base, flush } = createCanvasTimeline({
+        intervals: [
+            { start: 50, end: 90, color: '#a' },
+            { start: 140, end: 160, color: '#b', zIndex: 1 },
+            { start: 130, end: 170, color: '#c' },
+            { start: 150, end: 150, color: '#d' },
+            { offset: 120 }
+        ]
+    });
     const ctx = base.context;
     const draws = [];
 
@@ -996,18 +1234,19 @@ test('renders global intervals in z-order and skips those outside the viewport',
     flush();
 
     assert.deepEqual(draws, [['#888', 200.5], ['#c', 300, 400], ['#d', 500.5], ['#b', 400, 200]]);
+
     timeline.destroy();
 });
 
 test('group titles toggle and render only between the ruler and the minimap', () => {
     const names = ['First', 'Second', 'Third'];
     const open = scrollY => {
-        const result = createCanvasTimeline({ groups: true, spans: names.map((name, index) => ({
-            name, spans: [{ start: 120 + index * 10, end: 180 - index * 10 }]
-        })) });
+        const spans = names.map((name, i) => ({ name, spans: [{ start: 120 + i * 10, end: 180 - i * 10 }] }));
+        const result = createCanvasTimeline({ groups: true, spans });
 
         result.timeline.handleVerticalScroll(scrollY);
         result.flush();
+
         return result;
     };
 
@@ -1017,6 +1256,7 @@ test('group titles toggle and render only between the ruler and the minimap', ()
 
         assert.equal(timeline.handleGroupTitleClick(10, y), toggled.length > 0);
         assert.deepEqual(timeline.groups.filter(group => group.collapsed).map(group => group.name), toggled);
+
         timeline.destroy();
     }
 
@@ -1034,20 +1274,25 @@ test('group titles toggle and render only between the ruler and the minimap', ()
         flush();
 
         assert.deepEqual(titles, expected);
+
         timeline.destroy();
     }
 });
 
 test('does not redraw completed tracks while the next layout chunk is unpublished', () => {
     let clock = 0;
+
     vi.stubGlobal('performance', { now: () => clock += 4 });
-    const spans = Array.from({ length: 10000 }, (_, index) => ({ start: index * 2, end: index * 2 + 1 }));
-    const { timeline, base, overlay, flush, pending } = createCanvasTimeline({ spans });
+
+    const { timeline, base, overlay, flush, pending } = createCanvasTimeline({ spans: unitSpans(10000) });
 
     assert.equal(pending(), true);
+
     flush();
+
     assert.equal(base.context.fillRect.mock.calls.length, 0);
     assert.equal(overlay.context.fillRect.mock.calls.length, 0);
+
     timeline.destroy();
 });
 
@@ -1058,40 +1303,47 @@ test('clamps vertical position when replacement spans use the same time bounds',
 
     timeline.handleVerticalScroll(200);
     flush();
+
     assert.equal(timeline.scrollY, 200);
+
     // 20 tracks of 16px extend 260px beyond the 60px content area
     timeline.handleVerticalScroll(1000);
     flush();
+
     assert.equal(timeline.scrollY, 260);
+
     timeline.setSpans([{ start: 120, end: 180 }]);
     flush();
+
     assert.equal(timeline.scrollY, 0);
     assert.deepEqual(timeline.getVisibleTrackRange(), { start: 0, end: 1 });
+
     timeline.destroy();
 });
 
 test('hover reports changes once, highlights the displayed rectangle and resets on replacement or leave', () => {
     const onHover = vi.fn();
-    const { timeline, overlay, flush } = createCanvasTimeline({ onHover });
+    const { timeline, overlay, flush, pointer } = createCanvasTimeline({ onHover });
     const [span] = timeline.tracks[0].spans;
     const other = { start: 150, end: 160 };
-    const move = (clientX, clientY) => overlay.listeners.get('pointermove')({ clientX, clientY, stopPropagation() {} });
 
-    move(300, 35);
-    move(310, 40);
+    pointer('pointermove', 300, 35);
+    pointer('pointermove', 310, 40);
+
     assert.deepEqual(overlay.context.fillRect.mock.calls, [[200, 30, 600, 15]]);
     assert.deepEqual(overlay.context.strokeRect.mock.calls, [[200.5, 30.5, 599, 14]]);
 
-    move(300, 60);
+    pointer('pointermove', 300, 60);
     timeline.setSpans([span]);
     flush();
-    move(300, 35);
+    pointer('pointermove', 300, 35);
     timeline.setSpans([other]);
     flush();
-    move(550, 35);
+    pointer('pointermove', 550, 35);
     overlay.listeners.get('pointerleave')({});
 
     assert.deepEqual(onHover.mock.calls.map(([hovered]) => hovered), [span, null, span, null, other, null]);
+
     timeline.destroy();
 });
 
@@ -1118,62 +1370,88 @@ test('hit testing follows pixel edges of the displayed rectangles and the conten
     ]) {
         assert.equal(timeline.hitTest(x, y), expected, `${x}, ${y}`);
     }
+
     timeline.destroy();
 });
 
 test('renders dense tracks at continuous detail and hit tests the displayed representatives', () => {
-    const spans = Array.from({ length: 4096 }, (_, index) => ({ start: index * 0.01, end: index * 0.01 + 0.001 }));
+    const spans = Array.from({ length: 4096 }, (_, i) => ({ start: i * 0.01, end: i * 0.01 + 0.001 }));
     const { timeline, flush, pending } = createCanvasTimeline({ spans, minX: 0, maxX: 60000000 });
+    const counts = [];
+
     while (pending()) {
         flush();
     }
+
     const track = timeline.tracks[0];
-    const counts = [];
 
     for (const scale of [0.001, 1, 10, 1000]) {
         timeline.pxPerMs = scale;
         timeline.setSelection(null);
         flush();
+
         const image = timeline.trackImages.get(track);
+
         counts.push(image.spans.length);
-        for (let index = 0; index < image.spans.length; index++) {
-            const start = image.positions[index * 2];
-            const end = image.positions[index * 2 + 1];
+
+        for (let i = 0; i < image.spans.length; i++) {
+            const start = image.positions[i * 2];
+            const end = image.positions[i * 2 + 1];
+
             assert.ok(end > start);
-            assert.ok(index === 0 || start >= image.positions[index * 2 - 1]);
-            assert.equal(timeline.hitTest((start + end) / 2, 35), image.spans[index]);
+            assert.ok(i === 0 || start >= image.positions[i * 2 - 1]);
+            assert.equal(timeline.hitTest((start + end) / 2, 35), image.spans[i]);
         }
     }
 
     assert.equal(counts[0], 1);
-    assert.ok(counts[1] > counts[0] && counts[2] > counts[1]);
+    assert.ok(counts[1] > counts[0]);
+    assert.ok(counts[2] > counts[1]);
     assert.equal(counts[3], 100);
     assert.equal(track.spans.length, 4096);
+
     timeline.destroy();
 });
 
 test('wheel zoom can resolve microsecond spans in a minute-long profile', () => {
-    const { timeline, flush } = createCanvasTimeline({ minX: 0, maxX: 60000000, unit: 'us', spans: [
-        { start: 0, end: 1 }, { start: 2, end: 3 }, { start: 4, end: 5 }
-    ] });
+    const { timeline, flush } = createCanvasTimeline({
+        minX: 0,
+        maxX: 60000000,
+        unit: 'us',
+        spans: [
+            { start: 0, end: 1 },
+            { start: 2, end: 3 },
+            { start: 4, end: 5 }
+        ]
+    });
     const track = timeline.tracks[0];
+
     assert.equal(timeline.trackImages.get(track).spans.length, 1);
 
     timeline.handleZoom(-10000, 0);
     flush();
+
     assert.equal(timeline.trackImages.get(track).spans.length, 3);
     assert.ok(timeline.pxPerMs > 1);
 
     // Zoom stops where a pixel still resolves distinct coordinates at the far bound
     timeline.handleZoom(-1000000, 0);
+
     assert.equal(timeline.pxPerMs, 1 / (Number.EPSILON * 60000000));
+
     timeline.destroy();
 });
 
 test('ruler labels count from the lower bound unless absolute and include the last tick', () => {
     for (const [ruler, expected] of [
-        ['relative', ['0ms', '10ms', '20ms', '30ms', '40ms', '50ms', '60ms', '70ms', '80ms', '90ms', '100ms']],
-        ['absolute', ['100ms', '110ms', '120ms', '130ms', '140ms', '150ms', '160ms', '170ms', '180ms', '190ms', '200ms']]
+        [
+            'relative',
+            ['0ms', '10ms', '20ms', '30ms', '40ms', '50ms', '60ms', '70ms', '80ms', '90ms', '100ms']
+        ],
+        [
+            'absolute',
+            ['100ms', '110ms', '120ms', '130ms', '140ms', '150ms', '160ms', '170ms', '180ms', '190ms', '200ms']
+        ]
     ]) {
         const { timeline, base } = createCanvasTimeline({ ruler });
         const labels = [];
@@ -1182,6 +1460,7 @@ test('ruler labels count from the lower bound unless absolute and include the la
         timeline.renderRuler(base.context);
 
         assert.deepEqual(labels, expected);
+
         timeline.destroy();
     }
 });
@@ -1189,189 +1468,367 @@ test('ruler labels count from the lower bound unless absolute and include the la
 test('relative ruler visits only visible ticks at deep zoom far from the origin', () => {
     const { timeline, base } = createCanvasTimeline({ minX: 100, maxX: 60000100 });
     let labels = 0;
+
     base.context.fillText = () => {
-        assert.ok(++labels < 20);
+        labels++;
+        assert.ok(labels < 20);
     };
     timeline.offsetMs = 50000000;
     timeline.pxPerMs = 10;
     timeline.renderRuler(base.context);
+
     assert.ok(labels > 0);
+
     timeline.destroy();
 });
 
 test('minimum markers align with device pixels and keep original click ranges', () => {
-    const spans = [{ start: 0.26, end: 0.26 }, { start: 0.4, end: 0.41 }, { start: 3.4, end: 3.4 }];
+    const spans = [
+        { start: 0.26, end: 0.26 },
+        { start: 0.4, end: 0.41 },
+        { start: 3.4, end: 3.4 }
+    ];
     const onClick = vi.fn();
-    const { timeline, base, overlay } = createCanvasTimeline({ spans, minX: 0, maxX: 2000, onClick }, 100, 2);
+    const { timeline, base, click } = createCanvasTimeline({ spans, minX: 0, maxX: 2000, onClick }, 100, 2);
     const image = timeline.trackImages.get(timeline.tracks[0]);
 
     // At 0.5px/ms the first two spans share one marker; 3.4ms (x = 1.7) aligns down to the half-pixel grid
     assert.equal(base.width, 2000);
     assert.deepEqual(image.positions, [0, 1, 1.5, 2.5]);
-    const pointer = { button: 0, clientX: 0.5, clientY: 35, stopPropagation() {} };
-    overlay.listeners.get('pointerdown')(pointer);
-    overlay.listeners.get('pointerup')(pointer);
+
+    click(0.5, 35);
+
     assert.equal(onClick.mock.calls[0][0], spans[0]);
+
     timeline.destroy();
-});
-
-test('small complete labels render below 20px and font loading invalidates metrics', () => {
-    const { timeline, base, fonts, flush, pending } = createCanvasTimeline({ spans: [
-        { start: 120, end: 121.3, text: 'X' }
-    ] });
-    const ctx = base.context;
-    ctx.fillText = vi.fn();
-    ctx.measureText = vi.fn(text => ({ width: text.length * 6 }));
-    const span = timeline.tracks[0].spans[0];
-
-    timeline.renderSpan(ctx, span, 0, 0, 13);
-    assert.deepEqual(ctx.fillText.mock.calls[0], ['X', 3, 8.5]);
-    assert.equal(ctx.measureText.mock.calls.length, 0);
-    timeline.renderSpan(ctx, span, 0, 0, 11);
-    assert.equal(ctx.fillText.mock.calls.length, 1);
-
-    assert.equal(timeline.hitTest(205, 35), span);
-    fonts.dispatchEvent(new Event('loadingdone'));
-    assert.equal(timeline.trackImages.size, 0);
-    assert.equal(timeline.hitTest(205, 35), null);
-    timeline.renderSpan(ctx, span, 0, 0, 13);
-    assert.equal(ctx.measureText.mock.calls.length, 1);
-    flush();
-    assert.equal(timeline.hitTest(205, 35), span);
-    timeline.destroy();
-    fonts.dispatchEvent(new Event('loadingdone'));
-    assert.equal(pending(), false);
 });
 
 test('fills spans with their own color or a stable hue of their text', () => {
     const { timeline, base } = createCanvasTimeline();
     const ctx = base.context;
     const fills = [];
+
     ctx.fillRect = () => fills.push(ctx.fillStyle);
 
     for (const span of [{ text: 'XY' }, { text: 'XY', color: '#123' }, {}]) {
-        timeline.renderSpan(ctx, { start: 120, end: 121, ...span }, 0, 0, 4);
+        timeline.renderSpan(ctx, {
+            start: 120,
+            end: 121,
+            ...span
+        }, 0, 0, 4);
     }
 
     // 'XY' hashes to 88 * 31 + 89 = 2817, i.e. hue 297
     assert.deepEqual(fills, ['hsl(297, 30%, 40%, 80%)', '#123', 'hsl(0, 30%, 40%, 80%)']);
+
     timeline.destroy();
 });
 
-test('repaints reusable track canvases and hit buffers when horizontal coordinates change', () => {
-    const { timeline, base, flush } = createCanvasTimeline({ groups: true, spans: [
-        { name: 'First', spans: [{ start: 120, end: 180 }] },
-        { name: 'Second', spans: [{ start: 130, end: 160 }] }
-    ] }, 150);
-    const firstTrack = timeline.groups[0].tracks[0];
-    const image = timeline.trackImages.get(firstTrack);
-    const positions = image.positions;
-    const previousPositions = positions.slice();
-    const spans = image.spans;
-    const createCanvas = vi.spyOn(globalThis.document, 'createElement');
+// Two groups with one track each over the view 100–200: First spans 120–180 on y 54–69, Second spans 130–160
+function createGroupsTimeline() {
+    return createCanvasTimeline({
+        groups: true,
+        spans: [
+            { name: 'First', spans: [{ start: 120, end: 180 }] },
+            { name: 'Second', spans: [{ start: 130, end: 160 }] }
+        ]
+    }, 150);
+}
+
+test('paint-only updates draw the cached track images without repainting them', () => {
+    const { timeline, base, flush } = createGroupsTimeline();
+    const first = timeline.trackImages.get(timeline.groups[0].tracks[0]);
+    const second = timeline.trackImages.get(timeline.groups[1].tracks[0]);
     const renderTrack = vi.spyOn(timeline, 'renderTrack');
 
-    flush();
-    assert.equal(timeline.trackImages.get(firstTrack), image);
-    assert.equal(renderTrack.mock.calls.length, 0);
+    base.context.drawImage.mockClear();
     timeline.setSelection([{ start: 125, end: 135 }]);
     flush();
+
+    const draws = base.context.drawImage.mock.calls;
+
     assert.equal(renderTrack.mock.calls.length, 0);
-    assert.ok(base.context.drawImage.mock.calls.length > 0);
+    assert.equal(timeline.trackImages.get(timeline.groups[0].tracks[0]), first);
+    assert.equal(timeline.trackImages.get(timeline.groups[1].tracks[0]), second);
+    assert.equal(draws.length, 2);
+    assert.equal(draws[0][0], first.canvas);
+    assert.equal(draws[1][0], second.canvas);
+
+    timeline.destroy();
+});
+
+test('horizontal changes repaint the same track canvases and hit buffers', () => {
+    const { timeline, flush } = createGroupsTimeline();
+    const track = timeline.groups[0].tracks[0];
+    const image = timeline.trackImages.get(track);
+    const { canvas, spans, positions } = image;
+    const previous = positions.slice();
+    const index = timeline.trackIndexes.get(track.spans);
+    const createElement = vi.spyOn(globalThis.document, 'createElement');
+    const renderTrack = vi.spyOn(timeline, 'renderTrack');
 
     timeline.handleZoom(-100, 500);
     flush();
-    assert.equal(timeline.trackImages.get(firstTrack), image);
-    assert.equal(image.positions, positions);
+
+    assert.equal(timeline.trackImages.get(track), image);
+    assert.equal(image.canvas, canvas);
     assert.equal(image.spans, spans);
-    assert.notDeepEqual(positions, previousPositions);
-    assert.equal(createCanvas.mock.calls.length, 0);
+    assert.equal(image.positions, positions);
+    assert.notDeepEqual(positions, previous);
+    assert.equal(createElement.mock.calls.length, 0);
     assert.equal(image.context.clearRect.mock.calls.length, 1);
     assert.equal(renderTrack.mock.calls.length, 2);
+    assert.ok(index);
+    assert.equal(timeline.trackIndexes.get(track.spans), index);
+    // Zooming in around the center widens the span beyond its previous right edge
+    assert.ok(positions[1] - 1 > previous[1]);
+    assert.equal(timeline.hitTest(positions[1] - 1, 60), spans[0]);
+
+    timeline.destroy();
+});
+
+test('a track panned past its spans keeps no hit rectangles', () => {
+    const { timeline, flush } = createGroupsTimeline();
+    const image = timeline.trackImages.get(timeline.groups[0].tracks[0]);
+    const [span] = image.spans;
+
+    assert.equal(timeline.hitTest(300, 60), span);
 
     timeline.offsetMs = 195;
     timeline.setSelection(null);
     flush();
-    assert.equal(image.spans.length, 0);
-    assert.equal(image.positions.length, 0);
+
+    assert.deepEqual(image.spans, []);
+    assert.deepEqual(image.positions, []);
     assert.equal(timeline.hitTest(300, 60), null);
 
-    // Width or DPR alone resizes the bitmap; a hidden, zero-width timeline draws no empty bitmap
-    for (const [width, dpr, bitmap, draws] of [[800, 1, [800, 15], 2], [800, 2, [1600, 30], 2], [0, 2, [0, 30], 0]]) {
-        timeline.width = width;
-        timeline.dpr = dpr;
-        base.context.drawImage.mockClear();
-        timeline.setSelection(null);
-        flush();
-        assert.deepEqual([image.canvas.width, image.canvas.height], bitmap);
-        assert.equal(base.context.drawImage.mock.calls.length, draws);
-    }
-    assert.equal(createCanvas.mock.calls.length, 0);
-    timeline.setSpans([]);
-    assert.equal(timeline.trackImages.size, 0);
     timeline.destroy();
 });
 
+// Both tracks draw their whole bitmap; a hidden, zero-width timeline draws no empty bitmap
+test.each([
+    {
+        change: 'width',
+        width: 800,
+        dpr: 1,
+        bitmap: [800, 15],
+        sources: [[0, 0, 800, 15], [0, 0, 800, 15]]
+    },
+    {
+        change: 'device pixel ratio',
+        width: 1000,
+        dpr: 2,
+        bitmap: [2000, 30],
+        sources: [[0, 0, 2000, 30], [0, 0, 2000, 30]]
+    },
+    {
+        change: 'zero width',
+        width: 0,
+        dpr: 2,
+        bitmap: [0, 30],
+        sources: []
+    }
+])('a $change resizes the bitmap of the same track canvas', row => {
+    const { timeline, base, flush } = createGroupsTimeline();
+    const track = timeline.groups[0].tracks[0];
+    const image = timeline.trackImages.get(track);
+    const createElement = vi.spyOn(globalThis.document, 'createElement');
+
+    timeline.width = row.width;
+    timeline.dpr = row.dpr;
+    base.context.drawImage.mockClear();
+    timeline.setSelection(null);
+    flush();
+
+    assert.equal(timeline.trackImages.get(track), image);
+    assert.deepEqual([image.canvas.width, image.canvas.height], row.bitmap);
+    assert.equal(image.context.clearRect.mock.calls.length, 0);
+    assert.deepEqual(base.context.drawImage.mock.calls.map(call => call.slice(1, 5)), row.sources);
+    assert.equal(createElement.mock.calls.length, 0);
+
+    timeline.destroy();
+});
+
+test('tracks scrolled out of view release their images', () => {
+    const { timeline, flush } = createCanvasTimeline({
+        spans: Array.from({ length: 20 }, () => ({ start: 110, end: 190 }))
+    });
+    const [first] = timeline.tracks;
+
+    assert.ok(timeline.trackImages.has(first));
+
+    timeline.handleVerticalScroll(105);
+    flush();
+
+    assert.equal(timeline.trackImages.has(first), false);
+    assert.deepEqual([...timeline.trackImages.keys()], timeline.tracks.slice(6, 11));
+
+    timeline.destroy();
+});
+
+test.each([
+    {
+        event: 'span replacement',
+        release(timeline) {
+            timeline.setSpans([]);
+        }
+    },
+    {
+        event: 'destruction',
+        release(timeline) {
+            timeline.destroy();
+        }
+    }
+])('track images and span text metrics are released on $event', row => {
+    const { timeline, base } = createCanvasTimeline({
+        spans: [{ start: 120, end: 121.3, text: 'X' }]
+    });
+    const ctx = base.context;
+    const span = timeline.tracks[0].spans[0];
+
+    ctx.measureText = vi.fn(text => ({ width: text.length * 6 }));
+
+    assert.equal(timeline.trackImages.size, 1);
+
+    row.release(timeline);
+    timeline.renderSpan(ctx, span, 0, 0, 13);
+
+    assert.equal(timeline.trackImages.size, 0);
+    assert.equal(ctx.measureText.mock.calls.length, 1);
+
+    timeline.destroy();
+});
+
+test('small complete labels render below 20px with the metrics measured on the first paint', () => {
+    const { timeline, base } = createCanvasTimeline({
+        spans: [{ start: 120, end: 121.3, text: 'X' }]
+    });
+    const ctx = base.context;
+    const span = timeline.tracks[0].spans[0];
+
+    ctx.fillText = vi.fn();
+    ctx.measureText = vi.fn(text => ({ width: text.length * 6 }));
+    timeline.renderSpan(ctx, span, 0, 0, 13);
+
+    assert.deepEqual(ctx.fillText.mock.calls, [['X', 3, 8.5]]);
+    assert.equal(ctx.measureText.mock.calls.length, 0);
+
+    timeline.renderSpan(ctx, span, 0, 0, 11);
+
+    assert.equal(ctx.fillText.mock.calls.length, 1);
+
+    timeline.destroy();
+});
+
+test('font loading clears span text metrics and repaints the track images', () => {
+    const { timeline, base, fonts, flush } = createCanvasTimeline({
+        spans: [{ start: 120, end: 121.3, text: 'X' }]
+    });
+    const ctx = base.context;
+    const span = timeline.tracks[0].spans[0];
+
+    ctx.measureText = vi.fn(text => ({ width: text.length * 6 }));
+
+    assert.equal(timeline.hitTest(205, 35), span);
+
+    fonts.dispatchEvent(new Event('loadingdone'));
+
+    assert.equal(timeline.trackImages.size, 0);
+    assert.equal(timeline.hitTest(205, 35), null);
+
+    timeline.renderSpan(ctx, span, 0, 0, 13);
+
+    assert.equal(ctx.measureText.mock.calls.length, 1);
+
+    flush();
+
+    assert.equal(timeline.hitTest(205, 35), span);
+
+    timeline.destroy();
+});
+
+test('font loading after destruction schedules no render', () => {
+    const { timeline, fonts, pending } = createCanvasTimeline();
+
+    timeline.destroy();
+    fonts.dispatchEvent(new Event('loadingdone'));
+
+    assert.equal(pending(), false);
+});
+
 test('renders external multi-range selection on the overlay and minimap without a stale clicked span', () => {
-    const { timeline, base, overlay, flush } = createCanvasTimeline();
+    const { timeline, base, overlay, flush, click } = createCanvasTimeline();
+
     timeline.setSelection([{ start: 110, end: 130 }, { start: 160, end: 190 }]);
     flush();
+
     assert.deepEqual(overlay.context.fillRect.mock.calls, [[100, 0, 200, 90], [600, 0, 300, 90]]);
     assert.deepEqual(base.context.fillRect.mock.calls.slice(-2), [[100, 90, 200, 10], [600, 90, 300, 10]]);
 
-    const pointer = { button: 0, clientX: 300, clientY: 35, stopPropagation() {} };
-    overlay.listeners.get('pointerdown')(pointer);
-    overlay.listeners.get('pointerup')(pointer);
-    for (const selection of [[{ start: 140, end: 150 }], null, []]) {
+    click(300, 35);
+
+    for (const [selection, rects] of [
+        [[{ start: 140, end: 150 }], [[400, 0, 100, 90]]],
+        [null, []],
+        [[], []]
+    ]) {
         timeline.setSelection(selection);
         flush();
-        assert.deepEqual(overlay.context.fillRect.mock.calls, selection?.length ? [[400, 0, 100, 90]] : []);
+
+        assert.deepEqual(overlay.context.fillRect.mock.calls, rects);
     }
+
     timeline.destroy();
 });
 
 test('a wheel gesture keeps its action until it pauses or its delta grows', () => {
     const now = vi.spyOn(Date, 'now');
-    const { timeline, overlay } = createCanvasTimeline();
-    const wheel = (time, deltaX, deltaY) => {
+    const { timeline, wheel } = createCanvasTimeline();
+    const wheelAt = (time, deltaX, deltaY) => {
         now.mockReturnValue(time);
-        overlay.listeners.get('wheel')({ clientX: 500, deltaX, deltaY, shiftKey: false, preventDefault() {} });
+        wheel({ deltaX, deltaY });
+
         return [timeline.pxPerMs, timeline.offsetMs];
     };
 
-    const [zoomedScale, zoomedOffset] = wheel(1000, 0, -100);
-    assert.deepEqual(wheel(1050, 30, 0), [zoomedScale, zoomedOffset]);
+    const [zoomedScale, zoomedOffset] = wheelAt(1000, 0, -100);
 
-    const [scale, offset] = wheel(1100, 0, -100);
+    assert.deepEqual(wheelAt(1050, 30, 0), [zoomedScale, zoomedOffset]);
+
+    const [scale, offset] = wheelAt(1100, 0, -100);
+
     assert.ok(scale > zoomedScale);
-    assert.deepEqual(wheel(1400, 30, 0), [scale, offset + 30 / scale]);
+    assert.deepEqual(wheelAt(1400, 30, 0), [scale, offset + 30 / scale]);
+
     now.mockRestore();
     timeline.destroy();
 });
 
 test('renders the same absolute selection after local zoom and pan', () => {
     const onClick = vi.fn();
-    const { timeline, base, overlay, flush } = createCanvasTimeline({ onClick });
+    const { timeline, base, overlay, flush, pointer, wheel } = createCanvasTimeline({ onClick });
     const selection = [{ start: 120, end: 180 }];
-    overlay.listeners.get('wheel')({
-        clientX: 500, deltaX: 0, deltaY: -300, shiftKey: false, preventDefault() {}
-    });
+
+    wheel({ deltaY: -300 });
     timeline.setSelection(selection);
     flush();
+
     const [[start, , width]] = overlay.context.fillRect.mock.calls;
+
     assert.ok(start < 200);
     assert.ok(width > 600);
     assert.deepEqual(base.context.fillRect.mock.calls.at(-1), [200, 90, 600, 10]);
 
-    const pointer = { button: 0, clientX: 500, clientY: 20, stopPropagation() {} };
-    overlay.listeners.get('pointermove')(pointer);
-    overlay.listeners.get('pointerdown')(pointer);
-    overlay.listeners.get('pointermove')({ ...pointer, clientX: 600 });
-    overlay.listeners.get('pointerup')({ ...pointer, clientX: 600 });
+    pointer('pointermove', 500, 20);
+    pointer('pointerdown', 500, 20);
+    pointer('pointermove', 600, 20);
+    pointer('pointerup', 600, 20);
     flush();
+
     assert.equal(Math.round(overlay.context.fillRect.mock.calls[0][0] - start), 100);
     assert.deepEqual(base.context.fillRect.mock.calls.at(-1), [200, 90, 600, 10]);
     assert.deepEqual(selection, [{ start: 120, end: 180 }]);
     assert.equal(onClick.mock.calls.length, 0);
+
     timeline.destroy();
 });
