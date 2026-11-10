@@ -47,6 +47,18 @@ export function min(array: number[] | Int32Array | Uint32Array | Float64Array) {
     return min;
 }
 
+export function max(array: number[] | Int32Array | Uint32Array | Float64Array) {
+    let max = array[0];
+
+    for (let i = 1; i < array.length; i++) {
+        if (array[i] > max) {
+            max = array[i];
+        }
+    }
+
+    return max;
+}
+
 export function convertToUint32Array(source: number[] | Int32Array | Uint32Array | Float64Array, extraLength: number = 0) {
     const result = new Uint32Array(source.length + extraLength);
 

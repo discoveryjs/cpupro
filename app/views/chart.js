@@ -1,106 +1,94 @@
 import { utils } from '@discoveryjs/discovery';
 import { resolveScopeProfileLine } from '../jora/profile.js';
 import { lineZoom, subscribeLineZoom } from '../jora/viewport.js';
+import { min, max } from '../prepare/misc/utils.js';
+import { chartScaleY, drawChart } from './chart/index.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import usage from './chart.usage.js';
 
-const pad = 0.03;
-
 discovery.view.define('cpupro-chart', function(el, config, data, context) {
     const points = ensureArray(config.points || data);
-    const x = points.map(p => p.x ?? p[0]);
-    const y = points.map(p => p.y ?? p[1]);
-    const totalPoints = ensureArray(config.pointsTotal);
-    const totalX = totalPoints.map(p => p.x ?? p[0]);
-    const totalY = totalPoints.map(p => p.y ?? p[1]);
-    const minY = config.minY ?? Math.min(...y);
-    const maxY = config.maxY ?? Math.max(...y, ...totalY);
-    const minX = config.minX ?? Math.min(...x);
-    const maxX = config.maxX ?? Math.max(...x);
+    const series = toSeries(points);
+    const total = toSeries(ensureArray(config.pointsTotal));
+    // Spreading values into Math.min() and Math.max() overflows the stack on long series
+    const minY = config.minY ?? min(series.y);
+    const maxY = config.maxY ?? max(series.y.concat(total.y));
+    const minX = config.minX ?? series.x[0];
+    const maxX = config.maxX ?? series.x.at(-1);
     const height = config.height || 150;
-    const viewport = { start: minX, end: maxX };
-    const extent = config.extent || viewport;
+    const options = {
+        series,
+        total,
+        extent: config.extent || { start: minX, end: maxX },
+        viewport: { start: minX, end: maxX },
+        scaleY: chartScaleY(minY, maxY, height)
+    };
+    const canvasEl = utils.createElement('canvas');
+    const destroyEl = utils.createElement('destroy-cpupro-chart');
+    const ctx = canvasEl.getContext('2d');
+    const resizeObserver = new ResizeObserver(([entry]) => {
+        dpr = window.devicePixelRatio || 1;
+        color = getComputedStyle(el).getPropertyValue('--color') || '#888';
+        canvasEl.width = Math.round(entry.contentRect.width * dpr);
+        canvasEl.height = Math.round(height * dpr);
+        draw();
+    });
+    let unsubscribe = null;
+    let scheduledDraw = null;
+    let color;
+    let dpr;
 
-    setRangeCoverage(el, extent, viewport);
+    function draw() {
+        cancelAnimationFrame(scheduledDraw);
+        scheduledDraw = null;
+        drawChart(ctx, options, color, dpr);
+    }
 
     if (config.color) {
         el.style.setProperty('--color', config.color);
     }
 
-    // svg
-    const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const { ticks } = generateYTicks(minY, maxY, height);
+    setRangeCoverage(el, options.extent, options.viewport);
+    canvasEl.style.height = height + 'px';
 
-    pathEl.setAttribute('d', generateCurve(x, y, height, minX, maxX, minY, maxY, false, extent));
-    svgEl.setAttribute('viewBox', `0 0 1000 ${height}`);
-    svgEl.setAttribute('preserveAspectRatio', 'none');
-    svgEl.setAttribute('width', '100%');
-    svgEl.setAttribute('height', height);
-    svgEl.append(...generateYLines(ticks));
-    svgEl.append(pathEl);
+    // With zoom the chart displays the line zoom, otherwise the range of minX and maxX
+    destroyEl.onConnect = () => {
+        resizeObserver.observe(canvasEl);
 
-    if (totalPoints.length > 0) {
-        const pathTotalEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        if (config.zoom) {
+            const line = resolveScopeProfileLine(config.line, context);
+            const profiles = context.data?.profiles;
+            const followZoom = () => {
+                options.viewport = lineZoom(line, profiles);
+                setRangeCoverage(el, options.extent, options.viewport);
 
-        pathTotalEl.setAttribute('d', generateCurve(totalX, totalY, height, minX, maxX, minY, maxY, true, extent));
-        pathTotalEl.setAttribute('stroke-dasharray', '4 1');
-        pathTotalEl.classList.add('line');
-        svgEl.append(pathTotalEl);
-    }
+                // Until the canvas is sized its first draw is pending anyway
+                if (scheduledDraw === null && dpr !== undefined) {
+                    scheduledDraw = requestAnimationFrame(draw);
+                }
+            };
 
-    el.append(...generateYLabels(ticks, config.labelFormat));
-    el.append(svgEl);
-
-    // With zoom the chart is drawn for its range and displays the line zoom within it
-    if (config.zoom) {
-        const line = resolveScopeProfileLine(config.line, context);
-        const profiles = context.data?.profiles;
-        const destroyEl = utils.createElement('destroy-cpupro-chart');
-        const followZoom = () => {
-            const display = lineZoom(line, profiles);
-            const scale = 1000 / (maxX - minX);
-
-            setRangeCoverage(el, extent, display);
-            svgEl.setAttribute('viewBox', `${(display.start - minX) * scale} 0 ${(display.end - display.start) * scale} ${height}`);
-        };
-        let unsubscribe = null;
-
-        destroyEl.onConnect = () => {
             unsubscribe = subscribeLineZoom(line, followZoom);
             followZoom();
-        };
-        destroyEl.onDestroy = () => unsubscribe();
-        el.append(destroyEl);
-    }
+        }
+    };
+    destroyEl.onDestroy = () => {
+        resizeObserver.disconnect();
+        cancelAnimationFrame(scheduledDraw);
+        unsubscribe?.();
+    };
+
+    el.append(...generateYLabels(options.scaleY.ticks, config.labelFormat), canvasEl, destroyEl);
 }, { usage });
 
 function ensureArray(value) {
     return Array.isArray(value) ? value : [];
 }
 
-function generateYTicks(minY, maxY, height, count = 4) {
-    const scaleY = (val) => padTop + (height - padTop - padBottom) * (1 - (val - minY) / (maxY - minY));
-    const chartMinY = Math.max(0, minY - (maxY - minY) * pad);
-    const chartMaxY = maxY + (maxY - minY) * pad;
-    const padBottom = Math.ceil(height * (minY - chartMinY) / (chartMaxY - chartMinY));
-    const padTop = Math.ceil(height * (chartMaxY - maxY) / (chartMaxY - chartMinY));
-    const step = (maxY - minY) / (count - 1);
-    const ticks = [];
-
-    for (let i = 0; i < count; i++) {
-        const value = minY + step * i;
-        const y = scaleY(value);
-
-        ticks.push({ y, value });
-    }
-
+function toSeries(points) {
     return {
-        ticks,
-        padTop,
-        padBottom,
-        stepY: step,
-        step: (height - padTop - padBottom) / (count - 1)
+        x: points.map(p => p.x ?? p[0]),
+        y: points.map(p => p.y ?? p[1])
     };
 }
 
@@ -118,71 +106,6 @@ function generateYLabels(ticks, formatFn = (v) => v.toFixed(2)) {
     }
 
     return labels;
-}
-
-function generateYLines(ticks) {
-    const lines = [];
-
-    for (const { y } of ticks) {
-        const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-
-        lineEl.classList.add('y-tick');
-        lineEl.setAttribute('x1', 0);
-        lineEl.setAttribute('y1', y);
-        lineEl.setAttribute('x2', 1000);
-        lineEl.setAttribute('y2', y);
-
-        lines.push(lineEl);
-    }
-
-    return lines;
-}
-
-function generateCurve(x, y, height, minX, maxX, minY, maxY, line = false, extent = { start: minX, end: maxX }) {
-    const scaleX = (val) => 1000 * (val - minX) / (maxX - minX);
-    const scaleY = (val) => padTop + (height - padTop - padBottom) * (1 - (val - minY) / (maxY - minY));
-    const chartMinY = Math.max(0, minY - (maxY - minY) * pad);
-    const chartMaxY = maxY + (maxY - minY) * pad;
-    const padBottom = Math.ceil(height * (minY - chartMinY) / (chartMaxY - chartMinY));
-    const padTop = Math.ceil(height * (chartMaxY - maxY) / (chartMaxY - chartMinY));
-
-    let prevScaledY = scaleY(y[0]);
-    let yspan = 0;
-    let d = '';
-
-    if (line) {
-        d += `M ${scaleX(extent.start)} ${prevScaledY} `;
-    } else {
-        d += `M ${scaleX(extent.start)} ${scaleY(chartMinY)} `;
-        d += `V ${prevScaledY} `;
-    }
-
-    d += `H ${scaleX(x[0])} `;
-
-    for (let i = 1; i < x.length; i++) {
-        const scaledX = scaleX(x[i]);
-        const scaledY = scaleY(y[i]);
-
-        if (Math.abs((scaledY - prevScaledY)) > .3) {
-            if (yspan > 0) {
-                d += `H ${scaleX(x[i - 1])} `;
-                yspan = 0;
-            }
-
-            d += `L ${scaledX} ${scaledY} `;
-            prevScaledY = scaledY;
-        } else {
-            yspan++;
-        }
-    }
-
-    if (line) {
-        d += `H ${scaleX(extent.end)}`;
-    } else {
-        d += `L ${scaleX(extent.end)} ${scaleY(y[y.length - 1])} V ${scaleY(chartMinY)} Z`;
-    }
-
-    return d;
 }
 
 class ChartElement extends HTMLElement {
