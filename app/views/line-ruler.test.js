@@ -21,7 +21,8 @@ evaluateModule(new URL('./line-ruler.js', import.meta.url), {
     require: () => ({
         resolveScopeProfileLine, lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom, formatMicrosecondsTime, stepFractionDigits,
         createState, rangeToSegments, binsPerColumn
-    })
+    }),
+    window: { devicePixelRatio: 1 }
 });
 
 const data = { data: true };

@@ -36,8 +36,8 @@ const scaleFunctions = {
 // Many thin columns are hard to compare, so neighbouring bins merge into columns by powers of two.
 // A column shows the sum of its bins: in tracks splitting a total, a share stays a share of the column.
 // Only the peak of a level merges as the highest peak, a sum or a mean of peaks would be no peak at all.
+// Columns keep a bar at least as wide as their gap in device pixels, so retina screens fit more of them.
 const MAX_COLUMNS = 500;
-const MIN_COLUMN_WIDTH = 2;
 // Present bins stay visible however small their value is
 const MIN_BAR_HEIGHT = 0.8;
 // Columns keep the same gap however wide they are, zooming changes only how much of a column a bar fills.
@@ -65,7 +65,7 @@ export function drawBinsHistogram(
     const { width, height } = ctx.canvas;
     const scaleFn = scaleFunctions[scale];
     const minHeight = Math.max(1, Math.round(MIN_BAR_HEIGHT * dpr));
-    const gap = Math.max(1, Math.round(BAR_GAP * dpr));
+    const gap = barGap(dpr);
     const columns = { size: 1, offset: 0, count: bins.length };
     const columnValue = peaks ? columnPeak : columnSum;
 
@@ -76,7 +76,7 @@ export function drawBinsHistogram(
         columns.count = (viewport.end - viewport.start) / binSize;
     }
 
-    columns.size = binsPerColumn(columns.count, bins.length, width / dpr);
+    columns.size = binsPerColumn(columns.count, bins.length, width / dpr, dpr);
 
     // Without a maximum of a bin, the scale depends only on the visible columns rather than on the range of bins,
     // which follows the viewport in steps and may hold columns far higher than any visible one
@@ -107,9 +107,9 @@ export function drawBinsHistogram(
     drawColumns(ctx, bins, columns, columnValue, presence, max || columnsMax, scaleFn, minHeight, gap);
 }
 
-// Bins per column for a number of bins across a width in CSS pixels, e.g. to match columns with a ruler
-export function binsPerColumn(binsAcross: number, binCount: number, width: number) {
-    const maxColumns = Math.min(MAX_COLUMNS, width / MIN_COLUMN_WIDTH);
+// Bins per column for a number of bins across a width in CSS pixels at a pixel ratio, e.g. to match columns with a ruler
+export function binsPerColumn(binsAcross: number, binCount: number, width: number, dpr: number) {
+    const maxColumns = Math.min(MAX_COLUMNS, width * dpr / (2 * barGap(dpr)));
     let size = 1;
 
     while (binsAcross / size > maxColumns && size < binCount) {
@@ -129,6 +129,11 @@ function visibleColumnsMax(bins: ArrayLike<number>, { size, offset, count }: Col
     }
 
     return max;
+}
+
+// The gap between columns in device pixels
+function barGap(dpr: number) {
+    return Math.max(1, Math.round(BAR_GAP * dpr));
 }
 
 function columnSum(bins: ArrayLike<number>, start: number, size: number) {

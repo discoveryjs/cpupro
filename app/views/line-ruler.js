@@ -18,7 +18,12 @@ function formatMemory(size, total, step) {
 // within the range, the edge ones may be clipped
 function gridColumns(grid, range, width) {
     const step = (grid.range.end - grid.range.start) / grid.count;
-    const columnStep = step * binsPerColumn((range.end - range.start) / step, grid.count, width);
+    const columnStep = step * binsPerColumn(
+        (range.end - range.start) / step,
+        grid.count,
+        width,
+        window.devicePixelRatio || 1
+    );
     const boundaries = [range.start];
 
     for (

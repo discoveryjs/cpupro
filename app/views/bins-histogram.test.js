@@ -82,7 +82,7 @@ test('columns keep the same gap however wide they are', () => {
     assert.deepEqual(columns(bars(32, 4, { bins: [1, 1] }, 4)), [[0, 14], [16, 14]]);
 });
 
-test('bins merge into columns of at least two CSS pixels by powers of two', () => {
+test('bins merge by powers of two into columns keeping a bar at least as wide as their gap', () => {
     const bins = [1, 2, 3, 4, 5, 6, 7, 8];
 
     assert.deepEqual(columns(bars(16, 36, { bins })).length, 8);
@@ -92,9 +92,11 @@ test('bins merge into columns of at least two CSS pixels by powers of two', () =
     assert.deepEqual(heights(bars(7, 36, { bins })), [14, 36]);
     assert.deepEqual(columns(bars(3, 36, { bins })), [[0, 2]]);
 
-    // The minimal width is in CSS pixels
-    assert.deepEqual(columns(bars(16, 36, { bins }, 2)).length, 4);
-    assert.deepEqual(columns(bars(32, 36, { bins }, 2)).length, 8);
+    // The minimal width is in device pixels, two gaps: a CSS pixel at a pixel ratio of 2, still two CSS pixels at 1
+    assert.deepEqual(columns(bars(16, 36, { bins }, 2)).length, 8);
+    assert.deepEqual(columns(bars(14, 36, { bins }, 2)).length, 4);
+    assert.deepEqual(columns(bars(24, 36, { bins }, 3)).length, 4);
+    assert.deepEqual(columns(bars(32, 36, { bins }, 3)).length, 8);
 
     // A last incomplete column sums fewer bins and is clipped by the canvas edge
     assert.deepEqual(rounded(bars(8, 6, { bins: [1, 1, 1, 1, 1] })), [
@@ -546,18 +548,26 @@ test('onInit receives an API to follow a changing viewport with one draw per fra
     assert.equal(histogram.drawn.length, 3);
 });
 
-test('bins per column match the columns drawn on a canvas of the same CSS width', () => {
-    assert.equal(binsPerColumn(500, 2000, 1360), 1);
-    assert.equal(binsPerColumn(2000, 2000, 1360), 4);
-    assert.equal(binsPerColumn(1000, 2000, 1360), 2);
-    assert.equal(binsPerColumn(500, 2000, 1000), 1);
-    assert.equal(binsPerColumn(500, 2000, 999), 2);
-    assert.equal(binsPerColumn(8, 8, 0), 8);
+test('bins per column match the columns drawn on a canvas of the same CSS width and pixel ratio', () => {
+    assert.equal(binsPerColumn(500, 2000, 1360, 1), 1);
+    assert.equal(binsPerColumn(2000, 2000, 1360, 1), 4);
+    assert.equal(binsPerColumn(1000, 2000, 1360, 1), 2);
+    assert.equal(binsPerColumn(500, 2000, 1000, 1), 1);
+    assert.equal(binsPerColumn(500, 2000, 999, 1), 2);
+    assert.equal(binsPerColumn(8, 8, 0, 1), 8);
 
-    for (const [width, dpr] of [[1360, 1], [1360, 2], [700, 1.5], [999, 1]]) {
+    // All bins of a window without zoom fit 500 columns on a narrower canvas of a higher pixel ratio
+    assert.equal(binsPerColumn(2000, 2000, 840, 1), 8);
+    assert.equal(binsPerColumn(2000, 2000, 840, 2), 4);
+    assert.equal(binsPerColumn(2000, 2000, 499, 2), 8);
+
+    const cases = [[1360, 1], [1360, 2], [700, 1.5], [999, 1], [840, 2]];
+
+    for (let i = 0; i < cases.length; i++) {
+        const [width, dpr] = cases[i];
         const bins = new Uint8Array(2000).fill(1);
         const columns = bars(Math.round(width * dpr), 4, { bins }, dpr).length;
 
-        assert.equal(columns, 2000 / binsPerColumn(2000, 2000, width));
+        assert.equal(columns, 2000 / binsPerColumn(2000, 2000, width, dpr));
     }
 });
