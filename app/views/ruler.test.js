@@ -666,6 +666,41 @@ test('setRange moves markers and the selection without notifications', () => {
     assert.deepEqual(view.calls, []);
 });
 
+// E.g. a zoomed ruler panned past a selection on either side: all of it is out of the selection
+test('a selection out of the ruler range dims all of the ruler without showing its edges', () => {
+    const { api, element } = setup({ selection: { start: 120, end: 130 } });
+    const interval = () => [
+        element.style.values.get('--selection-start'),
+        element.style.values.get('--selection-end')
+    ];
+
+    assert.equal(element.dataset.selectionInRange, 'true');
+    api.setRange({ start: 140, end: 160 });
+    assert.equal(element.dataset.state, 'selected');
+    assert.equal(element.dataset.selectionInRange, 'false');
+    assert.deepEqual(interval(), [0, 0]);
+    api.setRange({ start: 100, end: 120 });
+    assert.equal(element.dataset.state, 'selected');
+    assert.equal(element.dataset.selectionInRange, 'false');
+    assert.deepEqual(interval(), [1, 1]);
+    api.setRange({ start: 125, end: 160 });
+    assert.equal(element.dataset.selectionInRange, 'true');
+    assert.deepEqual(interval(), [0, 5 / 35]);
+
+    // Ranges of a multiple selection out of the ruler range are not shown
+    const multiple = setup({
+        multiple: true,
+        selection: [{ start: 110, end: 120 }, { start: 150, end: 160 }]
+    });
+    const intervals = () => multiple.element.querySelector('.view-ruler__ranges').children.length;
+
+    assert.equal(intervals(), 2);
+    multiple.api.setRange({ start: 140, end: 200 });
+    assert.equal(intervals(), 1);
+    multiple.api.setRange({ start: 170, end: 200 });
+    assert.equal(intervals(), 0);
+});
+
 test('markers are reused, hidden when fewer are needed, and added before the overlay', () => {
     const view = setup({ range: [100, 140] });
     const { api, element } = view;

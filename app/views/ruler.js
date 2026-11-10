@@ -55,6 +55,9 @@ function renderInterval(el, state, range) {
 function renderSelection(el, view) {
     const { state } = view;
     const ranges = selectionRanges(view);
+    const singleRange = ranges.length === 1
+        ? ranges[0]
+        : null;
 
     el.dataset.multipleRanges = String(ranges.length > 1);
     el.dataset.state = gesture?.el === el && gesture.started
@@ -63,7 +66,11 @@ function renderSelection(el, view) {
             ? SELECTION_NONE
             : SELECTION_SELECTED;
 
-    renderInterval(el, state, ranges.length === 1 ? ranges[0] : null);
+    renderInterval(el, state, singleRange);
+    // A selection out of the ruler range, e.g. of a zoomed one, leaves all of the ruler dimmed without its edges
+    el.dataset.selectionInRange = String(
+        singleRange !== null && fractionAt(state, singleRange.start) < fractionAt(state, singleRange.end)
+    );
     view.rangesEl.replaceChildren();
 
     if (ranges.length > 1) {

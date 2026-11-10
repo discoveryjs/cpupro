@@ -39,6 +39,9 @@
     z-index: 1;
     cursor: move;
 }
+.view-ruler[data-selection-in-range="false"] .view-ruler__selection-overlay-mover {
+    display: none;
+}
 .view-ruler__selection-overlay-mover-trigger {
     --extra-pointer-size: 2.5px;
     --extra-pointer-inner-size: clamp(0px, (100% - 2 * var(--extra-pointer-size)) / 2, var(--extra-pointer-size));
