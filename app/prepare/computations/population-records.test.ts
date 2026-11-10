@@ -44,16 +44,16 @@ function createRecords(population: Population, classes = classify([], population
 function recordsOf(records: PopulationRecords) {
     const result: { part: number; sample: number; eventClass: number; weight: number; count: number }[] = [];
 
-    for (let part = 0; part < records.partCount; part++) {
-        for (let record = records.partStarts[part]; record < records.partStarts[part + 1]; record++) {
-            const key = records.recordKeys[record];
+    for (let i = 0; i < records.partCount; i++) {
+        const end = records.partRecords[i + 1];
 
+        for (let j = records.partRecords[i]; j < end; j++) {
             result.push({
-                part,
-                sample: records.keySamples[key],
-                eventClass: records.keyClasses[key],
-                weight: records.recordWeights[record],
-                count: records.recordCounts[record]
+                part: i,
+                sample: records.recordSamples[j],
+                eventClass: records.recordClasses[j],
+                weight: records.recordWeights[j],
+                count: records.recordCounts[j]
             });
         }
     }
@@ -125,7 +125,12 @@ function createRegularFixture() {
     };
 }
 
-function assertEqualPopulations(actual: PopulationFiltered, expected: PopulationFiltered, step: string) {
+function assertEqualPopulations(
+    actual: PopulationFiltered,
+    expected: PopulationFiltered,
+    step: string,
+    groupings: [Uint8Array | Uint32Array, number][] = []
+) {
     const cuts = (population: PopulationFiltered) => [...population.boundaryCuts]
         .sort((a, b) => a.index - b.index)
         .map(({ index, value }) => `${index}:${value}`);
@@ -140,6 +145,17 @@ function assertEqualPopulations(actual: PopulationFiltered, expected: Population
     for (let index = 0; index < expected.samples.length; index++) {
         assert.equal(reader.destination(index), expected.samples[index], `${step}: destination of ${index}`);
         assert.equal(reader.value(index), expected.values[index], `${step}: value of ${index}`);
+    }
+
+    // Groupings constant within event classes come from records while the population computes from records
+    for (let i = 0; i < groupings.length; i++) {
+        const [groups, count] = groupings[i];
+
+        assert.deepEqual(
+            actual.aggregateBy(groups, count),
+            expected.aggregateBy(groups, count),
+            `${step}: aggregation by ${count} groups`
+        );
     }
 
     assert.deepEqual(actual.samples, expected.samples, `${step}: destinations`);
@@ -201,14 +217,13 @@ test('records sum values and nonzero counts of a part per sample and class', () 
         { part: 0, sample: 3, eventClass: 1, weight: 1, count: 1 },
         { part: 1, sample: 0, eventClass: 0, weight: 15_992, count: 1 }
     ]);
-    assert.equal(records.keyCount, 5);
+    assert.deepEqual([...records.partCounts], [7, 1]);
 });
 
-test('keeps one key per sample and class beyond the initial capacity of the key table', () => {
-    // The table of 1024 slots grows after 513 keys; the next new key is sample 0 of class 0. Events 0-515 start
-    // in the first bin and make a part with 514 keys; every later event is a part of its own, so repeated keys
-    // and samples of another class are looked up in the grown table. Samples are multiples of 64, so their keys
-    // share hash slots
+test('finds records of a part among slots that keep records of earlier parts', () => {
+    // Events 0-515 start in the first bin and make a part of 514 records; every later event is a part of its own,
+    // so its sample and class are looked up in slots that keep records of the first part, and samples of another
+    // class follow. Samples are multiples of 64, so their records share hash slots
     const samples = new Uint32Array(700);
     const classIds = new Uint8Array(700);
     const values = new Uint32Array(700).fill(6000, 515);
@@ -256,7 +271,6 @@ test('keeps one key per sample and class beyond the initial capacity of the key 
 
     assert.deepEqual([...records.partEvents.subarray(0, 3)], [0, 516, 517]);
     assert.equal(records.partCount, 185);
-    assert.equal(records.keyCount, 614);
     assert.deepEqual([...actual].sort(), [...expected].sort());
 });
 
@@ -285,6 +299,22 @@ test.each([
         ['lifespan filter', () => both(p => p.filter.set({ key: 'lifespan', domain: 'event', size: lifespan.length, values: lifespan, accepts: Uint8Array.of(1, 0, 1) }))],
         ['two event filters', () => both(p => p.filter.set({ key: 'space', domain: 'event', size: space.length, values: space, accepts: Uint8Array.of(1, 1, 0, 1, 0) }))],
         ['sample filter', () => both(p => p.filter.set({ key: 'sample', domain: 'sample', size: 50, accepts: Uint8Array.from({ length: 50 }, (_, sample) => sample % 7 === 0 ? 0 : 1) }))],
+        // Samples and event classes flip together while parts are covered
+        ['sample and event filters together', () => both(p => p.filter.batch(() => {
+            p.filter.set({
+                key: 'sample',
+                domain: 'sample',
+                size: 50,
+                accepts: Uint8Array.from({ length: 50 }, (_, sample) => sample % 3 === 0 ? 0 : 1)
+            });
+            p.filter.set({
+                key: 'lifespan',
+                domain: 'event',
+                size: lifespan.length,
+                values: lifespan,
+                accepts: Uint8Array.of(0, 1, 1)
+            });
+        }))],
         ['single range', () => both(p => p.setRange(total * 0.13 + 0.5, total * 0.71))],
         ['shifted range', () => both(p => p.setRange(total * 0.2 + 0.25, total * 0.78 + 0.5))],
         ['narrow range', () => both(p => p.setRange(total * 0.5, total * 0.5 + 3000))],
@@ -320,10 +350,16 @@ test.each([
     viewport.setRecords(records);
     selection.setRecords(records);
 
+    const groupings: [Uint8Array | Uint32Array, number][] = [
+        [lifespan, 3],
+        [space, 5],
+        [records.classes.ids, 15]
+    ];
+
     for (const [step, apply] of steps) {
         apply();
-        assertEqualPopulations(viewport, expectedViewport, `viewport after ${step}`);
-        assertEqualPopulations(selection, expectedSelection, `selection after ${step}`);
+        assertEqualPopulations(viewport, expectedViewport, `viewport after ${step}`, groupings);
+        assertEqualPopulations(selection, expectedSelection, `selection after ${step}`, groupings);
     }
 });
 

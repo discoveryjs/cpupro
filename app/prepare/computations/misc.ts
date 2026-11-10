@@ -21,6 +21,18 @@ export class Observer {
     }
 }
 
+// Jora reads own properties: expose prototype getters as own enumerable properties
+export function exposeGetters(target: object, prototype: object, names: string[]) {
+    for (let i = 0; i < names.length; i++) {
+        const { get } = Object.getOwnPropertyDescriptor(prototype, names[i])!;
+
+        Object.defineProperty(target, names[i], {
+            enumerable: true,
+            get: get!.bind(target)
+        });
+    }
+}
+
 export function binarySearch(array: Uint32Array, value: number): number {
     let left = 0;
     let right = array.length - 1;

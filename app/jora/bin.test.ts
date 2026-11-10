@@ -1234,6 +1234,8 @@ test('seeks sparse ranges without reading event weights in the gaps', async () =
     let reads = 0;
 
     viewport.setRanges([{ start: 100, end: 200 }, { start: 900_000, end: 900_100 }]);
+    // Values are compiled when first read, before reads are counted
+    viewport.values;
     base.values = new Proxy(base.values, { get(target, property) {
         if (typeof property === 'string' && /^\d+$/.test(property)) {
             const index = Number(property);

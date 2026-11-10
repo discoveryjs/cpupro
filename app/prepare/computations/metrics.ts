@@ -1,5 +1,5 @@
 import { USE_WASM } from '../const.js';
-import { Observer } from './misc.js';
+import { Observer, exposeGetters } from './misc.js';
 import { CpuProNode } from '../types.js';
 import { CallTree, AncestorSubsetCallTree } from './call-tree.js';
 import {
@@ -125,15 +125,6 @@ export class TreeMetrics<T extends CpuProNode> extends Observer {
             nestedValue,
             totalValue: selfValue + nestedValue
         };
-    }
-}
-
-// Jora reads own properties: expose prototype getters as own enumerable properties
-function exposeGetters(target: object, prototype: object, names: string[]) {
-    for (const name of names) {
-        const { get } = Object.getOwnPropertyDescriptor(prototype, name)!;
-
-        Object.defineProperty(target, name, { enumerable: true, get: get!.bind(target) });
     }
 }
 

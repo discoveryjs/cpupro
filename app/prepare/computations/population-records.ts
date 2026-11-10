@@ -6,22 +6,26 @@ const GRID_BIN_COUNT = 2000;
 const MAX_PART_EVENTS = 1 << 16;
 
 type EventValues = Uint8Array | Uint16Array | Uint32Array;
+export type RecordSums = {
+    sampleTotals: Float64Array;
+    sampleCounts: Uint32Array;
+    classTotals: Float64Array;
+    classCounts: Uint32Array;
+};
 
 /**
- * Events of a base population grouped by sample and event class (a key) within parts of consecutive events
- * (bins of a grid on the population's value axis). A derived population that accepts events by sample and by
- * event class keeps the sum of the records of the parts its ranges cover (RecordsAggregate) and computes
- * per-sample metrics from keys instead of events.
+ * Events of a base population summed by sample and event class within parts of consecutive events (bins of a
+ * grid on the population's value axis). A derived population that accepts events by sample and by event class
+ * sums the records of the parts its ranges cover instead of their events.
  */
 export class PopulationRecords {
-    readonly eventCount: number;
     readonly partEvents: Uint32Array;     // per part: its first event, plus the end of the last part
-    readonly partStarts: Uint32Array;     // per part: its first record, plus the end of the last part
-    readonly recordKeys: Uint32Array;     // per record
+    readonly partRecords: Uint32Array;    // per part: its first record, plus the end of the last part
+    readonly partCounts: Uint32Array;     // per part: number of events with a nonzero value
+    readonly recordSamples: Uint32Array;  // per record
+    readonly recordClasses: Uint32Array;  // per record
     readonly recordWeights: Float64Array; // per record: sum of event values
     readonly recordCounts: Uint32Array;   // per record: number of events with a nonzero value
-    readonly keySamples: Uint32Array;     // per key
-    readonly keyClasses: Uint32Array;     // per key
 
     constructor(
         readonly samples: Uint32Array,
@@ -31,20 +35,19 @@ export class PopulationRecords {
         readonly classes: EventClasses
     ) {
         const partEvents = splitParts(cumulative, cumulativeEnd);
-        const grouped = groupParts(samples, values, classes.ids, partEvents);
+        const records = groupParts(samples, values, classes.ids, partEvents);
 
-        this.eventCount = samples.length;
         this.partEvents = partEvents;
-        this.partStarts = grouped.partStarts;
-        this.recordKeys = grouped.recordKeys;
-        this.recordWeights = grouped.recordWeights;
-        this.recordCounts = grouped.recordCounts;
-        this.keySamples = grouped.keySamples;
-        this.keyClasses = grouped.keyClasses;
+        this.partRecords = records.partRecords;
+        this.partCounts = records.partCounts;
+        this.recordSamples = records.recordSamples;
+        this.recordClasses = records.recordClasses;
+        this.recordWeights = records.recordWeights;
+        this.recordCounts = records.recordCounts;
     }
 
     get partCount() {
-        return this.partStarts.length - 1;
+        return this.partEvents.length - 1;
     }
 
     // Index of the part containing an event
@@ -66,8 +69,72 @@ export class PopulationRecords {
         return left;
     }
 
-    get keyCount() {
-        return this.keySamples.length;
+    // Whole parts [start, end) and events of partially covered parts [start, end) of normalized, ordered,
+    // disjoint event intervals
+    cover(intervals: readonly [number, number][]) {
+        const { partEvents } = this;
+        const parts: [number, number][] = [];
+        const events: [number, number][] = [];
+
+        for (let i = 0; i < intervals.length; i++) {
+            const [start, end] = intervals[i];
+
+            if (start >= end) {
+                continue;
+            }
+
+            const startPart = this.partOf(start);
+            const lastPart = this.partOf(end - 1);
+            const firstPart = partEvents[startPart] === start ? startPart : startPart + 1;
+            const endPart = partEvents[lastPart + 1] === end ? lastPart + 1 : lastPart;
+
+            if (firstPart >= endPart) {
+                events.push([start, end]);
+                continue;
+            }
+
+            parts.push([firstPart, endPart]);
+
+            if (start < partEvents[firstPart]) {
+                events.push([start, partEvents[firstPart]]);
+            }
+
+            if (partEvents[endPart] < end) {
+                events.push([partEvents[endPart], end]);
+            }
+        }
+
+        return { parts, events };
+    }
+
+    // Adds the records of whole parts to their samples and event classes when both are accepted, to the entry
+    // after the samples (the sink) otherwise
+    sum(parts: [number, number][], sampleAccepts: Uint8Array, classAccepts: Uint8Array, sums: RecordSums) {
+        const { partRecords, recordSamples, recordClasses, recordWeights, recordCounts } = this;
+        const { sampleTotals, sampleCounts, classTotals, classCounts } = sums;
+        const rejected = sampleAccepts.length;
+
+        for (let i = 0; i < parts.length; i++) {
+            const [startPart, endPart] = parts[i];
+            const end = partRecords[endPart];
+
+            for (let j = partRecords[startPart]; j < end; j++) {
+                const sample = recordSamples[j];
+                const eventClass = recordClasses[j];
+                const weight = recordWeights[j];
+                const count = recordCounts[j];
+
+                if ((sampleAccepts[sample] & classAccepts[eventClass]) === 1) {
+                    sampleTotals[sample] += weight;
+                    sampleCounts[sample] += count;
+                    classTotals[eventClass] += weight;
+                    classCounts[eventClass] += count;
+                } else {
+                    sampleTotals[rejected] += weight;
+                    sampleCounts[rejected] += count;
+                }
+            }
+        }
     }
 
     // Event acceptance over these values is constant within an event class
@@ -76,84 +143,11 @@ export class PopulationRecords {
 
         return values === classes.ids || classes.values.has(values);
     }
-}
 
-/**
- * Sums of the records of whole parts covered by event intervals, kept per key and updated by the parts
- * whose coverage changes. Events of partially covered parts are kept as intervals for per-event aggregation.
- */
-export class RecordsAggregate {
-    readonly weights: Float64Array;   // per key
-    readonly counts: Float64Array;    // per key
-    readonly #parts: Uint8Array;      // per part: 1 when wholly covered
-    partialIntervals: [number, number][] = [];
-    count = 0;                        // sum of counts
-
-    constructor(readonly records: PopulationRecords) {
-        this.weights = new Float64Array(records.keyCount);
-        this.counts = new Float64Array(records.keyCount);
-        this.#parts = new Uint8Array(records.partCount);
+    // Value of every event class for event values that the event classes classify
+    classValues(values: EventValues) {
+        return Uint32Array.from(this.classes.events, event => values[event]);
     }
-
-    // Covers events of normalized, ordered, disjoint intervals [start, end)
-    cover(intervals: readonly [number, number][]) {
-        const { records } = this;
-        const { partEvents, partCount } = records;
-        const covered = new Uint8Array(partCount);
-        const partial: [number, number][] = [];
-
-        for (const [start, end] of intervals) {
-            if (start >= end) {
-                continue;
-            }
-
-            const startPart = records.partOf(start);
-            const lastPart = records.partOf(end - 1);
-            const firstPart = partEvents[startPart] === start ? startPart : startPart + 1;
-            const endPart = partEvents[lastPart + 1] === end ? lastPart + 1 : lastPart;
-
-            if (firstPart >= endPart) {
-                partial.push([start, end]);
-                continue;
-            }
-
-            covered.fill(1, firstPart, endPart);
-
-            if (start < partEvents[firstPart]) {
-                partial.push([start, partEvents[firstPart]]);
-            }
-
-            if (partEvents[endPart] < end) {
-                partial.push([partEvents[endPart], end]);
-            }
-        }
-
-        for (let part = 0; part < partCount; part++) {
-            if (covered[part] !== this.#parts[part]) {
-                this.#addPart(part, covered[part] === 1 ? 1 : -1);
-                this.#parts[part] = covered[part];
-            }
-        }
-
-        this.partialIntervals = partial;
-    }
-
-    #addPart(part: number, sign: number) {
-        const { partStarts, recordKeys, recordWeights, recordCounts } = this.records;
-        const { weights, counts } = this;
-
-        for (let record = partStarts[part]; record < partStarts[part + 1]; record++) {
-            const key = recordKeys[record];
-
-            weights[key] += sign * recordWeights[record];
-            counts[key] += sign * recordCounts[record];
-            this.count += sign * recordCounts[record];
-        }
-    }
-}
-
-function hashKey(sample: number, eventClass: number) {
-    return (Math.imul(sample, 0x9e3779b1) ^ Math.imul(eventClass + 0x7f4a7c15, 0x85ebca6b)) >>> 0;
 }
 
 // Starts of parts of events, plus the end of the last part: bins of a grid on the value axis, empty bins
@@ -162,10 +156,10 @@ function splitParts(cumulative: Float64Array, cumulativeEnd: number) {
     const eventCount = cumulative.length;
     const starts = [0];
 
-    for (let bin = 1; bin <= GRID_BIN_COUNT; bin++) {
-        const end = bin === GRID_BIN_COUNT
+    for (let i = 1; i <= GRID_BIN_COUNT; i++) {
+        const end = i === GRID_BIN_COUNT
             ? eventCount
-            : findCumulativeBoundary(cumulative, cumulativeEnd * bin / GRID_BIN_COUNT);
+            : findCumulativeBoundary(cumulative, cumulativeEnd * i / GRID_BIN_COUNT);
         let start = starts[starts.length - 1];
 
         while (end - start > MAX_PART_EVENTS) {
@@ -199,147 +193,98 @@ function findCumulativeBoundary(cumulative: Float64Array, value: number) {
     return left;
 }
 
-// A part-local hash table finds the record of an event in its part; a global one assigns key IDs
-// only to the first event of a record. Consecutive events often share a key and skip both.
+// A hash table finds the record of an event's sample and class in its part. Records are numbered in the order
+// of parts, so slots holding records of earlier parts are free and the table needs no clearing between parts.
+// Consecutive events often share a sample and a class and skip the lookup.
 function groupParts(samples: Uint32Array, values: Uint32Array, classIds: EventValues, partEvents: Uint32Array) {
-    const eventCount = samples.length;
     const partCount = partEvents.length - 1;
-    const partStarts = new Uint32Array(partCount + 1);
-    // PERF: Tables and growing arrays start at the size of the population, so small ones allocate little
+    const partRecords = new Uint32Array(partCount + 1);
+    const partCounts = new Uint32Array(partCount);
     let maxPartEvents = 0;
 
-    for (let part = 0; part < partCount; part++) {
-        maxPartEvents = Math.max(maxPartEvents, partEvents[part + 1] - partEvents[part]);
+    for (let i = 0; i < partCount; i++) {
+        maxPartEvents = Math.max(maxPartEvents, partEvents[i + 1] - partEvents[i]);
     }
 
-    const partSlots = new Int32Array(capacity(2 * maxPartEvents)).fill(-1);
-    const partMask = partSlots.length - 1;
-    const usedPartSlots = new Uint32Array(maxPartEvents);
-    // PERF: Keys are typically a few per sample and class; sizing for that avoids rehashing large tables
-    let keySlots = new Int32Array(capacity(Math.min(eventCount, 1 << 22))).fill(-1);
-    let keySamples = new Uint32Array(capacity(Math.min(eventCount, 1 << 16)));
-    let keyClasses = new Uint32Array(keySamples.length);
-    let keyCount = 0;
-    let recordKeys = new Uint32Array(capacity(Math.min(eventCount, 1 << 20)));
-    let recordWeights = new Float64Array(recordKeys.length);
-    let recordCounts = new Uint32Array(recordKeys.length);
+    const slots = new Int32Array(capacity(2 * maxPartEvents)).fill(-1);
+    const slotMask = slots.length - 1;
+    // PERF: Records grow from a size bounded by the population's, so small ones allocate little
+    let recordSamples = new Uint32Array(capacity(Math.min(samples.length, 1 << 20)));
+    let recordClasses = new Uint32Array(recordSamples.length);
+    let recordWeights = new Float64Array(recordSamples.length);
+    let recordCounts = new Uint32Array(recordSamples.length);
     let recordCount = 0;
 
-    const growKeySlots = () => {
-        const mask = keySlots.length * 2 - 1;
-
-        keySlots = new Int32Array(keySlots.length * 2).fill(-1);
-
-        for (let key = 0; key < keyCount; key++) {
-            let slot = hashKey(keySamples[key], keyClasses[key]) & mask;
-
-            while (keySlots[slot] !== -1) {
-                slot = (slot + 1) & mask;
-            }
-
-            keySlots[slot] = key;
-        }
-    };
-
-    const findKey = (sample: number, eventClass: number, hash: number) => {
-        const mask = keySlots.length - 1;
-        let slot = hash & mask;
-
-        while (keySlots[slot] !== -1) {
-            const key = keySlots[slot];
-
-            if (keySamples[key] === sample && keyClasses[key] === eventClass) {
-                return key;
-            }
-
-            slot = (slot + 1) & mask;
-        }
-
-        if (keyCount === keySamples.length) {
-            keySamples = grow(keySamples);
-            keyClasses = grow(keyClasses);
-        }
-
-        keySamples[keyCount] = sample;
-        keyClasses[keyCount] = eventClass;
-        keySlots[slot] = keyCount;
-
-        if (2 * ++keyCount > keySlots.length) {
-            growKeySlots();
-        }
-
-        return keyCount - 1;
-    };
-
-    for (let part = 0; part < partCount; part++) {
-        const end = partEvents[part + 1];
-        let usedSlots = 0;
+    for (let i = 0; i < partCount; i++) {
+        const firstRecord = recordCount;
+        const end = partEvents[i + 1];
         let previousSample = -1;
         let previousClass = -1;
-        let previousRecord = 0;
+        let record = 0;
+        let count = 0;
 
-        partStarts[part] = recordCount;
-
-        for (let event = partEvents[part]; event < end; event++) {
-            const sample = samples[event];
-            const eventClass = classIds[event];
+        for (let j = partEvents[i]; j < end; j++) {
+            const sample = samples[j];
+            const eventClass = classIds[j];
+            const value = values[j];
 
             if (sample !== previousSample || eventClass !== previousClass) {
-                const hash = hashKey(sample, eventClass);
-                let slot = hash & partMask;
+                let slot = hashKey(sample, eventClass) & slotMask;
 
-                // A slot keeps a record of the part
-                while (partSlots[slot] !== -1) {
-                    const key = recordKeys[partSlots[slot]];
+                record = slots[slot];
 
-                    if (keySamples[key] === sample && keyClasses[key] === eventClass) {
+                while (record >= firstRecord) {
+                    if (recordSamples[record] === sample && recordClasses[record] === eventClass) {
                         break;
                     }
 
-                    slot = (slot + 1) & partMask;
+                    slot = (slot + 1) & slotMask;
+                    record = slots[slot];
                 }
 
-                if (partSlots[slot] === -1) {
-                    if (recordCount === recordKeys.length) {
-                        recordKeys = grow(recordKeys);
+                if (record < firstRecord) {
+                    if (recordCount === recordSamples.length) {
+                        recordSamples = grow(recordSamples);
+                        recordClasses = grow(recordClasses);
                         recordWeights = grow(recordWeights);
                         recordCounts = grow(recordCounts);
                     }
 
-                    partSlots[slot] = recordCount;
-                    usedPartSlots[usedSlots++] = slot;
-                    recordKeys[recordCount] = findKey(sample, eventClass, hash);
-                    recordWeights[recordCount] = 0;
-                    recordCounts[recordCount] = 0;
-                    recordCount++;
+                    record = recordCount++;
+                    slots[slot] = record;
+                    recordSamples[record] = sample;
+                    recordClasses[record] = eventClass;
                 }
 
                 previousSample = sample;
                 previousClass = eventClass;
-                previousRecord = partSlots[slot];
             }
 
-            const value = values[event];
-
-            recordWeights[previousRecord] += value;
-            recordCounts[previousRecord] += value !== 0 ? 1 : 0;
+            if (value !== 0) {
+                recordWeights[record] += value;
+                recordCounts[record]++;
+                count++;
+            }
         }
 
-        for (let index = 0; index < usedSlots; index++) {
-            partSlots[usedPartSlots[index]] = -1;
-        }
+        partRecords[i] = firstRecord;
+        partCounts[i] = count;
     }
 
-    partStarts[partCount] = recordCount;
+    partRecords[partCount] = recordCount;
 
     return {
-        partStarts,
-        recordKeys: recordKeys.slice(0, recordCount),
+        partRecords,
+        partCounts,
+        recordSamples: recordSamples.slice(0, recordCount),
+        recordClasses: recordClasses.slice(0, recordCount),
         recordWeights: recordWeights.slice(0, recordCount),
-        recordCounts: recordCounts.slice(0, recordCount),
-        keySamples: keySamples.slice(0, keyCount),
-        keyClasses: keyClasses.slice(0, keyCount)
+        recordCounts: recordCounts.slice(0, recordCount)
     };
+}
+
+function hashKey(sample: number, eventClass: number) {
+    return (Math.imul(sample, 0x9e3779b1) ^ Math.imul(eventClass + 0x7f4a7c15, 0x85ebca6b)) >>> 0;
 }
 
 // Power of two size of a table or a growing array, at least 16
