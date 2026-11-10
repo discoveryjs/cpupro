@@ -615,12 +615,34 @@ test('allocation dictionaries are merged across chunks and published with their 
     });
 });
 
-test('missing later allocation vectors do not shift rows silently', () => {
-    assert.throws(() => extractFromChromiumPerformanceProfile(captureEvents([
-        { allocationSamples: { ids: [1], sizes: [8] } },
-        { allocationSamples: { ids: [2] } },
-        { allocationSamples: { ids: [3], sizes: [16] } }
-    ])), /Missing allocation vector sizes/);
+test.each([
+    { name: 'later', missing: 1 },
+    { name: 'first', missing: 0 }
+])('ignores an allocation vector missing in the $name chunk instead of shifting its rows', ({ missing }) => {
+    const chunks: { allocationSamples: { ids: number[]; sizes?: number[] } }[] = [];
+    const { diagnostics, diagnose } = createDiagnosticsCollector();
+
+    for (let i = 0; i < 3; i++) {
+        const allocationSamples: { ids: number[]; sizes?: number[] } = { ids: [i + 1] };
+
+        if (i !== missing) {
+            allocationSamples.sizes = [8 * (i + 1)];
+        }
+
+        chunks.push({ allocationSamples });
+    }
+
+    const profile = extractFromChromiumPerformanceProfile(captureEvents(chunks), diagnose).profiles[0];
+
+    assert.deepEqual(profile._cpuproAllocationIds, new Uint32Array([1, 2, 3]));
+    assert.equal(profile._cpuproAllocationSizes, undefined);
+    assert.deepEqual(diagnosticEntries(diagnostics), [
+        ['Ignoring an allocation vector missing in some ProfileChunk events', {
+            vector: 'sizes',
+            missingChunks: 1,
+            chunks: 3
+        }]
+    ]);
 });
 
 // Trace content with typed vectors read as arrays: extraction may only change the vector representation

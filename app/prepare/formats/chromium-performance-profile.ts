@@ -762,7 +762,7 @@ export function extractFromChromiumPerformanceProfile(
                 allocationGcs = [stored.gc];
             }
         } else if (allocationChunks.length > 0) {
-            allocationVectors = concatAllocationSegments(profileData.allocationSegments);
+            allocationVectors = concatAllocationSegments(profileData.allocationSegments, diagnose);
         }
 
         if (allocationVectors !== null) {
@@ -1036,40 +1036,49 @@ function decodeChunkVector<Vector extends Int32Array | Uint32Array>(
 }
 
 // Concatenates the vector segments of chunks, in chunk order, into the capture's vectors
-function concatAllocationSegments(segments: AllocationSampleVectors[]): AllocationSampleVectors {
+function concatAllocationSegments(segments: AllocationSampleVectors[], diagnose: Diagnose): AllocationSampleVectors {
     return {
-        ids: concatSegments(segments, 'ids', Uint32Array),
-        sizes: concatSegments(segments, 'sizes', Uint32Array),
-        scriptIds: concatSegments(segments, 'scriptIds', Int32Array),
-        scriptOffsets: concatSegments(segments, 'scriptOffsets', Int32Array),
-        contextInfo: concatSegments(segments, 'contextInfo', Uint32Array),
-        types: concatSegments(segments, 'types', Uint32Array),
-        spaces: concatSegments(segments, 'spaces', Uint32Array),
-        codeTypes: concatSegments(segments, 'codeTypes', Uint32Array),
-        gc: concatSegments(segments, 'gc', Uint32Array)
+        ids: concatSegments(segments, 'ids', Uint32Array, diagnose),
+        sizes: concatSegments(segments, 'sizes', Uint32Array, diagnose),
+        scriptIds: concatSegments(segments, 'scriptIds', Int32Array, diagnose),
+        scriptOffsets: concatSegments(segments, 'scriptOffsets', Int32Array, diagnose),
+        contextInfo: concatSegments(segments, 'contextInfo', Uint32Array, diagnose),
+        types: concatSegments(segments, 'types', Uint32Array, diagnose),
+        spaces: concatSegments(segments, 'spaces', Uint32Array, diagnose),
+        codeTypes: concatSegments(segments, 'codeTypes', Uint32Array, diagnose),
+        gc: concatSegments(segments, 'gc', Uint32Array, diagnose)
     };
 }
 
+// A vector is taken when every chunk has its segment: a vector absent in all chunks isn't recorded,
+// and a vector absent in some of them can't be aligned with the rows of the other vectors
 function concatSegments<Vector extends Int32Array | Uint32Array>(
     segments: AllocationSampleVectors[],
     key: keyof AllocationSampleVectors,
-    VectorType: { new(length: number): Vector }
+    VectorType: { new(length: number): Vector },
+    diagnose: Diagnose
 ): Vector | undefined {
-    if (segments.length === 0 || segments[0][key] === undefined) {
-        return undefined;
-    }
-
+    let missingSegments = 0;
     let length = 0;
 
-    for (const segment of segments) {
-        const values = segment[key];
+    for (let i = 0; i < segments.length; i++) {
+        const values = segments[i][key];
 
-        // a missing segment would shift the rows of the following chunks
         if (values === undefined) {
-            throw new TypeError(`Missing allocation vector ${key} in ProfileChunk`);
+            missingSegments++;
+        } else {
+            length += values.length;
         }
+    }
 
-        length += values.length;
+    if (missingSegments > 0 && missingSegments < segments.length) {
+        diagnose('warn', 'Ignoring an allocation vector missing in some ProfileChunk events', {
+            vector: key,
+            missingChunks: missingSegments,
+            chunks: segments.length
+        });
+
+        return undefined;
     }
 
     if (length === 0) {
