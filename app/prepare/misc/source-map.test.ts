@@ -74,3 +74,48 @@ test('sorts unsorted segments of a line and resolves sources against the source 
     assert.equal(decoded.findSegment(3, 0), -1);
     assert.deepEqual([decoded.originalLines[2], decoded.originalColumns[2]], [1, 3]);
 });
+
+test('resolves segments at an equal generated column as source-map-js does', () => {
+    const sourceMap: SourceMap = {
+        version: '3',
+        file: 'bundle.js',
+        sources: ['a.js', 'b.js'],
+        names: [],
+        // line 0, column 0: no original position, b.js 0:0, a.js 0:2; line 1, column 0: a.js 0:3, a.js 0:2;
+        // line 2, column 4: a.js 1:2, no original position
+        mappings: 'A,ACAA,ADAE;AAAC,AAAD;IACA,A'
+    };
+    const decoded = new DecodedSourceMap(sourceMap);
+    const consumer = new SourceMapConsumer(sourceMap as ConstructorParameters<typeof SourceMapConsumer>[0]);
+
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 6; j++) {
+            const expected = consumer.originalPositionFor({
+                line: i + 1,
+                column: j
+            });
+
+            assert.deepEqual(originalPositionFor(decoded, i, j), {
+                source: expected.source,
+                line: expected.line,
+                column: expected.column
+            }, `${i}:${j}`);
+        }
+    }
+
+    assert.deepEqual(originalPositionFor(decoded, 0, 0), {
+        source: 'a.js',
+        line: 1,
+        column: 2
+    });
+    assert.deepEqual(originalPositionFor(decoded, 1, 0), {
+        source: 'a.js',
+        line: 1,
+        column: 2
+    });
+    assert.deepEqual(originalPositionFor(decoded, 2, 4), {
+        source: 'a.js',
+        line: 2,
+        column: 2
+    });
+});

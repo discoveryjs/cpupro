@@ -116,10 +116,6 @@ export class DecodedSourceMap {
                 fieldCount++;
             }
 
-            if (segment > lineStarts[line] && fields[0] < columns[segment - 1]) {
-                unsortedLine = true;
-            }
-
             columns[segment] = fields[0];
 
             if (fieldCount >= 4) {
@@ -129,6 +125,10 @@ export class DecodedSourceMap {
             } else {
                 // a segment without an original position, also covers malformed 2-3 fields segments
                 sourceIndexes[segment] = -1;
+            }
+
+            if (segment > lineStarts[line] && this.#compareSegments(segment - 1, segment) > 0) {
+                unsortedLine = true;
             }
 
             segment++;
@@ -141,11 +141,40 @@ export class DecodedSourceMap {
         lineStarts.fill(segment, line + 1);
     }
 
-    // Segments are expected to be sorted by generated column within a line, but the spec doesn't require it
+    // Segments of a line are ordered as source-map-js orders them: by generated column, then segments with
+    // an original position first, by their source, original line and column. The spec doesn't require segments
+    // to be sorted, and a lookup takes the first of the segments at a column, so the order decides between them.
+    #compareSegments(a: number, b: number) {
+        const { columns, sourceIndexes, originalLines, originalColumns } = this;
+
+        if (columns[a] !== columns[b]) {
+            return columns[a] - columns[b];
+        }
+
+        if (sourceIndexes[a] !== sourceIndexes[b]) {
+            if (sourceIndexes[a] === -1) {
+                return 1;
+            }
+
+            if (sourceIndexes[b] === -1) {
+                return -1;
+            }
+
+            return sourceIndexes[a] - sourceIndexes[b];
+        }
+
+        if (originalLines[a] !== originalLines[b]) {
+            return originalLines[a] - originalLines[b];
+        }
+
+        return originalColumns[a] - originalColumns[b];
+    }
+
     #sortLineSegments(start: number, end: number) {
         const { columns, sourceIndexes, originalLines, originalColumns } = this;
+        const compareSegments = (a: number, b: number) => this.#compareSegments(a, b);
         const order = Array.from({ length: end - start }, (_, index) => start + index)
-            .sort((a, b) => columns[a] - columns[b]);
+            .sort(compareSegments);
         const lineColumns = columns.slice(start, end);
         const lineSourceIndexes = sourceIndexes.slice(start, end);
         const lineOriginalLines = originalLines.slice(start, end);
