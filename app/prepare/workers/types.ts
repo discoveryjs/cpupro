@@ -9,5 +9,7 @@ export type ParseSourceWorkerScript = {
 export type ParseSourceWorkerScriptResult = {
     id: string;
     sourceMetrics: SourceMetrics;
-    ranges: FunctionRanges<number>;
+    // the ranges are posted in the columns of the message and are empty here
+    ranges: FunctionRanges;
+    rangeCount: number;
 };

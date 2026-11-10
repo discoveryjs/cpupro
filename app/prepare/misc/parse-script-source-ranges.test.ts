@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { decodeFunctionRangeTypes, parseScriptSourceRanges, type FunctionRange, type FunctionRanges } from './parse-script-source-ranges.js';
+import {
+    createFunctionRangeColumns,
+    parseScriptSourceRanges,
+    readFunctionRanges,
+    writeFunctionRanges,
+    type FunctionRange,
+    type FunctionRanges
+} from './parse-script-source-ranges.js';
 
 const jsx = 'const view = () => <div />;';
 const typescript = 'const value = (input: number) => input;';
@@ -182,8 +189,9 @@ test.each([
     assert.deepEqual(result.ranges.map(range => range.selfSize), selfSizes);
 });
 
-test('restores every function range type in place after a transfer', () => {
-    const source = `
+test('reads function ranges of several scripts from columns as they were written', () => {
+    const sources = [
+        `
         function declared() {}
         const expression = function() {};
         const arrow = () => 1;
@@ -192,64 +200,64 @@ test('restores every function range type in place after a transfer', () => {
         const object = { method() {} };
         declare function external(): void;
         enum Choice { First }
-    `;
+        `,
+        'function broken(',
+        'function first() { return () => 2; }'
+    ];
     // the reverse order makes a type code differ from the order of the first occurrences
-    const types = [
+    const typeNames = [
         'TSEnumDeclaration', 'TSDeclareFunction', 'ObjectMethod', 'ClassPrivateMethod', 'ClassMethod',
         'ClassExpression', 'ClassDeclaration', 'ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration'
     ];
-    const expected = parseScriptSourceRanges(source, 'fixture.ts', true);
-    const encoded = parseScriptSourceRanges(source, 'fixture.ts', true) as FunctionRanges<string | number>;
+    const types = new Map<string, number>();
+    const expected: FunctionRange[][] = [];
+    let rangeCount = 0;
 
-    assert.deepEqual(new Set(expected.ranges.map(range => range.type)), new Set(types));
-
-    for (const range of encoded.ranges) {
-        range.type = types.indexOf(range.type as string);
+    for (let i = 0; i < typeNames.length; i++) {
+        types.set(typeNames[i], i);
     }
 
-    const message = structuredClone({ ranges: encoded as FunctionRanges<number>, types }, {
-        transfer: [encoded.starts.buffer, encoded.indexes.buffer, encoded.parents.buffer]
-    });
-    const received = message.ranges;
-    const { ranges, starts, indexes } = received;
-    const rangeObjects = ranges.slice();
-
-    const decoded = decodeFunctionRangeTypes(received, message.types);
-
-    assert.equal(decoded, received);
-    assert.equal(decoded.ranges, ranges);
-    assert.equal(decoded.starts, starts);
-    assert.equal(decoded.indexes, indexes);
-
-    for (let i = 0; i < rangeObjects.length; i++) {
-        assert.equal(decoded.ranges[i], rangeObjects[i]);
+    for (let i = 0; i < sources.length; i++) {
+        expected.push(parseScriptSourceRanges(sources[i], 'fixture.ts', true).ranges);
+        rangeCount += expected[i].length;
     }
 
-    assert.deepEqual(decoded, expected);
+    const columns = createFunctionRangeColumns(rangeCount);
+    const typeOf = (range: FunctionRange) => range.type;
+    let offset = 0;
+
+    assert.deepEqual(new Set(expected[0].map(typeOf)), new Set(typeNames));
+
+    for (let i = 0; i < expected.length; i++) {
+        writeFunctionRanges(columns, offset, expected[i], types);
+        offset += expected[i].length;
+    }
+
+    assert.equal(types.size, typeNames.length);
+    offset = 0;
+
+    for (let i = 0; i < expected.length; i++) {
+        const ranges = expected[i];
+        const actual = readFunctionRanges(structuredClone(columns), offset, ranges.length, typeNames);
+
+        assert.deepEqual(actual, ranges);
+
+        // read ranges have the shape of parsed ones
+        for (let j = 0; j < ranges.length; j++) {
+            assert.deepEqual(Object.keys(actual[j]), Object.keys(ranges[j]));
+        }
+
+        offset += ranges.length;
+    }
 });
 
-test('decodes multiple scripts against a shared message dictionary without reusing codes across messages', () => {
-    const expected = [
-        parseScriptSourceRanges('() => 1', 'first.js', true),
-        parseScriptSourceRanges('() => 2', 'second.js', true),
-        parseScriptSourceRanges('function third() {}', 'third.js', true)
-    ];
-    const firstMessage = structuredClone({
-        types: ['ArrowFunctionExpression'],
-        scripts: expected.slice(0, 2).map(entry => ({
-            ...entry,
-            ranges: entry.ranges.map(range => ({ ...range, type: 0 }))
-        }))
-    });
-    const secondMessage = structuredClone({
-        types: ['FunctionDeclaration'],
-        scripts: [{ ...expected[2], ranges: expected[2].ranges.map(range => ({ ...range, type: 0 })) }]
-    });
+test('adds types to the list of written ranges in the order of their first occurrence', () => {
+    const types = new Map<string, number>();
+    const columns = createFunctionRangeColumns(2);
 
-    const first = firstMessage.scripts.map(entry => decodeFunctionRangeTypes(entry, firstMessage.types));
-    const second = decodeFunctionRangeTypes(secondMessage.scripts[0], secondMessage.types);
+    writeFunctionRanges(columns, 0, parseScriptSourceRanges('() => 1', 'first.js', true).ranges, types);
+    writeFunctionRanges(columns, 1, parseScriptSourceRanges('function second() {}', 'second.js', true).ranges, types);
 
-    assert.deepEqual([...first, second], expected);
-    assert.deepEqual(firstMessage.types, ['ArrowFunctionExpression']);
-    assert.deepEqual(secondMessage.types, ['FunctionDeclaration']);
+    assert.deepEqual([...types.keys()], ['ArrowFunctionExpression', 'FunctionDeclaration']);
+    assert.deepEqual([...columns.type], [0, 1]);
 });

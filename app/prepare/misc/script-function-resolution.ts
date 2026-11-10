@@ -3,7 +3,13 @@ import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { createLineBoundaries } from './line-boundaries.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
 import { createParseWorker } from '../workers/index.js';
-import { FunctionRange, FunctionRanges, decodeFunctionRangeTypes, parseScriptSourceRanges } from './parse-script-source-ranges.js';
+import {
+    FunctionRange,
+    FunctionRangeColumns,
+    FunctionRanges,
+    parseScriptSourceRanges,
+    readFunctionRanges
+} from './parse-script-source-ranges.js';
 import { ParseSourceWorkerScriptResult } from '../workers/types';
 
 const scriptLines = new WeakMap<CpuProScript, ReturnType<typeof createLineBoundaries>>();
@@ -338,6 +344,7 @@ type ParseWorkerPayload = Array<{
 }>;
 type ParseWorkerResult = {
     scripts: ParseSourceWorkerScriptResult[];
+    ranges: FunctionRangeColumns;
     types: string[];
 };
 type WorkerEntry = {
@@ -564,17 +571,21 @@ export async function prepareScriptSources(
         const scriptsForWorker = scriptBuckets[bucketIndex];
 
         try {
-            const { scripts: scriptParsedResults, types } = await parseWorkerPool.parse(scriptsForWorker.map(script => ({
+            const toPayload = (script: CpuProScript) => ({
                 id: script.id, // for debugging purposes
                 url: script.url,
                 source: script.source!
-            })));
+            });
+            const result = await parseWorkerPool.parse(scriptsForWorker.map(toPayload));
+            const { scripts: scriptParsedResults, ranges: rangeColumns, types } = result;
+            let rangeOffset = 0;
 
             for (let i = 0; i < scriptParsedResults.length; i++) {
-                const { sourceMetrics, ranges: rawRanges } = scriptParsedResults[i];
-                const ranges = decodeFunctionRangeTypes(rawRanges, types);
+                const { sourceMetrics, ranges, rangeCount } = scriptParsedResults[i];
                 const script = scriptsForWorker[i];
 
+                ranges.ranges = readFunctionRanges(rangeColumns, rangeOffset, rangeCount, types);
+                rangeOffset += rangeCount;
                 setScriptFunctionRanges(script, ranges, diagnose, sourceMetrics);
             }
         } finally {

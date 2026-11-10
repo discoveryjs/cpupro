@@ -1,23 +1,43 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { decodeFunctionRangeTypes, parseScriptSourceRanges } from '../misc/parse-script-source-ranges.js';
+import {
+    createFunctionRangeColumns,
+    parseScriptSourceRanges,
+    readFunctionRanges,
+    writeFunctionRanges,
+    type FunctionRangeColumns
+} from '../misc/parse-script-source-ranges.js';
 import { computeScriptSourceMetrics } from '../misc/source-text-metrics.js';
 import type { ParseSourceWorkerScriptResult } from './types.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 
-type Message = { scripts: ParseSourceWorkerScriptResult[]; types: string[] };
+type Message = {
+    scripts: ParseSourceWorkerScriptResult[];
+    ranges: FunctionRangeColumns;
+    types: string[];
+};
 
-test('posts one message with type-encoded function ranges and source metrics of every script', async () => {
+test('posts one message with function ranges in columns and source metrics of every script', async () => {
     const sources = ['function outer() { return () => "\u0100"; }', '', 'const text = "caf\u00e9";', 'function broken(\u0100'];
     const posts: { message: Message; transfer: ArrayBuffer[]; buffers: ArrayBuffer[] }[] = [];
     const handler = evaluateModule(new URL('./parse-source-worker.js', import.meta.url), {
         parseScriptSourceRanges,
+        createFunctionRangeColumns,
+        writeFunctionRanges,
         computeScriptSourceMetrics,
         postMessage(message: Message, transfer: ArrayBuffer[]) {
             const buffers: ArrayBuffer[] = [];
 
             for (const script of message.scripts) {
                 buffers.push(script.ranges.starts.buffer, script.ranges.indexes.buffer, script.ranges.parents.buffer);
+            }
+
+            const columns = Object.values(message.ranges);
+
+            for (let i = 0; i < columns.length; i++) {
+                if (ArrayBuffer.isView(columns[i])) {
+                    buffers.push(columns[i].buffer);
+                }
             }
 
             // a clone brings the message into this realm, as a worker message does
@@ -34,18 +54,23 @@ test('posts one message with type-encoded function ranges and source metrics of 
 
     assert.deepEqual(message.scripts.map(script => script.id), [0, 1, 2, 3]);
     assert.deepEqual(message.types, ['FunctionDeclaration', 'ArrowFunctionExpression']);
-    assert.deepEqual(outer.ranges.ranges.map(range => range.type), [0, 1]);
+    assert.deepEqual([...message.ranges.type], [0, 1]);
+    const rangeCountOf = (script: ParseSourceWorkerScriptResult) => script.rangeCount;
 
-    // index buffers of every script are transferred rather than copied
-    assert.equal(transfer.length, 12);
+    assert.deepEqual(message.scripts.map(rangeCountOf), [2, 0, 0, 0]);
+
+    // index buffers of every script and range columns are transferred rather than copied
+    assert.equal(transfer.length, 4 * 3 + 12);
 
     for (let i = 0; i < buffers.length; i++) {
         assert.equal(transfer[i], buffers[i]);
     }
 
-    for (let i = 0; i < sources.length; i++) {
-        const ranges = decodeFunctionRangeTypes(message.scripts[i].ranges, message.types);
+    for (let i = 0, offset = 0; i < sources.length; i++) {
+        const { ranges, rangeCount } = message.scripts[i];
 
+        ranges.ranges = readFunctionRanges(message.ranges, offset, rangeCount, message.types);
+        offset += rangeCount;
         assert.deepEqual(ranges, parseScriptSourceRanges(sources[i], 'fixture.js', true));
     }
 

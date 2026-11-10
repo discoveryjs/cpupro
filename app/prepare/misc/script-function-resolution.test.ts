@@ -3,7 +3,12 @@ import { afterEach, test, vi } from 'vitest';
 import { createDiagnosticsCollector } from '../diagnostics.js';
 import { Dictionary } from '../dictionary.js';
 import { createScript, ProfileScriptsMap } from '../preprocessing/scripts.js';
-import { parseScriptSourceRanges, type FunctionRange } from './parse-script-source-ranges.js';
+import {
+    createFunctionRangeColumns,
+    parseScriptSourceRanges,
+    writeFunctionRanges,
+    type FunctionRange
+} from './parse-script-source-ranges.js';
 import {
     findFunctionAtLineColumn,
     findFunctionAtPosition,
@@ -47,6 +52,8 @@ class ParseWorker extends EventTarget {
     terminated = false;
     #onmessage = evaluateModule(new URL('../workers/parse-source-worker.js', import.meta.url), {
         parseScriptSourceRanges,
+        createFunctionRangeColumns,
+        writeFunctionRanges,
         computeScriptSourceMetrics,
         postMessage: (message: unknown, transfer: ArrayBuffer[]) => {
             this.dispatchEvent(new MessageEvent('message', { data: structuredClone(message, { transfer }) }));

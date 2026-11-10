@@ -1,15 +1,15 @@
 import { parse } from '@babel/parser';
 
-export type FunctionRanges<Type = string> = {
+export type FunctionRanges = {
     parsed: boolean;
     error?: string;
-    ranges: FunctionRange<Type>[];
+    ranges: FunctionRange[];
     starts: Uint32Array<ArrayBuffer>;
     indexes: Int32Array<ArrayBuffer>;
     parents: Int32Array<ArrayBuffer>; // per range: the nearest enclosing range, -1 for a top-level range
 };
-export type FunctionRange<Type = string> = {
-    type: Type;
+export type FunctionRange = {
+    type: string;
     name: string;
     defaultConstructor: boolean;
     callFrameStart: number;
@@ -23,6 +23,15 @@ export type FunctionRange<Type = string> = {
     endColumn: number;
     selfSize: number;
 }
+// Function ranges of several scripts as columns, the ranges of a script follow the ranges of the previous one;
+// a type is an index in a list of types
+export type FunctionRangeColumns = {
+    [Field in Exclude<keyof FunctionRange, 'type' | 'name' | 'defaultConstructor'>]: Uint32Array<ArrayBuffer>;
+} & {
+    type: Uint8Array<ArrayBuffer>;
+    name: string[];
+    defaultConstructor: Uint8Array<ArrayBuffer>;
+};
 type ASTNode = {
     type: string;
     start: number;
@@ -52,14 +61,86 @@ const functionRangeTypes = [
     'TSEnumDeclaration'
 ];
 
-export function decodeFunctionRangeTypes(ranges: FunctionRanges<number>, types: string[]): FunctionRanges {
-    const decoded = ranges as FunctionRanges<string | number>;
+export function createFunctionRangeColumns(count: number): FunctionRangeColumns {
+    return {
+        type: new Uint8Array(count),
+        name: new Array(count),
+        defaultConstructor: new Uint8Array(count),
+        start: new Uint32Array(count),
+        end: new Uint32Array(count),
+        startLine: new Uint32Array(count),
+        startColumn: new Uint32Array(count),
+        endLine: new Uint32Array(count),
+        endColumn: new Uint32Array(count),
+        callFrameStart: new Uint32Array(count),
+        callFrameStartLine: new Uint32Array(count),
+        callFrameStartColumn: new Uint32Array(count),
+        selfSize: new Uint32Array(count)
+    };
+}
 
-    for (const range of decoded.ranges) {
-        range.type = types[range.type as number];
+export function writeFunctionRanges(
+    columns: FunctionRangeColumns,
+    offset: number,
+    ranges: FunctionRange[],
+    types: Map<string, number>
+) {
+    for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i];
+        const index = offset + i;
+        let type = types.get(range.type);
+
+        if (type === undefined) {
+            type = types.size;
+            types.set(range.type, type);
+        }
+
+        columns.type[index] = type;
+        columns.name[index] = range.name;
+        columns.defaultConstructor[index] = range.defaultConstructor ? 1 : 0;
+        columns.start[index] = range.start;
+        columns.end[index] = range.end;
+        columns.startLine[index] = range.startLine;
+        columns.startColumn[index] = range.startColumn;
+        columns.endLine[index] = range.endLine;
+        columns.endColumn[index] = range.endColumn;
+        columns.callFrameStart[index] = range.callFrameStart;
+        columns.callFrameStartLine[index] = range.callFrameStartLine;
+        columns.callFrameStartColumn[index] = range.callFrameStartColumn;
+        columns.selfSize[index] = range.selfSize;
+    }
+}
+
+export function readFunctionRanges(
+    columns: FunctionRangeColumns,
+    offset: number,
+    count: number,
+    types: string[]
+): FunctionRange[] {
+    const ranges: FunctionRange[] = new Array(count);
+
+    for (let i = 0; i < count; i++) {
+        const index = offset + i;
+
+        // the property order of collectFunctionRangesFromAST() keeps a single shape for all ranges
+        ranges[i] = {
+            type: types[columns.type[index]],
+            name: columns.name[index],
+            defaultConstructor: columns.defaultConstructor[index] === 1,
+            start: columns.start[index],
+            end: columns.end[index],
+            startLine: columns.startLine[index],
+            startColumn: columns.startColumn[index],
+            endLine: columns.endLine[index],
+            endColumn: columns.endColumn[index],
+            callFrameStart: columns.callFrameStart[index],
+            callFrameStartLine: columns.callFrameStartLine[index],
+            callFrameStartColumn: columns.callFrameStartColumn[index],
+            selfSize: columns.selfSize[index]
+        };
     }
 
-    return decoded as FunctionRanges;
+    return ranges;
 }
 
 function computeSelfSize(functionRanges: FunctionRanges): void {
