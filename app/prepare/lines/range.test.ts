@@ -188,6 +188,21 @@ test('a window is kept while it contains the zoom within 4 zoom sizes', async ()
     line.zoom.resetRange();
 });
 
+test('the window of a zoom reaching beyond the line extent is aligned to both, within the zoom sizes', async () => {
+    const { profile } = await createProfileFixture();
+    const line = profile.memline!;
+    const total = line.axisTotal;
+    const window = () => line.window.selection.ranges?.map(({ start, end }) => [start / total, end / total]) ?? null;
+
+    // E.g. a zoom shared by profiles, whose bounds are wider than the line
+    line.zoom.setRange(total * -0.125, total * 1.125);
+    assert.deepEqual(window(), [[-0.125, 1.125]]);
+    line.zoom.setRange(total * 0.875, total * 1.125);
+    assert.deepEqual(window(), [[0.84375, 1.125]]);
+    line.zoom.resetRange();
+    assert.equal(window(), null);
+});
+
 test('the window of the zoom is within the viewport, a new viewport ends the zoom and is shown whole', async () => {
     const { profile } = await createProfileFixture();
     const line = profile.memline!;

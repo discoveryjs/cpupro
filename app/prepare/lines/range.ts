@@ -72,7 +72,23 @@ export function prepareLineWindow({ viewport, zoom, window }: ProfileLine) {
 
         return scope?.length ? { start: scope[0].start, end: scope[scope.length - 1].end } : viewport.resolvedExtent;
     };
-    const zoomWindow = () => viewportWindow(zoom.selection.ranges ?? viewport.selection.ranges, scopeExtent()) ?? viewport.selection.ranges;
+    const zoomWindow = () => {
+        const ranges = zoom.selection.ranges ?? viewport.selection.ranges;
+        const scope = scopeExtent();
+
+        if (ranges === null || ranges.length === 0 || (scope.start <= ranges[0].start && ranges[ranges.length - 1].end <= scope.end)) {
+            return viewportWindow(ranges, scope) ?? viewport.selection.ranges;
+        }
+
+        // A zoom shared by profiles reaches beyond the extent of a line covering a part of their bounds, the cells
+        // are aligned to both so the window stays within the zoom sizes
+        const extent = {
+            start: Math.min(scope.start, ranges[0].start),
+            end: Math.max(scope.end, ranges[ranges.length - 1].end)
+        };
+
+        return viewportWindow(ranges, extent) ?? [extent];
+    };
     const unsubscribeViewport = viewport.selection.subscribe(() => {
         zoom.selection.resetRange();
         window.selection.setRanges(zoomWindow());
