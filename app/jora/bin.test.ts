@@ -127,7 +127,7 @@ test('binCount uses the resolved viewport only when its argument is omitted', as
 });
 
 //
-// Sample bins: binCallsFromMask, binCalls and binSignals
+// Sample bins: binCallsFromMask, binCalls and binSignals (of the whole recording)
 //
 
 test.each([
@@ -188,6 +188,40 @@ test.each([101, 1001, 4961966])('bounds ruler approximation without removing int
     assert.ok(Math.abs(boundary - total) < 1e-6);
 });
 
+test('binSignals bins the whole recording regardless of the viewport, its window and filters', async () => {
+    const context = await createContext();
+    const metrics = createFlatMetrics([category, idle], new Uint32Array([0, 1]));
+    const populations = [context.scopeBreakdown.populationViewport, context.scopeBreakdown.populationWindow];
+    const options = {
+        test: category,
+        n: 10,
+        total: 100,
+        skip: 25
+    };
+    const signals = () => Array.from(methods.binSignals.call({ context }, metrics, options));
+    const whole = signals();
+
+    assert.deepEqual(whole, [0, 0, 5, 5, 5, 0, 0, 0, 0, 0]);
+
+    // E.g. profile bars to choose a viewport on show what is outside of it
+    for (let i = 0; i < populations.length; i++) {
+        populations[i].setRanges([{ start: 10, end: 15 }]);
+        populations[i].filter.set({
+            key: 'sample',
+            domain: 'sample',
+            size: 2,
+            accepts: Uint8Array.of(0, 0)
+        });
+    }
+
+    assert.deepEqual(signals(), whole);
+
+    for (let i = 0; i < populations.length; i++) {
+        populations[i].setRanges(null);
+        populations[i].filter.remove('sample');
+    }
+});
+
 test('binSignals keeps explicit total and skip independent of the active viewport', async () => {
     const context = await createContext();
     const metrics = createFlatMetrics([{}], new Uint32Array([0, 0]));
@@ -209,26 +243,25 @@ test.each((['timeline', 'memline'] as const).flatMap(type => [
     const empty = new Array(10).fill(0);
     const bins = () => [
         Array.from(methods.binCalls.call({ context }, metrics, category, 10)),
-        methods.binCallsFromMask.call({ context }, mask, 10),
-        Array.from(methods.binSignals.call({ context }, metrics, { test: category, n: 10, total: 100, skip: 25 }))
+        methods.binCallsFromMask.call({ context }, mask, 10)
     ];
 
     // The sink of sample IDs 0 and 1 has the ID of an accepted tree sample
     assert.equal(mask[viewport.sinkId], 1);
 
     viewport.setRanges(ranges);
-    assert.deepEqual(bins(), [expected, expected, expected]);
+    assert.deepEqual(bins(), [expected, expected]);
 
     for (const filter of [
         { key: 'category', domain: 'sample', size: 2 },
         { key: 'category', domain: 'event', size: 3, values: viewport.population.samples }
     ] as const) {
         viewport.filter.set({ ...filter, accepts: Uint8Array.of(1, 0) });
-        assert.deepEqual(bins(), [expected, expected, expected]);
+        assert.deepEqual(bins(), [expected, expected]);
         viewport.filter.set({ ...filter, accepts: Uint8Array.of(0, 0) });
-        assert.deepEqual(bins(), [empty, empty, empty]);
+        assert.deepEqual(bins(), [empty, empty]);
         viewport.filter.remove('category');
-        assert.deepEqual(bins(), [expected, expected, expected]);
+        assert.deepEqual(bins(), [expected, expected]);
     }
 
     assert.deepEqual([...mask], [1, 0, 1, 0]);
@@ -254,7 +287,6 @@ test.each([0, 1, 7, 0xffffffff].flatMap(sinkId => [
 
     assert.deepEqual(methods.binCallsFromMask.call({ context }, mask, 8), expected);
     assert.deepEqual(Array.from(methods.binCalls.call({ context }, metrics, category, 8)), expected);
-    assert.deepEqual(Array.from(methods.binSignals.call({ context }, metrics, { test: category, n: 8, total: 40 })), expected);
     assert.deepEqual([...mask], new Array(8).fill(1));
 });
 

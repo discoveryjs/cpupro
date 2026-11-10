@@ -7,7 +7,7 @@ import { sampleRange } from './samples.js';
 import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange, lineViewport, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
-import { findCumulativeBoundary, type EventReader, type PopulationFiltered } from '../prepare/computations/population.js';
+import { findCumulativeBoundary, PopulationFiltered, type EventReader, type Population } from '../prepare/computations/population.js';
 import { lowerBound } from '../prepare/computations/misc.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
 import type { BinRecords, EventSignatures, RangeRecords } from '../prepare/lines/event-signatures.js';
@@ -72,12 +72,13 @@ function sampleBinStep(total: number, n: number) {
 function makeSampleBins(
     n: number,
     mask: Uint8Array,
-    viewport: PopulationFiltered,
+    viewport: Population | PopulationFiltered,
     total: number,
     skip = 0,
     range: Range = { start: 0, end: total }
 ) {
-    const { samples, values: acceptedValues, population, sinkId } = viewport;
+    const { samples, values: acceptedValues, sinkId } = viewport;
+    const population = viewport instanceof PopulationFiltered ? viewport.population : viewport;
     const { values, cumulative, cumulativeEnd } = population;
     const bins = new Float64Array(n);
     const rems = new Float64Array(n);
@@ -141,7 +142,7 @@ function makeSampleBins(
     return bins;
 }
 
-function makeViewportBins(n: number, mask: Uint8Array, viewport: PopulationFiltered, total: number, skip: number) {
+function makeViewportBins(n: number, mask: Uint8Array, viewport: Population | PopulationFiltered, total: number, skip: number) {
     const { ranges } = viewport;
 
     if (ranges === null) {
@@ -994,7 +995,9 @@ export const methods = {
         const resolvedLineTree = resolveScopeProfileLineBreakdown(lineTree, line, this.context) as ProfileLineBreakdown;
         const { axisTotal } = resolvedLineTree.line;
         const mask = makeSamplesMask(treeMetrics, test);
-        const bins = makeViewportBins(n, mask, resolvedLineTree.populationWindow, total ?? axisTotal, skip);
+        // Signals of the whole recording, e.g. an overview of profiles to choose the viewport on: neither the viewport
+        // nor filters apply
+        const bins = makeViewportBins(n, mask, resolvedLineTree.population, total ?? axisTotal, skip);
 
         return bins;
     },
