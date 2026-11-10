@@ -1162,6 +1162,62 @@ test('reads viewport properties outside allocation and counter event loops', asy
     }
 });
 
+// Bin records are kept until the window changes (population.md), so aggregations over a recorded grid with other
+// groups and filter selections read the events crossing bin edges, two edge events and the events of two binary
+// searches of the mapping, rather than every event
+test.each([1, 10])('aggregations over a recorded grid read events only at its edges (%i bins)', async count => {
+    const length = 3000;
+    const context = await createContext({ origin: 0, values: new Uint32Array(30).fill(10), samples: new Uint32Array(30) }, { start: 0, end: 300 });
+    const axis = context.scopeLine;
+    const { source, viewport } = await createMappedSource(axis,
+        Uint32Array.from({ length }, (_, event) => 1 + event % 5),
+        Uint32Array.from({ length }, (_, event) => Math.floor(event / 100)),
+        Uint32Array.from({ length }, (_, event) => event % 4));
+    const [breakdown] = source.breakdowns;
+    const types = Uint32Array.from({ length }, (_, event) => event % 3);
+    const attribute = { name: 'allocationType' as const, values: types, dict: ['a', 'b', 'c'] };
+    const ownContext = { scopeLine: source, scopeBreakdown: breakdown, scopeViewport: { start: 0, end: viewport.cumulativeEnd } };
+    const aggregations = [
+        (grouping: typeof attribute | null) => methods.binLineToAxisLine.call({ context: ownContext }, source, grouping, source, count),
+        (grouping: typeof attribute | null) => methods.binLineToAxisLine.call({ context }, source, grouping, axis, count)
+    ];
+    const selectTypes = (accepts: Uint8Array) => {
+        for (const population of [breakdown.populationViewport, breakdown.populationWindow]) {
+            population.filter.set({ key: 'type', domain: 'event', size: length, values: types, accepts });
+        }
+    };
+    let reads = 0;
+    const counted = (vector: Uint32Array) => new Proxy(vector, { get(target, property) {
+        if (typeof property === 'string' && /^\d+$/.test(property)) {
+            reads++;
+        }
+
+        const value = Reflect.get(target, property, target);
+
+        return typeof value === 'function' ? value.bind(target) : value;
+    } });
+
+    source.attributes = [attribute];
+    selectTypes(Uint8Array.of(1, 1, 1));
+    source.signatures = new EventSignatures(source);
+    axis.signatures = new EventSignatures(axis);
+
+    for (const aggregate of aggregations) {
+        aggregate(attribute);
+    }
+
+    viewport.population.values = counted(viewport.population.values);
+    source.values = viewport.population.values;
+    source.mappings.timeline._mapping = counted(source.mappings.timeline._mapping);
+    selectTypes(Uint8Array.of(1, 0, 1));
+
+    for (const aggregate of aggregations) {
+        reads = 0;
+        aggregate(null);
+        assert.ok(reads <= count + 2 + 2 * Math.ceil(Math.log2(length + 1)), `${reads} event reads`);
+    }
+});
+
 test('seeks sparse ranges without reading event weights in the gaps', async () => {
     const length = 100_000;
     const context = await createContext({ origin: 0, samples: new Uint32Array(length), values: new Uint32Array(length).fill(10) }, { start: 0, end: length * 10 });
