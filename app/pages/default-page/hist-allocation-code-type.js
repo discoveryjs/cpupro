@@ -4,7 +4,7 @@ import { viewportShare, viewportShareText, withViewportAttributeTotals } from '.
 
 export const histAllocationCodeType = withViewportAttributeTotals('allocationCodeType', {
     view: 'expand',
-    data: '"allocationCodeType".allocationAttributeRows().[value].sort(name.order() asc)',
+    data: '"allocationCodeType".allocationAttributeRows().[value]',
     whenData: true,
     ...sessionExpandState('default-allocation-code-types', false, '$'),
     header: [

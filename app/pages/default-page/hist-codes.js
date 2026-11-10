@@ -10,7 +10,6 @@ export const histCodes = withLineWindowValue('codeBins', `
 
         compilationBins: $codes.binScriptFunctionCodes(#.binCount),
         totalBins: $totalBins.fnCount,
-        maxTotal: $totalBins.fnCount.max(),
         byTier: $totalBins.byTier.({ name: $[0], bins: $[1] })
     }
 `, {

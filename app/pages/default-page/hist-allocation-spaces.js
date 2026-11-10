@@ -4,7 +4,7 @@ import { viewportShare, viewportShareText, withViewportAttributeTotals } from '.
 
 export const histAllocationSpaces = withViewportAttributeTotals('allocationSpace', {
     view: 'expand',
-    data: '"allocationSpace".allocationAttributeRows().[value].sort(name.order() asc)',
+    data: '"allocationSpace".allocationAttributeRows().[value]',
     whenData: true,
     ...sessionExpandState('default-allocation-spaces', false, '$'),
     header: [

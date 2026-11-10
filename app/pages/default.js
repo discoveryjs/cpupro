@@ -137,18 +137,10 @@ const categoriesTimelineWindow = withLineWindow({
                             {
                                 view: 'block',
                                 className: 'details-section',
-                                data: `$profile: scopeProfile(); {
-                                $base: scopeViewport().start;
-                                $start: $base + #.timeStart;
-                                $end: $base + #.timeEnd;
-                                $points: $profile.thread.counters[=>name="used-heap-size"].values
-                                    .selectCountersWithOuters($start, $end)
-                                    .[tm >= $start and tm <= $end];
-                                min: $points.min(=>tm),
-                                max: $points.max(=>tm),
-                                $start,
-                                $end,
-                                $points.({ x: tm, y: value, event })
+                                data: `$base: scopeViewport().start; {
+                                points: scopeProfile().thread.counters[=>name="used-heap-size"].values
+                                    .selectCountersWithOuters($base + #.timeStart, $base + #.timeEnd)
+                                    .({ x: tm, y: value, event })
                             }`,
                                 whenData: 'points',
                                 content: [

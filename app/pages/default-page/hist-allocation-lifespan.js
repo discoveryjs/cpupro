@@ -4,7 +4,7 @@ import { viewportShare, viewportShareText, withViewportAttributeTotals } from '.
 
 export const histAllocationLifespan = withViewportAttributeTotals('allocationLifespan', {
     view: 'expand',
-    data: '"allocationLifespan".allocationAttributeRows().[value].sort(name.order() asc)',
+    data: '"allocationLifespan".allocationAttributeRows().[value]',
     whenData: true,
     ...sessionExpandState('default-allocation-lifespans', false, '$'),
     header: [

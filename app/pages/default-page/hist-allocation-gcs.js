@@ -4,7 +4,7 @@ import { viewportShareText, withViewportAttributeTotals } from './scope-values.j
 
 export const histAllocationGcs = withViewportAttributeTotals('allocationGcEpoch', {
     view: 'expand',
-    data: '"allocationGcEpoch".allocationAttributeRows().sort(name.order() asc)',
+    data: '"allocationGcEpoch".allocationAttributeRows()',
     whenData: true,
     ...sessionExpandState('default-allocation-gcs', false, '$'),
     header: [

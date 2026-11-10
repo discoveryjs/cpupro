@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import jora from 'jora';
-import { methods, binningRange, setLineZoom, subscribeLineZoom } from './viewport.js';
+import { methods, binningRange, rangeBins, setLineZoom, subscribeLineZoom } from './viewport.js';
 import { createLineFixture, denseValues } from '../../test/fixtures/profile.js';
 
 const query = jora.setup({ methods });
@@ -155,4 +155,25 @@ test('zooming in stops at the length holding 500 events at the average density o
     setLineZoom(line, [], { start: 60, end: 70 });
     assert.equal(line.zoom.selection.ranges, null);
     line.viewport.resetRange();
+});
+
+test('bins of a closed extent hold its instants at bin boundaries in the bins they end', () => {
+    const viewport = { start: 0, end: 100 };
+    const bins = (start: number, end: number) => {
+        const { binStart, binEnd } = rangeBins({ start, end }, viewport, 10);
+
+        return [binStart, binEnd];
+    };
+
+    assert.deepEqual(bins(25, 55), [2, 6]);
+    // The end at a boundary is in the bin it ends, the start at a boundary too
+    assert.deepEqual(bins(25, 50), [2, 5]);
+    assert.deepEqual(bins(20, 55), [1, 6]);
+    // An extent of an instant has a bin, also at a boundary
+    assert.deepEqual(bins(25, 25), [2, 3]);
+    assert.deepEqual(bins(30, 30), [2, 3]);
+    // Viewport edges
+    assert.deepEqual(bins(0, 100), [0, 10]);
+    assert.deepEqual(bins(-10, 0), [0, 0]);
+    assert.deepEqual(bins(100, 120), [9, 10]);
 });

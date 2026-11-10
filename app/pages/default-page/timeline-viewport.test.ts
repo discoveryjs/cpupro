@@ -166,12 +166,12 @@ test('ruler details show used heap sizes of the range with values interpolated a
         timeEnd: 25
     });
 
-    assert.deepEqual([data.start, data.end, data.points], [5, 25, [
+    assert.deepEqual(data.points, [
         { x: 5, y: 200, event: null },
         { x: 10, y: 300, event: null },
         { x: 20, y: 200, event: null },
         { x: 25, y: 350, event: null }
-    ]]);
+    ]);
     assert.deepEqual(query(range.data)(data), [{ label: 'Range', value: '200b – 350b' }, { label: 'Range size', value: '150b' }]);
     assert.deepEqual(query(changes.data)(data), [
         { label: 'Allocated', value: '250b' },

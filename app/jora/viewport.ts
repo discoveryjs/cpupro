@@ -147,7 +147,9 @@ export function rangeBins(extent: Range, viewport: Range = extent, count = 500) 
         total,
         skip,
         step,
-        binStart: Math.max(0, Math.min(count, Math.floor(skip / step))),
+        // Bins of a closed extent: an instant at a bin boundary belongs to the bin it ends, as events at
+        // boundaries do, so an extent of an instant has a bin wherever it is
+        binStart: Math.max(0, Math.min(count, Math.ceil(skip / step) - 1)),
         binEnd: Math.max(0, Math.min(count, Math.ceil((extent.end - viewport.start) / step)))
     };
 }

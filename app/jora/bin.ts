@@ -1,6 +1,5 @@
 import { typeColor, vmFunctionStateTiers } from '../prepare/const.js';
 import { ProfileLine, ProfileLineAttribute, ProfileLineBreakdown, ProfileLineMapping, ProfileLineType } from '../prepare/lines/types.js';
-import { sum } from '../prepare/misc/utils.js';
 import { Profile } from '../prepare/profile.mjs';
 import { CpuProCallFrameCode, V8CallFrameCodeType, V8HeapEvent } from '../prepare/types.js';
 import { makeSamplesMask } from './call-tree.js';
@@ -1083,43 +1082,6 @@ export const methods = {
         }
 
         return bins;
-    },
-
-    binAllocations(allocations: Uint32Array, attribute: Uint32Array, attributeNames: string[], n = 500, line?: ProfileLine | ProfileLineType) {
-        const { axisTotal: total } = resolveScopeProfileLine(line, this.context) as ProfileLine;
-        const vectors = Array.from({ length: attributeNames.length }, () => new Uint32Array(n));
-        const step = total / n;
-        let buffer = 0;
-        let binIndex = 0;
-
-        if (attribute) {
-            for (let i = 0; i < allocations.length; i++) {
-                const vector = vectors[attribute[i]];
-                let size = allocations[i];
-
-                while (buffer + size >= step) {
-                    const delta = step - buffer;
-
-                    vector[binIndex++] += delta;
-                    size -= delta;
-                    buffer = 0;
-                }
-
-                vector[binIndex] += size;
-                buffer += size;
-            }
-        }
-
-        return vectors.map((vector, index) => {
-            return {
-                name: attributeNames[index],
-                color: typeColor[attributeNames[index]],
-                step,
-                value: sum(vector),
-                total,
-                bins: vector
-            };
-        });
     },
 
     binLineToAxisLine(
