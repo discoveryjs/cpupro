@@ -11,6 +11,7 @@ class Element {
         this.style = { values: new Map(), setProperty(name, value) {
             this.values.set(name, value);
         } };
+        this.left = 0;
         this.width = 317;
     }
     appendChild(child) {
@@ -25,18 +26,20 @@ class Element {
     }
     replaceChildren(...children) {
         this.children = [];
-        for (const child of children) {
-            this.appendChild(child);
+        for (let i = 0; i < children.length; i++) {
+            this.appendChild(children[i]);
         }
     }
     getBoundingClientRect() {
-        return { left: 0, width: this.width };
+        return { left: this.left, width: this.width };
     }
     contains(element) {
         return this === element || this.children.some(child => child.contains(element));
     }
     querySelector(selector) {
-        for (const child of this.children) {
+        for (let i = 0; i < this.children.length; i++) {
+            const child = this.children[i];
+
             if (selector === '.' + child.className) {
                 return child;
             }
@@ -90,8 +93,8 @@ export function createRulerHarness(render = () => {}) {
                     element.dataset.trigger = attrs['data-trigger'];
                 }
             }
-            for (const child of children) {
-                element.appendChild(child);
+            for (let i = 0; i < children.length; i++) {
+                element.appendChild(children[i]);
             }
             return element;
         }
@@ -144,10 +147,24 @@ export function createRulerHarness(render = () => {}) {
         hostEvents,
         globalEvents,
         createElement: tag => new Element(tag),
+        // A ruler element within a parent, as the details target is looked up within the parent
+        createRuler(width) {
+            const element = new Element('ruler');
+
+            element.width = width;
+            new Element('parent').appendChild(element);
+
+            return element;
+        },
         render: (...args) => renderRuler.call({ render }, ...args),
         showTooltip: () => tooltip?.(new Element('tooltip')),
-        move: position => pointerMove(position),
+        labels: element => element.children
+            .filter(child => child.className === 'interval-marker' && !child.hidden)
+            .map(marker => marker.dataset.title),
         // Gestures use one pointer at a fixed vertical position
+        move(x, y = 5) {
+            pointerMove({ x, y });
+        },
         pointerDown(x, target) {
             pointerMove({ x, y: 5 });
             hostEvents.get('pointerdown')({ buttons: 1, pointerId: 1, x, y: 5, target });
