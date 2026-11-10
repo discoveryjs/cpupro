@@ -4,7 +4,7 @@ import { valueCols } from './common.js';
 discovery.page.define('owners', [
     {
         view: 'context',
-        data: 'scopeBreakdown().owners.filtered.dict.entries',
+        data: 'scopeBreakdown().owners.filtered.dict',
         modifiers: [
             allPageHeader([
                 'h1:"All owners"',
@@ -17,22 +17,26 @@ discovery.page.define('owners', [
             ])
         ],
         content: {
-            view: 'context',
-            data: '.[entry.name ~= #.filter]',
-            content: [
-                allPageTable({
-                    cols: [
-                        ...valueCols,
-                        { header: 'Owner',
-                            data: 'entry',
-                            sorting: 'entry.name ascN',
-                            content: 'badge{ text: name, href: marker().href }'
-                        }
-                    ]
-                }),
+            view: 'update-on-line-metrics-changes',
+            debounce: true,
+            content: {
+                view: 'context',
+                data: 'entries.[entry.name ~= #.filter]',
+                content: [
+                    allPageTable({
+                        cols: [
+                            ...valueCols,
+                            { header: 'Owner',
+                                data: 'entry',
+                                sorting: 'entry.name ascN',
+                                content: 'badge{ text: name, href: marker().href }'
+                            }
+                        ]
+                    }),
 
-                allPageSummary('text:"Owners:"')
-            ]
+                    allPageSummary('text:"Owners:"')
+                ]
+            }
         }
     }
 ]);

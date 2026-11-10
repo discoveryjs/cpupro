@@ -4,7 +4,7 @@ import { valueCols } from './common.js';
 discovery.page.define('packages', [
     {
         view: 'context',
-        data: 'scopeBreakdown().packages.all.dict.entries',
+        data: 'scopeBreakdown().packages.filtered.dict',
         modifiers: [
             allPageHeader([
                 'h1:"All packages"',
@@ -17,28 +17,32 @@ discovery.page.define('packages', [
             ])
         ],
         content: {
-            view: 'context',
-            data: '.[entry.name ~= #.filter]',
-            content: [
-                allPageTable({
-                    cols: [
-                        ...valueCols,
-                        { header: { className: 'category', text: 'Category' },
-                            sorting: 'entry.category.name ascN',
-                            data: 'entry.category',
-                            align: 'right',
-                            content: 'badge{ className: "category-badge", text: name, href: marker().href, color: name.color() }'
-                        },
-                        { header: 'Package',
-                            data: 'entry',
-                            sorting: 'entry.name ascN',
-                            content: 'package-badge'
-                        }
-                    ]
-                }),
+            view: 'update-on-line-metrics-changes',
+            debounce: true,
+            content: {
+                view: 'context',
+                data: 'entries.[entry.name ~= #.filter]',
+                content: [
+                    allPageTable({
+                        cols: [
+                            ...valueCols,
+                            { header: { className: 'category', text: 'Category' },
+                                sorting: 'entry.category.name ascN',
+                                data: 'entry.category',
+                                align: 'right',
+                                content: 'badge{ className: "category-badge", text: name, href: marker().href, color: name.color() }'
+                            },
+                            { header: 'Package',
+                                data: 'entry',
+                                sorting: 'entry.name ascN',
+                                content: 'package-badge'
+                            }
+                        ]
+                    }),
 
-                allPageSummary('text:"Packages:"')
-            ]
+                    allPageSummary('text:"Packages:"')
+                ]
+            }
         }
     }
 ]);
