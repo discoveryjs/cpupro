@@ -24,3 +24,31 @@
     padding-top: 4px;
     color: #aaa;
 }
+.view-cpupro-chart > .marker {
+    position: absolute;
+    left: calc(var(--left) * 100%);
+    top: var(--top);
+    width: 7px;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: rgb(from var(--color, #888) r g b);
+    outline: 1px solid #fff;
+    pointer-events: none;
+    transition: .1s ease-out;
+    transition-property: left, top;
+}
+
+.view-cpupro-chart-tooltip {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 3px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, .75);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+}
+.discovery-root-darkmode .view-cpupro-chart-tooltip {
+    background: rgba(36, 36, 36, .8);
+}

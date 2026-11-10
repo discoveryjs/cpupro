@@ -147,3 +147,40 @@ function traceCurve(
 
     return [startX, endX];
 }
+
+// The point closest to a value of x and where to mark it: a point beyond an edge of the viewport
+// is marked where the curve from it crosses the edge
+export function chartPointAt(series: ChartSeries, viewport: Range, value: number) {
+    const { x, y } = series;
+
+    if (x.length === 0) {
+        return null;
+    }
+
+    const next = Math.min(lowerBound(x, value), x.length - 1);
+    const prev = Math.max(next - 1, 0);
+    const index = value - x[prev] < x[next] - value ? prev : next;
+    const markX = Math.min(Math.max(x[index], viewport.start), viewport.end);
+
+    return {
+        index,
+        x: markX,
+        y: markX === x[index] ? y[index] : curveValue(series, markX)
+    };
+}
+
+// Points of a curve are joined by straight lines, the edge values extend beyond them
+function curveValue(series: ChartSeries, value: number) {
+    const { x, y } = series;
+    const next = lowerBound(x, value);
+
+    if (next === 0) {
+        return y[0];
+    }
+
+    if (next === x.length) {
+        return y[next - 1];
+    }
+
+    return y[next - 1] + (y[next] - y[next - 1]) * (value - x[next - 1]) / (x[next] - x[next - 1]);
+}

@@ -84,7 +84,26 @@ function chartUsedHeapBody() {
             pointsTotal: '=pointsTotal',
             labelFormat: '==>bytes()',
             height: 120,
-            color: '#e8bc6da0'
+            color: '#e8bc6da0',
+            tooltipClassName: 'events-track-timeline-tooltip',
+            tooltipContent: [
+                'badge:"Used heap size"',
+                'header:y.bytes()',
+                {
+                    view: 'labeled-value-list',
+                    kind: 'inline-grid',
+                    label: 'text:text',
+                    value: 'text:value',
+                    data: `[
+                        { text: 'Time', value: #.pointOffset.formatMicrosecondsTimeFixed() },
+                        { text: 'Event', value: event.name + (event.duration > 0 ? (x = event.tm ? ' start' : ' end') : '') },
+                        #.edgeCrossing and {
+                            text: 'Chart edge',
+                            value: \`≈\${#.edgeCrossing.value.bytes()} at \${#.edgeCrossing.offset.formatMicrosecondsTimeFixed()}\`
+                        }
+                    ].[$]`
+                }
+            ]
         })
     ];
 }

@@ -14,6 +14,11 @@ export default {
     examples: [
         { title: 'Recording coverage within viewport', highlightProps: ['extent'], demo: chart },
         { title: 'Viewport within recording', highlightProps: ['minX', 'maxX'], demo: { ...chart, minX: 130, maxX: 170 } },
-        { title: 'Viewport after recording', highlightProps: ['minX', 'maxX'], demo: { ...chart, minX: 200, maxX: 300 } }
+        { title: 'Viewport after recording', highlightProps: ['minX', 'maxX'], demo: { ...chart, minX: 200, maxX: 300 } },
+        {
+            title: 'Tooltip of a hovered point',
+            highlightProps: ['tooltipContent'],
+            demo: { ...chart, tooltipContent: 'text:`${y} at +${#.pointOffset}`' }
+        }
     ]
 };
