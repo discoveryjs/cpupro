@@ -69,7 +69,7 @@ export class SourceMapping {
 
             const sourceMap = this.#getSourceMap(script);
 
-            if (sourceMap === null || line === -1 || column === -1) {
+            if (sourceMap === null) {
                 continue;
             }
 
