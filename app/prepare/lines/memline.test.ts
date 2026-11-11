@@ -67,6 +67,27 @@ test('maps attribute codes to 4-byte indices when a dictionary exceeds 256 entri
     assert.deepEqual(attribute.values, new Uint32Array([0, 299]));
 });
 
+// A GC value is the collection number << 2 | lifespan, 0 is an allocation of no collection
+test.each([
+    {
+        name: 'with allocations of no collection',
+        gc: [0, 2345678 << 2 | 1, 0, 2345680 << 2 | 2],
+        values: [0, 1, 0, 3],
+        dict: [['none', 0], ['minor', 2345678], ['unknown', 2345679], ['major', 2345680]]
+    },
+    {
+        name: 'without allocations of no collection',
+        gc: [2345679 << 2 | 2, 2345678 << 2 | 1],
+        values: [1, 0],
+        dict: [['minor', 2345678], ['major', 2345679]]
+    }
+])('maps GC values of large collection numbers $name to dictionary indices', row => {
+    const epochs = createMemlineGcEpochAttribute(Uint32Array.from(row.gc))!;
+
+    assert.deepEqual([...epochs.values], row.values);
+    assert.deepEqual(epochs.dict.map(entry => [entry.type, entry.epoch]), row.dict);
+});
+
 test('decodes unsigned GC values without losing the high bit', () => {
     const gc = new Uint32Array([0x80000001]);
     const lifespan = createMemlineAllocationLifespanAttribute(gc)!;
