@@ -428,20 +428,6 @@ test('normalizes a request and clips it to the base extent', () => {
     assert.deepEqual(filtered.ranges, [{ start: 0, end: 8 }, { start: 40, end: 60 }]);
 });
 
-// rangeStart/rangeEnd are the legacy envelope of the effective ranges
-test.each([
-    ['no ranges', null, null, null],
-    ['empty ranges', [], 0, 0],
-    ['several ranges', [{ start: 2, end: 4 }, { start: 35, end: 45 }], 2, 45]
-])('the range envelope of %s', (_, ranges, start, end) => {
-    const filtered = new PopulationFiltered(new Population(Uint32Array.of(0, 1, 0), Uint32Array.of(10, 20, 30)));
-
-    filtered.setRanges(ranges);
-
-    assert.equal(filtered.rangeStart, start);
-    assert.equal(filtered.rangeEnd, end);
-});
-
 test.each([
     {
         name: 'gaps between intervals',

@@ -99,7 +99,7 @@ Ranges are half-open. They are applied to the source's full participating weight
 
 Coordinate endpoints are clamped to the input domain; reversed or non-finite endpoints are rejected. Either null endpoint resets the range. `resetRange()` leaves the mask in place.
 
-`PopulationFiltered.rangeStart/rangeEnd` are legacy effective-envelope getters, not a multi-interval request. Computation uses `ranges`, including gaps. When several ranges overlap one duration-bearing event, contributions are summed before typed-array truncation and the event is counted once. Every descendant computes cuts from full source weights and exact effective ranges, so it does not inherit an earlier level's truncation. The existing cumulative-bytes allocation clipping policy is preserved in this compatibility path; native allocation-timestamp participation is not implemented by treating byte weights as durations.
+Computation uses `ranges`, including gaps. When several ranges overlap one duration-bearing event, contributions are summed before typed-array truncation and the event is counted once. Every descendant computes cuts from full source weights and exact effective ranges, so it does not inherit an earlier level's truncation. The existing cumulative-bytes allocation clipping policy is preserved in this compatibility path; native allocation-timestamp participation is not implemented by treating byte weights as durations.
 
 `rangeSamples` counts events with positive coordinate overlap before masks and filters, when it is read; it is null when no coordinate range is active. It is not the filtered count. Effective values and counts still use the existing integer typed-array representation; fractional storage is not redesigned here.
 

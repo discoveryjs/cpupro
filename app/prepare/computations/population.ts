@@ -349,15 +349,6 @@ export class PopulationFiltered extends Observer {
         return this.#ranges;
     }
 
-    // Legacy bounds describe the envelope only. Computation always uses the complete interval set.
-    get rangeStart() {
-        return this.ranges === null ? null : this.ranges[0]?.start ?? 0;
-    }
-
-    get rangeEnd() {
-        return this.ranges === null ? null : this.ranges[this.ranges.length - 1]?.end ?? 0;
-    }
-
     resetRange() {
         this.setRanges(null);
     }
