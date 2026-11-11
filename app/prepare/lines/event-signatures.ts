@@ -12,6 +12,8 @@ const IDENTITY_ATTRIBUTES = new Set<ProfileLineAttribute['name']>(['allocationOw
 const WINDOW_EVENTS = 1 << 20;
 // Bins of a window's data grid
 const WINDOW_BINS = 2000;
+// Combinations of ids and two columns combined in one pass; larger tables combine the columns one at a time
+const PAIR_TABLE_LENGTH = 1 << 24;
 
 type ColumnValues = Uint8Array | Uint16Array | Uint32Array;
 type SignatureColumn = {
@@ -634,13 +636,76 @@ function keyColumns(columns: Map<ColumnValues, SignatureColumn>) {
 }
 
 // Combines the ids of events with the values of every column; `events` are the first events of the ids, the first
-// events of the combinations are returned
+// events of the combinations are returned. A pass over the events costs about the same for one column or two, so
+// columns read alike are combined two at a time while their table stays small
 function combineColumns(ids: Uint32Array, events: number[], columns: SignatureColumn[]) {
-    for (let i = 0; i < columns.length; i++) {
-        events = combineColumn(ids, events.length, columns[i].values, columns[i].samples, columns[i].size);
+    let i = 0;
+
+    while (i < columns.length) {
+        const column = columns[i];
+        const next = i + 1 < columns.length
+            ? columns[i + 1]
+            : null;
+
+        if (next !== null && pairable(column, next, events.length)) {
+            events = combinePair(ids, events.length, column, next);
+            i += 2;
+        } else {
+            events = combineColumn(ids, events.length, column.values, column.samples, column.size);
+            i++;
+        }
     }
 
     return events;
+}
+
+// Both columns are read per event or both per sample, and the table of their combinations with `count` ids is small
+function pairable(left: SignatureColumn, right: SignatureColumn, count: number) {
+    return (left.samples === null) === (right.samples === null) &&
+        count * left.size * right.size <= PAIR_TABLE_LENGTH;
+}
+
+// Replaces ids of `count` combinations of earlier columns by the ids of their combinations with the values of two
+// columns, numbered in the order of their first entries; returns the first entry of every combination
+function combinePair(ids: Uint32Array, count: number, left: SignatureColumn, right: SignatureColumn) {
+    const rightSize = right.size;
+    const size = left.size * rightSize;
+    // Per id of the earlier columns and values of the columns (row-major): the id of their combination, or -1
+    const table = new Int32Array(count * size).fill(-1);
+    const firstEntries: number[] = [];
+    const leftValues = left.values;
+    const rightValues = right.values;
+    const leftSamples = left.samples;
+    const rightSamples = right.samples;
+
+    // PERF: Separate loops for event and sample values keep the per-event loop free of a branch
+    if (leftSamples !== null && rightSamples !== null) {
+        for (let i = 0; i < ids.length; i++) {
+            const combination = ids[i] * size + leftValues[leftSamples[i]] * rightSize + rightValues[rightSamples[i]];
+            let id = table[combination];
+
+            if (id === -1) {
+                id = firstEntries.push(i) - 1;
+                table[combination] = id;
+            }
+
+            ids[i] = id;
+        }
+    } else {
+        for (let i = 0; i < ids.length; i++) {
+            const combination = ids[i] * size + leftValues[i] * rightSize + rightValues[i];
+            let id = table[combination];
+
+            if (id === -1) {
+                id = firstEntries.push(i) - 1;
+                table[combination] = id;
+            }
+
+            ids[i] = id;
+        }
+    }
+
+    return firstEntries;
 }
 
 // Replaces ids of `count` combinations of earlier columns by the ids of their combinations with a column's values,
