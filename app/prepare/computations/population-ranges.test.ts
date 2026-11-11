@@ -251,15 +251,15 @@ test('cuts boundary events of every level from their full weights', () => {
     const selection = new PopulationFiltered(viewport);
     const nested = new PopulationFiltered(selection);
 
-    // 0.6 + 0.6 of the first event: the total is truncated once, after summing
-    viewport.setRanges([{ start: 0.1, end: 0.7 }, { start: 1.1, end: 1.7 }]);
+    // 0.625 + 0.625 of the first event: the total is truncated once, after summing
+    viewport.setRanges([{ start: 0.25, end: 0.875 }, { start: 1.25, end: 1.875 }]);
 
     assert.deepEqual([...nested.values], [100, 0]);
     assert.deepEqual([...nested.samplesTotal], [1, 0]);
     assert.deepEqual([...nested.samplesCount], [1, 0]);
-    assert.deepEqual(nested.boundaryCuts, [{ index: 0, value: 99 }]);
+    assert.deepEqual(nested.boundaryCuts, [{ index: 0, value: 99, covered: 1.25 }]);
 
-    // 0.6 of the first event: it keeps its weight but neither a total nor a count
+    // 0.625 of the first event: it keeps its weight but neither a total nor a count
     selection.setRange(0, 1);
 
     assert.deepEqual([...nested.values], [100, 0]);
@@ -435,15 +435,15 @@ test.each([
         values: [10, 0, 30],
         totals: [14, 0],
         counts: [2, 0],
-        cuts: [{ index: 0, value: 6 }, { index: 2, value: 20 }]
+        cuts: [{ index: 0, value: 6, covered: 4 }, { index: 2, value: 20, covered: 10 }]
     },
     {
         name: 'fractions of an event summed before truncation',
-        ranges: [{ start: 0.1, end: 0.7 }, { start: 1.1, end: 1.7 }],
+        ranges: [{ start: 0.25, end: 0.875 }, { start: 1.25, end: 1.875 }],
         values: [10, 0, 0],
         totals: [1, 0],
         counts: [1, 0],
-        cuts: [{ index: 0, value: 9 }]
+        cuts: [{ index: 0, value: 9, covered: 1.25 }]
     }
 ])('takes whole weights of covered events and cuts each edge event once: $name', row => {
     const filtered = new PopulationFiltered(new Population(Uint32Array.of(0, 1, 0), Uint32Array.of(10, 20, 30)));

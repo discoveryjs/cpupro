@@ -9,7 +9,7 @@ const computeMetricsJavaScriptApi = createJavaScriptApi();
 
 export class Population extends Observer {
     readonly ranges: RangeSet | null = null;
-    readonly boundaryCuts: readonly Readonly<{ index: number; value: number }>[] = [];
+    readonly boundaryCuts: readonly BoundaryCut[] = [];
     readonly sinkId: number;
     readonly sink: { count: number; total: number };
     readonly samplesRevision = 0;
@@ -56,7 +56,7 @@ export class Population extends Observer {
     }
 
     aggregateBy(groups: Uint8Array | Uint32Array, groupCount: number) {
-        return aggregatePopulation(this, groups, groupCount);
+        return aggregatePopulation(this, [[0, this.values.length]], groups, groupCount);
     }
 
     // Events of zero weight (e.g. samples with a zero time delta) in index order: they have no extent on the axis,
@@ -88,6 +88,12 @@ export class Population extends Observer {
 }
 
 type MaskFunction = (mask: Uint32Array) => void;
+// The part of an edge event outside the ranges, in whole units of its value, and the exact part inside them
+export type BoundaryCut = Readonly<{
+    index: number;
+    value: number;
+    covered: number;
+}>;
 export type EventReader = {
     destination: (index: number) => number;
     value: (index: number) => number;
@@ -110,7 +116,7 @@ export class PopulationFiltered extends Observer {
     #ranges: RangeSet | null = null;
     #effectiveRanges: RangeSet | null = null;
     #coverage: [number, number][] = [];
-    #boundaryCuts: { index: number; value: number }[] = [];
+    #boundaryCuts: BoundaryCut[] = [];
     #hasMask = false;
     #acceptedEvents: EventAcceptance | null = null;
     #records: PopulationRecords | null = null;
@@ -212,8 +218,14 @@ export class PopulationFiltered extends Observer {
         return this.population.cumulativeEnd;
     }
 
-    // Parts of edge events outside the ranges: an edge event keeps its whole value and metrics subtract the cut
-    get boundaryCuts(): readonly Readonly<{ index: number; value: number }>[] {
+    // Intervals [start, end) of the events covered by the ranges, all events without ranges
+    get coverage(): readonly (readonly [number, number])[] {
+        return this.#coverage;
+    }
+
+    // Parts of edge events outside the ranges, in event order: an edge event keeps its whole value and metrics
+    // subtract the cut
+    get boundaryCuts(): readonly BoundaryCut[] {
         return this.#boundaryCuts;
     }
 
@@ -307,7 +319,7 @@ export class PopulationFiltered extends Observer {
         }
 
         const { samples, values, sinkId } = this;
-        const metrics = aggregatePopulation(this, groups, groupCount);
+        const metrics = aggregatePopulation(this, this.#coverage, groups, groupCount);
         const cuts = this.#boundaryCuts;
 
         for (let i = 0; i < cuts.length; i++) {
@@ -659,15 +671,20 @@ export class PopulationFiltered extends Observer {
 // event starting at or before the range start and ends before the first event starting at its end.
 function computeCoverage(ranges: RangeSet | null, cumulative: Float64Array, values: Uint32Array) {
     const coverage: [number, number][] = [];
-    const cuts: { index: number; value: number }[] = [];
+    const cuts: BoundaryCut[] = [];
     const addCut = (index: number, contribution: number) => {
         const value = values[index];
 
         if (value > 0) {
-            const cut = value - Math.min(value, Math.max(0, Math.trunc(contribution)));
+            const covered = Math.min(value, Math.max(0, contribution));
+            const cut = value - Math.trunc(covered);
 
             if (cut > 0) {
-                cuts.push({ index, value: cut });
+                cuts.push({
+                    index,
+                    value: cut,
+                    covered
+                });
             }
         }
     };
@@ -751,22 +768,18 @@ function aggregateRange(
     }
 }
 
-function aggregatePopulation(population: Population | PopulationFiltered, groups: Uint8Array | Uint32Array, groupCount: number) {
-    const { samples, values, sinkId, cumulative, ranges } = population;
+function aggregatePopulation(
+    population: Population | PopulationFiltered,
+    coverage: readonly (readonly [number, number])[],
+    groups: Uint8Array | Uint32Array,
+    groupCount: number
+) {
+    const { samples, values, sinkId } = population;
     const samplesCount = new Uint32Array(groupCount);
     const samplesTotal = new Float64Array(groupCount);
 
-    if (ranges === null) {
-        aggregateRange(samples, values, groups, sinkId, samplesCount, samplesTotal, 0, values.length);
-    } else {
-        let end = 0;
-
-        for (const range of ranges) {
-            const start = Math.max(end, findCumulativeBoundary(cumulative, range.start, true) - 1);
-
-            end = findCumulativeBoundary(cumulative, range.end, false);
-            aggregateRange(samples, values, groups, sinkId, samplesCount, samplesTotal, start, end);
-        }
+    for (let i = 0; i < coverage.length; i++) {
+        aggregateRange(samples, values, groups, sinkId, samplesCount, samplesTotal, coverage[i][0], coverage[i][1]);
     }
 
     return { samplesCount, samplesTotal };

@@ -543,6 +543,8 @@ function addMappedSpanRecords(grouping: MappedSignatureGrouping, weights: Uint32
     }
 }
 
+// Events of the source ranges are placed by their mapped targets: whole events by spans, edge events cut by
+// the ranges with their exact covered parts
 function binMappedPopulation(
     line: ProfileLine,
     viewport: PopulationFiltered,
@@ -551,67 +553,50 @@ function binMappedPopulation(
     mapping: Uint32Array,
     targetBin: (target: number) => number,
     // Events whose targets can be on the grid; other events of the source ranges have no bin
-    [gridFirst, gridLast]: [number, number],
+    gridEvents: [number, number],
     grouping: MappedSignatureGrouping | null = null
 ) {
-    const { values, axisTotal } = line;
-    const { sinkId, ranges, cumulative } = viewport;
-    const { destination, value: acceptedValue } = viewport.eventReader();
-    // IMPORTANT: Disjoint source ranges can cut the same event. Emit their combined value once.
-    let boundaryIndex = -1;
-    let boundaryValue = 0;
-
-    const flushBoundary = () => {
-        if (boundaryIndex !== -1 && destination(boundaryIndex) !== sinkId && acceptedValue(boundaryIndex) > 0) {
-            const target = targetBin(mapping[boundaryIndex]);
-
-            if (target !== -1) {
-                const groupIndex = groups ? groups[boundaryIndex] : 0;
-                const track = tracks[groupIndex];
-
-                track.bins[target] += boundaryValue;
-                track.value += boundaryValue;
-            }
-        }
-
-        boundaryIndex = -1;
-        boundaryValue = 0;
-    };
-
-    for (const range of ranges ?? [{ start: 0, end: viewport.cumulativeEnd }]) {
-        const { first, last, startCut, endCut } = sampleRange(cumulative, range.end - range.start, -range.start, axisTotal);
-
-        if (first > last) {
-            continue;
-        }
-
-        if (boundaryIndex !== first) {
-            flushBoundary();
-            boundaryIndex = first;
-        }
-
-        boundaryValue += values[first] - startCut - (first === last ? endCut : 0);
-
-        if (first === last) {
-            continue;
-        }
-
-        flushBoundary();
-
-        const spanFirst = Math.max(first + 1, gridFirst);
-        const spanLast = Math.max(spanFirst, Math.min(last, gridLast));
+    const { sinkId, coverage, boundaryCuts } = viewport;
+    const { destination } = viewport.eventReader();
+    const addSpan = (first: number, last: number) => {
+        const spanFirst = Math.max(first, gridEvents[0]);
+        const spanLast = Math.max(spanFirst, Math.min(last, gridEvents[1]));
 
         if (grouping === null) {
             binMappedEvents(viewport, tracks, groups, mapping, targetBin, spanFirst, spanLast);
         } else {
-            addMappedSpanRecords(grouping, values, tracks, mapping, spanFirst, spanLast);
+            addMappedSpanRecords(grouping, line.values, tracks, mapping, spanFirst, spanLast);
+        }
+    };
+    let j = 0;
+
+    for (let i = 0; i < coverage.length; i++) {
+        const end = coverage[i][1];
+        let first = coverage[i][0];
+
+        for (; j < boundaryCuts.length && boundaryCuts[j].index < end; j++) {
+            const { index, covered } = boundaryCuts[j];
+            const target = destination(index) !== sinkId
+                ? targetBin(mapping[index])
+                : -1;
+
+            addSpan(first, index);
+            first = index + 1;
+
+            if (target !== -1) {
+                const groupIndex = groups !== null
+                    ? groups[index]
+                    : 0;
+                const track = tracks[groupIndex];
+
+                track.bins[target] += covered;
+                track.value += covered;
+            }
         }
 
-        boundaryIndex = last;
-        boundaryValue = values[last] - endCut;
+        addSpan(first, end);
     }
 
-    flushBoundary();
     finishRecords(grouping);
 }
 

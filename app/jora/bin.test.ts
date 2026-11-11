@@ -1202,6 +1202,20 @@ test('mapped bins take source participation of a range inside one allocation and
     assert.equal(row.value, 9);
 });
 
+// Two ranges cut the first allocation (1.25 and 0.75 of its 3) and the second range the last one (1.5 of its 5):
+// bins are integer, so a fractional part is truncated when it's added; the value sums the exact parts
+test('mapped bins take the exact covered parts of allocations cut by fractional ranges', async () => {
+    const context = await createContext();
+    const { source, viewport } = await createMappedSource(context.scopeLine);
+
+    viewport.setRanges([{ start: 0.5, end: 1.75 }, { start: 2.25, end: 8.5 }]);
+
+    const [row] = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10);
+
+    assert.deepEqual([...row.bins], [0, 0, 2, 4, 1, 0, 0, 0, 0, 0]);
+    assert.equal(row.value, 7.5);
+});
+
 test.each([
     {
         name: 'from the start of a range',
