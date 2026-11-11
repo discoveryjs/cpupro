@@ -47,22 +47,42 @@ const none = { x: [], y: [] };
 function draw(options, width = 1000, dpr = 1) {
     const ctx = createContext(width * dpr, 100 * dpr);
 
-    drawChart(ctx, { total: none, scaleY, ...options }, '#abc', dpr);
+    const chartOptions = {
+        total: none,
+        scaleY,
+        ...options
+    };
+
+    drawChart(ctx, chartOptions, '#abc', dpr);
     assert.deepEqual(ctx.lineDash, []);
 
     return ctx.layers;
 }
 
+const samePosition = (a, b) => a[1] === b[1] && a[2] === b[2];
+const xOf = vertex => vertex[1];
+const yOf = vertex => vertex[2];
+
 // Drawn vertices without repeats of the previous one
 function vertices(path) {
-    return path.filter(([, x, y], i) => i === 0 || x !== path[i - 1][1] || y !== path[i - 1][2]);
+    const result = [];
+
+    for (let i = 0; i < path.length; i++) {
+        if (i === 0 || !samePosition(path[i], path[i - 1])) {
+            result.push(path[i]);
+        }
+    }
+
+    return result;
 }
 
 test('scales values between paddings over a base at zero or below the minimum', () => {
     assert.deepEqual(scaleY.ticks.map(tick => tick.value), [10, 10 + 10 / 3, 10 + 20 / 3, 20]);
     assert.equal(scaleY.ticks[3].y, scaleY.y(20));
-    assert.ok(scaleY.y(20) > 0 && scaleY.y(20) < 5);
-    assert.ok(scaleY.y(10) > 95 && scaleY.y(10) < scaleY.base);
+    assert.ok(scaleY.y(20) > 0);
+    assert.ok(scaleY.y(20) < 5);
+    assert.ok(scaleY.y(10) > 95);
+    assert.ok(scaleY.y(10) < scaleY.base);
     assert.equal(chartScaleY(0, 20, 100).base, chartScaleY(0, 20, 100).y(0));
     assert.ok(Number.isFinite(chartScaleY(5, 5, 100).y(5)));
 });
@@ -97,8 +117,8 @@ test('traces the points within the viewport and a neighbour beyond each edge', (
         viewport: { start: 122, end: 128 }
     });
 
-    assert.deepEqual(vertices(area.path).map(([, x]) => x), [-1000 / 3, 4000 / 3, 4000 / 3, -1000 / 3]);
-    assert.deepEqual(vertices(area.path).map(([,, y]) => y).slice(0, 2), [scaleY.y(12), scaleY.y(13)]);
+    assert.deepEqual(vertices(area.path).map(xOf), [-1000 / 3, 4000 / 3, 4000 / 3, -1000 / 3]);
+    assert.deepEqual(vertices(area.path).map(yOf).slice(0, 2), [scaleY.y(12), scaleY.y(13)]);
 });
 
 test('does not extend a recording into a viewport after it', () => {
@@ -108,8 +128,21 @@ test('does not extend a recording into a viewport after it', () => {
         viewport: { start: 200, end: 300 }
     });
 
-    assert.ok(area.path.every(([, x]) => x <= 0));
+    assert.ok(area.path.every(vertex => xOf(vertex) <= 0));
 });
+
+// Values of 1000 points: 20 at multiples of 7, otherwise 10 at multiples of 5, otherwise 15
+function columnValue(i) {
+    if (i % 7 === 0) {
+        return 20;
+    }
+
+    if (i % 5 === 0) {
+        return 10;
+    }
+
+    return 15;
+}
 
 test('draws the points of a pixel column by the range of their values and the last one', () => {
     const x = [];
@@ -117,7 +150,7 @@ test('draws the points of a pixel column by the range of their values and the la
 
     for (let i = 0; i < 1000; i++) {
         x.push(i / 100);
-        y.push(i % 7 === 0 ? 20 : i % 5 === 0 ? 10 : 15);
+        y.push(columnValue(i));
     }
 
     const options = {
@@ -131,8 +164,8 @@ test('draws the points of a pixel column by the range of their values and the la
     assert.ok(curve.length <= 10 * 4, curve.length);
 
     for (let i = 0; i < 10; i++) {
-        const isColumnPoint = ([, px]) => Math.floor(px) === i;
-        const columnYs = curve.filter(isColumnPoint).map(([,, py]) => py);
+        const isColumnPoint = vertex => Math.floor(xOf(vertex)) === i;
+        const columnYs = curve.filter(isColumnPoint).map(yOf);
 
         assert.equal(Math.min(...columnYs), scaleY.y(20));
         assert.equal(Math.max(...columnYs), scaleY.y(10));
@@ -147,10 +180,12 @@ test('joins a column to the next one far away by their last and first points', (
         viewport: { start: 100, end: 200 }
     });
     const curve = vertices(area.path);
-    const join = curve.findIndex(([, x]) => x === 500);
+    const join = curve.findIndex(vertex => xOf(vertex) === 500);
+    const isFirstColumn = vertex => Math.floor(xOf(vertex)) === 0;
 
-    assert.deepEqual([curve[join - 1][1].toFixed(6), curve[join - 1][2]], ['0.200000', scaleY.y(15)]);
-    assert.ok(curve.slice(0, join).every(([, x]) => Math.floor(x) === 0));
+    assert.equal(xOf(curve[join - 1]).toFixed(6), '0.200000');
+    assert.equal(yOf(curve[join - 1]), scaleY.y(15));
+    assert.ok(curve.slice(0, join).every(isFirstColumn));
     assert.deepEqual(curve[join], ['L', 500, scaleY.y(12)]);
 });
 
@@ -186,19 +221,26 @@ test('finds the point closest to a value of x', () => {
 });
 
 test('marks a point beyond an edge of the viewport where the curve from it crosses the edge', () => {
-    assert.deepEqual(chartPointAt(series, { start: 155, end: 165 }, 155), { index: 1, x: 155, y: 20 - 5 / 6 });
-    assert.deepEqual(chartPointAt(series, { start: 155, end: 165 }, 165), { index: 2, x: 165, y: 17.5 });
+    const between = { start: 155, end: 165 };
+    const after = { start: 190, end: 200 };
+    const before = { start: 100, end: 110 };
+
+    assert.deepEqual(chartPointAt(series, between, 155), { index: 1, x: 155, y: 20 - 5 / 6 });
+    assert.deepEqual(chartPointAt(series, between, 165), { index: 2, x: 165, y: 17.5 });
 
     // The curve extends by its edge values beyond the points
-    assert.deepEqual(chartPointAt(series, { start: 190, end: 200 }, 195), { index: 2, x: 190, y: 15 });
-    assert.deepEqual(chartPointAt(series, { start: 100, end: 110 }, 105), { index: 0, x: 110, y: 10 });
+    assert.deepEqual(chartPointAt(series, after, 195), { index: 2, x: 190, y: 15 });
+    assert.deepEqual(chartPointAt(series, before, 105), { index: 0, x: 110, y: 10 });
 });
 
-function createElement(tagName) {
+function createElement(tagName, className) {
     const listeners = new Map();
     const element = {
         tagName,
+        className,
         clientWidth: 1000,
+        hidden: false,
+        textContent: '',
         children: [],
         styles: new Map(),
         classList: new Set(),
@@ -217,20 +259,74 @@ function createElement(tagName) {
             return createContext(0, 0);
         },
         append(...children) {
-            this.children.push(...children);
+            element.children.push(...children);
         }
     };
 
     return element;
 }
 
-function renderView(config, context) {
-    const frames = [];
+// A line over 100–200
+async function createLine() {
+    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+
+    return line;
+}
+
+// Renders a chart with a pixel ratio of 2; draws are recorded with the displayed range, frames are run by flush()
+function renderView(config, data, context, computedColor = '#abc') {
+    const frames = new Map();
     const draws = [];
     const observer = { observed: null };
-    const tooltip = { el: { classList: new Set() }, shown: [], hidden: 0, destroyed: false };
+    const tooltip = {
+        el: { classList: new Set() },
+        shown: [],
+        hidden: 0,
+        destroyed: false
+    };
     const renders = [];
+    let lastFrame = 0;
     let renderChart;
+    let lifecycle;
+
+    // A popup records the content renders it shows
+    class Popup {
+        constructor(options) {
+            tooltip.el.classList.add(options.className);
+            this.el = tooltip.el;
+        }
+        show(triggerEl, render) {
+            tooltip.shown.push(render);
+        }
+        hide() {
+            tooltip.hidden++;
+        }
+        destroy() {
+            tooltip.destroyed = true;
+        }
+    }
+
+    class ResizeObserver {
+        constructor(callback) {
+            observer.resize = width => callback([{ contentRect: { width } }]);
+        }
+        observe(el) {
+            observer.observed = el;
+        }
+        disconnect() {
+            observer.observed = null;
+        }
+    }
+
+    // Copied out of the module's realm so deepEqual compares plain values
+    const copySeries = series => ({ x: [...series.x], y: [...series.y] });
+    const recordDraw = (ctx, options, color, dpr) => draws.push({
+        series: copySeries(options.series),
+        total: copySeries(options.total),
+        viewport: { ...options.viewport },
+        color,
+        dpr
+    });
 
     evaluateModule(new URL('./chart.js', import.meta.url), {
         discovery: {
@@ -238,18 +334,7 @@ function renderView(config, context) {
                 define(name, render) {
                     renderChart = render;
                 },
-                Popup: class {
-                    constructor(options) {
-                        tooltip.el.classList.add(options.className);
-
-                        return Object.assign(this, {
-                            el: tooltip.el,
-                            show: (triggerEl, render) => tooltip.shown.push(render),
-                            hide: () => tooltip.hidden++,
-                            destroy: () => tooltip.destroyed = true
-                        });
-                    }
-                }
+                Popup
             }
         },
         usage,
@@ -261,69 +346,72 @@ function renderView(config, context) {
         max,
         chartScaleY,
         chartPointAt,
-        drawChart: (ctx, options) => draws.push({ ...options }),
-        ResizeObserver: class {
-            constructor(callback) {
-                observer.resize = width => callback([{ contentRect: { width } }]);
-            }
-            observe(el) {
-                observer.observed = el;
-            }
-            disconnect() {
-                observer.observed = null;
-            }
+        drawChart: recordDraw,
+        ResizeObserver,
+        requestAnimationFrame(callback) {
+            frames.set(++lastFrame, callback);
+            return lastFrame;
         },
-        requestAnimationFrame: callback => frames.push(callback),
-        cancelAnimationFrame() {},
+        cancelAnimationFrame(id) {
+            frames.delete(id);
+        },
         window: { devicePixelRatio: 2 },
-        getComputedStyle: () => ({ getPropertyValue: () => '#abc' }),
+        getComputedStyle: () => ({ getPropertyValue: () => computedColor }),
         utils: { createElement },
         HTMLElement: class {},
-        customElements: { define() {} },
+        customElements: { define: (name, Element) => lifecycle = { name, Element } },
         document: { createElement }
     });
 
     const element = createElement('div');
-    const renderer = {
-        render: (el, content, data, context) => renders.push({ el, content, data, context })
+    const host = {
+        render: (el, content, input, scope) => renders.push({ el, content, data: input, context: scope })
     };
 
-    renderChart.call(renderer, element, config, null, context);
+    renderChart.call(host, element, config, data, context);
 
     return {
         element,
         canvas: element.children.find(child => child.tagName === 'canvas'),
-        marker: element.children.find(child => child.tagName === 'div'),
+        marker: element.children.find(child => child.className === 'marker'),
+        labels: element.children.filter(child => child.classList.has('y-tick-label')),
         destroyEl: element.children.at(-1),
+        lifecycle,
         frames,
         draws,
         observer,
         tooltip,
+        // Connects the chart and sizes its canvas to the width
+        show(width) {
+            this.destroyEl.onConnect();
+            observer.resize(width);
+        },
+        pointer(offsetX, offsetY = 0) {
+            this.canvas.dispatch('pointermove', { offsetX, offsetY });
+        },
         // Renders the content of the last shown tooltip
         describe() {
             const tooltipEl = { textContent: '' };
 
             tooltip.shown.at(-1)(tooltipEl);
 
-            const { content, data, context } = renders.at(-1);
+            const rendered = renders.at(-1);
 
-            if (typeof content === 'function') {
-                content(tooltipEl, {}, data, context);
+            if (typeof rendered.content === 'function') {
+                rendered.content(tooltipEl, {}, rendered.data, rendered.context);
             }
 
             return {
                 text: tooltipEl.textContent,
-                data,
-                content,
-                context: {
-                    ...context,
-                    edgeCrossing: context.edgeCrossing && { ...context.edgeCrossing }
-                }
+                data: rendered.data,
+                content: rendered.content,
+                context: rendered.context
             };
         },
         flush() {
-            const pending = frames.splice(0);
+            const pending = [...frames.values()];
 
+            frames.clear();
             for (let i = 0; i < pending.length; i++) {
                 pending[i]();
             }
@@ -331,189 +419,360 @@ function renderView(config, context) {
     };
 }
 
-const viewport = view => ({ ...view.draws.at(-1).viewport });
+const displayed = view => view.draws.at(-1).viewport;
+const coverage = view => [view.element.styles.get('--range-pad-start'), view.element.styles.get('--range-pad-end')];
+const labelText = label => label.textContent;
+const labelTop = label => label.styles.get('--top');
 
-test('zoom draws the line zoom within the coverage on the next frame until destroyed', async () => {
-    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
-    const view = renderView({
+test.each([
+    {
+        name: 'points of the config as objects',
+        config: { points: [{ x: 120, y: 10 }, { x: 180, y: 20 }] },
+        data: [[0, 0]]
+    },
+    {
+        name: 'the data as pairs',
+        config: {},
+        data: [[120, 10], [180, 20]]
+    }
+])('draws the series of $name', row => {
+    const view = renderView(row.config, row.data, {});
+
+    view.show(100);
+
+    assert.deepEqual(view.draws[0].series, { x: [120, 180], y: [10, 20] });
+    assert.deepEqual(view.draws[0].total, { x: [], y: [] });
+    assert.deepEqual(displayed(view), { start: 120, end: 180 });
+});
+
+test('draws the total of the config', () => {
+    const view = renderView({ points: [[120, 10]], pointsTotal: [{ x: 150, y: 50 }] }, null, {});
+
+    view.show(100);
+
+    assert.deepEqual(view.draws[0].total, { x: [150], y: [50] });
+});
+
+test.each([
+    {
+        name: 'the points and the total',
+        config: { pointsTotal: [[150, 50]] },
+        viewport: { start: 120, end: 180 },
+        labels: ['10.0', '23.3', '36.7', '50.0'],
+        scale: chartScaleY(10, 50, 100)
+    },
+    {
+        name: 'the config',
+        config: {
+            minX: 100,
+            maxX: 200,
+            minY: 15,
+            maxY: 30
+        },
+        viewport: { start: 100, end: 200 },
+        labels: ['15.0', '20.0', '25.0', '30.0'],
+        scale: chartScaleY(15, 30, 100)
+    }
+])('the ranges of x and values are taken from $name', row => {
+    const config = {
+        ...row.config,
+        height: 100,
+        labelFormat: value => value.toFixed(1),
+        points: [[120, 10], [150, 40], [180, 20]]
+    };
+    const view = renderView(config, null, {});
+
+    view.show(100);
+
+    assert.deepEqual(displayed(view), row.viewport);
+    assert.deepEqual(view.labels.map(labelText), row.labels);
+    assert.deepEqual(view.labels.map(labelTop), row.scale.ticks.map(tick => `${tick.y}px`));
+});
+
+test('labels have two fraction digits by default', () => {
+    const view = renderView({ points: [[120, 10], [180, 20]] }, null, {});
+
+    assert.deepEqual(view.labels.map(labelText), ['10.00', '13.33', '16.67', '20.00']);
+});
+
+test('a resize sizes the canvas to the pixel ratio and draws in the computed color at once', () => {
+    const view = renderView({ height: 50, points: [[120, 10], [180, 20]] }, null, {});
+
+    view.destroyEl.onConnect();
+    assert.equal(view.observer.observed, view.canvas);
+    assert.equal(view.draws.length, 0);
+
+    view.observer.resize(300);
+    assert.equal(view.canvas.style.height, '50px');
+    assert.equal(view.canvas.width, 600);
+    assert.equal(view.canvas.height, 100);
+    assert.deepEqual(view.draws.map(draw => [draw.color, draw.dpr]), [['#abc', 2]]);
+});
+
+test('the color of the config is set to the element, a chart without a computed color is gray', () => {
+    const view = renderView({ color: '#123', points: [[120, 10]] }, null, {}, '');
+
+    view.show(100);
+
+    assert.equal(view.element.styles.get('--color'), '#123');
+    assert.equal(view.draws[0].color, '#888');
+});
+
+test.each([
+    {
+        name: 'the given extent',
+        extent: { start: 120, end: 190 },
+        coverage: [0.2, 0.1]
+    },
+    {
+        name: 'the range of minX and maxX',
+        extent: undefined,
+        coverage: [0, 0]
+    }
+])('the coverage of $name is set over the displayed range', row => {
+    const config = {
+        minX: 100,
+        maxX: 200,
+        extent: row.extent,
+        points: [[120, 10]]
+    };
+    const view = renderView(config, null, {});
+
+    assert.deepEqual(coverage(view), row.coverage);
+});
+
+test('without zoom the range of minX and maxX is displayed and the line zoom is not followed', async () => {
+    const line = await createLine();
+    const view = renderView({ minX: 100, maxX: 200, points: [[120, 10]] }, null, { scopeLine: line });
+
+    line.zoom.selection.setRange(110, 160);
+    view.show(100);
+    line.zoom.selection.setRange(120, 170);
+
+    assert.deepEqual(displayed(view), { start: 100, end: 200 });
+    assert.equal(view.frames.size, 0);
+});
+
+test('with zoom the line zoom is displayed, the coverage is over it', async () => {
+    const line = await createLine();
+    const config = {
         minX: 100,
         maxX: 200,
         extent: { start: 120, end: 200 },
         zoom: true,
-        height: 50,
-        points: [{ x: 120, y: 10 }, { x: 180, y: 20 }]
-    }, { scopeLine: line });
-    const { element, canvas, destroyEl, draws, observer } = view;
+        points: [[120, 10], [180, 20]]
+    };
+    const view = renderView(config, null, { scopeLine: line });
 
-    line.zoom.selection.setRange(110, 160);
-    assert.equal(destroyEl.tagName, 'destroy-cpupro-chart');
-    assert.equal(element.styles.get('--range-pad-start'), 0.2);
+    line.zoom.selection.setRange(130, 180);
+    assert.deepEqual(coverage(view), [0.2, 0]);
 
-    destroyEl.onConnect();
-    assert.equal(observer.observed, canvas);
-    assert.equal(draws.length, 0);
-
-    observer.resize(300);
-    assert.equal(canvas.width, 600);
-    assert.equal(canvas.height, 100);
-    assert.deepEqual(viewport(view), { start: 110, end: 160 });
-
-    line.zoom.selection.setRange(150, 200);
-    line.zoom.selection.setRange(140, 190);
-    assert.equal(draws.length, 1);
-    assert.equal(view.frames.length, 1);
-    assert.equal(element.styles.get('--range-pad-start'), 0);
-    view.flush();
-    assert.deepEqual(viewport(view), { start: 140, end: 190 });
-
-    // Without a zoom request the viewport is displayed
-    line.zoom.resetRange();
-    line.viewport.selection.setRange(130, 170);
-    view.flush();
-    assert.deepEqual(viewport(view), { start: 130, end: 170 });
-    line.viewport.resetRange();
-    view.flush();
-
-    destroyEl.onDestroy();
-    assert.equal(observer.observed, null);
-    line.zoom.selection.setRange(110, 160);
-    line.viewport.selection.setRange(120, 180);
-    assert.equal(view.frames.length, 0);
-    line.zoom.resetRange();
-    line.viewport.resetRange();
+    view.show(100);
+    assert.deepEqual(displayed(view), { start: 130, end: 180 });
+    assert.deepEqual(coverage(view), [0, 0]);
 });
 
-test('displays the range of minX and maxX without zoom', async () => {
-    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+test('with zoom a zoom change before the canvas is sized schedules no draw', async () => {
+    const line = await createLine();
+    const view = renderView({ zoom: true, points: [[120, 10]] }, null, { scopeLine: line });
+
+    view.destroyEl.onConnect();
+    line.zoom.selection.setRange(110, 160);
+
+    assert.equal(view.frames.size, 0);
+    assert.equal(view.draws.length, 0);
+});
+
+test('with zoom changes of the line zoom are drawn once on the next frame', async () => {
+    const line = await createLine();
+    const config = {
+        extent: { start: 120, end: 200 },
+        zoom: true,
+        points: [[120, 10]]
+    };
+    const view = renderView(config, null, { scopeLine: line });
+
+    view.show(100);
+    line.zoom.selection.setRange(150, 200);
+    line.zoom.selection.setRange(140, 190);
+    assert.equal(view.draws.length, 1);
+    assert.equal(view.frames.size, 1);
+    assert.deepEqual(coverage(view), [0, 0]);
+
+    view.flush();
+    assert.deepEqual(displayed(view), { start: 140, end: 190 });
+});
+
+test('with zoom the line viewport is displayed without a zoom request', async () => {
+    const line = await createLine();
+    const view = renderView({ zoom: true, points: [[120, 10]] }, null, { scopeLine: line });
+
+    view.show(100);
+    line.viewport.selection.setRange(130, 170);
+    view.flush();
+
+    assert.deepEqual(displayed(view), { start: 130, end: 170 });
+});
+
+test('a resize draws at once instead of a scheduled draw', async () => {
+    const line = await createLine();
+    const view = renderView({ zoom: true, points: [[120, 10]] }, null, { scopeLine: line });
+
+    view.show(100);
+    line.zoom.selection.setRange(140, 190);
+    view.observer.resize(200);
+
+    assert.equal(view.frames.size, 0);
+    assert.deepEqual(displayed(view), { start: 140, end: 190 });
+});
+
+test('destruction stops observing and following the zoom, cancels a draw and destroys the tooltip', async () => {
+    const line = await createLine();
+    const view = renderView({ zoom: true, points: [[120, 10]] }, null, { scopeLine: line });
+
+    view.show(100);
+    line.zoom.selection.setRange(140, 190);
+    view.destroyEl.onDestroy();
+    assert.equal(view.frames.size, 0);
+    assert.equal(view.observer.observed, null);
+    assert.equal(view.tooltip.destroyed, true);
+
+    line.zoom.selection.setRange(110, 160);
+    line.viewport.selection.setRange(120, 180);
+    assert.equal(view.frames.size, 0);
+});
+
+// Points at 120 and 180 over 100–200 on a canvas 1000px wide; a total at 150 isn't a point
+test.each([
+    [400, 0, 0.2, 10],
+    [400, 100, 0.2, 10],
+    [490, 0, 0.2, 10],
+    [510, 0, 0.8, 20]
+])('a pointer at (%s, %s) marks the point at %s with the value %s', (offsetX, offsetY, left, value) => {
     const config = {
         minX: 100,
         maxX: 200,
-        points: [{ x: 120, y: 10 }]
-    };
-    const view = renderView(config, { scopeLine: line });
-
-    line.zoom.selection.setRange(110, 160);
-    view.destroyEl.onConnect();
-    view.observer.resize(100);
-    assert.deepEqual(viewport(view), { start: 100, end: 200 });
-    assert.equal(view.frames.length, 0);
-    line.zoom.resetRange();
-});
-
-test('takes the ranges of x and values from the points unless given', () => {
-    const points = [[120, 10], [150, 40], [180, 20]];
-    const isLabel = child => child.classList.has('y-tick-label');
-    const labels = view => view.element.children.filter(isLabel).map(label => label.textContent);
-    const given = renderView({
-        minX: 100,
-        maxX: 200,
-        minY: 15,
-        maxY: 30,
         height: 100,
-        labelFormat: String,
-        points
-    }, {});
-    const own = renderView({
-        height: 100,
-        labelFormat: String,
-        points,
-        pointsTotal: [[150, 50]]
-    }, {});
-
-    given.destroyEl.onConnect();
-    given.observer.resize(100);
-    own.destroyEl.onConnect();
-    own.observer.resize(100);
-
-    assert.deepEqual(Array.from(given.draws.at(-1).series.y), [10, 40, 20]);
-    assert.deepEqual(viewport(given), { start: 100, end: 200 });
-    assert.deepEqual(labels(given), chartScaleY(15, 30, 100).ticks.map(tick => String(tick.value)));
-    assert.deepEqual(viewport(own), { start: 120, end: 180 });
-    assert.deepEqual(labels(own), chartScaleY(10, 50, 100).ticks.map(tick => String(tick.value)));
-});
-
-test('marks the point closest to the pointer by x and describes it in a tooltip', () => {
-    const labelFormat = value => value + 'b';
-    const view = renderView({
-        minX: 100,
-        maxX: 200,
-        height: 100,
-        labelFormat,
         points: [[120, 10], [180, 20]],
         pointsTotal: [[150, 30]]
-    }, { foo: 1 });
-    const { canvas, marker, tooltip } = view;
+    };
+    const view = renderView(config, null, {});
     const scale = chartScaleY(10, 30, 100);
 
-    view.destroyEl.onConnect();
-    view.observer.resize(1000);
-    assert.equal(marker.hidden, true);
+    assert.equal(view.marker.hidden, true);
+    view.show(1000);
+    view.pointer(offsetX, offsetY);
 
-    canvas.dispatch('pointermove', { offsetX: 400, offsetY: 0 });
-    assert.equal(marker.hidden, false);
-    assert.equal(marker.styles.get('--left'), 0.2);
-    assert.equal(marker.styles.get('--top'), `${scale.y(10)}px`);
+    assert.equal(view.marker.hidden, false);
+    assert.equal(view.marker.styles.get('--left'), left);
+    assert.equal(view.marker.styles.get('--top'), `${scale.y(value)}px`);
+});
+
+test('a tooltip describes the hovered point in the context with its offset from minX', () => {
+    const config = {
+        minX: 100,
+        maxX: 200,
+        labelFormat: value => value + 'b',
+        points: [[120, 10], [180, 20]]
+    };
+    const view = renderView(config, null, { foo: 1 });
+
+    view.show(1000);
+    view.pointer(400);
 
     const { text, data, context } = view.describe();
 
     assert.equal(text, '10b');
     assert.deepEqual(data, [120, 10]);
-    assert.deepEqual(context, { foo: 1, pointOffset: 20, edgeCrossing: null });
-
-    // The vertical position of the pointer doesn't choose a point, nor does a dashed total
-    canvas.dispatch('pointermove', { offsetX: 490, offsetY: scale.y(30) });
-    canvas.dispatch('pointermove', { offsetX: 420, offsetY: 100 });
-    assert.equal(tooltip.shown.length, 1);
-    assert.equal(marker.styles.get('--left'), 0.2);
-
-    canvas.dispatch('pointermove', { offsetX: 510, offsetY: 0 });
-    assert.equal(tooltip.shown.length, 2);
-    assert.equal(marker.styles.get('--left'), 0.8);
-    assert.deepEqual(view.describe().data, [180, 20]);
-
-    const hidden = tooltip.hidden;
-
-    canvas.dispatch('pointerleave');
-    assert.equal(marker.hidden, true);
-    assert.equal(tooltip.hidden, hidden + 1);
-
-    view.destroyEl.onDestroy();
-    assert.ok(tooltip.destroyed);
+    assert.deepEqual({ ...context }, { foo: 1, pointOffset: 20, edgeCrossing: null });
 });
 
-test('marks the crossing of the chart edge as the zoom moves a hovered point outside', async () => {
-    const { line } = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
-    const view = renderView({
+test('moving the pointer within the hovered point keeps its tooltip, another point shows its own', () => {
+    const view = renderView({ minX: 100, maxX: 200, points: [[120, 10], [180, 20]] }, null, {});
+
+    view.show(1000);
+    view.pointer(400);
+    view.pointer(420, 100);
+    view.pointer(490);
+    assert.equal(view.tooltip.shown.length, 1);
+
+    view.pointer(510);
+    assert.equal(view.tooltip.shown.length, 2);
+    assert.deepEqual(view.describe().data, [180, 20]);
+});
+
+test('the pointer leaving the chart hides the marker and the tooltip', () => {
+    const view = renderView({ minX: 100, maxX: 200, points: [[120, 10], [180, 20]] }, null, {});
+
+    view.show(1000);
+    view.pointer(400);
+
+    const hidden = view.tooltip.hidden;
+
+    view.canvas.dispatch('pointerleave');
+    assert.equal(view.marker.hidden, true);
+    assert.equal(view.tooltip.hidden, hidden + 1);
+});
+
+test('the tooltip has the class of the chart, a class and the content of the config', () => {
+    const config = {
+        minX: 100,
+        maxX: 200,
+        points: [[120, 10]],
+        tooltipContent: 'text:y',
+        tooltipClassName: 'custom'
+    };
+    const view = renderView(config, null, {});
+
+    view.show(1000);
+    view.pointer(150);
+
+    assert.deepEqual([...view.tooltip.el.classList], ['view-cpupro-chart-tooltip', 'custom']);
+    assert.equal(view.describe().content, 'text:y');
+});
+
+test('as the zoom moves a hovered point outside, the crossing of the edge is marked', async () => {
+    const line = await createLine();
+    const config = {
         minX: 100,
         maxX: 200,
         zoom: true,
         height: 100,
-        points: [[120, 10], [180, 20]],
-        tooltipContent: 'text:y',
-        tooltipClassName: 'custom'
-    }, { scopeLine: line });
-    const { canvas, marker, tooltip } = view;
+        points: [[120, 10], [180, 20]]
+    };
+    const view = renderView(config, null, { scopeLine: line });
 
     line.zoom.selection.setRange(115, 165);
-    view.destroyEl.onConnect();
-    view.observer.resize(1000);
-    canvas.dispatch('pointermove', { offsetX: 150, offsetY: 0 });
-    assert.deepEqual(view.describe().context.edgeCrossing, null);
-    assert.ok(tooltip.el.classList.has('view-cpupro-chart-tooltip'));
-    assert.ok(tooltip.el.classList.has('custom'));
-    assert.equal(view.describe().content, 'text:y');
+    view.show(1000);
+    view.pointer(150);
+    assert.equal(view.describe().context.edgeCrossing, null);
 
     line.zoom.selection.setRange(140, 190);
     view.flush();
-    assert.equal(tooltip.shown.length, 2);
-    assert.equal(marker.styles.get('--left'), 0);
-    assert.equal(marker.styles.get('--top'), `${chartScaleY(10, 20, 100).y(10 + 10 / 3)}px`);
-    assert.deepEqual(view.describe().context.edgeCrossing, { offset: 40, value: 10 + 10 / 3 });
+    assert.equal(view.tooltip.shown.length, 2);
+    assert.equal(view.marker.styles.get('--left'), 0);
+    assert.equal(view.marker.styles.get('--top'), `${chartScaleY(10, 20, 100).y(10 + 10 / 3)}px`);
+    assert.deepEqual({ ...view.describe().context.edgeCrossing }, { offset: 40, value: 10 + 10 / 3 });
     assert.deepEqual(view.describe().data, [120, 10]);
 
     line.zoom.selection.setRange(141, 191);
     view.flush();
-    assert.equal(tooltip.shown.length, 3);
+    assert.equal(view.tooltip.shown.length, 3);
     assert.equal(view.describe().context.edgeCrossing.offset, 41);
-    line.zoom.resetRange();
+});
+
+test('the destroy element calls its connect and destroy hooks once', () => {
+    const { lifecycle } = renderView({ points: [] }, null, {});
+    const element = new lifecycle.Element();
+    const calls = [];
+
+    element.onConnect = () => calls.push('connect');
+    element.onDestroy = () => calls.push('destroy');
+    element.connectedCallback();
+    element.disconnectedCallback();
+
+    assert.equal(lifecycle.name, 'destroy-cpupro-chart');
+    assert.deepEqual(calls, ['connect', 'destroy']);
+    assert.equal(element.onConnect, null);
+    assert.equal(element.onDestroy, null);
 });

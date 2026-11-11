@@ -6,6 +6,8 @@ import { lineViewport, lineViewportBounds, lineZoom, subscribeLineZoom } from '.
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
+const query = jora.setup({ methods });
+
 function createElement(tagName, className = '') {
     const element = {
         tagName,
@@ -14,8 +16,13 @@ function createElement(tagName, className = '') {
         hidden: false,
         listeners: new Map(),
         textContent: '',
-        classList: { add: name => element.className += ' ' + name, contains: name => element.className.split(' ').includes(name) },
-        style: { values: new Map(), setProperty: (name, value) => element.style.values.set(name, value) },
+        classList: {
+            add: name => element.className += ' ' + name
+        },
+        style: {
+            values: new Map(),
+            setProperty: (name, value) => element.style.values.set(name, value)
+        },
         append: (...children) => element.children.push(...children),
         replaceChildren: (...children) => element.children = children,
         addEventListener: (name, callback) => element.listeners.set(name, callback)
@@ -25,205 +32,352 @@ function createElement(tagName, className = '') {
 }
 
 const position = element => [element.style.values.get('--x1'), element.style.values.get('--x2')];
+const windowState = element => [element.hidden, ...position(element)];
 
-// Two profiles over 100–200 and 150–250; the bucket query gives the profiles as they are passed
-async function render(options = {}) {
-    const props = options.props ?? {};
-    const primary = options.primary ?? 0;
-    const viaProps = options.viaProps ?? false;
-    const name = options.name;
-    const selection = options.selection ?? null;
+// Two profiles over 100–200 and 150–250
+async function createProfiles() {
     const first = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const second = await createLineFixture({ origin: 150, values: new Uint32Array([100]) });
 
-    first.profile.name = name;
-    first.profile.timeline.range.selection.setRanges(selection);
-    const profiles = [{ profile: first.profile }, { profile: second.profile }];
-    const context = {
-        primaryProfile: profiles[primary]?.profile ?? null,
-        data: { profiles: [first.profile, second.profile] }
+    return [first.profile, second.profile];
+}
+
+// Items of a bucket, a profile with its state
+const toItems = profiles => profiles.map(profile => ({ profile }));
+
+// The context of a page of the profiles with one of them, or none, as the primary profile
+function createContext(profiles, primaryProfile) {
+    return {
+        primaryProfile,
+        data: { profiles }
     };
+}
+
+function render(props, data, context) {
     const renders = [];
     const tooltips = [];
     const actions = [];
-    const query = (text, data) => text.includes('group(') ? data : text.includes('axisStart') ? 100 : 250;
     let renderView;
 
     evaluateModule(new URL('./timeline-profiles.js', import.meta.url), {
         utils: { createElement },
-        lineZoom, subscribeLineZoom, lineViewport,
+        lineZoom,
+        subscribeLineZoom,
+        lineViewport,
         lineViewportBounds,
         document: { createElement },
         discovery: {
             view: { define: (_, callback) => renderView = callback },
-            query,
+            query: (text, input) => query(text)(input),
             action: { call: (name, profile) => actions.push([name, profile]) }
         }
     });
 
     const el = createElement('div');
-    const viewProps = viaProps ? { ...props, profiles } : props;
-    const viewData = viaProps ? [] : profiles;
+    const host = {
+        tooltip: (target, config, input) => tooltips.push([target, input]),
+        render: (target, config, input, scope) => renders.push({ target, config, data: input, scope })
+    };
+    const byView = view => renders.filter(item => item.config.view === view);
+    const byClassName = className => el.children.find(child => child.className === className);
 
-    renderView.call({
-        tooltip: (target, config, data) => tooltips.push([target, data]),
-        render: (target, config, data, scope) => renders.push({ target, config, data, scope })
-    }, el, viewProps, viewData, context);
-
-    const bars = el.children.filter(child => child.className.startsWith('profile'));
-    const buttons = el.children.filter(child => child.tagName === 'button');
-    const ruler = renders.find(render => render.config.view === 'ruler');
-    const histograms = renders.filter(render => render.config.view === 'bins-histogram');
+    renderView.call(host, el, props, data, context);
 
     return {
         el,
-        line: first.profile.timeline,
-        profiles,
-        bars,
-        buttons,
-        ruler,
-        histograms,
+        bars: el.children.filter(child => child.className.startsWith('profile')),
+        buttons: el.children.filter(child => child.tagName === 'button'),
+        histograms: byView('bins-histogram'),
+        ruler: byView('ruler')[0],
+        viewportWindow: byClassName('viewport-window'),
+        zoomWindow: byClassName('zoom-window'),
+        selections: byClassName('selections'),
         tooltips,
         actions
     };
 }
 
+// Renders the profiles with the first one as the primary profile
+async function renderPrimary() {
+    const profiles = await createProfiles();
+    const view = render({}, toItems(profiles), createContext(profiles, profiles[0]));
+
+    return { ...view, line: profiles[0].timeline };
+}
+
+// The API of the ruler, recording the selections set by the view
+function createRulerApi(selection) {
+    const api = {
+        state: { selection },
+        selections: [],
+        setSelection: value => api.selections.push(value)
+    };
+
+    return api;
+}
+
+// The first and the end bin of nonzero bins as shares of all bins
+function nonzeroSpan(bins) {
+    let first = -1;
+    let last = -1;
+
+    for (let i = 0; i < bins.length; i++) {
+        if (bins[i] > 0) {
+            if (first === -1) {
+                first = i;
+            }
+
+            last = i;
+        }
+    }
+
+    return [first / bins.length, (last + 1) / bins.length];
+}
+
 test.each([
     {
         name: 'profiles of the data',
-        options: {},
+        input: items => [{}, items],
         range: 150,
         positions: [[0, 100 / 150], [50 / 150, 1]]
     },
     {
-        name: 'profiles of the props',
-        options: { viaProps: true },
+        name: 'profiles of the props over the data',
+        input: items => [{ profiles: items }, items.slice(1)],
         range: 150,
         positions: [[0, 100 / 150], [50 / 150, 1]]
     },
     {
         name: 'a range from zero',
-        options: { props: { startTime: 0, endTime: 300 } },
+        input: items => [{ startTime: 0, endTime: 300 }, items],
         range: 300,
         positions: [[100 / 300, 200 / 300], [150 / 300, 250 / 300]]
+    },
+    {
+        name: 'a range to an end time',
+        input: items => [{ endTime: 300 }, items],
+        range: 200,
+        positions: [[0, 0.5], [0.25, 0.75]]
     }
 ])('bars of $name are placed in the range of the bucket', async row => {
-    const { el, bars } = await render(row.options);
+    const profiles = await createProfiles();
+    const [props, data] = row.input(toItems(profiles));
+    const { el, bars } = render(props, data, createContext(profiles, null));
 
     assert.equal(el.style.values.get('--range'), row.range);
     assert.deepEqual(bars.map(position), row.positions);
 });
 
-test('bars hold a caption and a viewport, have a profile tooltip, the primary bar is selected', async () => {
-    const { bars, profiles, tooltips } = await render({ primary: 1 });
-    const { bars: namedBars } = await render({ name: 'Main' });
+test('data other than an array has no bars', async () => {
+    const profiles = await createProfiles();
+    const { el, bars } = render({}, { profile: profiles[0] }, createContext(profiles, null));
+
+    assert.equal(el.style.values.get('--range'), 0);
+    assert.deepEqual(bars, []);
+});
+
+// The process met first has fewer events of its threads than the one met next
+test('profiles are grouped by process, the process with more events of its threads first', async () => {
+    const [first, second] = await createProfiles();
+    const third = (await createLineFixture({ origin: 120, values: new Uint32Array([50]) })).profile;
+    const fewer = { threads: [{ events: [1, 2] }] };
+    const more = { threads: [{ events: [1, 2] }, { events: [3] }] };
+
+    first.thread = { process: fewer };
+    second.thread = { process: more };
+    third.thread = { process: fewer };
+
+    const { tooltips } = render({}, toItems([first, second, third]), createContext([], null));
+
+    assert.deepEqual(tooltips.map(tooltip => tooltip[1]), [second, first, third]);
+});
+
+test('a bar holds the name of its profile or a placeholder and a viewport', async () => {
+    const profiles = await createProfiles();
     const describeChildren = bar => bar.children.map(child => [child.className, child.textContent]);
 
-    assert.deepEqual(bars.map(bar => bar.className), ['profile', 'profile selected']);
+    profiles[0].name = 'Main';
+
+    const { bars } = render({}, toItems(profiles), createContext(profiles, null));
+
     assert.deepEqual(bars.map(describeChildren), [
-        [['caption', '(unnamed profile)'], ['viewport', '']],
+        [['caption', 'Main'], ['viewport', '']],
         [['caption', '(unnamed profile)'], ['viewport', '']]
     ]);
-    assert.equal(namedBars[0].children[0].textContent, 'Main');
-    assert.deepEqual(tooltips, [[bars[0], profiles[0].profile], [bars[1], profiles[1].profile]]);
 });
 
-test('a button toggles its profile, a click on a bar other than the primary selects its profile', async () => {
-    const { bars, buttons, profiles, actions } = await render();
+test('the bar of the primary profile is selected, a click on another bar selects its profile', async () => {
+    const profiles = await createProfiles();
+    const { bars, actions } = render({}, toItems(profiles), createContext(profiles, profiles[1]));
 
-    buttons[0].listeners.get('click')();
+    bars[0].listeners.get('click')();
+
+    assert.deepEqual(bars.map(bar => bar.className), ['profile', 'profile selected']);
+    assert.equal(bars[1].listeners.has('click'), false);
+    assert.deepEqual(actions, [['selectProfile', profiles[0]]]);
+});
+
+test('the bar of a disabled profile is marked', async () => {
+    const profiles = await createProfiles();
+    const items = [{ disabled: true, profile: profiles[0] }, { disabled: false, profile: profiles[1] }];
+    const { bars } = render({}, items, createContext(profiles, profiles[0]));
+
+    assert.deepEqual(bars.map(bar => bar.className), ['profile disabled selected', 'profile']);
+});
+
+test('a button before each bar toggles its profile', async () => {
+    const profiles = await createProfiles();
+    const { el, buttons, bars, actions } = render({}, toItems(profiles), createContext(profiles, profiles[0]));
+
     buttons[1].listeners.get('click')();
-    bars[1].listeners.get('click')();
+    buttons[0].listeners.get('click')();
 
-    assert.equal(bars[0].listeners.has('click'), false);
-    assert.deepEqual(actions, [
-        ['toggleProfile', profiles[0].profile],
-        ['toggleProfile', profiles[1].profile],
-        ['selectProfile', profiles[1].profile]
-    ]);
+    assert.deepEqual(el.children.slice(0, 4), [buttons[0], bars[0], buttons[1], bars[1]]);
+    assert.deepEqual(actions, [['toggleProfile', profiles[1]], ['toggleProfile', profiles[0]]]);
 });
 
-test('histograms of the profiles are placed in the time range of all profiles', async () => {
-    const { histograms } = await render();
-    const query = jora.setup({ methods });
+test('each bar has the tooltip of its profile', async () => {
+    const profiles = await createProfiles();
+    const { bars, tooltips } = render({}, toItems(profiles), createContext(profiles, null));
 
-    // Profiles of 100–200 and 150–250 take the first two thirds and the last two thirds of the range, to a bin
-    const measurePlacement = histogram => {
-        const { skip, total, bins } = query(histogram.config.data)(histogram.data, {});
-        let first = -1;
-        let last = -1;
+    assert.deepEqual(tooltips, [[bars[0], profiles[0]], [bars[1], profiles[1]]]);
+});
 
-        for (let i = 0; i < bins.length; i++) {
-            if (bins[i] > 0) {
-                if (first === -1) {
-                    first = i;
-                }
+test('each bar has a histogram of its profile over the time of all profiles', async () => {
+    const profiles = await createProfiles();
+    const items = toItems(profiles);
+    const { bars, histograms } = render({}, items, createContext(profiles, null));
+    const evaluate = histogram => query(histogram.config.data)(histogram.data, {});
+    const results = histograms.map(evaluate);
 
-                last = i;
-            }
-        }
-
-        return { skip, total, span: [first / bins.length, (last + 1) / bins.length] };
-    };
-    const placements = histograms.map(measurePlacement);
-
-    assert.deepEqual(placements.map(placement => [placement.skip, placement.total]), [[0, 150], [50, 150]]);
-    assert.equal(placements[0].span[0], 0);
-    assert.ok(Math.abs(placements[0].span[1] - 2 / 3) < 0.01);
-    assert.ok(Math.abs(placements[1].span[0] - 1 / 3) < 0.01);
-    assert.equal(placements[1].span[1], 1);
+    assert.deepEqual(histograms.map(histogram => histogram.target), bars);
+    assert.deepEqual(histograms.map(histogram => histogram.data.profile), profiles);
+    assert.deepEqual(histograms[0].data.profiles, items);
+    assert.equal(histograms[0].config.binsMax, true);
+    assert.deepEqual(results.map(result => [result.skip, result.total]), [[0, 150], [50, 150]]);
+    assert.deepEqual(results.map(result => nonzeroSpan(result.bins)), [[0, 2 / 3], [1 / 3, 1]]);
 });
 
 test.each([
-    { name: 'without the primary profile among the profiles', options: { primary: 2 } },
-    { name: 'for an empty range', options: { props: { startTime: 100, endTime: 100 } } }
+    {
+        name: 'without a primary profile',
+        props: {},
+        primary: () => null
+    },
+    {
+        name: 'for a primary profile without a bar',
+        props: {},
+        primary: () => ({ timeline: {} })
+    },
+    {
+        name: 'for an empty range',
+        props: { startTime: 100, endTime: 100 },
+        primary: profiles => profiles[0]
+    }
 ])('no viewport ruler is shown $name', async row => {
-    const { el, ruler } = await render(row.options);
+    const profiles = await createProfiles();
+    const view = render(row.props, toItems(profiles), createContext(profiles, row.primary(profiles)));
 
-    assert.equal(ruler, undefined);
-    assert.equal(el.children.some(child => child.className === 'viewport-window'), false);
+    assert.equal(view.ruler, undefined);
+    assert.equal(view.viewportWindow, undefined);
+    assert.equal(view.zoomWindow, undefined);
+    assert.equal(view.selections, undefined);
 });
 
-test('the ruler of the primary bar starts over the whole range without a viewport', async () => {
-    const { el, bars, ruler } = await render();
-    const windows = el.children.filter(child => child.className.endsWith('-window'));
-    const windowStates = windows.map(window => [window.className, window.hidden]);
+test('the ruler of the primary bar spans the range of all profiles, without labels and grid', async () => {
+    const { bars, ruler } = await renderPrimary();
 
     assert.equal(ruler.target, bars[0]);
     assert.deepEqual({ ...ruler.config.range }, { start: 100, end: 250 });
-    assert.equal(ruler.config.selection, null);
-    assert.deepEqual(windowStates, [['viewport-window', true], ['zoom-window', true]]);
+    assert.equal(ruler.config.labels, false);
+    assert.equal(ruler.config.grid, false);
 });
 
-test('the viewport and the zoom within it are followed by their windows, the viewport by the ruler selection', async () => {
-    const { el, line, ruler } = await render();
-    const viewportWindow = el.children.find(child => child.className === 'viewport-window');
-    const zoomWindow = el.children.find(child => child.className === 'zoom-window');
-    const selections = [];
-    const api = { state: { selection: null }, setSelection: selection => selections.push(selection) };
-    const cleanup = ruler.config.onInit(api);
+test.each([
+    {
+        name: 'no viewport',
+        viewport: null,
+        selection: null,
+        window: [true, 0, 1]
+    },
+    {
+        name: 'a viewport',
+        viewport: { start: 130, end: 160 },
+        selection: { start: 130, end: 160 },
+        window: [false, 0.2, 0.4]
+    }
+])('with $name requested, the ruler selection and the viewport window start at it', async row => {
+    const profiles = await createProfiles();
+    const line = profiles[0].timeline;
 
+    line.viewport.selection.setRanges(row.viewport && [row.viewport]);
+
+    const view = render({}, toItems(profiles), createContext(profiles, profiles[0]));
+
+    assert.deepEqual(view.ruler.config.selection, row.selection);
+    assert.deepEqual(windowState(view.viewportWindow), row.window);
+    assert.deepEqual(windowState(view.zoomWindow), [true, 0, 1]);
+});
+
+test('with a zoom requested, the zoom window starts at it', async () => {
+    const profiles = await createProfiles();
+
+    profiles[0].timeline.zoom.selection.setRange(145, 160);
+
+    const view = render({}, toItems(profiles), createContext(profiles, profiles[0]));
+
+    assert.deepEqual(windowState(view.zoomWindow), [false, 0.3, 0.4]);
+});
+
+test.each([
+    {
+        name: 'a viewport',
+        change: line => line.viewport.selection.setRange(130, 160),
+        viewport: [false, 0.2, 0.4],
+        zoom: [true, 0, 1]
+    },
+    {
+        name: 'a zoom',
+        change: line => line.zoom.selection.setRange(145, 160),
+        viewport: [true, 0, 1],
+        zoom: [false, 0.3, 0.4]
+    }
+])('windows follow a request of $name', async row => {
+    const view = await renderPrimary();
+
+    view.ruler.config.onInit(createRulerApi(null));
+    row.change(view.line);
+
+    assert.deepEqual(windowState(view.viewportWindow), row.viewport);
+    assert.deepEqual(windowState(view.zoomWindow), row.zoom);
+});
+
+test('the ruler selection follows the requested viewport, not the zoom within it', async () => {
+    const { line, ruler } = await renderPrimary();
+    const api = createRulerApi(null);
+
+    ruler.config.onInit(api);
     line.viewport.selection.setRange(130, 160);
-    assert.deepEqual([viewportWindow.hidden, ...position(viewportWindow)], [false, 0.2, 0.4]);
+    assert.deepEqual(api.selections.at(-1), { start: 130, end: 160 });
 
     line.zoom.selection.setRange(145, 160);
-    assert.deepEqual([zoomWindow.hidden, ...position(zoomWindow)], [false, 0.3, 0.4]);
-    // The zoom within the viewport keeps the ruler selection
-    assert.deepEqual(selections, [{ start: 130, end: 160 }, { start: 130, end: 160 }]);
+    assert.deepEqual(api.selections.at(-1), { start: 130, end: 160 });
 
-    // A viewport requested by the ruler isn't echoed back, later changes are followed again
-    api.state.selection = { start: 175, end: 205 };
-    ruler.config.onChange(api);
-    assert.equal(selections.length, 2);
-    line.viewport.selection.setRange(100, 130);
-    assert.deepEqual(selections.at(-1), { start: 100, end: 130 });
-
-    cleanup();
-    line.viewport.selection.setRange(130, 160);
-    line.zoom.selection.setRange(140, 150);
-    assert.equal(selections.length, 3);
-    assert.deepEqual(position(viewportWindow), [0, 0.2]);
     line.viewport.resetRange();
+    assert.equal(api.selections.at(-1), null);
+});
+
+test('a viewport requested by the ruler is not echoed back to it', async () => {
+    const { line, ruler } = await renderPrimary();
+    const api = createRulerApi({ start: 175, end: 205 });
+
+    ruler.config.onInit(api);
+    ruler.config.onChange(api);
+    assert.deepEqual(line.viewport.selection.ranges, [{ start: 175, end: 205 }]);
+    assert.deepEqual(api.selections, []);
+
+    line.viewport.selection.setRange(100, 130);
+    assert.deepEqual(api.selections, [{ start: 100, end: 130 }]);
 });
 
 test.each([
@@ -258,41 +412,50 @@ test.each([
         hidden: true
     }
 ])('the ruler selection of $name requests the viewport of the primary timeline', async row => {
-    const { el, line, ruler } = await render();
-    const viewportWindow = el.children.find(child => child.className === 'viewport-window');
-    const api = { state: { selection: row.selection }, setSelection() {} };
-    const cleanup = ruler.config.onInit(api);
+    const { line, ruler, viewportWindow } = await renderPrimary();
+    const api = createRulerApi(row.selection);
 
+    ruler.config.onInit(api);
     line.viewport.selection.setRange(130, 160);
     ruler.config.onChange(api);
 
     assert.deepEqual(line.viewport.selection.ranges, row.ranges);
     assert.equal(viewportWindow.hidden, row.hidden);
-    cleanup();
-    line.viewport.resetRange();
 });
 
 test('ranges selected before rendering are shown over all profiles', async () => {
-    const { el } = await render({ selection: [{ start: 115, end: 130 }] });
-    const selectionsEl = el.children.find(child => child.className === 'selections');
+    const profiles = await createProfiles();
 
-    assert.deepEqual(selectionsEl.children.map(position), [[0.1, 0.2]]);
+    profiles[0].timeline.range.selection.setRanges([{ start: 115, end: 130 }]);
+
+    const { selections } = render({}, toItems(profiles), createContext(profiles, profiles[0]));
+
+    assert.deepEqual(selections.children.map(position), [[0.1, 0.2]]);
 });
 
 test('selected ranges of the primary timeline are followed while the ruler is initialized', async () => {
-    const { el, line, ruler } = await render();
-    const selectionsEl = el.children.find(child => child.className === 'selections');
+    const { line, ruler, selections } = await renderPrimary();
 
-    assert.deepEqual(selectionsEl.children, []);
-    const cleanup = ruler.config.onInit({ state: { selection: null }, setSelection() {} });
-
+    ruler.config.onInit(createRulerApi(null));
     line.range.selection.setRanges([{ start: 115, end: 130 }, { start: 220, end: 250 }]);
-    assert.deepEqual(selectionsEl.children.map(position), [[0.1, 0.2], [0.8, 1]]);
+    assert.deepEqual(selections.children.map(position), [[0.1, 0.2], [0.8, 1]]);
+
     line.range.selection.resetRange();
-    assert.deepEqual(selectionsEl.children, []);
+    assert.deepEqual(selections.children, []);
+});
+
+test('the cleanup of the ruler ends following the viewport, the zoom and selected ranges', async () => {
+    const { line, ruler, viewportWindow, zoomWindow, selections } = await renderPrimary();
+    const api = createRulerApi(null);
+    const cleanup = ruler.config.onInit(api);
 
     cleanup();
+    line.viewport.selection.setRange(130, 160);
+    line.zoom.selection.setRange(140, 150);
     line.range.selection.setRange(115, 130);
-    assert.deepEqual(selectionsEl.children, []);
-    line.range.selection.resetRange();
+
+    assert.deepEqual(api.selections, []);
+    assert.deepEqual(windowState(viewportWindow), [true, 0, 1]);
+    assert.deepEqual(windowState(zoomWindow), [true, 0, 1]);
+    assert.deepEqual(selections.children, []);
 });

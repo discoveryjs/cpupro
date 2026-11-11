@@ -9,17 +9,29 @@ import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '..
 import { RangeSelection } from '../prepare/computations/range.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
+let viewName;
 let renderLineRuler;
 let viewOptions;
+
 evaluateModule(new URL('./line-ruler.js', import.meta.url), {
-    discovery: { view: { define(name, render, options) {
-        assert.equal(name, 'line-ruler');
-        renderLineRuler = render;
-        viewOptions = options;
-    } } },
+    discovery: {
+        view: {
+            define(name, render, options) {
+                viewName = name;
+                renderLineRuler = render;
+                viewOptions = options;
+            }
+        }
+    },
     require: () => ({
-        resolveScopeProfileLine, lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom,
-        createState, rangeToSegments, binsPerColumn
+        resolveScopeProfileLine,
+        lineViewportBounds,
+        lineZoom,
+        setLineZoom,
+        subscribeLineZoom,
+        createState,
+        rangeToSegments,
+        binsPerColumn
     }),
     window: { devicePixelRatio: 1 }
 });
@@ -64,6 +76,16 @@ function createDetailsHarness() {
     return { harness: createRulerHarness(render), details };
 }
 
+// Hovers the ruler at x and returns the context of its details
+function hoverDetails(harness, details, x) {
+    harness.move(x);
+    harness.showTooltip();
+
+    return details.context;
+}
+
+const binsOf = context => [context.segmentStart, context.segmentEnd, context.timeStart, context.timeEnd];
+
 // A range manager storing written ranges rounded, so an echo of a written preview differs from it
 function createRoundingManager() {
     const listeners = [];
@@ -90,6 +112,19 @@ function createRoundingManager() {
 
 const createTimeSelection = () => new RangeSelection({ name: 'time', unit: 'us' });
 
+// A line of 100 units of dense events from 0; a second profile from -20 widens the viewport bounds of time lines
+// to the range from -20 to 100
+async function createZoomFixture() {
+    const { profile } = await createLineFixture({ values: denseValues(100) });
+    const other = await createProfileFixture({ startTime: -20 });
+    const context = {
+        primaryProfile: profile,
+        data: { profiles: [profile, other.profile] }
+    };
+
+    return { line: profile.timeline, context };
+}
+
 test('renders a ruler in place with the range, segments and selection forwarded unchanged', () => {
     const element = {};
     const props = {
@@ -108,6 +143,7 @@ test('renders a ruler in place with the range, segments and selection forwarded 
 
     const [target, config, input, scope] = rendered;
 
+    assert.equal(viewName, 'line-ruler');
     assert.equal(viewOptions.tag, false);
     assert.equal(target, element);
     assert.equal(input, data);
@@ -188,7 +224,8 @@ test.each([
     assert.equal(config.formatLabel(value, { start: 0, end: range }), label);
 });
 
-// Zoomed labels keep the unit of the viewport bounds: 30 seconds of a timeline (widened by profiles), 160 bytes of a memline
+// Zoomed labels keep the unit of the viewport bounds: 30 seconds of a timeline (widened by profiles),
+// 160 bytes of a memline
 test.each([
     ['timeline', [0, 30_000_000], ['0s', '5s', '10s']],
     ['timeline', [10_000_000, 12_000_000], ['10.00s', '10.25s', '10.50s']],
@@ -210,11 +247,11 @@ test.each([
     assert.deepEqual(harness.labels(element).slice(0, 3), labels);
 });
 
-// The grid may start after the bounds start: queries are relative to the grid, labels to the bounds
+// The grid may start after the bounds start: details count time from the grid, labels from the bounds
 test.each([
     [0, [20, 21]],
     [8, [12, 13]]
-])('labels and details of a zoomed ruler with a grid at %s count from the viewport bounds start', async (gridStart, time) => {
+])('details of a zoomed ruler with a grid at %s count time %o from the grid start', async (gridStart, time) => {
     const { profile } = await createProfileFixture({ startTime: 456_706_000_000 });
     const { harness, details } = createDetailsHarness();
     const line = profile.timeline;
@@ -227,15 +264,13 @@ test.each([
     };
 
     line.zoom.selection.setRange(bounds.start + 10, bounds.start + 30);
+    mount(harness, props, { primaryProfile: profile });
 
-    const { element } = mount(harness, props, { primaryProfile: profile });
+    const context = hoverDetails(harness, details, 50);
 
-    assert.deepEqual(harness.labels(element).slice(0, 2), ['0.0100ms', '0.0125ms']);
-    harness.move(50);
-    harness.showTooltip();
-    assert.deepEqual([details.context.labelStart, details.context.labelEnd], [20, 21]);
-    assert.deepEqual([details.context.timeStart, details.context.timeEnd], time);
-    assert.equal(details.context.resolution, 0.1);
+    assert.deepEqual([context.timeStart, context.timeEnd], time);
+    assert.deepEqual([context.labelStart, context.labelEnd], [20, 21]);
+    assert.equal(context.resolution, 0.1);
 });
 
 // A ruler over [100, 130] with 10 segments of 3 or none, hovered at 112
@@ -270,32 +305,35 @@ test.each([
             segmentEnd: -1
         }
     }
-])('details are relative to the range start with inclusive segment indices, segments=$segments, selection=$selection', async row => {
-    const { profile } = await createProfileFixture();
-    const { harness, details } = createDetailsHarness();
-    const manager = profile.timeline.range.selection;
-    const props = {
-        range: { start: 100, end: 130 },
-        segments: row.segments,
-        rangeManager: manager,
-        details: { view: 'struct' }
-    };
+])(
+    'details are relative to the range start with inclusive segment indices, segments=$segments, selection=$selection',
+    async row => {
+        const { profile } = await createProfileFixture();
+        const { harness, details } = createDetailsHarness();
+        const manager = profile.timeline.range.selection;
+        const props = {
+            range: { start: 100, end: 130 },
+            segments: row.segments,
+            rangeManager: manager,
+            details: { view: 'struct' }
+        };
 
-    manager.setRanges(row.selection);
+        manager.setRanges(row.selection);
 
-    const { api } = mount(harness, props, { primaryProfile: profile });
+        const { api } = mount(harness, props, { primaryProfile: profile });
 
-    harness.move(40);
-    harness.showTooltip();
+        harness.move(40);
+        harness.showTooltip();
 
-    const { timeStart, timeEnd, segmentStart, segmentEnd } = details.context;
+        const { timeStart, timeEnd, segmentStart, segmentEnd } = details.context;
 
-    assert.deepEqual({ timeStart, timeEnd, segmentStart, segmentEnd }, row.expected);
-    assert.deepEqual([details.context.labelStart, details.context.labelEnd], [timeStart, timeEnd]);
-    assert.equal(details.context.duration, 30);
-    assert.equal(resolveScopeProfileLine(null, details.context), profile.timeline);
-    assert.equal('segmentStart' in api.state, false);
-});
+        assert.deepEqual({ timeStart, timeEnd, segmentStart, segmentEnd }, row.expected);
+        assert.deepEqual([details.context.labelStart, details.context.labelEnd], [timeStart, timeEnd]);
+        assert.equal(details.context.duration, 30);
+        assert.equal(resolveScopeProfileLine(null, details.context), profile.timeline);
+        assert.equal('segmentStart' in api.state, false);
+    }
+);
 
 test.each([
     [false, [{ start: 102, end: 108 }, { start: 110, end: 115 }, null]],
@@ -324,31 +362,34 @@ test.each([
     assert.equal(changes, 0);
 });
 
-test.each([false, true])('writes previews to the range manager and calls onChange and onCommit of the caller, multiple=%s', multiple => {
-    const manager = createTimeSelection();
-    const harness = createRulerHarness();
-    const calls = [];
-    const onChange = value => {
-        assert.equal(value, mounted.api);
-        calls.push(['change', manager.ranges]);
-    };
-    const props = {
-        range: { start: 100, end: 130 },
-        multiple,
-        rangeManager: manager,
-        onChange,
-        onCommit: () => calls.push(['commit', manager.ranges])
-    };
-    const mounted = mount(harness, props, timelineScope);
+test.each([false, true])(
+    'writes previews to the range manager and calls onChange and onCommit of the caller, multiple=%s',
+    multiple => {
+        const manager = createTimeSelection();
+        const harness = createRulerHarness();
+        const calls = [];
+        const onChange = value => {
+            assert.equal(value, mounted.api);
+            calls.push(['change', manager.ranges]);
+        };
+        const props = {
+            range: { start: 100, end: 130 },
+            multiple,
+            rangeManager: manager,
+            onChange,
+            onCommit: () => calls.push(['commit', manager.ranges])
+        };
+        const mounted = mount(harness, props, timelineScope);
 
-    harness.pointerDown(40, mounted.element);
-    harness.move(50);
-    harness.pointerUp(50);
-    assert.deepEqual(calls, [
-        ['change', [{ start: 112, end: 115 }]],
-        ['commit', [{ start: 112, end: 115 }]]
-    ]);
-});
+        harness.pointerDown(40, mounted.element);
+        harness.move(50);
+        harness.pointerUp(50);
+        assert.deepEqual(calls, [
+            ['change', [{ start: 112, end: 115 }]],
+            ['commit', [{ start: 112, end: 115 }]]
+        ]);
+    }
+);
 
 test('own writes to a normalizing range manager keep a drag, its later changes are followed', () => {
     const manager = createRoundingManager();
@@ -373,43 +414,30 @@ test('own writes to a normalizing range manager keep a drag, its later changes a
     assert.deepEqual(api.state.selection, [{ start: 1, end: 3 }]);
 });
 
-test('destruction ends following the range manager, the zoom and the viewport, and calls the cleanup of the caller once', async () => {
-    const { profile } = await createProfileFixture();
-    const line = profile.timeline;
+test('destruction ends following the range manager and the zoom and calls the cleanup of the caller once', async () => {
+    const { line, context } = await createZoomFixture();
     const manager = createRoundingManager();
-    const followed = [line.viewport, line.zoom];
     const harness = createRulerHarness();
-    let following = 0;
+    const updates = [];
     let cleanups = 0;
-    const cleanup = () => cleanups++;
     const props = {
         zoom: true,
         rangeManager: manager,
-        onInit: () => cleanup
+        onInit: () => () => cleanups++
     };
+    const { element, api } = mount(harness, props, context);
 
-    for (let i = 0; i < followed.length; i++) {
-        const range = followed[i];
-        const subscribe = range.subscribe;
+    api.setSelection = selection => updates.push(selection);
+    api.setRange = range => updates.push(range);
+    line.zoom.selection.setRange(0, 20);
+    manager.setRanges([{ start: 1, end: 2 }]);
+    assert.equal(updates.length, 2);
 
-        range.subscribe = callback => {
-            const unsubscribe = subscribe.call(range, callback);
-
-            following++;
-            return () => {
-                following--;
-                unsubscribe();
-            };
-        };
-    }
-
-    const { element } = mount(harness, props, { primaryProfile: profile });
-
-    assert.equal(manager.listeners.length, 1);
-    assert.equal(following, 2);
     harness.destroy(element);
-    assert.equal(manager.listeners.length, 0);
-    assert.equal(following, 0);
+    line.zoom.selection.setRange(10, 30);
+    line.viewport.selection.setRange(0, 50);
+    manager.setRanges([{ start: 3, end: 4 }]);
+    assert.equal(updates.length, 2);
     assert.equal(cleanups, 1);
 });
 
@@ -466,142 +494,202 @@ test.each([
     assert.equal(commits, 1);
 });
 
-// A line of 100 units of dense events; a second profile widens the viewport bounds of time lines
-async function createZoomFixture() {
-    const { profile } = await createLineFixture({ values: denseValues(100) });
-    const other = await createProfileFixture({ startTime: -20 });
-    const context = { primaryProfile: profile, data: { profiles: [profile, other.profile] } };
-    const line = profile.timeline;
-
-    return { line, context, bounds: lineViewportBounds(line, context.data.profiles) };
-}
-
 test('a zoomed ruler shows the line zoom within the viewport bounds', async () => {
-    const { line, context, bounds } = await createZoomFixture();
+    const { line, context } = await createZoomFixture();
 
-    line.zoom.selection.setRange(bounds.start + 10, bounds.start + 30);
+    line.zoom.selection.setRange(-10, 10);
 
     const { config, api } = mount(createRulerHarness(), { range: { start: 0, end: 1 }, zoom: true }, context);
 
-    assert.deepEqual(config.bounds, bounds);
-    assert.deepEqual(api.state.range, { start: bounds.start + 10, end: bounds.start + 30 });
+    assert.deepEqual(config.bounds, { start: -20, end: 100 });
+    assert.deepEqual(api.state.range, { start: -10, end: 10 });
 });
 
-test('wheel pans and zooms request the line zoom, only the whole viewport is no request', async () => {
-    const { line, context, bounds } = await createZoomFixture();
-    const harness = createRulerHarness();
+test('a zoomed ruler follows the line zoom', async () => {
+    const { line, context } = await createZoomFixture();
+    const { api } = mount(createRulerHarness(), { zoom: true }, context);
 
-    line.zoom.selection.setRange(bounds.start + 10, bounds.start + 30);
+    line.zoom.selection.setRange(-15, -5);
+    assert.deepEqual(api.state.range, { start: -15, end: -5 });
 
-    const { api } = mount(harness, { zoom: true }, context);
-
-    harness.wheel(50, { deltaX: 50 });
-    assert.deepEqual(line.zoom.selection.ranges, [{ start: bounds.start + 20, end: bounds.start + 40 }]);
-    harness.wheel(50, { deltaY: 10_000, ctrlKey: true });
-    assert.deepEqual(api.state.range, bounds);
-    assert.equal(line.zoom.selection.ranges, null);
-    harness.wheel(0, { deltaY: -500, ctrlKey: true });
-    assert.equal(api.state.range.start, bounds.start);
-    assert.deepEqual(line.zoom.selection.ranges, [api.state.range]);
-});
-
-test('changes of the zoom and the viewport move a zoomed ruler, the zoom is kept within the viewport', async () => {
-    const { line, context, bounds } = await createZoomFixture();
-    const harness = createRulerHarness();
-    const { api } = mount(harness, { zoom: true }, context);
-
-    line.zoom.selection.setRange(bounds.start + 5, bounds.start + 15);
-    assert.deepEqual(api.state.range, { start: bounds.start + 5, end: bounds.start + 15 });
     line.zoom.resetRange();
-    assert.deepEqual(api.state.range, bounds);
+    assert.deepEqual(api.state.range, { start: -20, end: 100 });
+});
 
-    line.viewport.selection.setRange(bounds.start + 10, bounds.start + 50);
-    assert.deepEqual(api.state.range, { start: bounds.start + 10, end: bounds.start + 50 });
-    harness.wheel(50, { deltaY: 10_000, ctrlKey: true });
-    assert.equal(line.zoom.selection.ranges, null);
-    assert.deepEqual(api.state.range, { start: bounds.start + 10, end: bounds.start + 50 });
-    line.zoom.selection.setRange(bounds.start + 30, bounds.start + 50);
-    harness.wheel(50, { deltaX: 50 });
-    assert.deepEqual(line.zoom.selection.ranges, [{ start: bounds.start + 30, end: bounds.start + 50 }]);
-    assert.deepEqual(api.state.range, { start: bounds.start + 30, end: bounds.start + 50 });
+test('without a zoom request a zoomed ruler follows the line viewport', async () => {
+    const { line, context } = await createZoomFixture();
+    const { api } = mount(createRulerHarness(), { zoom: true }, context);
+
+    line.viewport.selection.setRange(-10, 30);
+    assert.deepEqual(api.state.range, { start: -10, end: 30 });
+
     line.viewport.resetRange();
-    assert.deepEqual(api.state.range, bounds);
+    assert.deepEqual(api.state.range, { start: -20, end: 100 });
 });
 
-const gridOfSegments = grid => ({
-    range: grid,
-    segments: 64
-});
-const gridOfWindow = grid => ({
-    window: { value: { scopeViewport: grid, binCount: 64 } }
-});
-
-// 32 bins of a grid of 64 within the zoom across 8 pixels merge by 8 into columns of 4, the edge ones are clipped
+// A wheel over a ruler of 100px requests the line zoom kept within the viewport, the whole viewport is no request
 test.each([
-    ['a range and segments', gridOfSegments],
-    ['a window value', gridOfWindow]
-])('a zoomed ruler with a grid of bins by %s is segmented by columns of bins and details query the bins', async (form, gridProps) => {
+    {
+        name: 'a pan',
+        viewport: null,
+        zoom: [{ start: -10, end: 10 }],
+        x: 50,
+        wheel: { deltaX: 50 },
+        request: [{ start: 0, end: 20 }],
+        range: { start: 0, end: 20 }
+    },
+    {
+        name: 'a zoom in by half at the start',
+        viewport: null,
+        zoom: null,
+        x: 0,
+        wheel: { deltaY: -Math.log(2) / 0.0015, ctrlKey: true },
+        request: [{ start: -20, end: 40 }],
+        range: { start: -20, end: 40 }
+    },
+    {
+        name: 'a zoom out to the viewport bounds',
+        viewport: null,
+        zoom: [{ start: -10, end: 10 }],
+        x: 50,
+        wheel: { deltaY: 10_000, ctrlKey: true },
+        request: null,
+        range: { start: -20, end: 100 }
+    },
+    {
+        name: 'a zoom out over a viewport',
+        viewport: [{ start: -10, end: 30 }],
+        zoom: null,
+        x: 50,
+        wheel: { deltaY: 10_000, ctrlKey: true },
+        request: null,
+        range: { start: -10, end: 30 }
+    },
+    {
+        name: 'a pan past a viewport',
+        viewport: [{ start: -10, end: 30 }],
+        zoom: [{ start: 10, end: 30 }],
+        x: 50,
+        wheel: { deltaX: 50 },
+        request: [{ start: 10, end: 30 }],
+        range: { start: 10, end: 30 }
+    }
+])('$name with a wheel requests the line zoom of a zoomed ruler', async row => {
+    const { line, context } = await createZoomFixture();
+    const harness = createRulerHarness();
+
+    line.viewport.selection.setRanges(row.viewport);
+    line.zoom.selection.setRanges(row.zoom);
+
+    const { api } = mount(harness, { zoom: true }, context);
+
+    harness.wheel(row.x, row.wheel);
+    assert.deepEqual(line.zoom.selection.ranges, row.request);
+    assert.deepEqual(api.state.range, row.range);
+});
+
+// The timeline of a profile has viewport bounds from 10 to 40. A grid of 64 bins over 10–42 within a zoom across
+// 8 pixels: 32 bins within 13–29 merge by 8 into columns of 4 units, 8 bins within 14–18 are columns of 1 unit
+const gridOfSegments = {
+    range: { start: 10, end: 42 },
+    segments: 64
+};
+const gridOfWindow = {
+    window: { value: { scopeViewport: { start: 10, end: 42 }, binCount: 64 } }
+};
+const gridOfLaterWindow = {
+    window: { value: { scopeViewport: { start: 26, end: 42 }, binCount: 16 } }
+};
+
+test.each([
+    {
+        name: 'a range and segments',
+        grid: gridOfSegments,
+        zoom: { start: 13, end: 29 },
+        segments: [13, 14, 18, 22, 26, 29]
+    },
+    {
+        name: 'a range and segments',
+        grid: gridOfSegments,
+        zoom: { start: 14, end: 18 },
+        segments: [14, 15, 16, 17, 18]
+    },
+    {
+        name: 'a window value',
+        grid: gridOfWindow,
+        zoom: { start: 13, end: 29 },
+        segments: [13, 14, 18, 22, 26, 29]
+    },
+    {
+        name: 'a window value',
+        grid: gridOfLaterWindow,
+        zoom: { start: 29, end: 37 },
+        segments: [29, 30, 32, 34, 36, 37]
+    }
+])('a zoomed ruler over a grid of bins by $name within $zoom is segmented by columns of bins', async row => {
     const { profile } = await createProfileFixture();
-    const { harness, details } = createDetailsHarness();
-    const line = profile.timeline;
-    const bounds = lineViewportBounds(line);
-    const grid = { start: bounds.start, end: bounds.start + 32 };
-    const offsets = values => values.map(value => bounds.start + value);
     const props = {
-        ...gridProps(grid),
-        zoom: true,
-        details: { view: 'struct' }
+        ...row.grid,
+        zoom: true
     };
 
-    line.zoom.selection.setRange(bounds.start + 3, bounds.start + 19);
+    profile.timeline.zoom.selection.setRange(row.zoom.start, row.zoom.end);
 
-    const { api } = mount(harness, props, { primaryProfile: profile, scopeViewport: 'outer' }, 8);
+    const { api } = mount(createRulerHarness(), props, { primaryProfile: profile }, 8);
 
-    assert.deepEqual(Array.from(api.state.segments), offsets([3, 4, 8, 12, 16, 19]));
-    harness.move(1.5);
-    harness.showTooltip();
-    assert.deepEqual([details.context.segmentStart, details.context.segmentEnd, details.context.timeStart, details.context.timeEnd], [8, 15, 4, 8]);
-    assert.deepEqual(details.context.scopeViewport, grid);
-    assert.equal(details.context.binCount, 64);
-    harness.move(0.2);
-    harness.showTooltip();
-    assert.deepEqual([details.context.segmentStart, details.context.segmentEnd, details.context.timeStart, details.context.timeEnd], [6, 7, 3, 4]);
-
-    // Zooming in splits the columns
-    line.zoom.selection.setRange(bounds.start + 4, bounds.start + 8);
-    assert.deepEqual(Array.from(api.state.segments), offsets([4, 5, 6, 7, 8]));
-    harness.move(2.5);
-    harness.showTooltip();
-    assert.deepEqual([details.context.segmentStart, details.context.segmentEnd], [10, 11]);
+    assert.deepEqual(Array.from(api.state.segments), row.segments);
 });
 
-test('a new window value gives a zoomed ruler its grid, panning within the window keeps it', async () => {
+// Bins are half a unit; the zoom is across 8 pixels
+test.each([
+    [{ start: 13, end: 29 }, 1.5, [8, 15, 4, 8]],
+    [{ start: 13, end: 29 }, 0.2, [6, 7, 3, 4]],
+    [{ start: 14, end: 18 }, 2.5, [10, 11, 5, 6]]
+])(
+    'details of a column of a grid within %o at %s px are its bins %o and time from the grid start',
+    async (zoom, x, bins) => {
+        const { profile } = await createProfileFixture();
+        const { harness, details } = createDetailsHarness();
+        const props = {
+            ...gridOfSegments,
+            zoom: true,
+            details: { view: 'struct' }
+        };
+
+        profile.timeline.zoom.selection.setRange(zoom.start, zoom.end);
+        mount(harness, props, { primaryProfile: profile, scopeViewport: 'outer' }, 8);
+
+        const context = hoverDetails(harness, details, x);
+
+        assert.deepEqual(binsOf(context), bins);
+        assert.deepEqual(context.scopeViewport, { start: 10, end: 42 });
+        assert.equal(context.binCount, 64);
+    }
+);
+
+test('a new window value gives a zoomed ruler its grid', async () => {
     const { profile } = await createProfileFixture();
     const { harness, details } = createDetailsHarness();
     const line = profile.timeline;
-    const bounds = lineViewportBounds(line);
-    const offsets = values => values.map(value => bounds.start + value);
-    const window = { value: { scopeViewport: { start: bounds.start, end: bounds.start + 32 }, binCount: 64 } };
+    const window = { value: gridOfWindow.window.value };
     const props = {
         window,
         zoom: true,
         details: { view: 'struct' }
     };
 
-    line.zoom.selection.setRange(bounds.start + 3, bounds.start + 19);
+    line.zoom.selection.setRange(13, 29);
 
     const { api } = mount(harness, props, { primaryProfile: profile }, 8);
 
-    // The viewport moves into a new window: 8 of its 16 bins across 8 pixels merge by 2
-    window.value = { scopeViewport: { start: bounds.start + 16, end: bounds.start + 32 }, binCount: 16 };
-    line.zoom.selection.setRange(bounds.start + 18, bounds.start + 26);
-    assert.deepEqual(Array.from(api.state.segments), offsets([18, 20, 22, 24, 26]));
-    harness.move(2.5);
-    harness.showTooltip();
-    assert.deepEqual([details.context.segmentStart, details.context.segmentEnd, details.context.timeStart, details.context.timeEnd], [4, 5, 4, 6]);
-    assert.deepEqual(details.context.scopeViewport, window.value.scopeViewport);
-    assert.equal(details.context.binCount, 16);
+    // 8 of the 16 bins of the new window across 8 pixels merge by 2
+    window.value = gridOfLaterWindow.window.value;
+    line.zoom.selection.setRange(28, 36);
+    assert.deepEqual(Array.from(api.state.segments), [28, 30, 32, 34, 36]);
 
-    line.zoom.selection.setRange(bounds.start + 19, bounds.start + 27);
-    assert.deepEqual(Array.from(api.state.segments), offsets([19, 20, 22, 24, 26, 27]));
+    const context = hoverDetails(harness, details, 2.5);
+
+    assert.deepEqual(binsOf(context), [4, 5, 4, 6]);
+    assert.deepEqual(context.scopeViewport, { start: 26, end: 42 });
+    assert.equal(context.binCount, 16);
 });

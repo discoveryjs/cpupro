@@ -29,9 +29,11 @@ function loadViews(globals) {
 
     evaluateModule(new URL('./update-on-line-metrics-changes.js', import.meta.url), {
         discovery: {
-            view: { define(name, render) {
-                views[name] = render;
-            } },
+            view: {
+                define(name, render) {
+                    views[name] = render;
+                }
+            },
             query
         },
         HTMLElement: class {},
@@ -87,8 +89,10 @@ async function createHarness(settings = {}) {
             return resume;
         },
         async flush() {
-            for (const callback of debounced.splice(0)) {
-                callback();
+            const pending = debounced.splice(0);
+
+            for (let i = 0; i < pending.length; i++) {
+                pending[i]();
             }
 
             for (const [id, callback] of frames) {
@@ -178,9 +182,9 @@ async function createValueHarness(settings) {
 test.each([false, true])('coalesces notifications into one render per frame (multiple sources: %s)', async multiple => {
     const harness = await createHarness({ multiple });
 
-    for (const source of harness.sources) {
-        source.emit();
-        source.emit();
+    for (let i = 0; i < harness.sources.length; i++) {
+        harness.sources[i].emit();
+        harness.sources[i].emit();
     }
     await harness.flush();
 
@@ -198,22 +202,25 @@ test.each([
     assert.deepEqual(harness.debounceOptions, options);
 });
 
-test.each([false, true])('stops rendering and unsubscribes from all sources on destroy (debounce: %s)', async debounce => {
-    const harness = await createHarness({ multiple: true, debounce });
+test.each([false, true])(
+    'stops rendering and unsubscribes from all sources on destroy (debounce: %s)',
+    async debounce => {
+        const harness = await createHarness({ multiple: true, debounce });
 
-    for (const source of harness.sources) {
-        assert.equal(source.listeners.size, 1);
+        for (let i = 0; i < harness.sources.length; i++) {
+            assert.equal(harness.sources[i].listeners.size, 1);
+        }
+
+        harness.sources[0].emit();
+        harness.element.onDestroy();
+        await harness.flush();
+
+        assert.equal(harness.renders, 1);
+        for (let i = 0; i < harness.sources.length; i++) {
+            assert.equal(harness.sources[i].listeners.size, 0);
+        }
     }
-
-    harness.sources[0].emit();
-    harness.element.onDestroy();
-    await harness.flush();
-
-    assert.equal(harness.renders, 1);
-    for (const source of harness.sources) {
-        assert.equal(source.listeners.size, 0);
-    }
-});
+);
 
 test('does not commit a render superseded before completion', async () => {
     const harness = await createHarness();
@@ -290,54 +297,60 @@ test('renders its content with a value shared through the context of nested view
     assert.equal(harness.context.totals, undefined);
 });
 
-test.each([false, true])('computes a value on the first read after a change of any of its metrics, once for all readers (multiple sources: %s)', async multiple => {
-    let computed = 0;
-    const harness = await createValueHarness({
-        multiple,
-        name: 'totals',
-        value: 'totals',
-        results: { totals: () => ++computed }
-    });
-    const { totals } = harness.rendered.context;
+test.each([false, true])(
+    'computes a value on the first read after any of its metrics changes, once for all readers (multiple sources: %s)',
+    async multiple => {
+        let computed = 0;
+        const harness = await createValueHarness({
+            multiple,
+            name: 'totals',
+            value: 'totals',
+            results: { totals: () => ++computed }
+        });
+        const { totals } = harness.rendered.context;
 
-    assert.equal(computed, 0);
-    assert.equal(totals.value, 1);
-    assert.equal(totals.value, 1);
-    assert.deepEqual(harness.queries, [['totals', harness.data, harness.context]]);
+        assert.equal(computed, 0);
+        assert.equal(totals.value, 1);
+        assert.equal(totals.value, 1);
+        assert.deepEqual(harness.queries, [['totals', harness.data, harness.context]]);
 
-    for (let i = 0; i < harness.sources.length; i++) {
-        harness.sources[i].emit();
-        assert.equal(computed, i + 1);
-        assert.equal(totals.value, i + 2);
-        assert.equal(totals.value, i + 2);
+        for (let i = 0; i < harness.sources.length; i++) {
+            harness.sources[i].emit();
+            assert.equal(computed, i + 1);
+            assert.equal(totals.value, i + 2);
+            assert.equal(totals.value, i + 2);
+        }
     }
-});
+);
 
-test.each([false, true])('readers follow all metrics of a value until they unsubscribe, the view until destroyed (multiple sources: %s)', async multiple => {
-    const harness = await createValueHarness({
-        multiple,
-        name: 'totals',
-        value: 'totals',
-        results: { totals: () => 1 }
-    });
-    let notified = 0;
-    const unsubscribe = harness.rendered.context.totals.subscribe(() => notified++);
+test.each([false, true])(
+    'readers follow all metrics of a value until they unsubscribe, the view until destroyed (multiple sources: %s)',
+    async multiple => {
+        const harness = await createValueHarness({
+            multiple,
+            name: 'totals',
+            value: 'totals',
+            results: { totals: () => 1 }
+        });
+        let notified = 0;
+        const unsubscribe = harness.rendered.context.totals.subscribe(() => notified++);
 
-    for (let i = 0; i < harness.sources.length; i++) {
-        harness.sources[i].emit();
+        for (let i = 0; i < harness.sources.length; i++) {
+            harness.sources[i].emit();
+        }
+        assert.equal(notified, harness.sources.length);
+
+        unsubscribe();
+        for (let i = 0; i < harness.sources.length; i++) {
+            assert.equal(harness.sources[i].listeners.size, 1);
+        }
+
+        harness.element.onDestroy();
+        for (let i = 0; i < harness.sources.length; i++) {
+            assert.equal(harness.sources[i].listeners.size, 0);
+        }
     }
-    assert.equal(notified, harness.sources.length);
-
-    unsubscribe();
-    for (let i = 0; i < harness.sources.length; i++) {
-        assert.equal(harness.sources[i].listeners.size, 1);
-    }
-
-    harness.element.onDestroy();
-    for (let i = 0; i < harness.sources.length; i++) {
-        assert.equal(harness.sources[i].listeners.size, 0);
-    }
-});
+);
 
 test('computes a value in a context given by a query at the time of computing', async () => {
     let window = 'first';

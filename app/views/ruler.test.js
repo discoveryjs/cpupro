@@ -74,6 +74,10 @@ function setup(options = {}, render) {
 }
 
 const callTypes = view => view.calls.map(call => call.type);
+const interval = view => [
+    view.element.style.values.get('--selection-start'),
+    view.element.style.values.get('--selection-end')
+];
 const escape = {
     key: 'Escape',
     preventDefault() {}
@@ -89,11 +93,13 @@ test('renders numeric labels by default and passes the value, the range and the 
     harness.render(formatted, { range: 100, formatLabel }, null, {});
     assert.deepEqual(harness.labels(element), ['0', '10', '20', '30', '40', '50', '60', '70', '80', '90']);
     assert.deepEqual(harness.labels(formatted), [
-        '0/100/10', '10/100/10', '20/100/10', '30/100/10', '40/100/10', '50/100/10', '60/100/10', '70/100/10', '80/100/10', '90/100/10'
+        '0/100/10', '10/100/10', '20/100/10', '30/100/10', '40/100/10',
+        '50/100/10', '60/100/10', '70/100/10', '80/100/10', '90/100/10'
     ]);
 });
 
-// Steps are 1, 2.5 or 5 times a power of ten, at most a tenth of the range; no marker is within a tenth of a step of the end
+// Steps are 1, 2.5 or 5 times a power of ten, at most a tenth of the range; no marker is within a tenth of a step
+// of the end
 test.each([
     [[0, 1], ['0.00', '0.25', '0.50', '0.75']],
     [[0, 0.25], ['0.00', '0.05', '0.10', '0.15', '0.20']],
@@ -145,49 +151,57 @@ test.each([
     assert.equal(view.element.children.some(child => child.className === 'interval-marker'), row.markers);
 });
 
-test('an empty range has no markers and ignores the pointer', () => {
+test('an empty range ignores the pointer', () => {
     let shown = 0;
     const render = () => shown++;
     const view = setup({ range: [100, 100], details: 'struct' }, render);
 
-    assert.deepEqual(view.harness.labels(view.element), []);
     view.move(50);
     view.harness.showTooltip();
     view.down(50);
     view.move(80);
     view.up(80);
+
     assert.equal(shown, 0);
     assert.deepEqual(view.calls, []);
     assert.equal(view.api.state.selection, null);
+});
+
+test('a selection over an empty range covers none of it', () => {
+    const view = setup({ range: [100, 100] });
 
     view.api.setSelection({ start: 100, end: 100 });
-    assert.equal(view.element.style.values.get('--selection-start'), 0);
-    assert.equal(view.element.style.values.get('--selection-end'), 0);
+
+    assert.deepEqual(interval(view), [0, 0]);
 });
 
 test.each([
-    [false, { start: -0.5, end: 0.25 }, { start: -2, end: 3 }],
-    [true, [{ start: -0.5, end: 0.25 }], [{ start: -2, end: 3 }]]
-])('previews and commits in the configured selection format, multiple=%s', (multiple, preview, external) => {
+    [false, { start: -0.5, end: 0.25 }],
+    [true, [{ start: -0.5, end: 0.25 }]]
+])('a drag previews and commits a selection in the configured format, multiple=%s', (multiple, selection) => {
     const view = setup({ range: [-1, 1], multiple });
-    const { api } = view;
 
-    view.move(25);
-    assert.equal(api.state.selection, null);
     view.down(25);
     view.move(62.5);
-    assert.deepEqual(api.state.selection, preview);
-    assert.equal(view.element.style.values.get('--selection-start'), 0.25);
-    assert.equal(view.element.style.values.get('--selection-end'), 0.625);
+    assert.deepEqual(view.api.state.selection, selection);
+    assert.deepEqual(interval(view), [0.25, 0.625]);
     assert.deepEqual(callTypes(view), ['change']);
+
     view.up(62.5);
-    assert.deepEqual(callTypes(view), ['change', 'commit']);
-    api.setSelection(external);
-    assert.deepEqual(callTypes(view), ['change', 'commit']);
+    assert.deepEqual(view.calls.at(-1), { type: 'commit', selection });
+});
+
+test.each([
+    [false, { start: -0.5, end: 0.25 }],
+    [true, [{ start: -0.5, end: 0.25 }]]
+])('a click resets a selection with a change and a commit, multiple=%s', (multiple, selection) => {
+    const view = setup({ range: [-1, 1], multiple, selection });
+
     view.down(90);
     view.up(90);
-    assert.equal(api.state.selection, null);
-    assert.deepEqual(callTypes(view), ['change', 'commit', 'change', 'commit']);
+
+    assert.equal(view.api.state.selection, null);
+    assert.deepEqual(view.calls, [{ type: 'change', selection: null }, { type: 'commit', selection: null }]);
 });
 
 // A press at (25, 5) over a selection: a smaller move is a click resetting it, a longer one starts a new selection
@@ -239,24 +253,27 @@ test.each([
     null,
     10,
     [100, 110, 140, 200]
-])('highlights the pointer side and captures the pointer when creating a selection inside a segment, segments=%o', segments => {
-    const view = setup({ segments });
-    const steps = [[70, 'finish'], [10, 'start'], [27, 'finish'], [23, 'start']];
+])(
+    'highlights the pointer side and captures the pointer when creating a selection inside a segment, segments=%o',
+    segments => {
+        const view = setup({ segments });
+        const steps = [[70, 'finish'], [10, 'start'], [27, 'finish'], [23, 'start']];
 
-    view.down(25);
-    for (let i = 0; i < steps.length; i++) {
-        const [pointer, active] = steps[i];
+        view.down(25);
+        for (let i = 0; i < steps.length; i++) {
+            const [pointer, active] = steps[i];
 
-        view.move(pointer);
-        assert.equal(view.element.dataset.activeTrigger, active);
-        assert.equal(view.element.dataset.state, 'selecting');
-        assert.equal(view.element.hasPointerCapture(1), true);
+            view.move(pointer);
+            assert.equal(view.element.dataset.activeTrigger, active);
+            assert.equal(view.element.dataset.state, 'selecting');
+            assert.equal(view.element.hasPointerCapture(1), true);
+        }
+        view.up(23);
+        assert.equal(view.element.dataset.state, 'selected');
+        assert.equal(view.element.dataset.activeTrigger, 'none');
+        assert.equal(view.element.hasPointerCapture(1), false);
     }
-    view.up(23);
-    assert.equal(view.element.dataset.state, 'selected');
-    assert.equal(view.element.dataset.activeTrigger, 'none');
-    assert.equal(view.element.hasPointerCapture(1), false);
-});
+);
 
 // The selection is moved by 15px and its finish handle dragged to 99px
 test.each([
@@ -299,26 +316,34 @@ test.each([null, 100])('jumps across the original resize anchor after reaching t
     assert.deepEqual(view.api.state.selection, { start: 40, end: 80 });
 });
 
-test.each([50, 200])('uses one CSS pixel for continuous pointer resize and retains committed coordinates, width=%s', width => {
+test.each([
+    [50, -0.5 + 2 / 50],
+    [200, -0.5 + 2 / 200]
+])('a continuous resize on a ruler of %s px stops at one CSS pixel and is committed there', (width, end) => {
     const view = setup({ range: [-1, 1], selection: { start: -0.5, end: 0.5 } });
-    const minimum = { start: -0.5, end: -0.5 + 2 / width };
-    const external = [{ start: 0, end: 0 }, { start: 0, end: 0.0001 }];
+    const minimum = { start: -0.5, end };
 
     view.element.width = width;
     view.down(width * 0.75 + 2, view.handle('finish'));
     view.move(width * 0.25 + 2);
     assert.deepEqual(view.api.state.selection, minimum);
+
     view.up(width * 0.25 + 2);
     assert.deepEqual(view.calls.at(-1), { type: 'commit', selection: minimum });
+});
 
-    view.element.width = width / 2;
-    view.move(width / 4);
-    assert.deepEqual(view.api.state.selection, minimum);
-    for (let i = 0; i < external.length; i++) {
-        view.api.setSelection(external[i]);
-        view.move(width / 4);
-        assert.deepEqual(view.api.state.selection, external[i]);
-    }
+test.each([
+    { start: 0, end: 0 },
+    { start: 0, end: 0.0001 }
+])('a selection %o narrower than a pixel stays exact on hover and a width change', selection => {
+    const view = setup({ range: [-1, 1] });
+
+    view.api.setSelection(selection);
+    view.move(25);
+    view.element.width = 50;
+    view.move(25);
+
+    assert.deepEqual(view.api.state.selection, selection);
 });
 
 test.each([25, 100])('retains a one-pixel selection when a new continuous drag returns to its anchor=%s', anchor => {
@@ -412,28 +437,53 @@ test('a press on the selection shows it as edited until Escape restores it', () 
     assert.deepEqual(view.calls, []);
 });
 
-test('the pointer leaving the document ends a hover and a press but not a drag', () => {
-    const view = setup();
-    const leave = view.harness.globalEvents.get('pointerleave');
-
-    view.move(25);
-    assert.equal(view.element.dataset.state, 'hovered');
-    leave();
-    assert.equal(view.element.dataset.state, 'none');
-
+const hover = view => view.move(25);
+const press = view => {
     view.api.setSelection({ start: 120, end: 130 });
     view.down(25);
-    leave();
-    view.up(25);
-    assert.deepEqual(view.api.state.selection, { start: 120, end: 130 });
-    assert.deepEqual(view.calls, []);
-
+};
+const drag = view => {
     view.down(25);
     view.move(50);
-    leave();
+};
+
+test.each([
+    {
+        name: 'a hover',
+        gesture: hover,
+        state: 'hovered',
+        left: 'none',
+        selection: null,
+        calls: []
+    },
+    {
+        name: 'a press',
+        gesture: press,
+        state: 'selected',
+        left: 'selected',
+        selection: { start: 120, end: 130 },
+        calls: []
+    },
+    {
+        name: 'a drag',
+        gesture: drag,
+        state: 'selecting',
+        left: 'selecting',
+        selection: { start: 125, end: 150 },
+        calls: ['change', 'commit']
+    }
+])('the pointer leaving the document during $name leaves the ruler $left', row => {
+    const view = setup();
+
+    row.gesture(view);
+    assert.equal(view.element.dataset.state, row.state);
+
+    view.harness.globalEvents.get('pointerleave')();
+    assert.equal(view.element.dataset.state, row.left);
+
     view.up(50);
-    assert.deepEqual(view.api.state.selection, { start: 125, end: 150 });
-    assert.deepEqual(callTypes(view), ['change', 'commit']);
+    assert.deepEqual(view.api.state.selection, row.selection);
+    assert.deepEqual(callTypes(view), row.calls);
 });
 
 test('dragging and text selection are prevented only over a ruler', () => {
@@ -467,8 +517,7 @@ test('hover without a selection highlights and explains a segment without select
     assert.equal(scope.ruler, view.api.state);
     assert.equal(view.api.state.selection, null);
     assert.equal(view.element.dataset.state, 'hovered');
-    assert.equal(view.element.style.values.get('--selection-start'), 0.2);
-    assert.equal(view.element.style.values.get('--selection-end'), 0.3);
+    assert.deepEqual(interval(view), [0.2, 0.3]);
     assert.equal(view.api.state.segments, segments);
 });
 
@@ -550,7 +599,8 @@ test('moving to another ruler ends the hover of the previous one', () => {
     assert.equal(other.dataset.state, 'hovered');
 });
 
-test('delivers the latest hovered target with its interval and respects competing tooltips', () => {
+// A ruler with sections under it within the parent; renders of details record their context
+function setupSections() {
     const renders = [];
     const render = (el, details, input, context) => {
         renders.push(context);
@@ -558,35 +608,59 @@ test('delivers the latest hovered target with its interval and respects competin
     const view = setup({ segments: 10, details: 'struct' }, render);
     const first = view.element.parentNode.appendChild(view.harness.createElement('first'));
     const second = view.element.parentNode.appendChild(view.harness.createElement('second'));
-    const mover = view.element.querySelector('.view-ruler__selection-overlay-mover');
+
+    return { view, renders, first, second };
+}
+
+test('details are given the interval and the last hovered element under the ruler', () => {
+    const { view, renders, first, second } = setupSections();
 
     view.harness.setActive(view.element, first);
     view.move(25);
     view.harness.setActive(view.element, second);
     view.move(25);
     view.harness.showTooltip();
+
     assert.equal(renders.length, 1);
     assert.equal(renders[0].detailTarget, second);
     assert.deepEqual(renders[0].detail, { start: 120, end: 130 });
+});
 
-    // The selection overlay retains the underlying section
+test('over the selection overlay details are given the element under it', () => {
+    const { view, renders, second } = setupSections();
+    const mover = view.element.querySelector('.view-ruler__selection-overlay-mover');
+
     view.api.setSelection({ start: 120, end: 130 });
     view.harness.setActive(view.element, mover, second);
     view.move(25);
     view.harness.showTooltip();
-    assert.equal(renders[1].detailTarget, second);
 
-    second.closest = () => second;
+    assert.equal(renders[0].detailTarget, second);
+});
+
+// Details are shown once before the hovered element gets a tooltip owner
+test.each([
+    {
+        name: 'within the parent of the ruler',
+        owner: section => section,
+        shown: 1
+    },
+    {
+        name: 'around the ruler',
+        owner: (section, harness) => harness.createElement('page'),
+        shown: 2
+    }
+])('with a tooltip owner of the hovered element $name, details are shown $shown of 2 times', row => {
+    const { view, renders, second } = setupSections();
+
     view.harness.setActive(view.element, second);
     view.move(25);
     view.harness.showTooltip();
-    assert.equal(renders.length, 2);
-
-    // A tooltip owner around the ruler does not compete with it
-    second.closest = () => view.harness.createElement('page');
+    second.closest = () => row.owner(second, view.harness);
     view.move(25);
     view.harness.showTooltip();
-    assert.equal(renders.length, 3);
+
+    assert.equal(renders.length, row.shown);
 });
 
 test.each([
@@ -594,54 +668,91 @@ test.each([
     [[{ start: 125, end: 150 }, { start: 210, end: 230 }], 'true', [['25%', '25%']]],
     [[{ start: 125, end: 150 }], 'false', []],
     [[], 'false', []]
-])('a multiple selection %o shows its visible ranges as intervals instead of the previous ones', (selection, multipleRanges, intervals) => {
-    const view = setup({ multiple: true, selection: [{ start: 100, end: 110 }, { start: 190, end: 200 }] });
-    const position = interval => [interval.style.values.get('left'), interval.style.values.get('width')];
+])(
+    'a multiple selection %o shows its visible ranges as intervals instead of the previous ones',
+    (selection, multipleRanges, intervals) => {
+        const view = setup({
+            multiple: true,
+            selection: [{ start: 100, end: 110 }, { start: 190, end: 200 }]
+        });
+        const position = interval => [interval.style.values.get('left'), interval.style.values.get('width')];
 
-    view.api.setSelection(selection);
+        view.api.setSelection(selection);
 
-    const ranges = view.element.querySelector('.view-ruler__ranges').children;
+        const ranges = view.element.querySelector('.view-ruler__ranges').children;
 
-    assert.deepEqual(view.api.state.selection, selection);
-    assert.equal(view.element.dataset.multipleRanges, multipleRanges);
-    assert.deepEqual(ranges.map(position), intervals);
-});
+        assert.deepEqual(view.api.state.selection, selection);
+        assert.equal(view.element.dataset.multipleRanges, multipleRanges);
+        assert.deepEqual(ranges.map(position), intervals);
+    }
+);
 
-test('setSelection replaces the selection without callbacks, a changed one cancels a drag and an equal one keeps it', () => {
-    const onInit = api => api.setSelection({ start: 110, end: 120 });
-    const view = setup({ onInit });
+const initSelection = api => api.setSelection({ start: 110, end: 120 });
+
+test.each([
+    ['on initialization', { onInit: initSelection }, () => {}],
+    ['after it', {}, view => initSelection(view.api)]
+])('setSelection %s replaces the selection without callbacks', (name, options, update) => {
+    const view = setup(options);
+
+    update(view);
 
     assert.deepEqual(view.api.state.selection, { start: 110, end: 120 });
     assert.deepEqual(view.calls, []);
+});
+
+// A drag from 40 to 65 previews a selection from 140 to 165
+test.each([
+    {
+        name: 'an equal selection keeps it',
+        selection: { start: 140, end: 165 },
+        calls: ['change', 'commit']
+    },
+    {
+        name: 'another selection cancels it',
+        selection: { start: 180, end: 190 },
+        calls: ['change']
+    }
+])('setSelection during a drag with $name', row => {
+    const view = setup();
 
     view.down(40);
     view.move(65);
-    view.api.setSelection({ start: 140, end: 165 });
+    view.api.setSelection(row.selection);
     view.up(65);
-    assert.deepEqual(callTypes(view), ['change', 'commit']);
 
-    view.down(40);
-    view.move(70);
-    view.api.setSelection({ start: 180, end: 190 });
-    view.up(70);
-    assert.deepEqual(view.api.state.selection, { start: 180, end: 190 });
-    assert.deepEqual(callTypes(view), ['change', 'commit', 'change']);
+    assert.deepEqual(view.api.state.selection, row.selection);
+    assert.deepEqual(callTypes(view), row.calls);
 });
 
-test('destruction releases the pointer and calls the cleanup once, later updates are inert', () => {
+// A drag from 30 to 50 of a ruler with a selection, destroyed during the drag
+function setupDestroyedDrag() {
     const view = setup({ selection: { start: 110, end: 120 } });
 
     view.down(30);
     view.move(50);
     view.destroy();
+
+    return view;
+}
+
+test('destruction releases the pointer of a drag and calls the cleanup once', () => {
+    const view = setupDestroyedDrag();
+
     view.destroy();
+
     assert.equal(view.element.hasPointerCapture(1), false);
     assert.equal(view.element.dataset.activeTrigger, 'none');
     assert.equal(view.cleanups(), 1);
+});
+
+test('after destruction updates and the release of the pointer are inert', () => {
+    const view = setupDestroyedDrag();
 
     view.api.setSelection(null);
     view.api.setRange([0, 1]);
     view.up(50);
+
     assert.deepEqual(view.api.state.selection, { start: 130, end: 150 });
     assert.deepEqual(view.api.state.range, { start: 100, end: 200 });
     assert.deepEqual(callTypes(view), ['change']);
@@ -651,54 +762,49 @@ test('setRange moves markers and the selection without notifications', () => {
     const view = setup({ selection: { start: 120, end: 130 } });
     const { api, element } = view;
 
-    assert.equal(element.style.values.get('--selection-start'), 0.2);
+    assert.deepEqual(interval(view), [0.2, 0.3]);
     api.setRange({ start: 120, end: 140 });
     assert.deepEqual(api.state.range, { start: 120, end: 140 });
     assert.equal(api.state.length, 20);
     assert.deepEqual(api.state.selection, { start: 120, end: 130 });
     assert.deepEqual(view.harness.labels(element), ['120', '122.5', '125', '127.5', '130', '132.5', '135', '137.5']);
-    assert.equal(element.style.values.get('--selection-start'), 0);
-    assert.equal(element.style.values.get('--selection-end'), 0.5);
+    assert.deepEqual(interval(view), [0, 0.5]);
 
     api.setRange([160, 120]);
     assert.deepEqual(api.state.range, { start: 120, end: 160 });
-    assert.equal(element.style.values.get('--selection-end'), 0.25);
+    assert.deepEqual(interval(view), [0, 0.25]);
     assert.deepEqual(view.calls, []);
 });
 
 // E.g. a zoomed ruler panned past a selection on either side: all of it is out of the selection
-test('a selection out of the ruler range dims all of the ruler without showing its edges', () => {
-    const { api, element } = setup({ selection: { start: 120, end: 130 } });
-    const interval = () => [
-        element.style.values.get('--selection-start'),
-        element.style.values.get('--selection-end')
-    ];
+test.each([
+    [{ start: 100, end: 200 }, 'true', [0.2, 0.3]],
+    [{ start: 140, end: 160 }, 'false', [0, 0]],
+    [{ start: 100, end: 120 }, 'false', [1, 1]],
+    [{ start: 125, end: 160 }, 'true', [0, 5 / 35]]
+])('a selection from 120 to 130 over a ruler range %o is in range: %s', (range, inRange, edges) => {
+    const view = setup({ selection: { start: 120, end: 130 } });
 
-    assert.equal(element.dataset.selectionInRange, 'true');
-    api.setRange({ start: 140, end: 160 });
-    assert.equal(element.dataset.state, 'selected');
-    assert.equal(element.dataset.selectionInRange, 'false');
-    assert.deepEqual(interval(), [0, 0]);
-    api.setRange({ start: 100, end: 120 });
-    assert.equal(element.dataset.state, 'selected');
-    assert.equal(element.dataset.selectionInRange, 'false');
-    assert.deepEqual(interval(), [1, 1]);
-    api.setRange({ start: 125, end: 160 });
-    assert.equal(element.dataset.selectionInRange, 'true');
-    assert.deepEqual(interval(), [0, 5 / 35]);
+    view.api.setRange(range);
 
-    // Ranges of a multiple selection out of the ruler range are not shown
-    const multiple = setup({
+    assert.equal(view.element.dataset.state, 'selected');
+    assert.equal(view.element.dataset.selectionInRange, inRange);
+    assert.deepEqual(interval(view), edges);
+});
+
+test.each([
+    [{ start: 100, end: 200 }, 2],
+    [{ start: 140, end: 200 }, 1],
+    [{ start: 170, end: 200 }, 0]
+])('ranges of a multiple selection out of a ruler range %o are not shown, shown %s', (range, count) => {
+    const view = setup({
         multiple: true,
         selection: [{ start: 110, end: 120 }, { start: 150, end: 160 }]
     });
-    const intervals = () => multiple.element.querySelector('.view-ruler__ranges').children.length;
 
-    assert.equal(intervals(), 2);
-    multiple.api.setRange({ start: 140, end: 200 });
-    assert.equal(intervals(), 1);
-    multiple.api.setRange({ start: 170, end: 200 });
-    assert.equal(intervals(), 0);
+    view.api.setRange(range);
+
+    assert.equal(view.element.querySelector('.view-ruler__ranges').children.length, count);
 });
 
 test('markers are reused, hidden when fewer are needed, and added before the overlay', () => {
@@ -711,13 +817,19 @@ test('markers are reused, hidden when fewer are needed, and added before the ove
     api.setRange([100, 200]);
     assert.deepEqual(markers().slice(0, 8), initial);
     assert.deepEqual(element.children.slice(0, 10), markers());
-    assert.deepEqual(view.harness.labels(element), ['100', '110', '120', '130', '140', '150', '160', '170', '180', '190']);
+    assert.deepEqual(view.harness.labels(element), [
+        '100', '110', '120', '130', '140',
+        '150', '160', '170', '180', '190'
+    ]);
 
     const reused = markers();
 
     api.setRange([120, 140]);
     assert.deepEqual(markers(), reused);
-    assert.deepEqual(reused.map(marker => marker.hidden), [false, false, false, false, false, false, false, false, true, true]);
+    assert.deepEqual(reused.map(marker => marker.hidden), [
+        false, false, false, false, false,
+        false, false, false, true, true
+    ]);
     assert.deepEqual(reused.slice(0, 3).map(marker => marker.style.values.get('--offset')), [0, 0.125, 0.25]);
 });
 
@@ -745,7 +857,10 @@ test('a wheel with Ctrl or Cmd zooms around the pointer within bounds, markers k
     assert.equal(api.state.segments.length, 11);
     assert.equal(api.state.segments.at(-1), api.state.range.end);
     assert.deepEqual(callTypes(view), ['range']);
-    assert.deepEqual(view.harness.labels(view.element), ['115', '120', '125', '130', '135', '140', '145', '150', '155', '160']);
+    assert.deepEqual(view.harness.labels(view.element), [
+        '115', '120', '125', '130', '135',
+        '140', '145', '150', '155', '160'
+    ]);
 
     assert.equal(view.harness.wheel(50, { deltaY: 2000, metaKey: true }), true);
     assert.deepEqual(api.state.range, { start: 0, end: 400 });
@@ -780,28 +895,45 @@ test('zoom stops at the precision of coordinates under a pixel', () => {
     assert.equal(end - start, 100 * 2 ** -12);
 });
 
-test('wheel is ignored without bounds, during a drag and outside of rulers', () => {
-    const unbounded = setup();
-
-    assert.equal(unbounded.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
-    assert.deepEqual(unbounded.calls, []);
-
+const withoutBounds = () => setup();
+const duringDrag = () => {
     const view = setup({ bounds: [0, 400] });
 
     view.down(20);
     view.move(40);
-    assert.equal(view.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
-    view.up(40);
-    assert.deepEqual(view.api.state.range, { start: 100, end: 200 });
+
+    return view;
+};
+const outsideRulers = () => {
+    const view = setup({ bounds: [0, 400] });
 
     view.harness.setActive(null);
-    assert.equal(view.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
+
+    return view;
+};
+const afterDestruction = () => {
+    const view = setup({ bounds: [0, 400] });
+
     view.destroy();
-    view.harness.setActive(view.element);
+
+    return view;
+};
+
+test.each([
+    ['without bounds', withoutBounds],
+    ['during a drag', duringDrag],
+    ['outside of rulers', outsideRulers],
+    ['after destruction', afterDestruction]
+])('a wheel zoom is ignored %s', (name, arrange) => {
+    const view = arrange();
+
     assert.equal(view.harness.wheel(50, { deltaY: -100, ctrlKey: true }), false);
+    assert.deepEqual(view.api.state.range, { start: 100, end: 200 });
+    assert.equal(view.calls.some(call => call.type === 'range'), false);
 });
 
-test('segments may depend on the range and the width of the ruler', () => {
+// A ruler with a segment per 25px, recording the range and the width segments are resolved for
+function setupSegmentsOfWidth() {
     const calls = [];
     const segments = (range, width) => {
         calls.push([range, width]);
@@ -813,23 +945,50 @@ test('segments may depend on the range and the width of the ruler', () => {
         bounds: [0, 400],
         segments
     });
-    const { api, element } = view;
+
+    return { view, calls };
+}
+
+test('segments may be a function of the range and the width of the ruler', () => {
+    const { view, calls } = setupSegmentsOfWidth();
 
     assert.deepEqual(calls, [[{ start: 100, end: 200 }, 100]]);
-    assert.equal(api.state.segments.length, 5);
+    assert.deepEqual(view.api.state.segments, [100, 125, 150, 175, 200]);
+});
 
-    // A width change resolves the segments on the next pointer move only
-    element.width = 50;
-    assert.equal(api.state.segments.length, 5);
+test('a width change resolves the segments again on the next pointer move only', () => {
+    const { view, calls } = setupSegmentsOfWidth();
+
+    view.element.width = 50;
+    assert.equal(calls.length, 1);
+
     view.move(10);
-    assert.deepEqual(calls.slice(1), [[{ start: 100, end: 200 }, 50]]);
-    assert.deepEqual(api.state.segments, [100, 150, 200]);
     view.move(20);
-    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.slice(1), [[{ start: 100, end: 200 }, 50]]);
+    assert.deepEqual(view.api.state.segments, [100, 150, 200]);
+});
 
-    view.harness.wheel(0, { deltaX: 25 });
-    assert.deepEqual(calls.slice(2), [[{ start: 150, end: 250 }, 50]]);
-    api.setRange([300, 200]);
-    assert.deepEqual(calls.slice(3), [[{ start: 200, end: 300 }, 50]]);
-    assert.deepEqual(api.state.segments, [200, 250, 300]);
+const panByQuarter = view => view.harness.wheel(0, { deltaX: 25 });
+const setReversedRange = view => view.api.setRange([300, 200]);
+
+test.each([
+    {
+        name: 'a pan',
+        change: panByQuarter,
+        range: { start: 125, end: 225 },
+        segments: [125, 150, 175, 200, 225]
+    },
+    {
+        name: 'setRange',
+        change: setReversedRange,
+        range: { start: 200, end: 300 },
+        segments: [200, 225, 250, 275, 300]
+    }
+])('$name resolves the segments again for the new range', row => {
+    const { view, calls } = setupSegmentsOfWidth();
+
+    row.change(view);
+
+    assert.deepEqual(calls.slice(1), [[row.range, 100]]);
+    assert.deepEqual(view.api.state.segments, row.segments);
 });

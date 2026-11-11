@@ -37,9 +37,13 @@ function renderHistogram(props: object, context: object = {}) {
         validateRange,
         usage,
         setRangeCoverage,
-        discovery: { view: { define(name: string, callback: Render) {
-            render = callback;
-        } } }
+        discovery: {
+            view: {
+                define(name: string, callback: Render) {
+                    render = callback;
+                }
+            }
+        }
     });
 
     const data = new Float64Array([0, 2, 4]);
@@ -49,10 +53,13 @@ function renderHistogram(props: object, context: object = {}) {
     const element = { classList, style: { setProperty } };
     const calls: unknown[][] = [];
     const completion = Promise.resolve();
-    const result = render.call({ render(...args: unknown[]) {
-        calls.push(args);
-        return completion;
-    } }, element, props, data, context);
+    const host = {
+        render(...args: unknown[]) {
+            calls.push(args);
+            return completion;
+        }
+    };
+    const result = render.call(host, element, props, data, context);
 
     return {
         element,
@@ -130,7 +137,11 @@ test.each([
         'a line type of the scope profile',
         (line: Line, other: Line) => [
             { line: 'timeline' },
-            { scopeLine: other, primaryProfile: other.profile, scopeProfile: line.profile }
+            {
+                scopeLine: other,
+                primaryProfile: other.profile,
+                scopeProfile: line.profile
+            }
         ]
     ],
     [
@@ -149,7 +160,11 @@ test.each([
     const line = await createLine(120, 180);
     const other = await createLine(100, 200);
     const [props, context] = scope(line, other);
-    const histogramContext = { ...context, primaryLineType: 'timeline', scopeViewport: { start: 100, end: 200 } };
+    const histogramContext = {
+        ...context,
+        primaryLineType: 'timeline',
+        scopeViewport: { start: 100, end: 200 }
+    };
     const { styles } = renderHistogram(props, histogramContext);
 
     assert.deepEqual(coverage(styles), [0.2, 0.2]);

@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { createState, normalizeSelection, selectRange, moveRange, resizeRange, zoomRange, panRange, rangeToSegments } from './ruler-range.js';
+import {
+    createState,
+    normalizeSelection,
+    selectRange,
+    moveRange,
+    resizeRange,
+    zoomRange,
+    panRange,
+    rangeToSegments
+} from './ruler-range.js';
 
 const irregular = [100, 110, 140, 200];
 
 test.each([100, [0, 100], [100, 0], { start: 0, end: 100 }])('a scale of %o is the range from 0 to 100', range => {
-    assert.deepEqual(createState(range), { range: { start: 0, end: 100 }, length: 100, segments: null, selection: null });
+    assert.deepEqual(createState(range), {
+        range: { start: 0, end: 100 },
+        length: 100,
+        segments: null,
+        selection: null
+    });
 });
 
 test.each([
@@ -32,16 +46,52 @@ test('supplied boundaries are copied', () => {
 });
 
 test.each([
-    [null, false, null],
-    [null, true, null],
-    [[], true, []],
-    [{ start: 120, end: 90 }, false, { start: 90, end: 120 }],
-    [[{ start: 120, end: 90 }], true, [{ start: 90, end: 120 }]],
-    [[{ start: 90, end: 120 }, { start: 115, end: 130 }, { start: 210, end: 230 }], true, [{ start: 90, end: 130 }, { start: 210, end: 230 }]],
-    [[{ start: 210, end: 230 }, { start: 115, end: 130 }, { start: 90, end: 120 }], true, [{ start: 90, end: 130 }, { start: 210, end: 230 }]],
-    [[{ start: 100, end: 130 }, { start: 110, end: 120 }], true, [{ start: 100, end: 130 }]],
+    [
+        null,
+        false,
+        null
+    ],
+    [
+        null,
+        true,
+        null
+    ],
+    [
+        [],
+        true,
+        []
+    ],
+    [
+        { start: 120, end: 90 },
+        false,
+        { start: 90, end: 120 }
+    ],
+    [
+        [{ start: 120, end: 90 }],
+        true,
+        [{ start: 90, end: 120 }]
+    ],
+    [
+        [{ start: 90, end: 120 }, { start: 115, end: 130 }, { start: 210, end: 230 }],
+        true,
+        [{ start: 90, end: 130 }, { start: 210, end: 230 }]
+    ],
+    [
+        [{ start: 210, end: 230 }, { start: 115, end: 130 }, { start: 90, end: 120 }],
+        true,
+        [{ start: 90, end: 130 }, { start: 210, end: 230 }]
+    ],
+    [
+        [{ start: 100, end: 130 }, { start: 110, end: 120 }],
+        true,
+        [{ start: 100, end: 130 }]
+    ],
     // Touching ranges merge as in a range manager, so an echo of a written selection is equal to it
-    [[{ start: 100, end: 110 }, { start: 110, end: 120 }], true, [{ start: 100, end: 120 }]]
+    [
+        [{ start: 100, end: 110 }, { start: 110, end: 120 }],
+        true,
+        [{ start: 100, end: 120 }]
+    ]
 ])('a selection %o, multiple=%s is normalized to %o', (selection, multiple, expected) => {
     assert.deepEqual(normalizeSelection(selection, multiple), expected);
 });
@@ -101,9 +151,12 @@ test.each([
     [1000, 10, 0.7, 0.2, { start: 200, end: 700 }],
     [[100, 200], irregular, 0.15, 0.15, { start: 110, end: 140 }],
     [[100, 200], irregular, 1, 1, { start: 140, end: 200 }]
-])('on a scale of %o with segments %o a selection from %s to %s is %o', (range, segments, anchor, pointer, expected) => {
-    assert.deepEqual(selectRange(createState(range, segments), anchor, pointer), expected);
-});
+])(
+    'on a scale of %o with segments %o a selection from %s to %s is %o',
+    (range, segments, anchor, pointer, expected) => {
+        assert.deepEqual(selectRange(createState(range, segments), anchor, pointer), expected);
+    }
+);
 
 test.each([
     [[-1, 1], null, { start: -0.5, end: 0.25 }, 0.125, { start: -0.25, end: 0.5 }],
@@ -131,16 +184,24 @@ test.each([
     [123, 0.23, 1, -1, { start: 110, end: 123 }],
     [123, 0.23, 1, 1, { start: 123, end: 140 }],
     [110, 0.35, 0, 1, { start: 110, end: 140 }]
-])('on irregular segments a resize from %s to %s stops at a distinct boundary, minimum=%s, direction=%s', (anchor, pointer, minimum, direction, expected) => {
-    assert.deepEqual(resizeRange(createState([100, 200], irregular), anchor, pointer, minimum, direction), expected);
-});
+])(
+    'on irregular segments a resize from %s to %s stops at a distinct boundary, minimum=%s, direction=%s',
+    (anchor, pointer, minimum, direction, expected) => {
+        const state = createState([100, 200], irregular);
+
+        assert.deepEqual(resizeRange(state, anchor, pointer, minimum, direction), expected);
+    }
+);
 
 test.each([
     [[10, 11], 4, 10.1, 0.6, { start: 10.1, end: 10.5 }],
     [1000, 10, 123, 0.49, { start: 123, end: 500 }]
-])('on a scale of %o with uniform segments %s a resize of an off-grid anchor %s to %s is %o', (range, segments, anchor, pointer, expected) => {
-    assert.deepEqual(resizeRange(createState(range, segments), anchor, pointer), expected);
-});
+])(
+    'on a scale of %o with uniform segments %s a resize of an off-grid anchor %s to %s is %o',
+    (range, segments, anchor, pointer, expected) => {
+        assert.deepEqual(resizeRange(createState(range, segments), anchor, pointer), expected);
+    }
+);
 
 // The scale is [-1, 1]; rows: anchor, pointer fraction, minimum, direction at the anchor, expected range
 test.each([
@@ -152,9 +213,12 @@ test.each([
     [1, 1, 0.25, 1, { start: 0.75, end: 1 }],
     [0, 0.5, 0, 1, { start: 0, end: 0 }],
     [-0.5, 0.625, 0, 1, { start: -0.5, end: 0.25 }]
-])('on a continuous scale a resize from %s to %s keeps the minimum %s, direction=%s', (anchor, pointer, minimum, direction, expected) => {
-    assert.deepEqual(resizeRange(createState([-1, 1]), anchor, pointer, minimum, direction), expected);
-});
+])(
+    'on a continuous scale a resize from %s to %s keeps the minimum %s, direction=%s',
+    (anchor, pointer, minimum, direction, expected) => {
+        assert.deepEqual(resizeRange(createState([-1, 1]), anchor, pointer, minimum, direction), expected);
+    }
+);
 
 test.each([
     [{ start: 20, end: 60 }, { start: 0, end: 100 }, 0.25, 0.5, 0, { start: 25, end: 45 }],
@@ -165,9 +229,12 @@ test.each([
     [{ start: 80, end: 100 }, { start: 0, end: 100 }, 0, 2, 0, { start: 60, end: 100 }],
     [{ start: 20, end: 60 }, { start: 0, end: 100 }, 0.5, 0.01, 2, { start: 39, end: 41 }],
     [{ start: 39, end: 41 }, { start: 0, end: 100 }, 0.5, 0.5, 2, { start: 39, end: 41 }]
-])('%o zoomed within %o at %s by %s with a minimum length of %s is %o', (range, bounds, fraction, scale, minimum, expected) => {
-    assert.deepEqual(zoomRange(range, bounds, fraction, scale, minimum), expected);
-});
+])(
+    '%o zoomed within %o at %s by %s with a minimum length of %s is %o',
+    (range, bounds, fraction, scale, minimum, expected) => {
+        assert.deepEqual(zoomRange(range, bounds, fraction, scale, minimum), expected);
+    }
+);
 
 test.each([
     [0.5, { start: 0, end: 20 }],
