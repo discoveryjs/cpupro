@@ -1,4 +1,4 @@
-import type { Range } from '../prepare/computations/coordinates.js';
+import { rangesEnvelope, type Range } from '../prepare/computations/coordinates.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
 import { lowerBound } from '../prepare/computations/misc.js';
 
@@ -30,12 +30,12 @@ export function lineViewport(line: ViewportLine, profiles: readonly { timeline?:
     const ranges = line.viewport.selection.ranges;
 
     if (ranges) {
-        const extent = lineExtent(line);
+        const { start } = lineExtent(line);
 
-        return {
-            start: ranges[0]?.start ?? extent.start,
-            end: ranges.at(-1)?.end ?? extent.start
-        };
+        // An empty request is an empty range at the start of the extent
+        return ranges.length > 0
+            ? rangesEnvelope(ranges)
+            : { start, end: start };
     }
 
     return lineViewportBounds(line, profiles);

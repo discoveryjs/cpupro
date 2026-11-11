@@ -71,6 +71,14 @@ export function normalizeRanges(ranges: RangeSet): RangeSet {
     return Object.freeze(result);
 }
 
+// The range from the start of the first range to the end of the last one of normalized nonempty ranges
+export function rangesEnvelope(ranges: RangeSet): Range {
+    return {
+        start: ranges[0].start,
+        end: ranges[ranges.length - 1].end
+    };
+}
+
 export function intersectRanges(ranges: RangeSet, extent: Range): RangeSet {
     return normalizeRanges(ranges.map(range => ({
         start: Math.max(extent.start, Math.min(extent.end, range.start)),

@@ -1,6 +1,6 @@
 import type { ProfileLine } from './types.js';
 import type { PopulationFiltered } from '../computations/population.js';
-import { equalRanges, type Range, type RangeSet } from '../computations/coordinates.js';
+import { equalRanges, rangesEnvelope, type Range, type RangeSet } from '../computations/coordinates.js';
 import { RangeView } from '../computations/range.js';
 
 export function applyRangeToPopulation(view: RangeView, filtered: PopulationFiltered) {
@@ -22,8 +22,7 @@ export function viewportWindow(ranges: RangeSet | null, extent: Range): RangeSet
         return ranges;
     }
 
-    const start = ranges[0].start;
-    const end = ranges[ranges.length - 1].end;
+    const { start, end } = rangesEnvelope(ranges);
 
     if (start >= end) {
         return ranges;
@@ -55,12 +54,14 @@ export function windowHolds(window: RangeSet | null, ranges: RangeSet | null, ex
         return false;
     }
 
-    const start = ranges[0].start;
-    const end = ranges[ranges.length - 1].end;
-    const windowStart = window === null ? extent.start : window[0].start;
-    const windowEnd = window === null ? extent.end : window[window.length - 1].end;
+    const { start, end } = rangesEnvelope(ranges);
+    const windowBounds = window === null
+        ? extent
+        : rangesEnvelope(window);
 
-    return windowStart <= start && end <= windowEnd && windowEnd - windowStart <= 4 * (end - start);
+    return windowBounds.start <= start &&
+        end <= windowBounds.end &&
+        windowBounds.end - windowBounds.start <= 4 * (end - start);
 }
 
 // The window of the zoom within the viewport: aligned cells of the viewport's halving levels, or the viewport itself.
@@ -70,21 +71,27 @@ export function prepareLineWindow({ viewport, zoom, window }: ProfileLine) {
     const scopeExtent = () => {
         const scope = viewport.selection.ranges;
 
-        return scope?.length ? { start: scope[0].start, end: scope[scope.length - 1].end } : viewport.resolvedExtent;
+        return scope?.length
+            ? rangesEnvelope(scope)
+            : viewport.resolvedExtent;
     };
     const zoomWindow = () => {
         const ranges = zoom.selection.ranges ?? viewport.selection.ranges;
         const scope = scopeExtent();
 
-        if (ranges === null || ranges.length === 0 || (scope.start <= ranges[0].start && ranges[ranges.length - 1].end <= scope.end)) {
+        const bounds = ranges !== null && ranges.length > 0
+            ? rangesEnvelope(ranges)
+            : null;
+
+        if (bounds === null || (scope.start <= bounds.start && bounds.end <= scope.end)) {
             return viewportWindow(ranges, scope) ?? viewport.selection.ranges;
         }
 
         // A zoom shared by profiles reaches beyond the extent of a line covering a part of their bounds, the cells
         // are aligned to both so the window stays within the zoom sizes
         const extent = {
-            start: Math.min(scope.start, ranges[0].start),
-            end: Math.max(scope.end, ranges[ranges.length - 1].end)
+            start: Math.min(scope.start, bounds.start),
+            end: Math.max(scope.end, bounds.end)
         };
 
         return viewportWindow(ranges, extent) ?? [extent];
