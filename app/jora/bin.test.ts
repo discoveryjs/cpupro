@@ -1489,6 +1489,24 @@ test.each([
     assert.deepEqual(methods[method].call({ context: memline }, 'allocationSpace'), []);
 });
 
+// Allocations of 3 and 4 bytes have no mapping to CPU samples: byte offsets are no positions on the timeline
+test.each([
+    { method: 'binAllocationAttribute', expected: [] },
+    { method: 'viewportAllocationAttribute', expected: [] },
+    { method: 'allocationAttributeColumnMax', expected: null }
+] as const)('$method gives nothing on a timeline the memline has no mapping to', async row => {
+    const context = await createContext();
+    const { line: memline } = await createLineFixture({
+        type: 'memline',
+        values: new Uint32Array([3, 4])
+    });
+
+    memline.attributes = [{ name: 'allocationType', values: new Uint32Array(2), dict: ['array'] }];
+    Object.assign(context.scopeProfile, { memline });
+
+    assert.deepEqual(methods[row.method].call({ context }, 'allocationType'), row.expected);
+});
+
 test('column maximums of an attribute are of the line viewport at a column duration, not of a window', async () => {
     const { profile, line, breakdown } = await createLineFixture({
         type: 'memline',

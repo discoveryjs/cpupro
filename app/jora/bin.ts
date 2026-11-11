@@ -956,6 +956,11 @@ function attributeColumnMax(
     };
 }
 
+// Events of a line have positions on an axis line: its own axis, or through a mapping to the axis line's events
+function placesOnAxis(line: ProfileLine, axisLine: ProfileLine) {
+    return line === axisLine || line.mappings[axisLine.type] !== undefined;
+}
+
 // Columns of a duration from either origin have the same boundaries
 function sameColumns(origin: number, otherOrigin: number, duration: number) {
     const offset = (origin - otherOrigin) / duration;
@@ -1043,7 +1048,7 @@ export const methods = {
         const line = resolveScopeProfileLine('memline', this.context);
         const attribute = line?.attributes.find(attribute => attribute.name === name);
 
-        if (!scopeLine || !line || !attribute) {
+        if (!scopeLine || !line || !attribute || !placesOnAxis(line, scopeLine)) {
             return null;
         }
 
@@ -1212,6 +1217,11 @@ export const methods = {
         scope: 'populationWindow' | 'populationViewport' = 'populationWindow'
     ) {
         axisLine = resolveScopeProfileLine(axisLine, this.context) || valuesLine;
+
+        // A line without a mapping to another line's events has no positions on its axis
+        if (!placesOnAxis(valuesLine, axisLine)) {
+            return [];
+        }
 
         const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, this.context);
         const populationBreakdown = scopeBreakdown?.line === valuesLine ? scopeBreakdown : valuesLine.breakdowns[0];
