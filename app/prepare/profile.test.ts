@@ -3,6 +3,7 @@ import { describe, test } from 'vitest';
 import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fixtures/profile.js';
 import { createProfile } from './profile.mjs';
 import { createWorkHandler, noopWorkHandler, type WorkIdentity } from './misc/work.js';
+import { createDiagnosticsCollector } from './diagnostics.js';
 import type { CpuProLocation, V8CpuProfile } from './types.js';
 import type { ProfileLineBreakdown } from './lines/types.js';
 
@@ -92,6 +93,30 @@ describe('profile breakdowns', () => {
         assert.deepEqual(profile.lines.map(line => line.type), ['memline']);
         assert.deepEqual(profile.memline!.breakdowns.map(breakdown => breakdown.kind), ['location']);
         assert.deepEqual([...profile.memline!.breakdowns[0].population.values], [16, 32]);
+    });
+
+    // a trace without the chunks of its profiler thread has samples, but no call tree nodes for them
+    test('makes the memline of a capture without call tree nodes and ignores its CPU samples', async () => {
+        const { diagnostics, diagnose } = createDiagnosticsCollector();
+        const data: V8CpuProfile = {
+            startTime: 0,
+            endTime: 30,
+            nodes: [],
+            samples: [2, 2],
+            timeDeltas: [10, 10],
+            _cpuproAllocationIds: [1, 2],
+            _cpuproAllocationSizes: [16, 32],
+            _cpuproAllocationScriptIds: [0, 0],
+            _cpuproAllocationLocations: [-1, -1]
+        };
+        const profile = await createProfile(data, { diagnose });
+
+        assert.equal(profile.timeline, null);
+        assert.deepEqual(profile.lines.map(line => line.type), ['memline']);
+        assert.deepEqual([...profile.memline!.breakdowns[0].population.values], [16, 32]);
+        assert.deepEqual(diagnostics.map(entry => [entry.message, entry.details]), [
+            ['Ignored CPU samples of a profile with no call tree nodes', { samples: 2 }]
+        ]);
     });
 
     test('binds allocation ranges to samples after fixing out-of-order time deltas', async () => {

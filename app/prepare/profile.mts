@@ -102,8 +102,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         work = noopWorkHandler
     } = options || {};
     const lines: ProfileLine[] = [];
-    const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
-    const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
 
     // Prepare script sources in advance (if any), so that they are available for line-column
     // and script-offset mapping to functions (call frames).
@@ -118,6 +116,190 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
             performance.measure('preparseScriptSources', { start: preparseStart });
         })
         : Promise.resolve();
+
+    // The timeline is made of the call tree and samples of a CPU profile, the memline of allocations, so a capture
+    // may have either; e.g. a trace without the chunks of its profiler thread has samples without a call tree
+    if (data.nodes.length === 0 && data.samples.length > 0) {
+        diagnose('warn', 'Ignored CPU samples of a profile with no call tree nodes', {
+            samples: data.samples.length
+        });
+    }
+
+    const callStack = data.nodes.length > 0
+        ? await createCallStackTimeline(
+            data,
+            dictionary,
+            profileScriptsMap,
+            work,
+            diagnose
+        )
+        : null;
+    const timeline = callStack?.timeline ?? null;
+    const cpuSamplesPopulation = callStack?.population ?? null;
+    const callStackSampledTreeSet = callStack?.sampledTreeSet ?? null;
+    const allocationMapping = callStack?.allocationMapping ?? null;
+    const {
+        codes,
+        codesByCallFrame,
+        codesByScript
+    } = callStack?.callFrameCodes ?? {
+        codes: [],
+        codesByCallFrame: [],
+        codesByScript: []
+    };
+
+    if (timeline) {
+        lines.push(timeline);
+    }
+
+    // Original sources of the locations known so far are parsed while the memline is created
+    await work('prepare source maps', () => sourceMapping.prepareLocations());
+
+    // Create memline from allocation data if present
+    const memline = await createMemline(
+        data,
+        dictionary,
+        profileScriptsMap,
+        cpuSamplesPopulation,
+        callStackSampledTreeSet,
+        allocationMapping,
+        preparseScriptSourcesResult,
+        { work, compilations }
+    );
+
+    if (memline) {
+        lines.push(memline);
+    }
+
+    // Create mappings between lines if both exist and allocation mapping is present
+    if (memline && timeline) {
+        if (allocationMapping && data._cpuproAllocationIds) {
+            const { left, right } = createLineMapping(
+                memline,
+                data._cpuproAllocationIds,
+                timeline,
+                allocationMapping
+            );
+
+            memline.mappings.timeline = left;
+            timeline.mappings.memline = right;
+        }
+    }
+
+    // create profile
+    const usage = callStackSampledTreeSet?.dictionary || dictionary;
+    const profile = {
+        name: data._name ?? null,
+        // FIXME: categories/packages must be related to profile
+        runtime: detectRuntime(
+            usage.categories,
+            usage.packages,
+            runtime || data._runtime
+        ),
+        thread: null as unknown as CpuProThread, // to be set by caller
+
+        // ...usage,
+        ...dictionary,
+        codes,
+        codesByCallFrame,
+        codesByScript,
+
+        // lines
+        timeline,
+        memline,
+        lines,
+
+        // ---- legacy fields ----
+
+        heap: data._heap || null
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+        lines[i].profile = profile;
+    }
+
+    if (compilations) {
+        await work('link compilation events', async () => {
+            await preparseScriptSourcesResult;
+            resolveCompilationCallFrames(compilations, dictionary, profileScriptsMap);
+        });
+    }
+
+    const originalLocations = await work('process source maps', () => sourceMapping.mapLocations());
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        if (sourceMapping.hasSourceMaps) {
+            // source mapped breakdowns are added to the breakdowns, they're not mapped again
+            const breakdownCount = line.breakdowns.length;
+
+            for (let j = 0; j < breakdownCount; j++) {
+                const breakdown = line.breakdowns[j];
+                const sourceMappedBreakdown = await createSourceMappedBreakdown(
+                    `${breakdown.kind}-sm`,
+                    line,
+                    breakdown,
+                    dictionary,
+                    originalLocations,
+                    work
+                );
+
+                if (sourceMappedBreakdown !== null) {
+                    line.breakdowns.push(sourceMappedBreakdown);
+                }
+            }
+        }
+
+        prepareLineFilters(line);
+        prepareLineRange(line);
+        const signatures = await work(`compute ${line.type} event signatures`, () => new EventSignatures(line));
+        const classes = signatures.filterClasses;
+        const records = new Map<Population, PopulationRecords>();
+
+        line.signatures = signatures;
+
+        for (let j = 0; j < line.breakdowns.length; j++) {
+            const {
+                population,
+                populationViewport,
+                populationWindow,
+                populationFiltered
+            } = line.breakdowns[j];
+
+            if (!records.has(population)) {
+                records.set(population, await work(`group ${line.type} events by samples and signatures`, () =>
+                    new PopulationRecords(
+                        population.samples,
+                        population.values,
+                        population.cumulative,
+                        population.cumulativeEnd,
+                        classes
+                    )
+                ));
+            }
+
+            populationViewport.filter.setEventClasses(classes);
+            populationWindow.filter.setEventClasses(classes);
+            populationViewport.setRecords(records.get(population)!);
+            populationWindow.setRecords(records.get(population)!);
+            populationFiltered.setRecords(records.get(population)!);
+        }
+    }
+
+    return profile;
+}
+
+// The timeline of call stacks from the call tree and samples of a CPU profile, with codes of its call frames
+async function createCallStackTimeline(
+    data: V8CpuProfile,
+    dictionary: Dictionary,
+    profileScriptsMap: ProfileScriptsMap,
+    work: WorkHandler,
+    diagnose: Diagnose
+) {
+    const profileType = data._type === 'memory' ? 'memory' as const : 'time' as const;
+    const generatedNodes = new GeneratedNodes(dictionary, data.nodes.length);
 
     // Extract script offset first, since they depends on timestamps order,
     // and should be moved together with timeDeltas if the order is adjusted in fixTimeDeltasOrderIfNeeded()
@@ -352,50 +534,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         )
         : null;
 
-    if (timeline) {
-        lines.push(timeline);
-    }
-
-    // Original sources of the locations known so far are parsed while the memline is created
-    await work('prepare source maps', () => sourceMapping.prepareLocations());
-
-    // Create memline from allocation data if present (combined profile)
-    const memline = await createMemline(
-        data,
-        dictionary,
-        profileScriptsMap,
-        cpuSamplesPopulation,
-        callStackSampledTreeSet,
-        allocationMapping,
-        preparseScriptSourcesResult,
-        { work, compilations }
-    );
-
-    if (memline) {
-        lines.push(memline);
-    }
-
-    // Create mappings between lines if both exist and allocation mapping is present
-    if (memline && timeline) {
-        if (allocationMapping && data._cpuproAllocationIds) {
-            const { left, right } = createLineMapping(
-                memline,
-                data._cpuproAllocationIds,
-                timeline,
-                allocationMapping
-            );
-
-            memline.mappings.timeline = left;
-            timeline.mappings.memline = right;
-        }
-    }
-
     // process function codes
-    const {
-        codes,
-        codesByCallFrame,
-        codesByScript
-    } = await work('process function codes', () =>
+    const callFrameCodes = await work('process function codes', () =>
         processCallFrameCodes(
             data._callFrameCodes,
             callFrameByIndex,
@@ -406,82 +546,11 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         )
     );
 
-    // create profile
-    const usage = callStackSampledTreeSet?.dictionary || dictionary;
-    const profile = {
-        name: data._name ?? null,
-        runtime: detectRuntime(usage.categories, usage.packages, runtime || data._runtime), // FIXME: categories/packages must be related to profile
-        thread: null as unknown as CpuProThread, // to be set by caller
-
-        // ...usage,
-        ...dictionary,
-        codes,
-        codesByCallFrame,
-        codesByScript,
-
-        // lines
+    return {
         timeline,
-        memline,
-        lines,
-
-        // ---- legacy fields ----
-
-        heap: data._heap || null
+        population: cpuSamplesPopulation,
+        sampledTreeSet: callStackSampledTreeSet,
+        allocationMapping,
+        callFrameCodes
     };
-
-    for (const line of lines) {
-        line.profile = profile;
-    }
-
-    if (compilations) {
-        await work('link compilation events', async () => {
-            await preparseScriptSourcesResult;
-            resolveCompilationCallFrames(compilations, dictionary, profileScriptsMap);
-        });
-    }
-
-    const originalLocations = await work('process source maps', () => sourceMapping.mapLocations());
-
-    for (const line of lines) {
-        if (sourceMapping.hasSourceMaps) {
-            for (const breakdown of line.breakdowns.slice()) {
-                const sourceMappedBreakdown = await createSourceMappedBreakdown(
-                    `${breakdown.kind}-sm`,
-                    line,
-                    breakdown,
-                    dictionary,
-                    originalLocations,
-                    work
-                );
-
-                if (sourceMappedBreakdown !== null) {
-                    line.breakdowns.push(sourceMappedBreakdown);
-                }
-            }
-        }
-
-        prepareLineFilters(line);
-        prepareLineRange(line);
-        const signatures = await work(`compute ${line.type} event signatures`, () => new EventSignatures(line));
-        const classes = signatures.filterClasses;
-        const records = new Map<Population, PopulationRecords>();
-
-        line.signatures = signatures;
-
-        for (const { population, populationViewport, populationWindow, populationFiltered } of line.breakdowns) {
-            if (!records.has(population)) {
-                records.set(population, await work(`group ${line.type} events by samples and signatures`, () =>
-                    new PopulationRecords(population.samples, population.values, population.cumulative, population.cumulativeEnd, classes)
-                ));
-            }
-
-            populationViewport.filter.setEventClasses(classes);
-            populationWindow.filter.setEventClasses(classes);
-            populationViewport.setRecords(records.get(population)!);
-            populationWindow.setRecords(records.get(population)!);
-            populationFiltered.setRecords(records.get(population)!);
-        }
-    }
-
-    return profile;
 }

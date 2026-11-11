@@ -336,6 +336,9 @@ const categoriesTimeline = {
         },
         {
             view: 'context',
+            // the used heap and user timings are laid out on the time axis of the CPU samples line,
+            // its viewport and zoom; a profile without CPU samples has no such line
+            when: 'scopeProfile().timeline',
             context: `
                 $timeline: scopeProfile().timeline;
                 { ...#, scopeLine: $timeline, scopeBreakdown: null, scopeViewport: $timeline.lineViewportBounds(#.data.profiles) }

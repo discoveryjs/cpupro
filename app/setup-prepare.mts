@@ -102,14 +102,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         for (let i = 0; i < sessionProfiles.length; i++) {
             const { thread, profile: profileData } = sessionProfiles[i];
 
-            if (!profileData.nodes?.length) {
-                sessionDiagnose('warn', 'Ignored a profile with no call tree nodes', {
-                    pid: thread.pid,
-                    tid: thread.tid
-                });
-                continue;
-            }
-
             // execution context goes first sice it affects package name
             // FIXME: following profiles could affect previously loaded profiles,
             // it should perform together with path/name processing
@@ -134,6 +126,14 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                     ? runSessionTask.withPrefix(`Profile ${i + 1}/${sessionProfiles.length}`)
                     : runSessionTask
             }));
+
+            if (profile.lines.length === 0) {
+                sessionDiagnose('warn', 'Ignored a profile with no CPU samples or allocations', {
+                    pid: thread.pid,
+                    tid: thread.tid
+                });
+                continue;
+            }
 
             if (profile.name === undefined) {
                 profile.name = 'Profile #' + (i + 1);
