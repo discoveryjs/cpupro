@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, inject, test } from 'vitest';
 import { Population, PopulationFiltered } from './population.js';
+import { trackReads } from '../../../test/helpers/read-tracker.js';
 
 describe('Population', () => {
     test('aggregates values and nonzero event counts by sample ID', () => {
@@ -20,7 +21,8 @@ describe('Population', () => {
         { values: [0, 0], end: 0 },
         { values: [10, 20, 0], end: 30 },
         { values: [10, 20, 30], end: 60 }
-    ])('keeps the base cumulative endpoint under filtered constraints: $values', ({ values, end }) => {
+    ])('keeps the base cumulative endpoint under filtered constraints: $values', row => {
+        const { values, end } = row;
         const population = new Population(new Uint32Array(values.length), Uint32Array.from(values));
         const filtered = new PopulationFiltered(population);
         assert.equal(population.cumulativeEnd, end);
@@ -44,23 +46,15 @@ describe('PopulationFiltered', () => {
         const population = new Population(new Uint32Array(100_000), new Uint32Array(100_000).fill(10));
         const filtered = new PopulationFiltered(population);
         filtered.setRanges([{ start: 101, end: 102 }, { start: 105, end: 106 }, { start: 900_001, end: 900_003 }]);
-        let reads = 0;
-        Object.defineProperty(filtered, 'values', { value: new Proxy(filtered.values, {
-            get(target, property) {
-                if (typeof property === 'string' && /^\d+$/.test(property)) {
-                    const index = Number(property);
-                    assert.ok(index === 10 || index === 90_000, `Unexpected gap event ${index}`);
-                    reads++;
-                }
-                return Reflect.get(target, property, target);
-            }
-        }) });
+        const values = trackReads(filtered.values);
+        Object.defineProperty(filtered, 'values', { value: values.array });
 
         const result = filtered.aggregateBy(new Uint8Array(population.values.length), 1);
 
         assert.deepEqual([...result.samplesTotal], [4]);
         assert.deepEqual([...result.samplesCount], [2]);
-        assert.equal(reads, 2 + filtered.boundaryCuts.length);
+        // Each edge event once for its value and once for its cut
+        assert.deepEqual(values.reads.sort((a, b) => a - b), [10, 10, 90_000, 90_000]);
         filtered.destroy();
     });
 
@@ -73,7 +67,8 @@ describe('PopulationFiltered', () => {
         const values = filtered.values;
 
         assert.deepEqual(population.aggregateBy(groups, 3), {
-            samplesCount: new Uint32Array([0, 2, 1]), samplesTotal: new Float64Array([0, 48, 48])
+            samplesCount: new Uint32Array([0, 2, 1]),
+            samplesTotal: new Float64Array([0, 48, 48])
         });
 
         const verify = (counts: number[], totals: number[]) => {
@@ -83,7 +78,8 @@ describe('PopulationFiltered', () => {
             assert.equal(filtered.samples, destinations);
             assert.equal(filtered.values, values);
             assert.deepEqual(filtered.aggregateBy(filtered.samples, filtered.samplesCount.length), {
-                samplesCount: filtered.samplesCount, samplesTotal: filtered.samplesTotal
+                samplesCount: filtered.samplesCount,
+                samplesTotal: filtered.samplesTotal
             });
         };
 
@@ -103,7 +99,12 @@ describe('PopulationFiltered', () => {
         viewport.setRange(5, 40);
         filtered.setRange(10, 24);
         verify([0, 2, 0], [0, 14, 0]);
-        filtered.filter.set({ key: 'row', domain: 'event', size: 3, accepts: Uint8Array.of(1, 0, 1) });
+        filtered.filter.set({
+            key: 'row',
+            domain: 'event',
+            size: 3,
+            accepts: Uint8Array.of(1, 0, 1)
+        });
         verify([0, 1, 0], [0, 6, 0]);
         filtered.destroy();
         viewport.destroy();
@@ -112,18 +113,28 @@ describe('PopulationFiltered', () => {
     test('moves and resets ranges without evaluating event acceptance or rebuilding sample destinations', () => {
         const population = new Population(new Uint32Array([0, 1, 0, 2, 1]), new Uint32Array([10, 0, 20, 30, 0]));
         const filtered = new PopulationFiltered(population);
-        const predicate = { key: 'event', domain: 'event' as const, size: population.values.length, accepts: Uint8Array.of(1, 0, 1, 0, 1) };
+        const predicate = {
+            key: 'event',
+            domain: 'event' as const,
+            size: population.values.length,
+            accepts: Uint8Array.of(1, 0, 1, 0, 1)
+        };
+        // Events of 10, 0, 20, 30 and 0 start at 0, 10, 10, 30 and 60
+        const steps = [
+            { start: 5, end: 35, values: [10, 0, 20, 30, 0] },
+            { start: 35, end: 55, values: [0, 0, 0, 30, 0] },
+            { start: 10, end: 10, values: [0, 0, 0, 0, 0] },
+            { start: 0, end: 60, values: [10, 0, 20, 30, 0] },
+            { start: 0.5, end: 30.5, values: [10, 0, 20, 30, 0] }
+        ];
         filtered.filter.set(predicate);
         const destinations = filtered.samples.slice();
         let filterUpdates = 0;
         filtered.filter.subscribe(() => filterUpdates++);
 
-        for (const [start, end] of [[5, 35], [35, 55], [10, 10], [0, 60], [0.5, 30.5]]) {
-            filtered.setRange(start, end);
-            const expected = population.values.map((value, index) =>
-                Math.max(0, Math.min(population.cumulative[index] + value, end) - Math.max(population.cumulative[index], start)) > 0 ? value : 0
-            );
-            assert.deepEqual(filtered.values, expected);
+        for (let i = 0; i < steps.length; i++) {
+            filtered.setRange(steps[i].start, steps[i].end);
+            assert.deepEqual([...filtered.values], steps[i].values);
             assert.deepEqual(filtered.samples, destinations);
         }
 
@@ -134,26 +145,71 @@ describe('PopulationFiltered', () => {
         assert.equal(filterUpdates, 0);
     });
 
+    // Events of 10, 20 and 30 at [0, 10), [10, 30) and [30, 60), of samples 0, 1 and 2, between zero-sized events
     test.each([
-        { start: 0, end: 10, values: [0, 10, 0, 0, 0, 0, 0], count: 1 },
-        { start: 10, end: 30, values: [0, 0, 0, 20, 0, 0, 0], count: 1 },
-        { start: 5, end: 35, values: [0, 5, 0, 20, 0, 5, 0], count: 3 },
-        { start: 10, end: 10, values: [0, 0, 0, 0, 0, 0, 0], count: 0 },
-        { start: -10, end: 100, values: [0, 10, 0, 20, 0, 30, 0], count: 3 },
-        { start: 60, end: 80, values: [0, 0, 0, 0, 0, 0, 0], count: 0 }
-    ])('clips half-open ranges with zero-sized events: [$start, $end)', ({ start, end, values, count }) => {
-        const population = new Population(new Uint32Array([0, 0, 0, 1, 1, 2, 2]), new Uint32Array([0, 10, 0, 20, 0, 30, 0]));
+        {
+            start: 0,
+            end: 10,
+            values: [0, 10, 0, 0, 0, 0, 0],
+            totals: [10, 0, 0],
+            counts: [1, 0, 0],
+            rangeSamples: 1
+        },
+        {
+            start: 10,
+            end: 30,
+            values: [0, 0, 0, 20, 0, 0, 0],
+            totals: [0, 20, 0],
+            counts: [0, 1, 0],
+            rangeSamples: 1
+        },
+        {
+            start: 5,
+            end: 35,
+            values: [0, 10, 0, 20, 0, 30, 0],
+            totals: [5, 20, 5],
+            counts: [1, 1, 1],
+            rangeSamples: 3
+        },
+        {
+            start: 10,
+            end: 10,
+            values: [0, 0, 0, 0, 0, 0, 0],
+            totals: [0, 0, 0],
+            counts: [0, 0, 0],
+            rangeSamples: 0
+        },
+        {
+            start: -10,
+            end: 100,
+            values: [0, 10, 0, 20, 0, 30, 0],
+            totals: [10, 20, 30],
+            counts: [1, 1, 1],
+            rangeSamples: 3
+        },
+        {
+            start: 60,
+            end: 80,
+            values: [0, 0, 0, 0, 0, 0, 0],
+            totals: [0, 0, 0],
+            counts: [0, 0, 0],
+            rangeSamples: 0
+        }
+    ])('clips half-open ranges with zero-sized events: [$start, $end)', row => {
+        const samples = new Uint32Array([0, 0, 0, 1, 1, 2, 2]);
+        const population = new Population(samples, new Uint32Array([0, 10, 0, 20, 0, 30, 0]));
         const filtered = new PopulationFiltered(population);
-        filtered.setRange(start, end);
-        assert.deepEqual([...filtered.values], values.map((value, index) => value > 0 ? population.values[index] : 0));
-        assert.deepEqual([...filtered.samplesTotal], [values[1], values[3], values[5]]);
-        assert.equal(filtered.rangeSamples, count);
-        assert.equal(filtered.samplesCount.reduce((sum, value) => sum + value, 0), count);
+        filtered.setRange(row.start, row.end);
+        assert.deepEqual([...filtered.values], row.values);
+        assert.deepEqual([...filtered.samplesTotal], row.totals);
+        assert.deepEqual([...filtered.samplesCount], row.counts);
+        assert.equal(filtered.rangeSamples, row.rangeSamples);
         assert.deepEqual([...population.values], [0, 10, 0, 20, 0, 30, 0]);
     });
 
     test('suppresses identical range updates and rejects reversed ranges', () => {
-        const filtered = new PopulationFiltered(new Population(new Uint32Array([0, 1, 0]), new Uint32Array([10, 20, 30])));
+        const population = new Population(new Uint32Array([0, 1, 0]), new Uint32Array([10, 20, 30]));
+        const filtered = new PopulationFiltered(population);
         let updates = 0;
         filtered.subscribe(() => updates++);
         filtered.setRange(0, 60);
@@ -169,12 +225,12 @@ describe('PopulationFiltered', () => {
     test.each([
         { start: null, end: 25 },
         { start: 5, end: null }
-    ])('resets the coordinate range by a null endpoint: [$start, $end)', ({ start, end }) => {
+    ])('resets the coordinate range by a null endpoint: [$start, $end)', row => {
         const population = new Population(new Uint32Array([0, 1]), new Uint32Array([10, 20]));
         const filtered = new PopulationFiltered(population);
         filtered.setRange(5, 25);
 
-        filtered.setRange(start, end);
+        filtered.setRange(row.start, row.end);
 
         assert.equal(filtered.ranges, null);
         assert.equal(filtered.rangeSamples, null);
@@ -190,9 +246,9 @@ describe('PopulationFiltered', () => {
             const destinations: number[] = [];
             const values: number[] = [];
 
-            for (let index = 0; index < population.values.length; index++) {
-                destinations.push(reader.destination(index));
-                values.push(reader.value(index));
+            for (let i = 0; i < population.values.length; i++) {
+                destinations.push(reader.destination(i));
+                values.push(reader.value(i));
             }
 
             return { destinations, values };
@@ -222,9 +278,9 @@ describe('PopulationFiltered', () => {
         const removeFilter = (filtered: PopulationFiltered) => filtered.filter.remove('samples');
         const setRange = (filtered: PopulationFiltered) => filtered.setRange(15, 65);
         const resetRange = (filtered: PopulationFiltered) => filtered.resetRange();
-        const operations = [
-            [setFilter, removeFilter],
-            [setRange, resetRange]
+        const changes = [
+            { apply: setFilter, reset: removeFilter },
+            { apply: setRange, reset: resetRange }
         ];
         const orders = [[0, 1], [1, 0]];
 
@@ -235,14 +291,14 @@ describe('PopulationFiltered', () => {
                 const resetOrder = orders[j];
 
                 for (let k = 0; k < order.length; k++) {
-                    operations[order[k]][0](filtered);
+                    changes[order[k]].apply(filtered);
                 }
                 assert.deepEqual([...filtered.values], [0, 20, 30, 40]);
                 assert.deepEqual([...filtered.samplesTotal], [0, 15, 5]);
                 assert.deepEqual([...filtered.samplesCount], [0, 1, 1]);
                 assert.deepEqual(filtered.sink, { count: 1, total: 30 });
                 for (let k = 0; k < resetOrder.length; k++) {
-                    operations[resetOrder[k]][1](filtered);
+                    changes[resetOrder[k]].reset(filtered);
                 }
                 assert.deepEqual(filtered.values, population.values);
                 assert.deepEqual(filtered.samples, population.samples);
@@ -326,14 +382,30 @@ describe('PopulationFiltered', () => {
     });
 
     const cases = [
-        { name: 'empty', samples: [], values: [] },
-        { name: 'zero weights', samples: [0, 2, 2], values: [0, 0, 0] },
-        { name: 'sparse IDs', samples: [7, 0, 7, 2], values: [16, 0, 32, 8] },
-        { name: 'uint32 overflow', samples: [1, 1, 4], values: [0xffffffff, 2, 0] }
+        {
+            name: 'empty',
+            samples: [],
+            values: []
+        },
+        {
+            name: 'zero weights',
+            samples: [0, 2, 2],
+            values: [0, 0, 0]
+        },
+        {
+            name: 'sparse IDs',
+            samples: [7, 0, 7, 2],
+            values: [16, 0, 32, 8]
+        },
+        {
+            name: 'uint32 overflow',
+            samples: [1, 1, 4],
+            values: [0xffffffff, 2, 0]
+        }
     ];
 
-    test.each(cases)('copies initial aggregates into independent buffers: $name', ({ samples, values }) => {
-        const population = new Population(Uint32Array.from(samples), Uint32Array.from(values));
+    test.each(cases)('copies initial aggregates into independent buffers: $name', row => {
+        const population = new Population(Uint32Array.from(row.samples), Uint32Array.from(row.values));
         const filtered = new PopulationFiltered(population);
         assert.equal(filtered.buffer.memory instanceof WebAssembly.Memory, inject('useWasm'));
         assert.equal(filtered.cumulative, population.cumulative);
