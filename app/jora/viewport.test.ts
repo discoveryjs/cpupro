@@ -68,7 +68,7 @@ test.each([
     assert.deepEqual(timestampExtent({ axisStart: 100, axisEnd: 200 }, row.lastTime, row.origin), row.extent);
 });
 
-test('viewport gestures resolve through a display frame without clipping the request or moving the population frame', async () => {
+test('gestures in a display frame neither clip the request nor move the population frame', async () => {
     const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]), before: 5, after: 5 });
     const display = query('viewport.viewportRange(line)')({ line, viewport: { start: 100, end: 200 } });
 
@@ -132,11 +132,14 @@ test.each([
     [100, 125, 155, 2, 6],
     [100, 130, 130, 2, 3],
     [100, 200, 220, 9, 10]
-])('bins of a closed extent in a viewport from %i: %i–%i takes bins %i–%i', (viewportStart, start, end, binStart, binEnd) => {
-    const bins = rangeBins({ start, end }, { start: viewportStart, end: viewportStart + 100 }, 10);
+])(
+    'bins of a closed extent in a viewport from %i: %i–%i takes bins %i–%i',
+    (viewportStart, start, end, binStart, binEnd) => {
+        const bins = rangeBins({ start, end }, { start: viewportStart, end: viewportStart + 100 }, 10);
 
-    assert.deepEqual([bins.binStart, bins.binEnd], [binStart, binEnd]);
-});
+        assert.deepEqual([bins.binStart, bins.binEnd], [binStart, binEnd]);
+    }
+);
 
 // A line of 10000 events over 100–200, and a profile over 50–250
 async function createZoomLine() {

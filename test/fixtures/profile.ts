@@ -12,6 +12,8 @@ import { createSampledTreeSet } from '../../app/prepare/computations/sampled-tre
 import { createLineBreakdown } from '../../app/prepare/lines/breakdown.js';
 import { prepareLineRange } from '../../app/prepare/lines/range.js';
 import type { ProfileLineType } from '../../app/prepare/lines/types.js';
+import { processPaths } from '../../app/prepare/preprocessing/short-paths.js';
+import { processDisplayNames } from '../../app/prepare/preprocessing/module-names.js';
 
 export type ProfileFixtureOptions = {
     startTime?: number;
@@ -76,6 +78,11 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
     }
 
     const profile = await createProfile(data, { dictionary, sourceMapping, work: noopWorkHandler });
+
+    // Modules are named once per session, after its profiles are created
+    processPaths(dictionary.packages, dictionary.modules);
+    processDisplayNames(dictionary.modules);
+
     return { profile, dictionary, scriptsMap, sourceMapping };
 }
 

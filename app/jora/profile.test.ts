@@ -17,23 +17,34 @@ async function createContext(): Promise<Parameters<typeof resolveScopeViewport>[
     memline.profile = primaryProfile;
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     return {
-        primaryProfile, primaryLineType: 'timeline', primaryBreakdownKind: null,
-        scopeProfile: null, scopeLine: null, scopeBreakdown: null,
+        primaryProfile,
+        primaryLineType: 'timeline',
+        primaryBreakdownKind: null,
+        scopeProfile: null,
+        scopeLine: null,
+        scopeBreakdown: null,
         data: { profiles: [primaryProfile, other.profile] }
     };
 }
 
 test('derives the default viewport from the resolved line, not the query data', async () => {
     const context = await createContext();
+
     for (const data of [{}, { viewport: { start: 0, end: 10 } }, { line: {} }]) {
         assert.deepEqual(query('scopeViewport()')(data, context), { start: 100, end: 200 });
     }
+
     context.primaryLineType = 'memline';
     assert.deepEqual(resolveScopeViewport(null, context), { start: 0, end: 500 });
     context.scopeLine = context.primaryProfile!.timeline;
     assert.deepEqual(resolveScopeViewport(null, context), { start: 100, end: 200 });
     const { profile: otherProfile } = await createLineFixture({ type: 'memline', values: new Uint32Array([200]) });
-    assert.deepEqual(resolveScopeViewport(null, { ...context, scopeLine: null, scopeProfile: otherProfile }), { start: 0, end: 200 });
+    const otherScope = {
+        ...context,
+        scopeLine: null,
+        scopeProfile: otherProfile
+    };
+    assert.deepEqual(resolveScopeViewport(null, otherScope), { start: 0, end: 200 });
 });
 
 test('scope override is inherited and explicit viewport wins without modifying the parent', async () => {
@@ -53,10 +64,25 @@ test('checks viewport values at runtime, including empty, malformed and non-fini
     const context = await createContext();
     const scopeViewport = { start: 125, end: 150 };
     const nested = { ...context, scopeViewport };
-    for (const viewport of [{}, [], 'time', 1, true, { start: '1', end: 2 }, { start: 2, end: 1 }, { start: NaN, end: 2 }, { start: 0, end: Infinity }]) {
+    const malformed = [
+        {},
+        [],
+        'time',
+        1,
+        true,
+        { start: '1', end: 2 },
+        { start: 2, end: 1 },
+        { start: NaN, end: 2 },
+        { start: 0, end: Infinity }
+    ];
+
+    for (const viewport of malformed) {
+        const inherited = { ...context, scopeViewport: viewport } as typeof context;
+
         assert.equal(resolveScopeViewport(viewport, nested), null);
-        assert.deepEqual(resolveScopeViewport(null, { ...context, scopeViewport: viewport } as typeof context), { start: 100, end: 200 });
+        assert.deepEqual(resolveScopeViewport(null, inherited), { start: 100, end: 200 });
     }
+
     const empty = { start: 0, end: 0 };
     assert.equal(resolveScopeViewport(empty, context), empty);
     assert.equal(resolveScopeViewport(null, nested), scopeViewport);

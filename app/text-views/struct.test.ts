@@ -47,21 +47,23 @@ test('a nonnumeric tail permits expansion even when the preview omits it', async
 test('annotations use Discovery traversal context and surround values', async () => {
     const data = { values: [1, 'two'] };
     const visits: [unknown, ValueAnnotationContext][] = [];
-    const { text } = await model.textView.renderString(null, {
+    const scaleNumbers = (value: unknown, context: ValueAnnotationContext) => {
+        visits.push([value, context]);
+        return typeof value === 'number' && { text: value * 10 };
+    };
+    const config = {
         view: 'struct',
         expanded: 2,
         annotations: [
             '#.key = "values" ? { place: "before", style: "badge", text: #.context.label }',
-            (value, context) => {
-                visits.push([value, context]);
-                return typeof value === 'number' && { text: value * 10 };
-            }
+            scaleNumbers
         ]
-    }, data, { label: 'samples' });
+    };
+    const { text } = await model.textView.renderString(null, config, data, { label: 'samples' });
 
     assert.equal(text, '{\n    values: [samples] [\n        1 [10],\n        "two"\n    ]\n}');
 
-    const visit = visits.find(([value]) => value === 1);
+    const visit = visits.find(entry => entry[0] === 1);
 
     assert.ok(visit);
     const [, context] = visit;
@@ -75,20 +77,29 @@ test('annotations use Discovery traversal context and surround values', async ()
 });
 
 test.each([
-    { name: 'array', data: [{ value: 1 }, 2], expected: '[{ value: 1 }, 2] [root]' },
-    { name: 'object', data: { value: { nested: 1 } }, expected: '{ value: { nested: 1 } } [root]' }
-])('compact $name previews do not evaluate annotations on their entries', async ({ data, expected }) => {
+    {
+        name: 'array',
+        data: [{ value: 1 }, 2],
+        expected: '[{ value: 1 }, 2] [root]'
+    },
+    {
+        name: 'object',
+        data: { value: { nested: 1 } },
+        expected: '{ value: { nested: 1 } } [root]'
+    }
+])('compact $name previews do not evaluate annotations on their entries', async row => {
     const visits: unknown[] = [];
-    const text = await render(data, {
+    const annotateRoot = (value: unknown) => {
+        visits.push(value);
+        return { text: 'root' };
+    };
+    const text = await render(row.data, {
         limitCompactObjectEntries: false,
-        annotations: [(value: unknown) => {
-            visits.push(value);
-            return { text: 'root' };
-        }]
+        annotations: [annotateRoot]
     });
 
-    assert.equal(text, expected);
-    assert.deepEqual(visits, [data]);
+    assert.equal(text, row.expected);
+    assert.deepEqual(visits, [row.data]);
 });
 
 test('an annotation failure is logged without hiding the value or later annotations', async () => {
@@ -96,14 +107,10 @@ test('an annotation failure is logged without hiding the value or later annotati
     const log = vi.spyOn(model.logger, 'error').mockImplementation(() => {});
 
     try {
-        const text = await render(1, {
-            annotations: [
-                () => {
-                    throw error;
-                },
-                () => ({ text: 'kept' })
-            ]
-        });
+        const fail = () => {
+            throw error;
+        };
+        const text = await render(1, { annotations: [fail, () => ({ text: 'kept' })] });
 
         assert.equal(text, '1 [kept]');
         assert.equal(log.mock.calls.length, 1);
@@ -175,7 +182,9 @@ test('typed vectors remain bounded when expanded is requested', async () => {
 test.each([
     { name: 'array', data: [1, 2] },
     { name: 'typed array', data: new Uint32Array([1, 2]) }
-])('$name is read by index without calling its values property', async ({ data }) => {
+])('$name is read by index without calling its values property', async row => {
+    const data = row.data;
+
     Object.defineProperty(data, 'values', {
         get() {
             throw new Error('Array methods must not be accessed');
@@ -203,11 +212,11 @@ test.each([
         props: { limitCollapsed: false, limitCompactObjectEntries: false },
         expected: '{ first: { one: 1, two: 2 }, second: 2, third: 3 }'
     }
-])('limits: $name', async ({ props, expected }) => {
+])('limits: $name', async row => {
     const data = { first: { one: 1, two: 2 }, second: 2, third: 3 };
-    const text = await render(data, props);
+    const text = await render(data, row.props);
 
-    assert.equal(text, expected);
+    assert.equal(text, row.expected);
 });
 
 test.each([undefined, null, true, '2', -1, NaN, Infinity])('invalid limit %s uses the default', async limit => {
@@ -219,10 +228,10 @@ test.each([undefined, null, true, '2', -1, NaN, Infinity])('invalid limit %s use
 test.each([
     { limit: 0, expected: '[\u2026 3 more]' },
     { limit: 1.9, expected: '[1, \u2026 2 more]' }
-])('nonnegative limit $limit is floored', async ({ limit, expected }) => {
-    const text = await render([1, 2, 3], { limitCollapsed: limit });
+])('nonnegative limit $limit is floored', async row => {
+    const text = await render([1, 2, 3], { limitCollapsed: row.limit });
 
-    assert.equal(text, expected);
+    assert.equal(text, row.expected);
 });
 
 test.each([false, -1, NaN, Infinity, '2'])('invalid or disabled expansion %s stays compact', async expanded => {
@@ -238,7 +247,11 @@ test('fractional expansion depth is floored', async () => {
 });
 
 test.each([
-    { value: 'line\n"quoted"\\end', props: {}, expected: '"line\\n\\"quoted\\"\\\\end"' },
+    {
+        value: 'line\n"quoted"\\end',
+        props: {},
+        expected: '"line\\n\\"quoted\\"\\\\end"'
+    },
     {
         value: 'abcdef',
         props: { maxStringLength: 3, allowedExcessStringLength: 2 },
@@ -254,11 +267,15 @@ test.each([
         props: { maxStringLength: 3, allowedExcessStringLength: 2 },
         expected: '"abcde"'
     },
-    { value: 'abcdef', props: { maxStringLength: false }, expected: '"abcdef"' }
-])('string escaping and truncation: $expected', async ({ value, props, expected }) => {
-    const text = await render(value, props);
+    {
+        value: 'abcdef',
+        props: { maxStringLength: false },
+        expected: '"abcdef"'
+    }
+])('string escaping and truncation: $expected', async row => {
+    const text = await render(row.value, row.props);
 
-    assert.equal(text, expected);
+    assert.equal(text, row.expected);
 });
 
 test('compact property and string limits preserve remainder counts', async () => {
@@ -287,18 +304,50 @@ test.each([null, undefined, true, false, NaN, Infinity, -Infinity])(
 );
 
 test.each([
-    { name: 'bigint', value: 12n, expected: '[BigInt] 12' },
-    { name: 'symbol', value: Symbol('name'), expected: '[Symbol] Symbol(name)' },
-    { name: 'function', value: () => {}, expected: '\u0192n' },
-    { name: 'regexp', value: /test/gi, expected: '/test/gi' },
-    { name: 'date', value: new Date(0), expected: String(new Date(0)) },
-    { name: 'invalid date', value: new Date(NaN), expected: 'Invalid Date' },
-    { name: 'error', value: new Error('failure'), expected: 'Error: failure' },
-    { name: 'compact error', value: [new Error('failure')], expected: '[Error]' }
-])('$name uses the DOM struct representation', async ({ value, expected }) => {
-    const text = await render(value);
+    {
+        name: 'bigint',
+        value: 12n,
+        expected: '[BigInt] 12'
+    },
+    {
+        name: 'symbol',
+        value: Symbol('name'),
+        expected: '[Symbol] Symbol(name)'
+    },
+    {
+        name: 'function',
+        value: () => {},
+        expected: '\u0192n'
+    },
+    {
+        name: 'regexp',
+        value: /test/gi,
+        expected: '/test/gi'
+    },
+    {
+        name: 'date',
+        value: new Date(0),
+        expected: String(new Date(0))
+    },
+    {
+        name: 'invalid date',
+        value: new Date(NaN),
+        expected: 'Invalid Date'
+    },
+    {
+        name: 'error',
+        value: new Error('failure'),
+        expected: 'Error: failure'
+    },
+    {
+        name: 'compact error',
+        value: [new Error('failure')],
+        expected: '[Error]'
+    }
+])('$name uses the DOM struct representation', async row => {
+    const text = await render(row.value);
 
-    assert.equal(text, expected);
+    assert.equal(text, row.expected);
 });
 
 test('objects show own enumerable properties regardless of their prototype', async () => {
@@ -324,7 +373,7 @@ test('sets use sequence limits and bound recursive previews without reference la
 test('deeply nested compact arrays stop at the default depth boundary', async () => {
     let data: unknown = 1;
 
-    for (let depth = 0; depth < 10000; depth++) {
+    for (let i = 0; i < 10000; i++) {
         data = [data];
     }
 
@@ -344,8 +393,8 @@ test('the depth boundary can be configured or disabled', async () => {
 test('model markers are reused without changing the input object', async () => {
     const data = { id: 1, name: 'sample' };
     const markedModel = new Model({
-        setup({ defineObjectMarker }) {
-            const mark = defineObjectMarker('item', { ref: 'id', title: 'name' });
+        setup(host) {
+            const mark = host.defineObjectMarker('item', { ref: 'id', title: 'name' });
 
             mark(data);
         }

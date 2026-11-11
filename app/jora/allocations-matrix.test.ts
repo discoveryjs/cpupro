@@ -2,65 +2,89 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { methods } from './index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
-import type { ProfileLineAllocationOwnerAttribute, ProfileLineAllocationCompilationStageAttribute } from '../prepare/lines/types.js';
+import type {
+    ProfileLine,
+    ProfileLineAllocationOwnerAttribute,
+    ProfileLineAllocationCompilationStageAttribute
+} from '../prepare/lines/types.js';
+import type { PopulationFiltered } from '../prepare/computations/population.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 
-// Fixture allocation events weigh 16, 32, 48 and 64 bytes
-function addTypesAndLifespans(profile: Awaited<ReturnType<typeof createProfileFixture>>['profile'], types: number[], lifespans: number[]) {
-    profile.memline!.attributes.push(
-        { name: 'allocationType', values: Uint32Array.from(types), dict: ['object', 'array'] },
-        { name: 'allocationLifespan', values: Uint8Array.from(lifespans), dict: ['alive', 'short-lived'] }
+// The fixture's allocation events weigh 16, 32, 48 and 64 bytes and take 0–16, 16–48, 48–96 and 96–160 bytes of
+// the line; its call-stack population has 2 samples
+
+// Objects of 16 and 48 bytes are alive, of 32 bytes short-lived; the array of 64 bytes is alive; no strings
+function addAllocationKinds(line: ProfileLine) {
+    line.attributes.push(
+        {
+            name: 'allocationType',
+            values: Uint32Array.from([0, 0, 0, 1]),
+            dict: ['object', 'array', 'string']
+        },
+        {
+            name: 'allocationLifespan',
+            values: Uint8Array.from([0, 1, 0, 0]),
+            dict: ['alive', 'short-lived']
+        }
     );
 }
 
-test.each([
-    { mapping: [1, 3, 4], samples: 'events 0 and 3 in sample 0', masked: [80] },
-    { mapping: [0, 4, 4], samples: 'no event in sample 0', masked: [160] },
-    { mapping: [4, 4, 4], samples: 'every event in sample 0', masked: [] }
-])('rows count only events outside sink: $samples', async ({ mapping, masked }) => {
+// A matrix of the memline call-stack nodes, accepting all of them
+async function createNodesMatrix(mapping: number[]) {
     const { profile } = await createProfileFixture({ mapping });
-    const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === 'call-stack')!;
+    const line = profile.memline!;
+    const breakdown = line.breakdowns.find(entry => entry.kind === 'call-stack')!;
+    const nodes = breakdown.callFrames!.filtered.nodes;
     const population = breakdown.populationFiltered;
-    const sums = () => methods.allocationsMatrix
-        .call({ context: {} }, breakdown.callFrames!.filtered.nodes, population, () => true, profile)
-        .map(row => row.total.sum);
-
-    addTypesAndLifespans(profile, [0, 0, 0, 0], [0, 0, 0, 0]);
-    assert.deepEqual(sums(), [160]);
-
-    const sampleCount = population.samplesMask.length;
-    const firstRejected = new Uint8Array(sampleCount).fill(1);
-    const setSampleFilter = (accepts: Uint8Array) => population.filter.set({
-        key: 'samples',
-        domain: 'sample',
-        size: sampleCount,
-        accepts
-    });
-
-    firstRejected[0] = 0;
-    setSampleFilter(firstRejected);
-    assert.deepEqual(sums(), masked);
-
-    setSampleFilter(new Uint8Array(sampleCount));
-    assert.deepEqual(sums(), []);
-
-    population.filter.remove('samples');
-    assert.deepEqual(sums(), [160]);
-});
-
-test('rows summarize each type by lifespan, cells with several events keep their extremes', async () => {
-    const { profile } = await createProfileFixture({ mapping: [0, 4, 4] });
-    const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === 'call-stack')!;
-
-    // Objects: 16 and 48 bytes alive, 32 short-lived; arrays: 64 bytes alive
-    addTypesAndLifespans(profile, [0, 0, 0, 1], [0, 1, 0, 0]);
-    const population = breakdown.populationFiltered;
-    const rows = () => methods.allocationsMatrix.call(
-        { context: {} }, breakdown.callFrames!.filtered.nodes, population, () => true, profile
+    const matrix = () => methods.allocationsMatrix.call(
+        { context: {} },
+        nodes,
+        population,
+        () => true,
+        profile
     );
 
-    assert.deepEqual(rows(), [
+    addAllocationKinds(line);
+
+    return {
+        profile,
+        line,
+        nodes,
+        population,
+        matrix
+    };
+}
+
+// Owners of the allocation events: the first and the third are of a function, the second of another one, the last
+// has no owner
+function createOwners(): ProfileLineAllocationOwnerAttribute {
+    return {
+        name: 'allocationOwner',
+        dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }],
+        values: new Uint32Array([1, 2, 1, 0])
+    };
+}
+
+function rejectSamples(population: PopulationFiltered, rejected: number[]) {
+    const accepts = new Uint8Array(population.samplesMask.length).fill(1);
+
+    for (let i = 0; i < rejected.length; i++) {
+        accepts[rejected[i]] = 0;
+    }
+
+    population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: accepts.length,
+        accepts
+    });
+}
+
+test('a row of each type with allocations has a cell of every lifespan and their total', async () => {
+    const { matrix } = await createNodesMatrix([0, 4, 4]);
+
+    assert.deepEqual(matrix(), [
         {
             type: 'object',
             total: { count: 3, sum: 96, min: 16, max: 48 },
@@ -74,104 +98,208 @@ test('rows summarize each type by lifespan, cells with several events keep their
             'short-lived': { count: 0, sum: 0, min: 0, max: 0 }
         }
     ]);
-
-    // The range cuts the 48-byte object at 60 bytes to 12 bytes, below the other alive object
-    population.setRange(0, 60);
-    assert.deepEqual(rows()[0].alive, { count: 2, sum: 28, min: 12, max: 16 });
 });
 
 test.each([
     { missing: 'allocationType' },
     { missing: 'allocationLifespan' }
-])('there is no matrix without $missing', async ({ missing }) => {
-    const { profile } = await createProfileFixture({ mapping: [0, 4, 4] });
-    const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === 'call-stack')!;
+])('there is no matrix without $missing', async row => {
+    const { line, matrix } = await createNodesMatrix([0, 4, 4]);
 
-    addTypesAndLifespans(profile, [0, 0, 0, 1], [0, 1, 0, 0]);
-    profile.memline!.attributes = profile.memline!.attributes.filter(attribute => attribute.name !== missing);
+    line.attributes = line.attributes.filter(attribute => attribute.name !== row.missing);
 
-    assert.deepEqual(methods.allocationsMatrix.call(
-        { context: {} }, breakdown.callFrames!.filtered.nodes, breakdown.populationFiltered, () => true, profile
-    ), []);
+    assert.deepEqual(matrix(), []);
 });
 
-test('selects compilation owners and stages without losing allocation filters', async () => {
+test('without a profile the matrix is of the scope profile', async () => {
+    const { profile, nodes, population } = await createNodesMatrix([0, 4, 4]);
+    const context = { scopeProfile: profile };
+    const rows = methods.allocationsMatrix.call({ context }, nodes, population, () => true, undefined);
+
+    assert.deepEqual(rows.map(row => row.total.sum), [96, 64]);
+});
+
+test.each([
+    {
+        name: 'events 0 and 3 in sample 0',
+        mapping: [1, 3, 4],
+        rejected: [0],
+        sums: [80]
+    },
+    {
+        name: 'no event in sample 0',
+        mapping: [0, 4, 4],
+        rejected: [0],
+        sums: [96, 64]
+    },
+    {
+        name: 'every event in sample 0',
+        mapping: [4, 4, 4],
+        rejected: [0],
+        sums: []
+    },
+    {
+        name: 'every sample rejected',
+        mapping: [0, 4, 4],
+        rejected: [0, 1],
+        sums: []
+    }
+])('events of rejected samples are not counted: $name', async row => {
+    const { population, matrix } = await createNodesMatrix(row.mapping);
+
+    rejectSamples(population, row.rejected);
+
+    assert.deepEqual(matrix().map(entry => entry.total.sum), row.sums);
+});
+
+test.each([
+    {
+        name: 'cuts an event to its part in the range',
+        ranges: [{ start: 0, end: 60 }],
+        alive: { count: 2, sum: 28, min: 12, max: 16 }
+    },
+    {
+        name: 'counts an event cut by ranges once',
+        ranges: [{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 50, end: 55 }],
+        alive: { count: 2, sum: 9, min: 4, max: 5 }
+    },
+    {
+        name: 'omits an event outside the ranges',
+        ranges: [{ start: 20, end: 30 }],
+        alive: { count: 0, sum: 0, min: 0, max: 0 }
+    },
+    {
+        name: 'cuts an event of another type',
+        ranges: [{ start: 100, end: 110 }],
+        alive: { count: 1, sum: 10, min: 10, max: 10 }
+    }
+])('a range selection $name', async row => {
+    const { population, matrix } = await createNodesMatrix([0, 4, 4]);
+
+    population.setRanges(row.ranges);
+
+    assert.deepEqual(matrix()[0].alive, row.alive);
+});
+
+// An owner attribute as the source, as the compilations page selects allocations of a function
+async function createOwnerMatrix() {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const line = profile.memline!;
     const population = line.breakdowns.find(entry => entry.kind === 'location')!.populationFiltered;
-    const attribute: ProfileLineAllocationOwnerAttribute = {
-        name: 'allocationOwner', dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }], values: new Uint32Array([1, 2, 1, 0])
-    };
+    const owners = createOwners();
     const stages: ProfileLineAllocationCompilationStageAttribute = {
-        name: 'allocationCompilationStage', dict: ['none', 'Stage1', 'Stage2'], values: new Uint8Array([1, 1, 2, 0])
+        name: 'allocationCompilationStage',
+        dict: ['none', 'Stage1', 'Stage2'],
+        values: new Uint8Array([1, 1, 2, 0])
     };
-    line.attributes.push(
-        attribute, stages,
-        { name: 'allocationType', values: new Uint32Array([0, 1, 0, 1]), dict: ['BYTECODE_ARRAY', 'FIXED_ARRAY'] },
-        { name: 'allocationLifespan', values: new Uint8Array([0, 1, 2, 0]), dict: ['alive', 'short-lived', 'long-lived'] }
+
+    addAllocationKinds(line);
+    line.attributes.push(owners, stages);
+
+    const matrix = (accepts: unknown) => methods.allocationsMatrix.call(
+        { context: {} },
+        owners,
+        population,
+        accepts,
+        profile
     );
-    const matrix = () => methods.allocationsMatrix.call(
-        { context: {} }, attribute, population, attribute.dict[1], profile
-    );
+
+    return { line, population, owners, matrix };
+}
+
+test('an attribute source counts the events of its entries accepted by the test', async () => {
+    const { owners, matrix } = await createOwnerMatrix();
+    const all = matrix((owner: unknown) => owner !== null);
+
+    assert.deepEqual(matrix(owners.dict[1]), [
+        {
+            type: 'object',
+            total: { count: 2, sum: 64, min: 16, max: 48 },
+            alive: { count: 2, sum: 64, min: 16, max: 48 },
+            'short-lived': { count: 0, sum: 0, min: 0, max: 0 }
+        }
+    ]);
+    assert.deepEqual(all.map(row => row.total.sum), [96]);
+    assert.deepEqual(matrix(() => false), []);
+});
+
+test.each([
+    {
+        name: 'a stage',
+        stages: ['Stage2'],
+        ranges: null,
+        totals: [{ count: 1, sum: 48, min: 48, max: 48 }]
+    },
+    {
+        name: 'parts of events in ranges',
+        stages: ['Stage1', 'Stage2'],
+        ranges: [{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 50, end: 55 }],
+        totals: [{ count: 2, sum: 9, min: 4, max: 5 }]
+    },
+    {
+        name: 'a stage and parts of events in ranges',
+        stages: ['Stage2'],
+        ranges: [{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 50, end: 55 }],
+        totals: [{ count: 1, sum: 5, min: 5, max: 5 }]
+    },
+    {
+        name: 'fractional parts summing to a byte',
+        stages: ['Stage1', 'Stage2'],
+        ranges: [{ start: 0.1, end: 0.7 }, { start: 1.1, end: 1.7 }],
+        totals: [{ count: 1, sum: 1, min: 1, max: 1 }]
+    },
+    {
+        name: 'a fractional part below a byte',
+        stages: ['Stage1', 'Stage2'],
+        ranges: [{ start: 0.1, end: 0.7 }],
+        totals: []
+    }
+])('an attribute source keeps the allocation filters: $name', async row => {
+    const { line, population, owners, matrix } = await createOwnerMatrix();
     const stopFilters = prepareLineFilters(line);
     const stageFilter = line.filters.get('allocationCompilationStage') as SetAttributeFilter;
 
-    const [row] = matrix();
-    assert.equal(row.type, 'BYTECODE_ARRAY');
-    assert.deepEqual(row.total, { count: 2, sum: 64, min: 16, max: 48 });
-    assert.equal(row.alive.sum, 16);
-    assert.equal(row['long-lived'].sum, 48);
-    stageFilter.setSelection('include', ['Stage1']);
-    assert.equal(matrix()[0].total.sum, 16);
-    stageFilter.setSelection('include', ['Stage2']);
-    assert.equal(matrix()[0].total.sum, 48);
-    stageFilter.allowAll();
+    stageFilter.setSelection('include', row.stages);
+    population.setRanges(row.ranges);
 
-    population.setRanges([{ start: 5, end: 6 }]);
-    assert.deepEqual(matrix()[0].total, { count: 1, sum: 1, min: 1, max: 1 });
-    population.setRanges([{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 50, end: 55 }]);
-    assert.deepEqual(matrix()[0].total, { count: 2, sum: 9, min: 4, max: 5 });
-    assert.equal(matrix()[0].total.sum, methods.attributeSampleTotals(attribute, population)[1].size);
-    stageFilter.setSelection('include', ['Stage2']);
-    assert.deepEqual(matrix()[0].total, { count: 1, sum: 5, min: 5, max: 5 });
-    stageFilter.allowAll();
-    population.setRanges([{ start: 0.1, end: 0.7 }, { start: 1.1, end: 1.7 }]);
-    assert.deepEqual(matrix()[0].total, { count: 1, sum: 1, min: 1, max: 1 });
-    population.setRanges([{ start: 0.1, end: 0.7 }]);
-    assert.deepEqual(matrix(), []);
-    population.resetRange();
-
-    population.filter.set({
-        key: 'samples',
-        domain: 'sample',
-        size: population.samplesMask.length,
-        accepts: new Uint8Array(population.samplesMask.length)
-    });
-    assert.deepEqual(matrix(), []);
-    population.filter.remove('samples');
-    assert.equal(matrix()[0].total.sum, 64);
-    const all = methods.allocationsMatrix.call({ context: {} }, attribute, population, (owner: unknown) => owner !== null, profile);
-    assert.equal(all.reduce((sum, entry) => sum + entry.total.sum, 0), 96);
+    assert.deepEqual(matrix(owners.dict[1]).map(entry => entry.total), row.totals);
     stopFilters();
 });
 
-test('attribute sample totals honor ranges and stage filters without partial-object double counting', async () => {
+test.each([
+    {
+        name: 'the whole line',
+        ranges: null,
+        totals: [[1, 64], [2, 64], [1, 32]]
+    },
+    {
+        name: 'a part of an event',
+        ranges: [{ start: 5, end: 10 }],
+        totals: [[0, 0], [1, 5], [0, 0]]
+    },
+    {
+        name: 'parts of events in several ranges',
+        ranges: [{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 20, end: 24 }],
+        totals: [[0, 0], [1, 4], [1, 4]]
+    }
+])('attribute sample totals count events and their bytes in $name', async row => {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const population = profile.memline!.breakdowns[0].populationFiltered;
-    const owners: ProfileLineAllocationOwnerAttribute = {
-        name: 'allocationOwner', dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }], values: new Uint32Array([1, 2, 1, 0])
-    };
-    const totals = () => methods.attributeSampleTotals(owners, population);
-    assert.deepEqual(totals().map(row => [row.count, row.size]), [[1, 64], [2, 64], [1, 32]]);
-    population.setRanges([{ start: 5, end: 10 }]);
-    assert.deepEqual(totals()[1], { entry: owners.dict[1], count: 1, size: 5 });
-    population.setRanges([{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 20, end: 24 }]);
-    assert.deepEqual(totals().map(row => [row.count, row.size]), [[0, 0], [1, 4], [1, 4]]);
-    population.filter.set({
-        key: 'samples',
-        domain: 'sample',
-        size: population.samplesMask.length,
-        accepts: new Uint8Array(population.samplesMask.length)
-    });
-    assert.ok(totals().every(row => row.count === 0 && row.size === 0));
+    const owners = createOwners();
+
+    population.setRanges(row.ranges);
+    const totals = methods.attributeSampleTotals(owners, population);
+
+    assert.deepEqual(totals.map(entry => [entry.count, entry.size]), row.totals);
+    assert.equal(totals[1].entry, owners.dict[1]);
+});
+
+test('attribute sample totals are zero when every sample is rejected', async () => {
+    const { profile } = await createProfileFixture({ noSourceMap: true });
+    const population = profile.memline!.breakdowns[0].populationFiltered;
+    const totals = () => methods.attributeSampleTotals(createOwners(), population);
+
+    rejectSamples(population, [0, 1]);
+
+    assert.deepEqual(totals().map(entry => [entry.count, entry.size]), [[0, 0], [0, 0], [0, 0]]);
 });

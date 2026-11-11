@@ -4,7 +4,13 @@ import jora from 'jora';
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
 import { findView, findViews } from '../../../test/helpers/view-config.js';
 import { methods } from '../../jora/index.mjs';
-import { signalWindows, signalMeasurements, compilationPopulation, signalScopes, signalScopeLabel } from '../../signals.js';
+import {
+    signalWindows,
+    signalMeasurements,
+    compilationPopulation,
+    signalScopes,
+    signalScopeLabel
+} from '../../signals.js';
 import { correlations } from './correlations.js';
 
 type Measurement = { value: number | null; of?: number };
@@ -45,12 +51,11 @@ async function createScope(signals: { allocations?: boolean; events?: boolean })
 describe('scopes', () => {
     test('include event-only threads without borrowing a sampled profile', () => {
         const profile = { timeline: {}, thread: { tid: 1 } };
+        const sampledThread = { profiles: [profile], compilations: [{ name: 'Compile' }] };
         const eventThread = { tid: 2, profiles: [], compilations: [{ name: 'Compile' }] };
         const data = {
             profiles: [profile],
-            defaultSession: { processes: [{ threads: [
-                { profiles: [profile], compilations: [{ name: 'Compile' }] }, eventThread
-            ] }] }
+            defaultSession: { processes: [{ threads: [sampledThread, eventThread] }] }
         };
 
         assert.deepEqual(query(signalScopes)(data), [profile, { thread: eventThread }]);
@@ -63,8 +68,16 @@ describe('scopes', () => {
             { name: 'Profile 1', thread: { name: 'Worker', pid: 1, tid: 0 } },
             'Worker pid:1 tid:0'
         ],
-        ['the profile name without a thread name', { name: 'Profile 1', thread: { tid: 2 } }, 'Profile 1 tid:2'],
-        ['a placeholder without names', {}, 'Profile']
+        [
+            'the profile name without a thread name',
+            { name: 'Profile 1', thread: { tid: 2 } },
+            'Profile 1 tid:2'
+        ],
+        [
+            'a placeholder without names',
+            {},
+            'Profile'
+        ]
     ])('are labeled by %s', (_, scope, label) => {
         assert.equal(query(signalScopeLabel)(scope), label);
     });
@@ -168,19 +181,64 @@ describe('windows', () => {
     // Time is relative to the start of the axis, ids are allocation ids
     test.each([
         ['no signals', () => ({}), [
-            { title: 'CPU samples', count: undefined, time: null, ids: null },
-            { title: 'Allocations', count: undefined, time: null, ids: null },
-            { title: 'Compilation events', count: 0, time: null, ids: null }
+            {
+                title: 'CPU samples',
+                count: undefined,
+                time: null,
+                ids: null
+            },
+            {
+                title: 'Allocations',
+                count: undefined,
+                time: null,
+                ids: null
+            },
+            {
+                title: 'Compilation events',
+                count: 0,
+                time: null,
+                ids: null
+            }
         ]],
         ['CPU samples', () => createScope({}), [
-            { title: 'CPU samples', count: 3, time: { start: 10, end: 40 }, ids: null },
-            { title: 'Allocations', count: undefined, time: null, ids: null },
-            { title: 'Compilation events', count: 0, time: null, ids: null }
+            {
+                title: 'CPU samples',
+                count: 3,
+                time: { start: 10, end: 40 },
+                ids: null
+            },
+            {
+                title: 'Allocations',
+                count: undefined,
+                time: null,
+                ids: null
+            },
+            {
+                title: 'Compilation events',
+                count: 0,
+                time: null,
+                ids: null
+            }
         ]],
         ['CPU samples, allocations and events', () => createScope({ allocations: true, events: true }), [
-            { title: 'CPU samples', count: 3, time: { start: 10, end: 40 }, ids: { start: 1, end: 4 } },
-            { title: 'Allocations', count: 4, time: null, ids: { start: 0, end: 4 } },
-            { title: 'Compilation events', count: 1, time: { start: 5, end: 15 }, ids: { start: 1, end: 3 } }
+            {
+                title: 'CPU samples',
+                count: 3,
+                time: { start: 10, end: 40 },
+                ids: { start: 1, end: 4 }
+            },
+            {
+                title: 'Allocations',
+                count: 4,
+                time: null,
+                ids: { start: 0, end: 4 }
+            },
+            {
+                title: 'Compilation events',
+                count: 1,
+                time: { start: 5, end: 15 },
+                ids: { start: 1, end: 3 }
+            }
         ]]
     ])('of a scope with %s', async (_, create, windows) => {
         assert.deepEqual(query(signalWindows)(await create(), {}), windows);
@@ -234,6 +292,13 @@ describe('measurements', () => {
         'Events starting after the sample time axis',
         'The furthest event start from the sample time axis'
     ];
+    const allSignalRows = [
+        ...cpuRows,
+        ...allocationRows,
+        ...eventRows,
+        ...eventAxisRows,
+        'Allocations with a stage of another event'
+    ];
 
     test.each([
         ['no signals', () => ({}), []],
@@ -241,9 +306,7 @@ describe('measurements', () => {
         ['CPU samples', () => createScope({}), cpuRows],
         ['CPU samples and events', () => createScope({ events: true }), [...cpuRows, ...eventRows, ...eventAxisRows]],
         ['CPU samples and allocations', () => createScope({ allocations: true }), [...cpuRows, ...allocationRows]],
-        ['CPU samples, allocations and events', () => createScope({ allocations: true, events: true }), [
-            ...cpuRows, ...allocationRows, ...eventRows, ...eventAxisRows, 'Allocations with a stage of another event'
-        ]]
+        ['CPU samples, allocations and events', () => createScope({ allocations: true, events: true }), allSignalRows]
     ])('of a scope with %s', async (_, create, titles) => {
         assert.deepEqual(Object.keys(measure(await create())), titles);
     });
@@ -355,7 +418,7 @@ describe('correlations', () => {
     };
 
     test.each(['timeline', 'memline'])('of %s are unavailable without coverage', type => {
-        const [unavailable] = findView(correlations(type), { view: 'switch' }).content;
+        const unavailable = findView(correlations(type), { when: 'no $' });
 
         assert.equal(query(unavailable.when)(null), true);
         assert.equal(query(unavailable.when)(coverage), false);

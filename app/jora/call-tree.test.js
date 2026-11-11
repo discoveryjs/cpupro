@@ -31,10 +31,11 @@ test.each([0, 1, 3])('keeps extra mask cells zero without testing them: extraSiz
         sampleToNode: new Uint32Array([0, 1, 0])
     };
     const visited = [];
-    const mask = makeSamplesMask(treeMetrics, (entry, sampleId) => {
+    const acceptVisited = (entry, sampleId) => {
         visited.push([entry, sampleId]);
         return true;
-    }, extraSize);
+    };
+    const mask = makeSamplesMask(treeMetrics, acceptVisited, extraSize);
 
     assert.deepEqual(visited, [[second, 0], [first, 1], [second, 2]]);
     assert.deepEqual([...mask], [1, 1, 1, ...new Array(extraSize).fill(0)]);
@@ -44,10 +45,11 @@ test.each([0, 1, 3])('keeps extra mask cells zero without testing them: extraSiz
 });
 
 test('creates an excluded sink cell for an empty sample mapping', () => {
-    const mask = makeSamplesMask({
+    const treeMetrics = {
         tree: { dictionary: [], nodes: new Uint32Array() },
         sampleToNode: new Uint32Array()
-    }, () => assert.fail('Predicate must not be called for padding'), 1);
+    };
+    const mask = makeSamplesMask(treeMetrics, () => assert.fail('Predicate must not be called for padding'), 1);
 
     assert.deepEqual([...mask], [0]);
 });
@@ -55,7 +57,7 @@ test('creates an excluded sink cell for an empty sample mapping', () => {
 test('tree() nests values under valid parent indices and leaves others at the root', () => {
     // Parent indices: none, 0, 0, 1, out of range, not an integer
     const values = [-1, 0, 0, 1, 6, 1.5];
-    const items = values.map((parent, index) => ({ index, parent }));
+    const items = values.map((parent, i) => ({ index: i, parent }));
     const getParent = item => item.parent;
     const getIndex = item => item.index;
     const roots = methods.tree(items, getParent, getIndex);
@@ -114,11 +116,18 @@ test.each([
 ])('subtreeSamples() of a with includeSelf=$includeSelf selects samples $samples', row => {
     const { includeSelf, entries, samples } = row;
     const result = methods.subtreeSamples(createMetrics(), 'a', includeSelf);
-    const { entries: actualEntries, selectedSamples, mask, sampleSelector } = result;
+    const { mask, sampleSelector } = result;
+    const masked = [];
 
-    assert.deepEqual(actualEntries, entries);
-    assert.deepEqual([...selectedSamples], samples);
-    assert.deepEqual([...mask].flatMap((value, sample) => value === 1 ? [sample] : []), samples);
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i] === 1) {
+            masked.push(i);
+        }
+    }
+
+    assert.deepEqual(result.entries, entries);
+    assert.deepEqual([...result.selectedSamples], samples);
+    assert.deepEqual(masked, samples);
     assert.deepEqual([0, 1, 2, 3, 4, 5].filter(sample => sampleSelector(null, sample)), samples);
 });
 
