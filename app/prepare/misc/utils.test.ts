@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { asUint32Array, convertToInt32Array, convertToUint32Array, fractionDigits, isFloat64Vector, isInt32Vector, isNumberVector, isUint32Vector } from './utils.js';
+import {
+    asUint32Array,
+    convertToInt32Array,
+    convertToUint32Array,
+    fractionDigits,
+    isFloat64Vector,
+    isInt32Vector,
+    isNumberVector,
+    isUint32Vector
+} from './utils.js';
 
 describe('numeric vector views', () => {
     test('accepts only the representations produced by profile extraction', () => {
@@ -20,7 +29,19 @@ describe('numeric vector views', () => {
         assert.equal(isFloat64Vector(new Uint32Array()), false);
         assert.equal(isInt32Vector(new Float64Array([0.5])), false);
         assert.equal(isNumberVector(new Float64Array([0.5])), true);
-        for (const value of [null, {}, '[]', new Uint8Array(), new Int16Array(), new Float32Array(), new DataView(new ArrayBuffer(8)), new BigInt64Array(), new BigUint64Array()]) {
+        const others = [
+            null,
+            {},
+            '[]',
+            new Uint8Array(),
+            new Int16Array(),
+            new Float32Array(),
+            new DataView(new ArrayBuffer(8)),
+            new BigInt64Array(),
+            new BigUint64Array()
+        ];
+
+        for (const value of others) {
             assert.equal(isInt32Vector(value), false);
             assert.equal(isUint32Vector(value), false);
             assert.equal(isFloat64Vector(value), false);

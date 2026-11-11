@@ -4,7 +4,7 @@ import { SourceMapGenerator } from 'source-map-js';
 import { Dictionary } from '../dictionary.js';
 import { ProfileScriptsMap } from './scripts.js';
 import { SourceMapping } from './source-mapping.js';
-import type { CpuProLocation } from '../types.js';
+import type { CpuProLocation, CpuProScript } from '../types.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 
 // Function ranges of original scripts are parsed on demand instead of parse workers
@@ -25,8 +25,14 @@ function createFixture() {
 
     generator.setSourceContent('a.js', originalA);
     generator.setSourceContent('b.js', originalB);
-    for (const [column, source, line, originalColumn] of mappings) {
-        generator.addMapping({ generated: { line: 1, column }, original: { line, column: originalColumn }, source });
+    for (let i = 0; i < mappings.length; i++) {
+        const [column, source, line, originalColumn] = mappings[i];
+
+        generator.addMapping({
+            generated: { line: 1, column },
+            original: { line, column: originalColumn },
+            source
+        });
     }
 
     const dictionary = new Dictionary();
@@ -51,6 +57,10 @@ function createFixture() {
     return { dictionary, generatedScript, generatedFunction, generatedLocations };
 }
 
+function describeOriginal(location: CpuProLocation) {
+    return [location.script!.url, location.line, location.column, location.callFrame.name];
+}
+
 test('original locations belong to the original functions containing them', async () => {
     const { dictionary, generatedScript, generatedFunction, generatedLocations } = createFixture();
     const sourceMapping = new SourceMapping(dictionary, {
@@ -67,7 +77,9 @@ test('original locations belong to the original functions containing them', asyn
     assert.equal(start.script!.url, 'a.js');
     assert.equal(start.script!.originalFor, generatedScript);
     assert.equal(start.script!.module.owner.name, 'team-a');
-    assert.deepEqual([start.callFrame.name, start.callFrame.start, start.callFrame.end], ['outer', originalA.indexOf('('), originalA.length]);
+    assert.equal(start.callFrame.name, 'outer');
+    assert.equal(start.callFrame.start, originalA.indexOf('('));
+    assert.equal(start.callFrame.end, originalA.length);
     assert.equal(start.scriptOffset, start.callFrame.start);
 
     assert.deepEqual([inner.line, inner.column], [1, 37]);
@@ -110,7 +122,7 @@ test('maps only locations added since the previous call and reuses original scri
     assert.equal(second.length, dictionary.locations.length);
     assert.deepEqual([...second.subarray(0, first.length)], [...first]);
     assert.equal(dictionary.scripts.length, scriptsCount);
-    assert.deepEqual([original.script!.url, original.line, original.column, original.callFrame.name], ['a.js', 1, 37, 'inner']);
+    assert.deepEqual(describeOriginal(original), ['a.js', 1, 37, 'inner']);
 });
 
 test('original scripts looked up in advance are registered on mapping in the same order', async () => {
@@ -127,13 +139,19 @@ test('original scripts looked up in advance are registered on mapping in the sam
     const originalLocations = await sourceMapping.mapLocations();
     const original = dictionary.locations[originalLocations[added]];
 
-    assert.deepEqual(dictionary.scripts.map(script => [script.id, script.url]), single.dictionary.scripts.map(script => [script.id, script.url]));
-    const describe = ({ script, line, column, callFrame }: CpuProLocation) => [script!.id, line, column, callFrame.name];
-    assert.deepEqual(
-        generatedLocations.map(index => describe(dictionary.locations[originalLocations[index]])),
-        single.generatedLocations.map(index => describe(single.dictionary.locations[singleLocations[index]]))
-    );
-    assert.deepEqual([original.script!.url, original.line, original.column, original.callFrame.name], ['a.js', 1, 37, 'inner']);
+    const describeScript = (script: CpuProScript) => [script.id, script.url];
+    const describeLocation = (location: CpuProLocation) => [
+        location.script!.id,
+        location.line,
+        location.column,
+        location.callFrame.name
+    ];
+    const mapped = generatedLocations.map(index => dictionary.locations[originalLocations[index]]);
+    const singleMapped = single.generatedLocations.map(index => single.dictionary.locations[singleLocations[index]]);
+
+    assert.deepEqual(dictionary.scripts.map(describeScript), single.dictionary.scripts.map(describeScript));
+    assert.deepEqual(mapped.map(describeLocation), singleMapped.map(describeLocation));
+    assert.deepEqual(describeOriginal(original), ['a.js', 1, 37, 'inner']);
 });
 
 test('a dictionary without source maps maps locations to themselves', async () => {
@@ -182,10 +200,10 @@ test.each([
         names: [],
         mappings
     };
-    const { dictionary, locations: [[location]] } = createScriptLocations(sourceMap, 1, [column]);
+    const { dictionary, locations } = createScriptLocations(sourceMap, 1, [column]);
     const originalLocations = await new SourceMapping(dictionary).mapLocations();
 
-    assert.equal(originalLocations[location], location);
+    assert.equal(originalLocations[locations[0][0]], locations[0][0]);
 });
 
 test('a source listed twice gives one original script per generated script', async () => {

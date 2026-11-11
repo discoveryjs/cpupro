@@ -52,8 +52,16 @@ function addAndChangeFilters(context: ReturnType<typeof createFilterSet>) {
 }
 
 test.each([
-    { name: 'adding filters and changing them', notifications: 1, update: addAndChangeFilters },
-    { name: 'no changes', notifications: 0, update: () => {} }
+    {
+        name: 'adding filters and changing them',
+        notifications: 1,
+        update: addAndChangeFilters
+    },
+    {
+        name: 'no changes',
+        notifications: 0,
+        update: () => {}
+    }
 ])('a batch with $name notifies $notifications times when the outermost batch ends', row => {
     const context = createFilterSet();
 

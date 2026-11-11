@@ -93,7 +93,14 @@ test('reports repeated requests separately from changes to the selected ranges',
 test('exposes live ranges, origin and extents to Jora and JSON', () => {
     const selection = new RangeSelection(space);
     const view = selection.view({ start: 0, end: 30 }, 100);
-    const inspect = jora('{ requested: selection.ranges, origin: frame.origin, extent, resolvedExtent, ranges, coverage }');
+    const inspect = jora(`{
+        requested: selection.ranges,
+        origin: frame.origin,
+        extent,
+        resolvedExtent,
+        ranges,
+        coverage
+    }`);
 
     selection.setRanges([{ start: 95, end: 105 }, { start: 120, end: 140 }]);
     assert.deepEqual(inspect(view), {

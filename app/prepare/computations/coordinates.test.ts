@@ -46,7 +46,8 @@ test('normalizes into sorted, merged, frozen copies without empty intervals', ()
     const ranges = normalizeRanges(source);
 
     assert.deepEqual(ranges, [{ start: 0, end: 6 }, { start: 10, end: 12 }]);
-    assert.ok(Object.isFrozen(ranges) && ranges.every(Object.isFrozen));
+    assert.ok(Object.isFrozen(ranges));
+    assert.ok(ranges.every(Object.isFrozen));
     assert.deepEqual(source.map(range => range.start), [10, 2, 0, 7, 5]);
     assert.equal(source.some(Object.isFrozen), false);
 

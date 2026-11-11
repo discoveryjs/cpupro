@@ -36,8 +36,10 @@ test('a bytes range reaches time lines of peers through the time line of its pro
     assert.deepEqual(absent.memline!.range.ranges, []);
     assert.equal(unmapped.memline!.range.ranges, null);
     // The populations of the source follow its range
-    for (const breakdown of first.memline!.breakdowns) {
-        const metrics = breakdown.callFrames!.filtered.nodes;
+    const breakdowns = first.memline!.breakdowns;
+
+    for (let i = 0; i < breakdowns.length; i++) {
+        const metrics = breakdowns[i].callFrames!.filtered.nodes;
 
         assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], 5);
     }
@@ -87,6 +89,7 @@ test('uses the current peer set rather than fixing a bucket relation during prep
     const { profile: third } = await createProfileFixture();
     let peers = [first, second];
     const stop = subscribeSelectionSync([first, second, third], source => peers.includes(source) ? peers : []);
+
     first.timeline!.range.setRange(0, 10);
     assert.equal(third.timeline!.range.ranges, null);
     peers = [second, third];
@@ -114,7 +117,7 @@ test('shares viewports and zooms of peer profiles through time, a new viewport e
     second.timeline!.zoom.selection.setRange(115, 125);
     assert.deepEqual(first.timeline!.zoom.selection.ranges, [{ start: 115, end: 125 }]);
     assert.deepEqual(first.timeline!.viewport.selection.ranges, [{ start: 110, end: 140 }]);
-    assert.ok(first.memline!.zoom.selection.ranges !== null);
+    assert.notEqual(first.memline!.zoom.selection.ranges, null);
 
     first.timeline!.viewport.selection.setRange(100, 130);
     for (const profile of [first, second]) {

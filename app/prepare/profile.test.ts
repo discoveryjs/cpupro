@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fixtures/profile.js';
 import { createProfile } from './profile.mjs';
-import { noopWorkHandler } from './misc/work.js';
-import type { V8CpuProfile } from './types.js';
+import { createWorkHandler, noopWorkHandler, type WorkIdentity } from './misc/work.js';
+import type { CpuProLocation, V8CpuProfile } from './types.js';
 import type { ProfileLineBreakdown } from './lines/types.js';
 
 const dimensions = ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners'] as const;
-type Dimension = typeof dimensions[number];
+type NamedDimension = Exclude<typeof dimensions[number], 'locations'>;
 const allKinds = {
     timeline: ['call-stack', 'call-stack-sm'],
     memline: ['call-stack', 'location', 'call-stack-sm', 'location-sm']
@@ -25,13 +25,47 @@ const cases: { name: string; options: ProfileFixtureOptions; populations: number
     { name: 'locations only', options: { locationsOnly: true }, populations: 2 }
 ];
 
+function createNode(id: number, functionName: string, children?: number[]) {
+    return {
+        id,
+        children,
+        callFrame: {
+            scriptId: 0,
+            url: '',
+            functionName,
+            lineNumber: -1,
+            columnNumber: -1
+        }
+    };
+}
+
+function sum(values: ArrayLike<number>) {
+    let total = 0;
+
+    for (let i = 0; i < values.length; i++) {
+        total += values[i];
+    }
+
+    return total;
+}
+
+function isOriginalLocation(location: CpuProLocation) {
+    return location.script !== null && location.script.url.endsWith('original.js');
+}
+
+function selfValue(breakdown: ProfileLineBreakdown, dimension: NamedDimension, name: string) {
+    const entries = breakdown[dimension]!.all.dict.entries;
+
+    return entries.find(entry => entry.entry.name === name)!.selfValue;
+}
+
 describe('profile breakdowns', () => {
     test('does not create a CPU population or timeline when only allocation events are available', async () => {
         let checkedCpuPopulation = false;
-        const profile = await createProfile({
+        const data: V8CpuProfile = {
             startTime: 0,
             endTime: 30,
-            nodes: [{ id: 1, callFrame: { scriptId: 0, url: '', functionName: '(root)', lineNumber: -1, columnNumber: -1 } }],
+            nodes: [createNode(1, '(root)')],
             samples: [],
             timeDeltas: [],
             _samplesInterval: 10,
@@ -40,16 +74,19 @@ describe('profile breakdowns', () => {
             _cpuproAllocationSizes: [16, 32],
             _cpuproAllocationScriptIds: [0, 0],
             _cpuproAllocationLocations: [-1, -1]
-        }, {
-            async work(name, callback) {
-                const result = await callback();
-                if (name === 'create CPU population') {
-                    assert.equal(result, null);
-                    checkedCpuPopulation = true;
-                }
-                return result;
+        };
+        const checkCpuPopulation = async function<T>(identity: WorkIdentity, callback: () => T): Promise<T> {
+            const result = callback();
+
+            if (identity.name === 'create CPU population') {
+                assert.equal(result, null);
+                checkedCpuPopulation = true;
             }
-        });
+
+            return result;
+        };
+        const profile = await createProfile(data, { work: createWorkHandler(checkCpuPopulation) });
+
         assert.equal(checkedCpuPopulation, true);
         assert.equal(profile.timeline, null);
         assert.deepEqual(profile.lines.map(line => line.type), ['memline']);
@@ -58,11 +95,6 @@ describe('profile breakdowns', () => {
     });
 
     test('binds allocation ranges to samples after fixing out-of-order time deltas', async () => {
-        const createNode = (id: number, functionName: string, children?: number[]) => ({
-            id,
-            children,
-            callFrame: { scriptId: 0, url: '', functionName, lineNumber: -1, columnNumber: -1 }
-        });
         const data: V8CpuProfile = {
             startTime: 0,
             endTime: 40,
@@ -97,60 +129,84 @@ describe('profile breakdowns', () => {
 
     test('keeps sink outside breakdown metrics and preserves baseline bounds', async () => {
         const { profile } = await createProfileFixture();
-        for (const line of profile.lines) {
-            const populations = new Set(line.breakdowns.map(breakdown => breakdown.populationFiltered));
-            for (const population of populations) {
-                population.setRange(5, 20);
-                const sampleCount = population.samplesMask.length;
-                const accepts = new Uint8Array(sampleCount).fill(1);
+        const breakdowns = profile.lines.flatMap(line => line.breakdowns);
 
-                accepts[0] = 0;
-                population.filter.set({
-                    key: 'samples',
-                    domain: 'sample',
-                    size: sampleCount,
-                    accepts
-                });
-                const accepted = population.samplesTotal.reduce((sum, value) => sum + value, 0);
-                assert.equal(accepted + population.sink.total, 15);
-                for (const breakdown of line.breakdowns.filter(entry => entry.populationFiltered === population)) {
-                    for (const name of dimensions) {
-                        const dimension = breakdown[name];
-                        if (!dimension) {
-                            continue;
-                        }
-                        const metrics = dimension.filtered.nodes;
-                        assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], accepted);
-                        assert.equal(dimension.filtered.dict.selfValues.reduce((sum, value) => sum + value, 0), accepted);
-                        assert.equal(dimension.bounds.samples, population.population.samples);
-                        assert.equal(dimension.bounds.firstSeen[0], 0);
-                        assert.equal(dimension.bounds.lastSeen[0], population.cumulative[population.cumulative.length - 1]);
-                    }
+        for (let i = 0; i < breakdowns.length; i++) {
+            const breakdown = breakdowns[i];
+            const population = breakdown.populationFiltered;
+            const sampleCount = population.samplesMask.length;
+            const accepts = new Uint8Array(sampleCount).fill(1);
+
+            accepts[0] = 0;
+            population.setRange(5, 20);
+            population.filter.set({
+                key: 'samples',
+                domain: 'sample',
+                size: sampleCount,
+                accepts
+            });
+
+            const accepted = sum(population.samplesTotal);
+            const lastCumulative = population.cumulative[population.cumulative.length - 1];
+
+            assert.equal(accepted + population.sink.total, 15);
+
+            for (let j = 0; j < dimensions.length; j++) {
+                const dimension = breakdown[dimensions[j]];
+
+                if (!dimension) {
+                    continue;
                 }
-                population.filter.remove('samples');
-                population.resetRange();
-                assert.deepEqual(population.samplesTotal, population.population.samplesTotal);
+
+                const metrics = dimension.filtered.nodes;
+
+                assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], accepted);
+                assert.equal(sum(dimension.filtered.dict.selfValues), accepted);
+                assert.equal(dimension.bounds.samples, population.population.samples);
+                assert.equal(dimension.bounds.firstSeen[0], 0);
+                assert.equal(dimension.bounds.lastSeen[0], lastCumulative);
             }
+
+            population.filter.remove('samples');
+            population.resetRange();
+            assert.deepEqual(population.samplesTotal, population.population.samplesTotal);
         }
     });
 
     // CPU sample IDs 0 and 1 are of the three CPU samples, ID 2 is of allocations recorded after the last one
     test.each([
-        { name: 'uncovered tail', mapping: [1, 2, 2], expected: [0, 1, 2, 2] },
-        { name: 'short mapping', mapping: [1, 2], expected: [0, 1, 0, 0] },
-        { name: 'no allocation captured by a CPU sample', mapping: [0, 0, 0], expected: [2, 2, 2, 2] },
-        { name: 'missing intermediate mapping', mapping: Object.assign(new Array<number>(3), { 0: 1, 2: 4 }), expected: [0, 0, 0, 0] }
-    ])('preserves allocation weights and attributes to CPU samples: $name', async ({ mapping, expected }) => {
-        const { profile } = await createProfileFixture({ mapping });
+        {
+            name: 'uncovered tail',
+            mapping: [1, 2, 2],
+            expected: [0, 1, 2, 2]
+        },
+        {
+            name: 'short mapping',
+            mapping: [1, 2],
+            expected: [0, 1, 0, 0]
+        },
+        {
+            name: 'no allocation captured by a CPU sample',
+            mapping: [0, 0, 0],
+            expected: [2, 2, 2, 2]
+        },
+        {
+            name: 'missing intermediate mapping',
+            mapping: Object.assign(new Array<number>(3), { 0: 1, 2: 4 }),
+            expected: [0, 0, 0, 0]
+        }
+    ])('preserves allocation weights and attributes to CPU samples: $name', async row => {
+        const { profile } = await createProfileFixture({ mapping: row.mapping });
         const line = profile.memline!;
         const stack = line.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
         const locations = line.breakdowns.find(breakdown => breakdown.kind === 'location')!;
-        assert.deepEqual([...stack.population.samples], expected);
+        const metrics = stack.callFrames!.all.nodes;
+
+        assert.deepEqual([...stack.population.samples], row.expected);
         assert.equal(stack.population.values, line.values);
         assert.equal(stack.population.values, locations.population.values);
         assert.deepEqual([...stack.population.values], [16, 32, 48, 64]);
         assert.equal(stack.population.cumulative, locations.population.cumulative);
-        const metrics = stack.callFrames!.all.nodes;
         assert.equal(metrics.selfValues[0] + metrics.nestedValues[0], 160);
     });
 
@@ -159,11 +215,6 @@ describe('profile breakdowns', () => {
         const { profile } = await createProfileFixture({ mapping: [1, 2, 2] });
         const stack = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
         const timeline = profile.timeline!.breakdowns[0];
-        const selfValue = (breakdown: ProfileLineBreakdown, dimension: Dimension, name: string) => {
-            const { entries } = breakdown[dimension]!.all.dict;
-
-            return entries.find(entry => entry.entry.name === name)!.selfValue;
-        };
 
         assert.equal(selfValue(stack, 'callFrames', '(after profile end)'), 112);
         assert.equal(selfValue(stack, 'modules', '(after profile end)'), 112);
@@ -176,72 +227,116 @@ describe('profile breakdowns', () => {
     });
 
     test.each([
-        { name: 'combined', options: {}, kinds: allKinds },
-        { name: 'call-frame fallback', options: { fallback: true }, kinds: {
-            timeline: ['call-stack'],
-            memline: ['call-stack', 'location', 'location-sm']
-        } },
-        { name: 'no source maps', options: { noSourceMap: true }, kinds: {
-            timeline: ['call-stack'],
-            memline: ['call-stack', 'location']
-        } },
-        { name: 'CPU only', options: { cpuOnly: true }, kinds: { timeline: allKinds.timeline } },
-        { name: 'stack only', options: { stackOnly: true }, kinds: {
-            timeline: allKinds.timeline,
-            memline: ['call-stack', 'call-stack-sm']
-        } },
-        { name: 'locations only', options: { locationsOnly: true }, kinds: {
-            timeline: allKinds.timeline,
-            memline: ['location', 'location-sm']
-        } }
-    ])('creates breakdowns of the available attributions: $name', async ({ options, kinds }) => {
-        const { profile } = await createProfileFixture(options);
-        const actual = Object.fromEntries(profile.lines.map(line => [line.type, line.breakdowns.map(breakdown => breakdown.kind)]));
+        {
+            name: 'combined',
+            options: {},
+            kinds: allKinds
+        },
+        {
+            name: 'call-frame fallback',
+            options: { fallback: true },
+            kinds: {
+                timeline: ['call-stack'],
+                memline: ['call-stack', 'location', 'location-sm']
+            }
+        },
+        {
+            name: 'no source maps',
+            options: { noSourceMap: true },
+            kinds: {
+                timeline: ['call-stack'],
+                memline: ['call-stack', 'location']
+            }
+        },
+        {
+            name: 'CPU only',
+            options: { cpuOnly: true },
+            kinds: { timeline: allKinds.timeline }
+        },
+        {
+            name: 'stack only',
+            options: { stackOnly: true },
+            kinds: {
+                timeline: allKinds.timeline,
+                memline: ['call-stack', 'call-stack-sm']
+            }
+        },
+        {
+            name: 'locations only',
+            options: { locationsOnly: true },
+            kinds: {
+                timeline: allKinds.timeline,
+                memline: ['location', 'location-sm']
+            }
+        }
+    ])('creates breakdowns of the available attributions: $name', async row => {
+        const { profile } = await createProfileFixture(row.options);
+        const kinds: Record<string, string[]> = {};
 
-        assert.deepEqual(actual, kinds);
+        for (let i = 0; i < profile.lines.length; i++) {
+            const line = profile.lines[i];
+
+            kinds[line.type] = line.breakdowns.map(breakdown => breakdown.kind);
+        }
+
+        assert.deepEqual(kinds, row.kinds);
     });
 
-    test.each(cases)('breakdowns share their population chain and map every sample to a node: $name', async ({ options, populations }) => {
-        const { profile } = await createProfileFixture(options);
+    test.each(cases)('breakdowns share their population chain and map every sample to a node: $name', async row => {
+        const { profile } = await createProfileFixture(row.options);
         const breakdowns = profile.lines.flatMap(line => line.breakdowns);
 
-        assert.equal(new Set(breakdowns.map(breakdown => breakdown.population)).size, populations);
-        assert.equal(new Set(breakdowns.map(breakdown => breakdown.populationFiltered)).size, populations);
+        assert.equal(new Set(breakdowns.map(breakdown => breakdown.population)).size, row.populations);
+        assert.equal(new Set(breakdowns.map(breakdown => breakdown.populationFiltered)).size, row.populations);
 
-        for (const line of profile.lines) {
-            for (const breakdown of line.breakdowns) {
+        for (let i = 0; i < profile.lines.length; i++) {
+            const line = profile.lines[i];
+
+            for (let j = 0; j < line.breakdowns.length; j++) {
+                const breakdown = line.breakdowns[j];
                 const { population, populationViewport, populationFiltered, source } = breakdown;
 
                 assert.equal(breakdown.line, line);
                 assert.equal(populationViewport.source, population);
                 assert.equal(populationFiltered.source, populationViewport);
 
-                for (const sample of population.samples) {
-                    const node = source.sourceIdToNode[sample];
+                for (let k = 0; k < population.samples.length; k++) {
+                    const node = source.sourceIdToNode[population.samples[k]];
 
-                    assert.ok(node >= 0 && node < source.nodes.length);
+                    assert.ok(node >= 0);
+                    assert.ok(node < source.nodes.length);
                 }
 
-                for (const name of dimensions) {
-                    const dimension = breakdown[name];
+                for (let k = 0; k < dimensions.length; k++) {
+                    const dimension = breakdown[dimensions[k]];
 
-                    if (dimension) {
-                        assert.equal(dimension.bounds.tree, dimension.tree);
-                        assert.equal(dimension.bounds.sampleToNode, dimension.sampleToNode);
-                        assert.equal(dimension.all.nodes.sampleToNode, dimension.sampleToNode);
-                        assert.equal(dimension.filtered.nodes.sampleToNode, dimension.sampleToNode);
+                    if (!dimension) {
+                        continue;
                     }
+
+                    assert.equal(dimension.bounds.tree, dimension.tree);
+                    assert.equal(dimension.bounds.sampleToNode, dimension.sampleToNode);
+                    assert.equal(dimension.all.nodes.sampleToNode, dimension.sampleToNode);
+                    assert.equal(dimension.filtered.nodes.sampleToNode, dimension.sampleToNode);
                 }
             }
         }
     });
 
-    test.each(cases)('source-mapped breakdowns share the original population and recompute with it: $name', async ({ options }) => {
-        const { profile } = await createProfileFixture(options);
+    test.each(cases)('source-mapped breakdowns share the original population, recompute with it: $name', async row => {
+        const { profile } = await createProfileFixture(row.options);
 
-        for (const line of profile.lines) {
-            for (const mapped of line.breakdowns.filter(breakdown => breakdown.kind.endsWith('-sm'))) {
-                const original = line.breakdowns.find(breakdown => breakdown.kind + '-sm' === mapped.kind)!;
+        for (let i = 0; i < profile.lines.length; i++) {
+            const breakdowns = profile.lines[i].breakdowns;
+
+            for (let j = 0; j < breakdowns.length; j++) {
+                const mapped = breakdowns[j];
+
+                if (!mapped.kind.endsWith('-sm')) {
+                    continue;
+                }
+
+                const original = breakdowns.find(breakdown => breakdown.kind + '-sm' === mapped.kind)!;
                 const all = mapped.callFrames!.all.nodes;
                 const filtered = mapped.callFrames!.filtered.nodes;
                 const allBefore = all.selfValues.slice();
@@ -254,7 +349,7 @@ describe('profile breakdowns', () => {
                 assert.equal(mapped.source.sourceIdToNode, original.source.sourceIdToNode);
                 assert.equal(mapped.source.dictionary, original.source.dictionary);
                 assert.notEqual(mapped.source.nodes, original.source.nodes);
-                assert.ok(mapped.locations!.tree.dictionary.some(location => location.script?.url.endsWith('original.js')));
+                assert.ok(mapped.locations!.tree.dictionary.some(isOriginalLocation));
 
                 original.callFrames!.filtered.nodes.subscribe(() => originalUpdates++);
                 filtered.subscribe(() => mappedUpdates++);

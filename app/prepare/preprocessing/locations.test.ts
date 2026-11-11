@@ -34,8 +34,8 @@ function allocationPaths(dictionary: Dictionary, result: NonNullable<ReturnType<
     for (let i = 0; i < samples.length; i++) {
         const path: string[] = [];
 
-        for (let node = samples[i]; node !== 0; node = nodeParentId[node]) {
-            path.push(describeLocation(dictionary.locations[parentScriptOffsets[node]]));
+        for (let j = samples[i]; j !== 0; j = nodeParentId[j]) {
+            path.push(describeLocation(dictionary.locations[parentScriptOffsets[j]]));
         }
 
         paths.push(path.join(' < '));
@@ -205,9 +205,9 @@ test('maps allocations at locations added by resolving other locations to nodes 
 });
 
 test('maps allocations of a script id given as a string the same way as of a numeric one', () => {
-    const nodePaths = (scriptIds: Array<number | string>) => {
+    const paths = (scriptIds: Array<number | string>) => {
         const { dictionary, scripts } = createScriptFixture('function f() { return {}; }');
-        const { generatedNodes, samples } = createVectorLocations(
+        const result = createVectorLocations(
             dictionary,
             scripts,
             scriptIds,
@@ -216,26 +216,11 @@ test('maps allocations of a script id given as a string the same way as of a num
             { 1: 'gc', 2: 'parser' },
             null
         )!;
-        const { nodeParentId, parentScriptOffsets: nodeLocations } = generatedNodes;
-        const paths: (string | number)[][] = [];
 
-        // a context of an allocation in a script is a child node of the script location; node 0 is the root
-        for (let i = 0; i < samples.length; i++) {
-            const path: (string | number)[] = [];
-
-            for (let j = samples[i]; j !== 0; j = nodeParentId[j]) {
-                const location = dictionary.locations[nodeLocations[j]];
-
-                path.push(location.callFrame.name, location.scriptOffset);
-            }
-
-            paths.push(path);
-        }
-
-        return paths;
+        return allocationPaths(dictionary, result);
     };
 
-    assert.deepEqual(nodePaths(['0', '0', '7']), nodePaths([0, 0, 7]));
+    assert.deepEqual(paths(['0', '0', '7']), paths([0, 0, 7]));
 });
 
 test('adds a node per sampled node and script offset after the call tree nodes, located at call sites', () => {

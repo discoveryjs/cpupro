@@ -11,8 +11,8 @@ test('resolves a script location without a position to the script call frame loc
     dictionary.scripts.push(script);
 
     // offset locations go first so location and call frame indices diverge
-    for (let offset = 3; offset < 6; offset++) {
-        dictionary.resolveLocationIndex(null, script, offset);
+    for (let i = 3; i < 6; i++) {
+        dictionary.resolveLocationIndex(null, script, i);
     }
 
     const scriptFrame = dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
@@ -48,7 +48,9 @@ test('adds locations of well-known call frames at the indices of the call frames
     const dictionary = new Dictionary();
 
     // createVectorLocations() and the unknown location rely on this for "(unknown)" and "(root)"
-    for (const index of Object.values(dictionary.callFrames.wellKnownIndex)) {
-        assert.equal(dictionary.locations[index], dictionary.callFrames[index].location);
+    const indices = Object.values(dictionary.callFrames.wellKnownIndex);
+
+    for (let i = 0; i < indices.length; i++) {
+        assert.equal(dictionary.locations[indices[i]], dictionary.callFrames[indices[i]].location);
     }
 });

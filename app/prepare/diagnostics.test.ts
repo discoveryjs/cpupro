@@ -23,7 +23,7 @@ test('withScope marks messages with nested owners and leaves the parent unchange
     session('warn', 'Middle');
     diagnose('warn', 'Outer');
 
-    assert.deepEqual(diagnostics.map(({ scope, message }) => [scope, message]), [
+    assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.scope, diagnostic.message]), [
         [['Session 1', 'cpuprofile'], 'Inner'],
         [['Session 1'], 'Middle'],
         [[], 'Outer']

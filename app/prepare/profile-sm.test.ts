@@ -21,17 +21,30 @@ test('a source-mapped breakdown attributes generated functions to the original f
 
     generator.setSourceContent('original.js', source);
     // the generated functions are mapped to the names of the original functions
-    for (const [column, line] of [[0, 1], [20, 2]]) {
-        generator.addMapping({ generated: { line: 1, column }, original: { line, column: 9 }, source: 'original.js' });
-    }
+    generator.addMapping({
+        generated: { line: 1, column: 0 },
+        original: { line: 1, column: 9 },
+        source: 'original.js'
+    });
+    generator.addMapping({
+        generated: { line: 1, column: 20 },
+        original: { line: 2, column: 9 },
+        source: 'original.js'
+    });
     compiled.sourceMap = JSON.parse(generator.toString());
 
     const line = profile.timeline!;
     const originalLocations = await new SourceMapping(dictionary).mapLocations();
-    const mapped = await createSourceMappedBreakdown('call-stack-sm', line, line.breakdowns[0], dictionary, originalLocations, noopWorkHandler);
-    const callFrames = mapped!.callFrames.all.dict.entries
-        .filter(({ entry }) => entry.script?.originalFor === compiled)
-        .map(({ entry, selfValue }) => [entry.name, entry.start, entry.end, selfValue]);
+    const mapped = await createSourceMappedBreakdown(
+        'call-stack-sm',
+        line,
+        line.breakdowns[0],
+        dictionary,
+        originalLocations,
+        noopWorkHandler
+    );
+    const entries = mapped!.callFrames!.all.dict.entries.filter(item => item.entry.script?.originalFor === compiled);
+    const callFrames = entries.map(item => [item.entry.name, item.entry.start, item.entry.end, item.selfValue]);
 
     assert.deepEqual(callFrames, [
         ['first', source.indexOf('('), source.indexOf('\n'), 20],
@@ -39,7 +52,7 @@ test('a source-mapped breakdown attributes generated functions to the original f
     ]);
 });
 
-test('a source-mapped breakdown shares the populations of its original breakdown and keeps sparse sample IDs', async () => {
+test('a source-mapped breakdown shares the populations of its original and keeps sparse sample IDs', async () => {
     const { profile, dictionary, scriptsMap, sourceMapping } = await createProfileFixture();
     const line = profile.memline!;
     // Sample ID 0 has no events
@@ -55,11 +68,19 @@ test('a source-mapped breakdown shares the populations of its original breakdown
     };
     const trees = await createSampledTreeSet(dictionary, source, noopWorkHandler);
     const original = await createLineBreakdown('extra', line, population, viewport, window, trees, noopWorkHandler);
-    const breakdowns = line.breakdowns.slice();
-    const mapped = await createSourceMappedBreakdown('extra-sm', line, original, dictionary, await sourceMapping.mapLocations(), noopWorkHandler);
+    const kinds = line.breakdowns.map(breakdown => breakdown.kind);
+    const originalLocations = await sourceMapping.mapLocations();
+    const mapped = await createSourceMappedBreakdown(
+        'extra-sm',
+        line,
+        original,
+        dictionary,
+        originalLocations,
+        noopWorkHandler
+    );
 
     assert.ok(mapped);
-    assert.deepEqual(line.breakdowns, breakdowns);
+    assert.deepEqual(line.breakdowns.map(breakdown => breakdown.kind), kinds);
     assert.equal(mapped.population, population.population);
     assert.equal(mapped.populationViewport, viewport);
     assert.equal(mapped.populationWindow, window);
