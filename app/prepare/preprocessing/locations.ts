@@ -1,22 +1,20 @@
 import { scriptFromScriptId } from './scripts.js';
-import { GeneratedNodes } from './nodes.js';
+import { capacity, grow } from '../misc/utils.js';
 import type { Dictionary } from '../dictionary.js';
+import type { TreeSource } from '../computations/build-trees.js';
 import type {
     AllocationContextInfoVector,
     AllocationScriptIdVector,
     CpuProCallFrame,
+    CpuProLocation,
     CpuProScript,
     IProfileScriptsMap,
     ScriptOffsetVector
 } from '../types.js';
 
-function locationRef(callFrameIndex: number, scriptOffset: number) {
-    return (scriptOffset + 1) * 0x0100_0000 + callFrameIndex;
-}
-
-function locationNodeRef(nodeIndex: number, scriptOffset: number) {
-    return (scriptOffset + 1) * 0x0100_0000 + nodeIndex;
-}
+export type VectorLocations = TreeSource<CpuProLocation> & {
+    samples: Uint32Array;
+};
 
 /**
  * Process sample locations to build a location tree.
@@ -45,76 +43,76 @@ export function createLocationsFromScriptOffsets(
     }
 
     const callFrames = dict.callFrames;
-    const locationByRef = new Map<number, number>();
-    const locationNodeMap = new Map<number, number>();
-    const treeLocationNodes = new Uint32Array(nodeParent.length);
-    const sampledLocationNodes: number[] = [];
-    const sampledLocationParents: number[] = [];
+    const treeNodeCount = nodeParent.length;
+    // A location per site of a call frame at a script offset
+    const callFrameSites = new LocationSites(treeNodeCount);
+    const callFrameSiteLocations: number[] = [];
+    // A node per site of a sampled node at a script offset, the nodes follow the call tree nodes
+    const sampleSites = new LocationSites(Math.min(samples.length, 1 << 12));
+    const sampleLocations: number[] = [];
+    const sampleParents: number[] = [];
+    const treeLocations = new Uint32Array(treeNodeCount);
 
-    // Locations from node (parent node) + script offset
-    // -> nodes
-    for (let i = 0; i < nodeScriptOffsets.length; i++) {
-        const callFrameIndex = nodeCallFrames[nodeParent[i]];
-        const scriptOffset = nodeScriptOffsets[i];
-        const ref = locationRef(callFrameIndex, scriptOffset);
-        let locationIndex = locationByRef.get(ref);
+    const locationOf = (callFrameIndex: number, scriptOffset: number) => {
+        const count = callFrameSites.count;
+        const site = callFrameSites.siteOf(callFrameIndex, scriptOffset, 0);
 
-        if (locationIndex === undefined) {
-            locationByRef.set(ref, locationIndex = dict.resolveLocationIndex(
+        if (site === count) {
+            callFrameSiteLocations.push(dict.resolveLocationIndex(
                 callFrames[callFrameIndex],
                 null,
                 scriptOffset
             ));
         }
 
-        treeLocationNodes[i] = locationIndex;
+        return callFrameSiteLocations[site];
+    };
+
+    // The location of a node is the script offset of its call in the parent's call frame
+    for (let i = 0; i < treeNodeCount; i++) {
+        treeLocations[i] = locationOf(nodeCallFrames[nodeParent[i]], nodeScriptOffsets[i]);
     }
 
-    // Locations from samples
-    // sampleLocations -> callFramePositions + nodes
-    if (sampledScriptOffsets !== null) {
-        // nodes indecies created after samples
-        const sampleNodeIndexBase = treeLocationNodes.length;
+    // A sample becomes a sample of the node of its script offset in its node's call frame;
+    // a sample of the previous node and offset takes its sample without a lookup
+    let previousNode = -1;
+    let previousScriptOffset = 0;
+    let sample = 0;
 
-        for (let i = 0; i < samples.length; i++) {
-            const nodeIndex = samples[i];
-            const scriptOffset = sampledScriptOffsets[i];
-            const nodeRef = locationNodeRef(nodeIndex, scriptOffset);
-            let sampleNodeIndex = locationNodeMap.get(nodeRef);
+    for (let i = 0; i < samples.length; i++) {
+        const node = samples[i];
+        const scriptOffset = sampledScriptOffsets[i];
 
-            if (sampleNodeIndex === undefined) {
-                const callFrameIndex = nodeCallFrames[nodeIndex] || 0;
-                const ref = locationRef(callFrameIndex, scriptOffset);
-                let locationIndex = locationByRef.get(ref);
+        if (node !== previousNode || scriptOffset !== previousScriptOffset) {
+            const count = sampleSites.count;
 
-                if (locationIndex === undefined) {
-                    locationByRef.set(ref, locationIndex = dict.resolveLocationIndex(
-                        callFrames[callFrameIndex],
-                        null,
-                        scriptOffset
-                    ));
-                }
+            sample = sampleSites.siteOf(node, scriptOffset, 0);
 
-                sampleNodeIndex = locationNodeMap.size + sampleNodeIndexBase;
-                locationNodeMap.set(nodeRef, sampleNodeIndex); // -> sourceIdToNode
-                sampledLocationNodes.push(locationIndex); // -> nodes
-                sampledLocationParents.push(nodeIndex); // -> parent & sourceIdToNode
+            if (sample === count) {
+                sampleLocations.push(locationOf(nodeCallFrames[node] || 0, scriptOffset));
+                sampleParents.push(node);
             }
 
-            samples[i] = sampleNodeIndex - sampleNodeIndexBase;
+            previousNode = node;
+            previousScriptOffset = scriptOffset;
         }
+
+        samples[i] = sample;
     }
 
-    // concat arrays for tree source
-    const locationArraysLength = treeLocationNodes.length + sampledLocationNodes.length;
-    const nodes = new Uint32Array(locationArraysLength);
-    const parent = new Uint32Array(locationArraysLength);
-    const sourceIdToNode = new Int32Array(locationNodeMap.values());
+    const nodeCount = treeNodeCount + sampleLocations.length;
+    const nodes = new Uint32Array(nodeCount);
+    const parent = new Uint32Array(nodeCount);
+    const sourceIdToNode = new Int32Array(sampleLocations.length);
 
-    nodes.set(treeLocationNodes);
-    nodes.set(sampledLocationNodes, treeLocationNodes.length);
+    nodes.set(treeLocations);
+    nodes.set(sampleLocations, treeNodeCount);
     parent.set(nodeParent);
-    parent.set(sampledLocationParents, nodeParent.length);
+    parent.set(sampleParents, treeNodeCount);
+
+    for (let i = 0; i < sourceIdToNode.length; i++) {
+        sourceIdToNode[i] = treeNodeCount + i;
+    }
 
     return {
         nodes,
@@ -219,6 +217,13 @@ function buildContextBuiltinDict(
 }
 
 const emptyDict = Object.freeze({});
+
+// Allocations repeat their sites (a script, a script offset and context info) heavily: tens of millions of allocations
+// come from hundreds of thousands of sites, and every other allocation changes the site. Sites are kept in the order
+// they are met and found through a hash table, an allocation of the previous site skips the lookup. A site is resolved
+// once, to a node of the location tree: the node of its location, or for context info within a script, the child node
+// of that location for the context. Samples are numbered in the order of the first allocations of their nodes,
+// so the allocations come out as samples of the tree in a single pass.
 export function createVectorLocations(
     dictionary: Dictionary,
     scriptsMap: IProfileScriptsMap,
@@ -227,10 +232,7 @@ export function createVectorLocations(
     contextInfo: AllocationContextInfoVector | null,
     vmStateNames: Record<number, string> | null,
     builtinsNames: Record<number, string> | null
-): {
-    generatedNodes: GeneratedNodes;
-    samples: Uint32Array;
-} | null {
+): VectorLocations | null {
     if (scriptIds === null || scriptOffsets === null || scriptIds.length !== scriptOffsets.length) {
         return null;
     }
@@ -244,153 +246,220 @@ export function createVectorLocations(
         builtinsNames ?? emptyDict
     );
 
-    const generatedNodes = new GeneratedNodes(dictionary, 0);
-    const sampleToNode = new Uint32Array(scriptOffsets.length);
-    const locationIndexToNodeIndex = new Array(dictionary.locations.length).fill(-1);
-    // const sampleToLocation = new Uint32Array(scriptOffsets.length);
-    // let prevCallFrame: CpuProCallFrame | null = null;
-    let prevScriptId = scriptOffsets.length > 0 ? scriptIds[0] : 0;
-    let prevScript: CpuProScript | null = scriptFromScriptId(prevScriptId, null, scriptsMap);
-    let prevScriptOffset = scriptOffsets.length > 0 ? scriptOffsets[0] : 0;
-    let prevContextInfoValue = contextInfo !== null && contextInfo.length > 0 ? contextInfo[0] : 0;
-    // let prevContextInfo = 0;
-    let prevLocationIndex = -1;
-    let nodeIndex = 0;
-    // Allocation locations change far more often than they are new (tens of millions of changes vs hundreds
-    // of thousands of distinct script offsets on large traces), so location indices are kept per script to avoid
-    // the generic dictionary resolution on every change
-    const locationIndexByScript = new Map<CpuProScript | null, Map<number, number>>();
-    let prevScriptLocationIndex = new Map<number, number>();
+    // The tree starts with the root (the root location, its own parent) and the node of the unknown location
+    const nodeParent = [0, 0];
+    const nodeLocations = [1, 0];
+    const nodeSamples = [-1, -1];
+    const sampleNodes: number[] = [];
+    const locationNodes = new Map([
+        [1, 0],
+        [0, 1]
+    ]);
+    const contextNodes = new Map<number, Map<number, number>>();
 
-    locationIndexByScript.set(prevScript, prevScriptLocationIndex);
+    const addNode = (parent: number, locationIndex: number) => {
+        nodeParent.push(parent);
+        nodeLocations.push(locationIndex);
+        nodeSamples.push(-1);
 
-    // root node (unknown call frame, self-parent, unknown location)
-    locationIndexToNodeIndex[1] = generatedNodes.addNode(1, 0, 1);
-    locationIndexToNodeIndex[0] = generatedNodes.addNode(0, 0, 0);
+        return nodeLocations.length - 1;
+    };
+
+    const locationNode = (locationIndex: number) => {
+        let node = locationNodes.get(locationIndex);
+
+        if (node === undefined) {
+            node = addNode(0, locationIndex);
+            locationNodes.set(locationIndex, node);
+        }
+
+        return node;
+    };
+
+    const contextNode = (parent: number, contextInfoValue: number) => {
+        let nodeByParent = contextNodes.get(contextInfoValue);
+
+        if (nodeByParent === undefined) {
+            nodeByParent = new Map();
+            contextNodes.set(contextInfoValue, nodeByParent);
+        }
+
+        let node = nodeByParent.get(parent);
+
+        if (node === undefined) {
+            const callFrame = resolveCallFrameFromContextInfo(
+                dictionary,
+                contextInfoValue,
+                vmStateCallFrames,
+                builtinsCallFrames
+            );
+
+            node = addNode(parent, dictionary.resolveLocationIndex(callFrame));
+            nodeByParent.set(parent, node);
+        }
+
+        return node;
+    };
+
+    const siteSample = (script: CpuProScript | null, scriptOffset: number, contextInfoValue: number) => {
+        // without a script and context info, the site is at the unknown location
+        let node = 1;
+
+        if (script !== null) {
+            node = locationNode(dictionary.resolveLocationIndex(null, script, scriptOffset));
+
+            if (contextInfoValue !== 0) {
+                node = contextNode(node, contextInfoValue);
+            }
+        } else if (contextInfoValue !== 0) {
+            const callFrame = resolveCallFrameFromContextInfo(
+                dictionary,
+                contextInfoValue,
+                vmStateCallFrames,
+                builtinsCallFrames
+            );
+
+            node = locationNode(dictionary.resolveLocationIndex(callFrame));
+        }
+
+        if (nodeSamples[node] === -1) {
+            nodeSamples[node] = sampleNodes.push(node) - 1;
+        }
+
+        return nodeSamples[node];
+    };
+
+    // A script id may be a string, so sites refer to scripts by the order their ids are met
+    const scriptKeyById = new Map<number | string, number>();
+    const scripts: (CpuProScript | null)[] = [];
+    const samples = new Uint32Array(scriptOffsets.length);
+    // PERF: Sites grow from a size bounded by the allocation count, so short vectors allocate little
+    const sites = new LocationSites(Math.min(scriptOffsets.length, 1 << 12));
+    const siteSamples: number[] = [];
+    // NaN differs from any script id, so the first allocation looks its site up
+    let previousScriptId: number | string = NaN;
+    let previousScriptOffset = 0;
+    let previousContextInfo = 0;
+    let scriptKey = 0;
+    let sample = 0;
 
     for (let i = 0; i < scriptOffsets.length; i++) {
-        const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
         const scriptId = scriptIds[i];
         const scriptOffset = scriptOffsets[i];
-        let locationIndex = prevLocationIndex;
+        const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
 
-        if (scriptId !== prevScriptId) {
-            prevScriptId = scriptId;
-            prevScript = scriptFromScriptId(scriptId, null, scriptsMap);
-            prevScriptOffset = scriptOffset;
-            prevContextInfoValue = contextInfoValue;
-            locationIndex = -1;
+        if (scriptOffset !== previousScriptOffset ||
+            contextInfoValue !== previousContextInfo ||
+            scriptId !== previousScriptId) {
+            if (scriptId !== previousScriptId) {
+                scriptKey = scriptKeyById.get(scriptId) ?? -1;
 
-            const scriptLocationIndex = locationIndexByScript.get(prevScript);
-
-            if (scriptLocationIndex !== undefined) {
-                prevScriptLocationIndex = scriptLocationIndex;
-            } else {
-                prevScriptLocationIndex = new Map();
-                locationIndexByScript.set(prevScript, prevScriptLocationIndex);
-            }
-        } else if (scriptOffset !== prevScriptOffset) {
-            prevScriptOffset = scriptOffset;
-            prevContextInfoValue = contextInfoValue;
-            locationIndex = -1;
-        } else if (contextInfoValue !== prevContextInfoValue) {
-            prevContextInfoValue = contextInfoValue;
-            locationIndex = -1;
-        }
-
-        if (locationIndex === -1) {
-            // a script id may be a string, so the resolved script tells a location in a script
-            if (prevScript !== null) {
-                // Normal location in a script
-                locationIndex = prevScriptLocationIndex.get(scriptOffset) ?? -1;
-
-                if (locationIndex === -1) {
-                    locationIndex = dictionary.resolveLocationIndex(
-                        null,
-                        prevScript,
-                        scriptOffset
-                    );
-                    prevScriptLocationIndex.set(scriptOffset, locationIndex);
+                if (scriptKey === -1) {
+                    scriptKey = scripts.push(scriptFromScriptId(scriptId, null, scriptsMap)) - 1;
+                    scriptKeyById.set(scriptId, scriptKey);
                 }
-            } else if (contextInfoValue !== 0) {
-                // VM state or builtin context info
-                locationIndex = dictionary.resolveLocationIndex(
-                    resolveCallFrameFromContextInfo(
-                        dictionary,
-                        contextInfoValue,
-                        vmStateCallFrames,
-                        builtinsCallFrames
-                    )
-                );
-            } else {
-                // Unknown location (no script, no context info)
-                locationIndex = 0;
             }
 
-            // Resolving a location (or its call frame) may add other locations to the dictionary,
-            // so a location index can skip ahead of the map, leaving entries unset
-            nodeIndex = locationIndexToNodeIndex[locationIndex] ?? -1;
+            const count = sites.count;
+            const site = sites.siteOf(scriptKey, scriptOffset, contextInfoValue);
 
-            if (nodeIndex === -1) {
-                nodeIndex = generatedNodes.addNode(
-                    dictionary.locations[locationIndex].callFrame.id - 1,
-                    0,
-                    locationIndex
-                );
-                locationIndexToNodeIndex[locationIndex] = nodeIndex;
+            if (site === count) {
+                siteSamples.push(siteSample(scripts[scriptKey], scriptOffset, contextInfoValue));
             }
+
+            previousScriptId = scriptId;
+            previousScriptOffset = scriptOffset;
+            previousContextInfo = contextInfoValue;
+            sample = siteSamples[site];
         }
 
-        sampleToNode[i] = nodeIndex;
-        // sampleToLocation[i] = locationIndex;
-        prevLocationIndex = locationIndex;
-    }
-
-    // second pass to attach context info to js frames
-    if (contextInfo !== null) {
-        const nodesCount = generatedNodes.count;
-        const contextNodesMap = new Map<number, number>();
-        let prevScriptId = scriptIds.length > 0 ? scriptIds[0] : 0;
-        let inScript = scriptFromScriptId(prevScriptId, null, scriptsMap) !== null;
-
-        for (let i = 0; i < contextInfo.length; i++) {
-            const contextInfoValue = contextInfo[i];
-
-            if (scriptIds[i] !== prevScriptId) {
-                prevScriptId = scriptIds[i];
-                inScript = scriptFromScriptId(prevScriptId, null, scriptsMap) !== null;
-            }
-
-            if (contextInfoValue !== 0 && inScript) {
-                const ref = nodesCount * contextInfoValue + sampleToNode[i];
-                let contextNodeIndex = contextNodesMap.get(ref);
-
-                if (contextNodeIndex === undefined) {
-                    const callFrame = resolveCallFrameFromContextInfo(
-                        dictionary,
-                        contextInfoValue,
-                        vmStateCallFrames,
-                        builtinsCallFrames
-                    );
-
-                    contextNodesMap.set(ref, contextNodeIndex = generatedNodes.addNode(
-                        callFrame.id - 1,
-                        sampleToNode[i],
-                        dictionary.resolveLocationIndex(callFrame)
-                    ));
-                }
-
-                sampleToNode[i] = contextNodeIndex;
-                // not needed
-                // sampleToLocation[i] = dictionary.resolveLocationIndex(
-                //     callFrame
-                // );
-            }
-        }
+        samples[i] = sample;
     }
 
     return {
-        generatedNodes,
-        samples: sampleToNode
+        parent: new Uint32Array(nodeParent),
+        nodes: new Uint32Array(nodeLocations),
+        sourceIdToNode: new Int32Array(sampleNodes),
+        dictionary: dictionary.locations,
+        samples
     };
+}
+
+// Sites of locations: script offsets of owners (call frames, call tree nodes or scripts) with context info,
+// numbered in the order they are added. A hash table finds the site of an owner, an offset and context info.
+class LocationSites {
+    owners: Uint32Array;
+    offsets: Int32Array;
+    contexts: Uint32Array;
+    count = 0;
+    #slots: Int32Array;
+
+    constructor(size: number) {
+        this.owners = new Uint32Array(capacity(size));
+        this.offsets = new Int32Array(this.owners.length);
+        this.contexts = new Uint32Array(this.owners.length);
+        this.#slots = new Int32Array(2 * this.owners.length).fill(-1);
+    }
+
+    // The site of an owner's script offset with context info; a missing site is added as the next one
+    siteOf(owner: number, offset: number, context: number) {
+        const slots = this.#slots;
+        const slotMask = slots.length - 1;
+        let slot = hashSite(owner, offset, context) & slotMask;
+        let site = slots[slot];
+
+        while (site !== -1) {
+            if (this.offsets[site] === offset &&
+                this.contexts[site] === context &&
+                this.owners[site] === owner) {
+                return site;
+            }
+
+            slot = (slot + 1) & slotMask;
+            site = slots[slot];
+        }
+
+        site = this.count++;
+
+        if (site === this.owners.length) {
+            this.owners = grow(this.owners);
+            this.offsets = grow(this.offsets);
+            this.contexts = grow(this.contexts);
+        }
+
+        this.owners[site] = owner;
+        this.offsets[site] = offset;
+        this.contexts[site] = context;
+        slots[slot] = site;
+
+        if (2 * this.count > slots.length) {
+            this.#rehash();
+        }
+
+        return site;
+    }
+
+    #rehash() {
+        const slots = new Int32Array(2 * this.#slots.length).fill(-1);
+        const slotMask = slots.length - 1;
+
+        for (let i = 0; i < this.count; i++) {
+            let slot = hashSite(this.owners[i], this.offsets[i], this.contexts[i]) & slotMask;
+
+            while (slots[slot] !== -1) {
+                slot = (slot + 1) & slotMask;
+            }
+
+            slots[slot] = i;
+        }
+
+        this.#slots = slots;
+    }
+}
+
+function hashSite(owner: number, offset: number, context: number) {
+    const key = owner ^ Math.imul(offset, 0x85ebca6b) ^ Math.imul(context, 0xc2b2ae35);
+    const hash = Math.imul(key, 0x9e3779b1);
+
+    return (hash ^ (hash >>> 16)) >>> 0;
 }

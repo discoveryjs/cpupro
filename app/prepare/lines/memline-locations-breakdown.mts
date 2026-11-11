@@ -1,43 +1,29 @@
 import type { Dictionary } from '../dictionary.js';
 import type { WorkHandler } from '../misc/work.js';
-import type { GeneratedNodes } from '../preprocessing/nodes.js';
-import type { TreeSource } from '../computations/build-trees.js';
-import type { CpuProLocation } from '../types.js';
+import type { VectorLocations } from '../preprocessing/locations.js';
 import type { ProfileLine, ProfileLineBreakdown } from './types.js';
 import { createSampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
-import { remapSamples } from '../preprocessing/samples.js';
-import { convertToUint32Array, createInt32Progression } from '../misc/utils.js';
 
 export async function createMemlineLocationsBreakdown(
     kind: string,
     line: ProfileLine,
     dictionary: Dictionary,
     allocationSizes: Uint32Array,
-    vectorLocations: {
-        generatedNodes: GeneratedNodes;
-        samples: Uint32Array;
-    },
+    vectorLocations: VectorLocations,
     work: WorkHandler
 ): Promise<ProfileLineBreakdown> {
-    const allocationLocationBreakdownBasis: TreeSource<CpuProLocation> =
-        await work('compute location breakdown basis', () =>
-            createAllocationLocationBreakdownBasis(
-                dictionary,
-                vectorLocations.generatedNodes
-            )
-        );
-    const { samples, sampleToNode } = await work('normalize allocation locations', () =>
-        remapSamples(vectorLocations.samples, allocationLocationBreakdownBasis.sourceIdToNode)
-    );
-    const locationSource = {
-        ...allocationLocationBreakdownBasis,
-        sourceIdToNode: sampleToNode
-    };
+    const { samples, ...locationSource } = vectorLocations;
     const population = await work('create allocation location population', () => {
         const sizesPopulation = line.breakdowns.find(breakdown => breakdown.population.values === allocationSizes)?.population;
-        const population = new Population(samples, allocationSizes, undefined, sizesPopulation?.cumulative);
+        // PERF: Samples are indices of sourceIdToNode, so their count needs no scan over the allocations
+        const population = new Population(
+            samples,
+            allocationSizes,
+            locationSource.sourceIdToNode.length,
+            sizesPopulation?.cumulative
+        );
         const populationViewport = new PopulationFiltered(population);
         const populationFiltered = new PopulationFiltered(populationViewport);
         const populationWindow = new PopulationFiltered(population);
@@ -59,29 +45,4 @@ export async function createMemlineLocationsBreakdown(
         locationTreeSamples,
         work
     );
-}
-
-function createAllocationLocationBreakdownBasis(
-    dictionary: Dictionary,
-    generatedNodes: GeneratedNodes
-): TreeSource<CpuProLocation> {
-    const nodeIndexById = createInt32Progression(generatedNodes.count);
-    const nodeParent = convertToUint32Array(generatedNodes.nodeParentId);
-    const locationNodes = convertToUint32Array(generatedNodes.parentScriptOffsets); // parentScriptOffsets used to store location indices
-
-    return {
-        parent: nodeParent,
-        sourceIdToNode: nodeIndexById,
-        nodes: locationNodes,
-        dictionary: dictionary.locations
-    };
-
-    // call frames
-    // const callFrameByNodeIndex = Uint32Array.from(generatedNodes.callFrames);
-    // {
-    //     nodeParent,
-    //     nodeIndexById,
-    //     callFrameByNodeIndex,
-    //     dictionary: dictionary.callFrames
-    // }
 }

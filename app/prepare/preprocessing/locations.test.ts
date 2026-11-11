@@ -24,18 +24,16 @@ function describeLocation(location: CpuProLocation) {
     return `${location.callFrame.origName}:${location.scriptOffset}`;
 }
 
-// Locations of the node of each allocation and of its ancestors, up to the root (node 0, its own parent);
-// generated nodes keep location indices in parentScriptOffsets
+// Locations of the node of each allocation and of its ancestors, up to the root (node 0, its own parent)
 function allocationPaths(dictionary: Dictionary, result: NonNullable<ReturnType<typeof createVectorLocations>>) {
-    const { generatedNodes, samples } = result;
-    const { nodeParentId, parentScriptOffsets } = generatedNodes;
+    const { samples, sourceIdToNode, parent, nodes } = result;
     const paths: string[] = [];
 
     for (let i = 0; i < samples.length; i++) {
         const path: string[] = [];
 
-        for (let j = samples[i]; j !== 0; j = nodeParentId[j]) {
-            path.push(describeLocation(dictionary.locations[parentScriptOffsets[j]]));
+        for (let j = sourceIdToNode[samples[i]]; j !== 0; j = parent[j]) {
+            path.push(describeLocation(dictionary.locations[nodes[j]]));
         }
 
         paths.push(path.join(' < '));
@@ -160,7 +158,7 @@ test.each<{
     )!;
 
     assert.deepEqual(allocationPaths(dictionary, result), row.paths);
-    assert.equal(result.generatedNodes.count, row.nodes);
+    assert.equal(result.parent.length, row.nodes);
     assert.deepEqual(dictionary.scripts.map(script => script.url), ['first.js', 'second.js']);
 });
 
@@ -196,10 +194,10 @@ test('maps allocations at locations added by resolving other locations to nodes 
         null,
         null
     )!;
-    const nodeLocations = result.generatedNodes.parentScriptOffsets;
+    const { samples, sourceIdToNode, nodes } = result;
 
     assert.deepEqual(
-        [...result.samples].map(nodeIndex => nodeLocations[nodeIndex]),
+        [...samples].map(sample => nodes[sourceIdToNode[sample]]),
         scriptOffsets.map(offset => dictionary.resolveLocationIndex(null, script, offset))
     );
 });
