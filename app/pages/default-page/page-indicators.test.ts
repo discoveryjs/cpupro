@@ -3,90 +3,180 @@ import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../../jora/index.mjs';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
+import { findView, findViews } from '../../../test/helpers/view-config.js';
 import { pageIndicators } from './page-indicators.js';
 import { SetAttributeFilter } from '../../prepare/computations/attribute-filter.js';
+import type { ProfileLine } from '../../prepare/lines/types.js';
 
 const query = jora.setup({ methods });
-const group = pageIndicators.content.find(entry => entry.className === 'selected')!;
-assert.ok(group.content && !Array.isArray(group.content));
-const selected = group.content.content;
-const indicator = selected.content.at(-1)!;
-assert.ok(indicator.value && indicator.title);
-const value = query(indicator.value.slice(1));
-const lengthValue = jora.setup({ methods: { ...methods, formatValue: (value: number) => value } })(indicator.value.slice(1));
-const title = query(indicator.title.slice(1));
-const visible = query(selected.when);
+const propQuery = (value: string) => query(value.slice(1));
+// Values are compared unformatted
+const valueQuery = jora.setup({ methods: { ...methods, formatValue: (value: number) => value } });
+const rawValue = (value: string) => valueQuery(value.slice(1));
 
-test('selection indicators measure the union within line coverage in time or bytes', async () => {
-    const { profile } = await createProfileFixture({ startTime: 100 });
-    for (const line of [profile.timeline!, profile.memline!]) {
-        const context = { scopeLine: line };
-        assert.equal(visible({}, context), false);
-        line.range.setRanges([{ start: -10, end: 15 }, { start: 5, end: 20 }, { start: 25, end: 35 }]);
-        const length = 20 + Math.min(35, line.axisTotal) - 25;
-        assert.equal(lengthValue({}, context), length);
-        assert.equal(value({}, context), line.formatValue(length));
-        assert.equal(title({}, context), line.metricName('interval'));
-        assert.equal(visible({}, context), true);
-        const requested = line.range.selection.ranges;
-        const filter = line.filters.get('category');
-        assert.ok(filter instanceof SetAttributeFilter);
-        filter.setSelection('include', []);
-        assert.equal(lengthValue({}, context), length);
-        assert.equal(line.range.selection.ranges, requested);
-        line.range.setRange(line.axisTotal + 1, line.axisTotal + 10);
-        assert.equal(lengthValue({}, context), 0);
-        line.range.setRanges([]);
-        assert.equal(lengthValue({}, context), 0);
-        assert.equal(visible({}, context), true);
-        line.range.resetRange();
-        assert.equal(visible({}, context), false);
+const runtime = findView(pageIndicators, { title: 'Runtime' });
+const samplingInterval = findView(pageIndicators, { title: 'Sampling interval' });
+// Profile values in the order of the page: total, samples, call tree nodes and call frames
+const viewportValues = findViews(pageIndicators, { metrics: '=populationViewport' });
+const selectionGroup = findView(pageIndicators, { className: 'selected' });
+const selection = findView(selectionGroup, { view: 'context' });
+const selectionSamples = findView(selectionGroup, { title: 'Samples' });
+const selectedInterval = findView(selectionGroup, { title: '="interval".metricName()' });
+
+async function createLine(name: string) {
+    const { profile } = await createProfileFixture();
+    const line: ProfileLine = profile[name as 'timeline' | 'memline']!;
+
+    return { profile, line, breakdown: line.breakdowns[0] };
+}
+
+function acceptNothing(line: ProfileLine) {
+    (line.filters.get('category') as SetAttributeFilter).setSelection('include', []);
+}
+
+function viewFirstUnit(line: ProfileLine) {
+    const extent = methods.lineExtent(line);
+
+    line.viewport.selection.setRange(extent.start, extent.start + 1);
+}
+
+function viewAll() {}
+
+test.each([
+    ['a known runtime', { code: 'node', name: 'Node.js', engine: 'V8' }, 'runtime node', 'Node.js'],
+    ['an unknown runtime', { code: 'unknown', name: 'Unknown', engine: 'V8' }, 'runtime unknown', 'Unknown/V8']
+])('the runtime indicator names %s', (_, profileRuntime, className, value) => {
+    const profile = { runtime: profileRuntime };
+
+    assert.equal(propQuery(runtime.className)(profile), className);
+    assert.equal(propQuery(runtime.value)(profile), value);
+});
+
+test('metric hints name and define the metric of the line, the total notes the viewport and filters', async () => {
+    const { line } = await createLine('memline');
+    const context = { scopeLine: line };
+    const totalHint = propQuery(findView(pageIndicators, { title: '="axis".metricName()' }).hint.source)(null, context);
+    const samplingHint = propQuery(samplingInterval.hint.source)(null, context);
+
+    assert.ok(totalHint.startsWith('#### Memory allocated\n\nThe total memory allocated during the profiling session'));
+    assert.ok(totalHint.endsWith('\n\nIn the viewport, for the samples accepted by the filters.'));
+    assert.equal(
+        samplingHint,
+        '#### Sampling interval\n\nThe minimum memory allocated between samples taken during the profiling session.'
+    );
+});
+
+test.each([
+    ['timeline', 'μs'],
+    ['memline', 'b']
+])('the sampling interval of a %s is in its units', async (name, unit) => {
+    const { line } = await createLine(name);
+    const context = { scopeLine: line };
+
+    assert.equal(propQuery(samplingInterval.value)(null, context), line.sourceInfo.samplesInterval);
+    assert.equal(propQuery(samplingInterval.unit)(null, context), unit);
+});
+
+test('profile values are of the scope breakdown, debounced on changes of its viewport population', async () => {
+    const { profile, line, breakdown } = await createLine('timeline');
+    const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
+
+    assert.equal(viewportValues.length, 4);
+
+    for (let i = 0; i < viewportValues.length; i++) {
+        const view = viewportValues[i];
+        const data = query(view.data)(profile, context);
+
+        assert.equal(data, breakdown);
+        assert.equal(propQuery(view.metrics)(data, context), breakdown.populationViewport);
+        assert.equal(view.debounce, true);
     }
 });
 
-test('profile indicators follow the viewport and filters', async () => {
-    const { profile } = await createProfileFixture();
-    const formatQuery = jora.setup({ methods: { ...methods, formatValue: (value: number) => value } });
-    const [, metrics, tree] = pageIndicators.content;
-    const indicators = [...metrics.content, ...tree.content].filter(indicator => indicator.content);
+test.each([
+    ['timeline', 'the whole line', viewAll, [30, 3, 3, 3]],
+    ['timeline', 'the viewport', viewFirstUnit, [1, 1, 2, 2]],
+    ['timeline', 'samples accepted by filters', acceptNothing, [0, 0, 0, 0]],
+    ['memline', 'the whole line', viewAll, [160, 4, 3, 3]],
+    ['memline', 'the viewport', viewFirstUnit, [1, 1, 2, 2]],
+    ['memline', 'samples accepted by filters', acceptNothing, [0, 0, 0, 0]]
+])('profile values of a %s count %s', async (name, _, narrow, expected) => {
+    const { profile, line, breakdown } = await createLine(name);
+    const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
+    const values: number[] = [];
 
-    assert.deepEqual(indicators.map(indicator => indicator.title), ['="axis".metricName()', 'Samples', 'Call tree nodes', 'Call frames']);
-    for (const { content } of indicators) {
-        assert.equal(content.view, 'update-on-line-metrics-changes');
-        assert.equal(content.debounce, true);
+    narrow(line);
+
+    for (let i = 0; i < viewportValues.length; i++) {
+        const view = viewportValues[i];
+        const data = query(view.data)(profile, context);
+
+        values.push(rawValue(findView(view, { view: 'text-with-unit' }).value)(data, context));
     }
 
-    for (const line of [profile.timeline!, profile.memline!]) {
-        const breakdown = line.breakdowns[0];
-        const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
-        const read = () => indicators.map(({ content }) => {
-            const data = query(content.data)(profile, context);
+    assert.deepEqual(values, expected);
+});
 
-            assert.equal(query(content.metrics.slice(1))(data, context), breakdown.populationViewport);
+test.each([
+    ['no selection', null, false],
+    ['an empty selection', [], true],
+    ['a selection', [{ start: 1, end: 2 }], true]
+])('selection indicators are shown with %s of the line', async (_, ranges, shown) => {
+    const { line } = await createLine('timeline');
 
-            return formatQuery(content.content.value.slice(1))(data, context);
-        });
-        const full = read();
+    line.range.setRanges(ranges);
 
-        assert.deepEqual(full, [
-            line.axisTotal,
-            line.values.length,
-            breakdown.callFrames!.tree.nodes.length,
-            breakdown.callFrames!.tree.dictionary.length
-        ]);
+    assert.equal(query(selection.when)(null, { scopeLine: line }), shown);
+});
 
-        const extent = methods.lineExtent(line);
-        line.viewport.selection.setRange(extent.start, extent.start + 1);
-        const narrow = read();
+test('selection indicators follow the line range, selected samples follow the filtered population', async () => {
+    const { line, breakdown } = await createLine('timeline');
+    const context = { scopeLine: line, scopeBreakdown: breakdown };
+    const rangeUpdates = findView(selectionGroup, { view: 'update-on-line-metrics-changes' });
+    const samplesUpdates = findView(selectionGroup, { metrics: '=scopeBreakdown().populationFiltered' });
 
-        assert.equal(narrow[0], 1);
-        assert.equal(narrow[1], 1);
-        assert.ok(narrow[2] < full[2] && narrow[3] < full[3]);
+    line.range.setRanges([{ start: 0, end: 15 }]);
 
-        line.viewport.selection.resetRange();
-        (line.filters.get('category') as SetAttributeFilter).setSelection('include', []);
-        assert.deepEqual(read(), [0, 0, 0, 0]);
-        (line.filters.get('category') as SetAttributeFilter).setSelection('exclude', []);
-        assert.deepEqual(read(), full);
-    }
+    assert.equal(propQuery(rangeUpdates.metrics)(null, context), line.range);
+    assert.equal(propQuery(samplesUpdates.metrics)(null, context), breakdown.populationFiltered);
+    assert.equal(propQuery(selectionSamples.value)(null, context), 2);
+});
+
+const overlapping = [{ start: -10, end: 15 }, { start: 5, end: 20 }, { start: 25, end: 35 }];
+
+test.each([
+    ['timeline', 'overlapping ranges', overlapping, 25],
+    ['timeline', 'a range beyond the end', [{ start: 20, end: 50 }], 10],
+    ['timeline', 'ranges outside', [{ start: 200, end: 210 }], 0],
+    ['timeline', 'no ranges', [], 0],
+    ['memline', 'overlapping ranges', overlapping, 30],
+    ['memline', 'a range beyond the end', [{ start: 150, end: 200 }], 10]
+])('the selected interval of a %s is the union of %s within its coverage', async (name, _, ranges, length) => {
+    const { line } = await createLine(name);
+
+    line.range.setRanges(ranges);
+
+    assert.equal(rawValue(selectedInterval.value)(null, { scopeLine: line }), length);
+});
+
+test.each([
+    ['timeline', 30, '0.0 ms', 'Duration'],
+    ['memline', 160, '0.2Kb', 'Memory allocated']
+])('the selected interval of a %s is formatted and named by the line', async (name, end, value, title) => {
+    const { line } = await createLine(name);
+    const context = { scopeLine: line };
+
+    line.range.setRanges([{ start: 0, end }]);
+
+    assert.equal(propQuery(selectedInterval.value)(null, context), value);
+    assert.equal(propQuery(selectedInterval.title)(null, context), title);
+});
+
+test('the selected interval does not depend on filters', async () => {
+    const { line } = await createLine('timeline');
+
+    line.range.setRanges([{ start: 0, end: 20 }]);
+    acceptNothing(line);
+
+    assert.equal(rawValue(selectedInterval.value)(null, { scopeLine: line }), 20);
 });

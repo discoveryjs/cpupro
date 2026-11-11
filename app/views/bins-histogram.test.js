@@ -50,8 +50,8 @@ function bars(width, height, options, dpr) {
 }
 
 const exact = values => values.map(value => Number(value.toFixed(3)));
-const columns = rects => rects.map(([x,, width]) => exact([x, width]));
-const heights = rects => rects.map(([,,, height]) => height);
+const columns = rects => rects.map(rect => exact([rect[0], rect[2]]));
+const heights = rects => rects.map(rect => rect[3]);
 const rounded = rects => rects.map(exact);
 
 test('columns sit at their exact positions from the bottom and skip empty bins', () => {
@@ -85,7 +85,7 @@ test('columns keep the same gap however wide they are', () => {
 test('bins merge by powers of two into columns keeping a bar at least as wide as their gap', () => {
     const bins = [1, 2, 3, 4, 5, 6, 7, 8];
 
-    assert.deepEqual(columns(bars(16, 36, { bins })).length, 8);
+    assert.equal(bars(16, 36, { bins }).length, 8);
     assert.deepEqual(columns(bars(14, 36, { bins })), [[0, 2.5], [3.5, 2.5], [7, 2.5], [10.5, 2.5]]);
     assert.deepEqual(heights(bars(14, 36, { bins })), [7, 17, 26, 36]);
     assert.deepEqual(columns(bars(7, 36, { bins })), [[0, 2.5], [3.5, 2.5]]);
@@ -93,10 +93,10 @@ test('bins merge by powers of two into columns keeping a bar at least as wide as
     assert.deepEqual(columns(bars(3, 36, { bins })), [[0, 2]]);
 
     // The minimal width is in device pixels, two gaps: a CSS pixel at a pixel ratio of 2, still two CSS pixels at 1
-    assert.deepEqual(columns(bars(16, 36, { bins }, 2)).length, 8);
-    assert.deepEqual(columns(bars(14, 36, { bins }, 2)).length, 4);
-    assert.deepEqual(columns(bars(24, 36, { bins }, 3)).length, 4);
-    assert.deepEqual(columns(bars(32, 36, { bins }, 3)).length, 8);
+    assert.equal(bars(16, 36, { bins }, 2).length, 8);
+    assert.equal(bars(14, 36, { bins }, 2).length, 4);
+    assert.equal(bars(24, 36, { bins }, 3).length, 4);
+    assert.equal(bars(32, 36, { bins }, 3).length, 8);
 
     // A last incomplete column sums fewer bins and is clipped by the canvas edge
     assert.deepEqual(rounded(bars(8, 6, { bins: [1, 1, 1, 1, 1] })), [
@@ -153,62 +153,83 @@ test('tracks splitting a total keep their shares in merged columns', () => {
     const max = 1;
     const tracks = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
 
-    for (const bins of tracks) {
-        assert.deepEqual(bars(2, 4, { bins, max }), [[0, 3, 1, 1]]);
+    for (let i = 0; i < tracks.length; i++) {
+        assert.deepEqual(bars(2, 4, { bins: tracks[i], max }), [[0, 3, 1, 1]]);
     }
 });
 
 test('without a maximum of a bin, columns scale to the highest visible column', () => {
     const bins = [9, 0, 0, 0, 1, 1, 2, 0];
     const range = { start: 0, end: 80 };
+    const viewport = { start: 40, end: 80 };
 
     // Bins beyond the viewport don't change the scale
-    assert.deepEqual(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 } }), [
+    assert.deepEqual(bars(8, 8, { bins, range, viewport }), [
         [0, 4, 1, 4],
         [2, 4, 1, 4],
         [4, 0, 1, 8]
     ]);
-    assert.deepEqual(bars(8, 8, { bins: [0, ...bins.slice(1)], range, viewport: { start: 40, end: 80 } }), [
+    assert.deepEqual(bars(8, 8, { bins: [0, 0, 0, 0, 1, 1, 2, 0], range, viewport }), [
         [0, 4, 1, 4],
         [2, 4, 1, 4],
         [4, 0, 1, 8]
     ]);
     assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 30, end: 70 } })), [4, 4, 8]);
-    assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 40, end: 80 } })), [8, 8]);
+    assert.deepEqual(heights(bars(4, 8, { bins, range, viewport })), [8, 8]);
     assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 0, end: 40 } })), [8]);
     // Neither do bins right after the viewport
-    assert.deepEqual(heights(bars(8, 8, { bins: [1, 1, 2, 0, 9, 0, 0, 0], range, viewport: { start: 0, end: 40 } })), [4, 4, 8]);
+    const highAfter = [1, 1, 2, 0, 9, 0, 0, 0];
+
+    assert.deepEqual(heights(bars(8, 8, { bins: highAfter, range, viewport: { start: 0, end: 40 } })), [4, 4, 8]);
 
     // A partially visible column counts with its whole value
     assert.deepEqual(heights(bars(16, 8, { bins, range, viewport: { start: 5, end: 45 } })), [8, 1]);
 
     // A maximum of a bin keeps the scale of the whole range
-    assert.deepEqual(heights(bars(8, 9, { bins, range, viewport: { start: 40, end: 80 }, max: 9 })), [1, 1, 2]);
+    assert.deepEqual(heights(bars(8, 9, { bins, range, viewport, max: 9 })), [1, 1, 2]);
 });
 
 test('series sharing the scale make the highest of their visible columns the full height', () => {
     const range = { start: 0, end: 80 };
+    const viewport = { start: 40, end: 80 };
     const total = [20, 0, 0, 0, 4, 2, 2, 0];
     const bins = [10, 0, 0, 0, 2, 1, 1, 0];
+    const peak = [0, 0, 0, 0, 0, 0, 8, 0];
 
-    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total] })), [4, 2, 2]);
+    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport, scaleBins: [total] })), [4, 2, 2]);
     assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 0, end: 40 }, scaleBins: [total] })), [4]);
 
     // The highest of several series, merged into the same columns
-    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [[0, 0, 0, 0, 0, 0, 8, 0], total] })), [2, 1, 1]);
-    assert.deepEqual(heights(bars(4, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total] })), [4, 1]);
+    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport, scaleBins: [peak, total] })), [2, 1, 1]);
+    assert.deepEqual(heights(bars(4, 8, { bins, range, viewport, scaleBins: [total] })), [4, 1]);
 
     // A maximum of a bin takes precedence
-    assert.deepEqual(heights(bars(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total], max: 2 })), [8, 4, 4]);
+    const capped = {
+        bins,
+        range,
+        viewport,
+        scaleBins: [total],
+        max: 2
+    };
+
+    assert.deepEqual(heights(bars(8, 8, capped)), [8, 4, 4]);
 
     // Columns far below the shared scale show their own shape behind
-    assert.deepEqual(draw(8, 8, { bins, range, viewport: { start: 40, end: 80 }, scaleBins: [total], binsMax: true }).map(layer => heights(layer.rects)), [
+    const layers = draw(8, 8, {
+        bins,
+        range,
+        viewport,
+        scaleBins: [total],
+        binsMax: true
+    });
+
+    assert.deepEqual(layers.map(layer => heights(layer.rects)), [
         [8, 4, 4],
         [4, 2, 2]
     ]);
 });
 
-test('maximums of a column duration over all the data are the full height of columns and their shadow anywhere', () => {
+test('maximums of a column duration over all data are the full height of columns and shadows anywhere', () => {
     const range = { start: 5, end: 85 };
     const bins = [10, 0, 0, 0, 2, 1, 1, 0];
     const durations = [];
@@ -287,10 +308,14 @@ test('zooming in moves columns continuously and splits merged columns keeping th
     assert.equal(bars(8, 1, { bins, range, viewport: { start: 0, end: 8 } }).length, 4);
     assert.equal(bars(8, 1, { bins, range, viewport: { start: 0, end: 7 } }).length, 4);
     assert.equal(bars(8, 1, { bins, range, viewport: { start: 0, end: 4 } }).length, 4);
-    assert.deepEqual(columns(bars(8, 1, { bins, range, viewport: { start: 0, end: 4 } })), [[0, 1], [2, 1], [4, 1], [6, 1]]);
+    assert.deepEqual(columns(bars(8, 1, { bins, range, viewport: { start: 0, end: 4 } })), [
+        [0, 1], [2, 1], [4, 1], [6, 1]
+    ]);
 
     // Between splits columns widen with the zoom and keep their gap
-    assert.deepEqual(columns(bars(16, 1, { bins, range, viewport: { start: 0, end: 16 } })), [[0, 1], [2, 1], [4, 1], [6, 1], [8, 1], [10, 1], [12, 1], [14, 1]]);
+    assert.deepEqual(columns(bars(16, 1, { bins, range, viewport: { start: 0, end: 16 } })), [
+        [0, 1], [2, 1], [4, 1], [6, 1], [8, 1], [10, 1], [12, 1], [14, 1]
+    ]);
     assert.deepEqual(columns(bars(16, 1, { bins, range, viewport: { start: 0, end: 12.8 } })), [
         [0, 1.5], [2.5, 1.5], [5, 1.5], [7.5, 1.5], [10, 1.5], [12.5, 1.5], [15, 1]
     ]);
@@ -371,7 +396,8 @@ test('columns far below a shared maximum show their own shape behind', () => {
     assert.equal(draw(4, 10, { bins: [0, 2, 4, 8], max: 6.6, binsMax: true }).length, 1);
 });
 
-function renderHistogram(config, data, { dpr = 2, color = '', context = {} } = {}) {
+function renderHistogram(config, data, options = {}) {
+    const { dpr = 2, color = '', context = {} } = options;
     const frames = new Map();
     let lastFrame = 0;
     const elements = [];
@@ -389,6 +415,15 @@ function renderHistogram(config, data, { dpr = 2, color = '', context = {} } = {
     };
     el.style.setProperty = el.style.set;
 
+    // An inherited color when given, otherwise the own color of the element
+    const getPropertyValue = (element, name) => {
+        if (element !== el || name !== '--color') {
+            return '';
+        }
+
+        return color || el.style.get('--color') || '';
+    };
+
     evaluateModule(new URL('./bins-histogram.js', import.meta.url), {
         utils: {
             isArray: utils.isArray,
@@ -401,15 +436,24 @@ function renderHistogram(config, data, { dpr = 2, color = '', context = {} } = {
         },
         drawBinsHistogram(ctx, options, color, dpr) {
             drawn.push({
-                canvas: ctx.canvas, options, viewport: options.viewport, color, dpr,
-                width: ctx.canvas.width, height: ctx.canvas.height
+                canvas: ctx.canvas,
+                options,
+                viewport: options.viewport,
+                color,
+                dpr,
+                width: ctx.canvas.width,
+                height: ctx.canvas.height
             });
         },
         usage,
-        discovery: { view: { define: (_, callback, options) => {
-            render = callback;
-            assert.equal(options.usage, usage);
-        } } },
+        discovery: {
+            view: {
+                define(_, callback, options) {
+                    render = callback;
+                    assert.equal(options.usage, usage);
+                }
+            }
+        },
         ResizeObserver: class {
             constructor(callback) {
                 resize = callback;
@@ -428,10 +472,14 @@ function renderHistogram(config, data, { dpr = 2, color = '', context = {} } = {
         },
         cancelAnimationFrame: id => frames.delete(id),
         getComputedStyle: element => ({
-            getPropertyValue: name => element === el && name === '--color' ? color || el.style.get('--color') || '' : ''
+            getPropertyValue: name => getPropertyValue(element, name)
         }),
         HTMLElement: class {},
-        customElements: { define: (name, Element) => lifecycle = { name, Element } }
+        customElements: {
+            define(name, Element) {
+                lifecycle = { name, Element };
+            }
+        }
     });
 
     render(el, config, data, context);
@@ -453,7 +501,10 @@ function renderHistogram(config, data, { dpr = 2, color = '', context = {} } = {
             const callbacks = [...frames.values()];
 
             frames.clear();
-            callbacks.forEach(callback => callback());
+
+            for (let i = 0; i < callbacks.length; i++) {
+                callbacks[i]();
+            }
         },
         connect: () => lifecycleElement.connectedCallback(),
         disconnect: () => lifecycleElement.disconnectedCallback(),
@@ -464,7 +515,15 @@ function renderHistogram(config, data, { dpr = 2, color = '', context = {} } = {
 test('draws on a canvas sized to its CSS box and pixel ratio while connected', () => {
     const bins = [1, 2, 3];
     const presence = [0, 1, 0];
-    const histogram = renderHistogram({ bins, presence, max: 5, binsMax: true, scale: 'log', height: 30 }, null, { dpr: 1.5 });
+    const config = {
+        bins,
+        presence,
+        max: 5,
+        binsMax: true,
+        scale: 'log',
+        height: 30
+    };
+    const histogram = renderHistogram(config, null, { dpr: 1.5 });
 
     assert.equal(histogram.canvas.tagName, 'canvas');
     assert.equal(histogram.canvas.style.height, '30px');
@@ -476,13 +535,21 @@ test('draws on a canvas sized to its CSS box and pixel ratio while connected', (
 
     histogram.resize(100.4);
     histogram.resize(201);
-    assert.deepEqual(histogram.drawn.map(({ canvas, width, height, dpr }) => [canvas, width, height, dpr]), [
+    assert.deepEqual(histogram.drawn.map(draw => [draw.canvas, draw.width, draw.height, draw.dpr]), [
         [histogram.canvas, 151, 45, 1.5],
         [histogram.canvas, 302, 45, 1.5]
     ]);
     assert.deepEqual({ ...histogram.drawn[0].options }, {
-        bins, range: undefined, viewport: undefined,
-        presence, peaks: undefined, max: 5, scaleBins: undefined, scaleMax: undefined, binsMax: true, scale: 'log'
+        bins,
+        range: undefined,
+        viewport: undefined,
+        presence,
+        peaks: undefined,
+        max: 5,
+        scaleBins: undefined,
+        scaleMax: undefined,
+        binsMax: true,
+        scale: 'log'
     });
     assert.equal(histogram.drawn[1].options, histogram.drawn[0].options);
 
@@ -535,12 +602,13 @@ test('onInit receives an API to follow a changing viewport with one draw per fra
     const context = { context: true };
     const calls = [];
     let api;
-    const histogram = renderHistogram({ bins: [1], onInit(...args) {
+    const onInit = (...args) => {
         calls.push(args);
         api = args[0];
 
         return () => calls.push('cleanup');
-    } }, data, { context });
+    };
+    const histogram = renderHistogram({ bins: [1], onInit }, data, { context });
 
     assert.deepEqual(calls, []);
     histogram.connect();

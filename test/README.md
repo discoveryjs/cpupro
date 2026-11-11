@@ -15,7 +15,7 @@ Vitest discovers `*.test.js`, `*.test.ts` and `*.test.mts` next to production mo
 
 ## Adding a test
 
-Put the test next to its module. Import runner functions explicitly and use `node:assert/strict`, not `expect` or Vitest's assertion API. Test globals are disabled; ESLint rejects assertion imports from Vitest. On a failure node's equality assertions inspect both values in full and Vitest clones and prints them again, which takes seconds and hundreds of MB for values reaching a profile; `test/setup/assert.ts` keeps their semantics and describes failing values at the deepest depth fitting 400 lines, as a line diff. Values that differ only deeper, or different objects with equal descriptions, are reported as such; narrow such an assertion to the fields that matter.
+Put the test next to its module. Import runner functions explicitly and use `node:assert/strict`, not `expect` or Vitest's assertion API. Test globals are disabled; ESLint rejects assertion imports from Vitest.
 
 ```js
 import assert from 'node:assert/strict';
@@ -109,9 +109,9 @@ CPUPRO_TRACK_TIMELINE_FIXTURE=tmp/events-test-fixture.json npm test -- app/views
 
 ## Events page preparation
 
-`events.test.js` evaluates the Events page's Jora query through the application method registry and compares it with the previous bulk Jora expression. The page query selects and sorts the small thread list, preserving the original name/count ordering, then calls `eventsTimeline(#.intervals)` once. The specialized method in `app/jora/events.js` takes the ordered threads as its receiver and the selected intervals as an explicit argument; it neither reads page context nor evaluates a nested query. A single event pass per thread computes bounds, display spans and selected overlays without flattened event projections, repeated filters or mapped metric arrays. Bounds intentionally include events excluded from display (including Animation), and overlays do not inherit the positive-time/positive-duration display filter. Output spans retain original event references and repeated occurrences. Missing event/thread lists normalize to empty arrays instead of the old query's `undefined` or `[undefined]` artifacts. No process/result cache is used, so changed process or interval selection is evaluated afresh.
+`events.test.js` evaluates the Events page's Jora query through the application method registry and states the expected groups, spans, overlays and bounds directly. The page query selects and sorts the small thread list, preserving the original name/count ordering, then calls `eventsTimeline(#.intervals)` once. The specialized method in `app/jora/events.js` takes the ordered threads as its receiver and the selected intervals as an explicit argument; it neither reads page context nor evaluates a nested query. A single event pass per thread computes bounds, display spans and selected overlays without flattened event projections, repeated filters or mapped metric arrays. Bounds intentionally include events excluded from display (including Animation), and overlays do not inherit the positive-time/positive-duration display filter. Output spans retain original event references and repeated occurrences. Missing event/thread lists normalize to empty arrays, without bounds (`minX` undefined, `maxX` NaN). No process/result cache is used, so changed process or interval selection is evaluated afresh.
 
-The optional trace test adapts the existing fixture's `start/end` fields to `tm/duration` and verifies complete results against Jora, both with and without selected intervals:
+The optional trace test adapts the existing fixture's `start/end` fields to `tm/duration` and compares complete results with the bulk Jora expression the page used before the method, both with and without selected intervals:
 
 ```sh
 CPUPRO_TRACK_TIMELINE_FIXTURE=tmp/events-test-fixture.json npm test -- app/pages/events.test.js
