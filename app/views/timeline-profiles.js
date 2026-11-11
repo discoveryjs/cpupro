@@ -26,9 +26,10 @@ const profileTooltip = [
 ];
 
 discovery.view.define('timeline-profiles', function(el, props, data, context) {
+    // Processes with more events of their threads go first
     const bucketProfiles = discovery.query(
         '.group(=>profile.thread.process)' +
-        '.sort(key.threads.sum(=>events.size()))' +
+        '.sort(key.threads.sum(=>events.size()) desc)' +
         '.value',
         props.profiles || (Array.isArray(data) ? data : [])
     );
