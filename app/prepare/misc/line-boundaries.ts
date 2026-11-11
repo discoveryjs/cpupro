@@ -4,11 +4,24 @@
  * Optimized for sequential access patterns (adjacent ranges).
  */
 export function createLineBoundaries(document: string) {
-    const newlineRegex = /\r\n|\r|\n/g; // Global regex for scanning
     const lineStarts: number[] = [0]; // Line starts cache (always includes 0)
     let lastLineStart = 0;
+    // PERF: Line ends are found by indexOf() rather than a regular expression. The next \n and the next \r
+    // are kept until a line start passes them, so a document is searched for each of them once
+    let nextLineFeed = nextIndexOf('\n', 0);
+    let nextCarriageReturn = nextIndexOf('\r', 0);
     let lastLineIndex = 0; // Cache for last looked up line index
     let fullyScanned = false; // Whether we've scanned the entire document
+
+    // The position of the next character from an offset, the end of the document when there's none,
+    // as a line without a line break ends there
+    function nextIndexOf(char: string, offset: number) {
+        const index = document.indexOf(char, offset);
+
+        return index !== -1
+            ? index
+            : document.length;
+    }
 
     /**
      * Ensure we have scanned enough lines.
@@ -23,14 +36,24 @@ export function createLineBoundaries(document: string) {
                 break;
             }
 
-            newlineRegex.lastIndex = lastLineStart;
-            const match = newlineRegex.exec(document);
+            if (nextLineFeed < lastLineStart) {
+                nextLineFeed = nextIndexOf('\n', lastLineStart);
+            }
 
-            if (match) {
-                lastLineStart = newlineRegex.lastIndex;
-                lineStarts.push(lastLineStart);
-            } else {
+            if (nextCarriageReturn < lastLineStart) {
+                nextCarriageReturn = nextIndexOf('\r', lastLineStart);
+            }
+
+            const lineEnd = Math.min(nextLineFeed, nextCarriageReturn);
+
+            if (lineEnd === document.length) {
                 fullyScanned = true;
+            } else {
+                // \r\n ends a line as a whole
+                lastLineStart = lineEnd === nextCarriageReturn && document[lineEnd + 1] === '\n'
+                    ? lineEnd + 2
+                    : lineEnd + 1;
+                lineStarts.push(lastLineStart);
             }
         }
     }
