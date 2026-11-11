@@ -21,27 +21,23 @@ export function createTreeSourceFromParent<S>(
     nodes: Uint32Array,
     dictionary: S[]
 ): TreeSource<S> {
-    const nodeToSourceId = new Int32Array(parent.length).fill(-1);
+    const nodeToComputedNode = new Int32Array(parent.length).fill(-1);
     const computedSourceIdToNode = new Int32Array(sourceIdToNode.length).fill(-1);
     const { firstChild, nextSibling } = firstNextFromParent(parent);
     const { nodes: computedNodes, parent: computedParent } = nodesParentFromFirstNext(firstChild, nextSibling);
 
+    for (let i = 0; i < computedNodes.length; i++) {
+        nodeToComputedNode[computedNodes[i]] = i;
+        computedNodes[i] = nodes[computedNodes[i]];
+    }
+
+    // Several source ids may refer to the same node
     for (let id = 0; id < sourceIdToNode.length; id++) {
         const index = sourceIdToNode[id];
 
         if (index !== -1) {
-            nodeToSourceId[index] = id;
+            computedSourceIdToNode[id] = nodeToComputedNode[index];
         }
-    }
-
-    for (let i = 0; i < computedNodes.length; i++) {
-        const sourceId = nodeToSourceId[computedNodes[i]];
-
-        if (sourceId !== -1) {
-            computedSourceIdToNode[sourceId] = i;
-        }
-
-        computedNodes[i] = nodes[computedNodes[i]];
     }
 
     return {

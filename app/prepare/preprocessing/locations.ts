@@ -7,7 +7,6 @@ import type {
     AllocationScriptIdVector,
     CpuProCallFrame,
     CpuProLocation,
-    CpuProScript,
     IProfileScriptsMap,
     ScriptOffsetVector
 } from '../types.js';
@@ -218,12 +217,12 @@ function buildContextBuiltinDict(
 
 const emptyDict = Object.freeze({});
 
-// Allocations repeat their sites (a script, a script offset and context info) heavily: tens of millions of allocations
-// come from hundreds of thousands of sites, and every other allocation changes the site. Sites are kept in the order
-// they are met and found through a hash table, an allocation of the previous site skips the lookup. A site is resolved
-// once, to a node of the location tree: the node of its location, or for context info within a script, the child node
-// of that location for the context. Samples are numbered in the order of the first allocations of their nodes,
-// so the allocations come out as samples of the tree in a single pass.
+// Allocations repeat their sites (a script, a script offset and context info) heavily: tens of millions
+// of allocations come from hundreds of thousands of sites, and every other allocation changes the site.
+// A single pass numbers the sites in the order they are met through a hash table, an allocation of the previous
+// site skips the lookup. The sites are the samples, so the pass doesn't resolve anything: each site is resolved
+// afterwards to a node of the location tree, the node of its location, or for context info within a script,
+// the child node of that location for the context. Several sites may resolve to the same node.
 export function createVectorLocations(
     dictionary: Dictionary,
     scriptsMap: IProfileScriptsMap,
@@ -235,6 +234,41 @@ export function createVectorLocations(
 ): VectorLocations | null {
     if (scriptIds === null || scriptOffsets === null || scriptIds.length !== scriptOffsets.length) {
         return null;
+    }
+
+    const samples = new Uint32Array(scriptOffsets.length);
+    // PERF: Sites grow from a size bounded by the allocation count, so short vectors allocate little
+    const sites = new LocationSites(Math.min(scriptOffsets.length, 1 << 12));
+    // NaN differs from any script id, so the first allocation looks its site up
+    let previousScriptId: number | string = NaN;
+    let previousScriptOffset = 0;
+    let previousContextInfo = 0;
+    let owner = 0;
+    let site = 0;
+
+    for (let i = 0; i < scriptOffsets.length; i++) {
+        const scriptId = scriptIds[i];
+        const scriptOffset = scriptOffsets[i];
+        const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
+
+        if (scriptOffset !== previousScriptOffset ||
+            contextInfoValue !== previousContextInfo ||
+            scriptId !== previousScriptId) {
+            if (scriptId !== previousScriptId) {
+                // Sites are owned by script ids in the numeric domain of the profile's scripts,
+                // some formats give script ids as strings
+                owner = typeof scriptId === 'number'
+                    ? scriptId
+                    : scriptsMap.normalizeScriptId(scriptId);
+            }
+
+            site = sites.siteOf(owner, scriptOffset, contextInfoValue);
+            previousScriptId = scriptId;
+            previousScriptOffset = scriptOffset;
+            previousContextInfo = contextInfoValue;
+        }
+
+        samples[i] = site;
     }
 
     const vmStateCallFrames = buildContextVmStateDict(
@@ -249,8 +283,6 @@ export function createVectorLocations(
     // The tree starts with the root (the root location, its own parent) and the node of the unknown location
     const nodeParent = [0, 0];
     const nodeLocations = [1, 0];
-    const nodeSamples = [-1, -1];
-    const sampleNodes: number[] = [];
     const locationNodes = new Map([
         [1, 0],
         [0, 1]
@@ -260,7 +292,6 @@ export function createVectorLocations(
     const addNode = (parent: number, locationIndex: number) => {
         nodeParent.push(parent);
         nodeLocations.push(locationIndex);
-        nodeSamples.push(-1);
 
         return nodeLocations.length - 1;
     };
@@ -301,7 +332,12 @@ export function createVectorLocations(
         return node;
     };
 
-    const siteSample = (script: CpuProScript | null, scriptOffset: number, contextInfoValue: number) => {
+    const siteNodes = new Int32Array(sites.count);
+
+    for (let i = 0; i < sites.count; i++) {
+        const script = scriptFromScriptId(sites.owners[i], null, scriptsMap);
+        const scriptOffset = sites.offsets[i];
+        const contextInfoValue = sites.contexts[i];
         // without a script and context info, the site is at the unknown location
         let node = 1;
 
@@ -322,80 +358,29 @@ export function createVectorLocations(
             node = locationNode(dictionary.resolveLocationIndex(callFrame));
         }
 
-        if (nodeSamples[node] === -1) {
-            nodeSamples[node] = sampleNodes.push(node) - 1;
-        }
-
-        return nodeSamples[node];
-    };
-
-    // A script id may be a string, so sites refer to scripts by the order their ids are met
-    const scriptKeyById = new Map<number | string, number>();
-    const scripts: (CpuProScript | null)[] = [];
-    const samples = new Uint32Array(scriptOffsets.length);
-    // PERF: Sites grow from a size bounded by the allocation count, so short vectors allocate little
-    const sites = new LocationSites(Math.min(scriptOffsets.length, 1 << 12));
-    const siteSamples: number[] = [];
-    // NaN differs from any script id, so the first allocation looks its site up
-    let previousScriptId: number | string = NaN;
-    let previousScriptOffset = 0;
-    let previousContextInfo = 0;
-    let scriptKey = 0;
-    let sample = 0;
-
-    for (let i = 0; i < scriptOffsets.length; i++) {
-        const scriptId = scriptIds[i];
-        const scriptOffset = scriptOffsets[i];
-        const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
-
-        if (scriptOffset !== previousScriptOffset ||
-            contextInfoValue !== previousContextInfo ||
-            scriptId !== previousScriptId) {
-            if (scriptId !== previousScriptId) {
-                scriptKey = scriptKeyById.get(scriptId) ?? -1;
-
-                if (scriptKey === -1) {
-                    scriptKey = scripts.push(scriptFromScriptId(scriptId, null, scriptsMap)) - 1;
-                    scriptKeyById.set(scriptId, scriptKey);
-                }
-            }
-
-            const count = sites.count;
-            const site = sites.siteOf(scriptKey, scriptOffset, contextInfoValue);
-
-            if (site === count) {
-                siteSamples.push(siteSample(scripts[scriptKey], scriptOffset, contextInfoValue));
-            }
-
-            previousScriptId = scriptId;
-            previousScriptOffset = scriptOffset;
-            previousContextInfo = contextInfoValue;
-            sample = siteSamples[site];
-        }
-
-        samples[i] = sample;
+        siteNodes[i] = node;
     }
 
     return {
         parent: new Uint32Array(nodeParent),
         nodes: new Uint32Array(nodeLocations),
-        sourceIdToNode: new Int32Array(sampleNodes),
+        sourceIdToNode: siteNodes,
         dictionary: dictionary.locations,
         samples
     };
 }
 
-// Sites of locations: script offsets of owners (call frames, call tree nodes or scripts) with context info,
+// Sites of locations: script offsets of owners (call frames, call tree nodes or script ids) with context info,
 // numbered in the order they are added. A hash table finds the site of an owner, an offset and context info.
 class LocationSites {
-    owners: Uint32Array;
+    owners: Int32Array;
     offsets: Int32Array;
     contexts: Uint32Array;
     count = 0;
     #slots: Int32Array;
 
     constructor(size: number) {
-        this.owners = new Uint32Array(capacity(size));
+        this.owners = new Int32Array(capacity(size));
         this.offsets = new Int32Array(this.owners.length);
         this.contexts = new Uint32Array(this.owners.length);
         this.#slots = new Int32Array(2 * this.owners.length).fill(-1);
