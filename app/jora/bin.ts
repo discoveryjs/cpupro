@@ -27,7 +27,7 @@ function attributeEntryColor(entry: ProfileLineAttribute['dict'][number]) {
 // Totals of the attribute's values over the whole line, regardless of the viewport and filters
 export function lineAttributeTotals(line: ProfileLine, attribute: ProfileLineAttribute) {
     const { values, dict } = attribute;
-    const signatureTotals = line.signatures?.totalsBy(values, dict.length, line.values) ?? null;
+    const signatureTotals = line.signatures?.totalsBy(values, dict.length) ?? null;
 
     if (signatureTotals !== null) {
         return signatureTotals;
@@ -211,24 +211,31 @@ function createSignatureGrouping(
             records: signatures.binRecords(key, {
                 ...grid,
                 ranges: viewport.ranges,
-                axisRanges: axisViewport?.ranges ?? null
+                axisRanges: axisViewport?.ranges ?? null,
+                mapped: axisViewport !== null
             }),
             accepted,
             groups,
             span: 0,
-            cells: () => signatures.cellRecords(viewport.cumulative, viewport.cumulativeEnd, line.values)
+            cells: () => signatures.cellRecords(viewport.cumulative, viewport.cumulativeEnd)
         }
         : null;
 }
 
 // Adds the accepted records of the next span to a bin; the first aggregation over the grid records
 // the span from events [first, last) of the line
-function addSpanRecords(grouping: SignatureGrouping, weights: Uint32Array, tracks: BinTrack[], first: number, last: number, binIndex: number) {
+function addSpanRecords(
+    grouping: SignatureGrouping,
+    tracks: BinTrack[],
+    first: number,
+    last: number,
+    binIndex: number
+) {
     const { signatures, records, accepted, groups } = grouping;
     const span = grouping.span++;
 
     if (!records.complete) {
-        records.addSpan(signatures, weights, first, last, grouping.cells());
+        records.addSpan(signatures, first, last, grouping.cells());
     }
 
     for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
@@ -361,7 +368,7 @@ function binPopulation(
             if (grouping === null) {
                 binValue = binPopulationBin(eventSamples!, values, eventValues!, sinkId, tracks, groups, index, stop, binIndex, binValue);
             } else {
-                addSpanRecords(grouping, values, tracks, index, stop, binIndex);
+                addSpanRecords(grouping, tracks, index, stop, binIndex);
                 // Equals the per-event sum: within a bin every partial sum stays below the step and is a multiple
                 // of ulp(step), so integer weights add exactly in any grouping
                 binValue += cumulative[stop] - cumulative[index];
@@ -514,7 +521,7 @@ function createMappedSignatureGrouping(
             axisAccepted,
             targetPosition: () => createTargetBinReader(axisViewport, axisCumulative, grid, true),
             targetRecords: () => nondecreasing
-                ? grouping.signatures.targetRecords(mapping, axisLine.values.length, line.values)
+                ? grouping.signatures.targetRecords(mapping, axisLine.values.length)
                 : null
         }
         : null;
@@ -522,12 +529,26 @@ function createMappedSignatureGrouping(
 
 // Events [first, last) are wholly in the source range: adds the accepted records of the next span to the bins
 // of their targets; the first aggregation over the grid records the span
-function addMappedSpanRecords(grouping: MappedSignatureGrouping, weights: Uint32Array, tracks: BinTrack[], mapping: Uint32Array, first: number, last: number) {
+function addMappedSpanRecords(
+    grouping: MappedSignatureGrouping,
+    tracks: BinTrack[],
+    mapping: Uint32Array,
+    first: number,
+    last: number
+) {
     const { signatures, records, accepted, groups, axisSignatures, axisAccepted } = grouping;
     const span = grouping.span++;
 
     if (!records.complete) {
-        records.addMappedSpan(signatures, weights, first, last, mapping, axisSignatures, grouping.targetPosition(), grouping.targetRecords());
+        records.addMappedSpan(
+            signatures,
+            first,
+            last,
+            mapping,
+            axisSignatures,
+            grouping.targetPosition(),
+            grouping.targetRecords()
+        );
     }
 
     for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
@@ -546,7 +567,6 @@ function addMappedSpanRecords(grouping: MappedSignatureGrouping, weights: Uint32
 // Events of the source ranges are placed by their mapped targets: whole events by spans, edge events cut by
 // the ranges with their exact covered parts
 function binMappedPopulation(
-    line: ProfileLine,
     viewport: PopulationFiltered,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
@@ -565,7 +585,7 @@ function binMappedPopulation(
         if (grouping === null) {
             binMappedEvents(viewport, tracks, groups, mapping, targetBin, spanFirst, spanLast);
         } else {
-            addMappedSpanRecords(grouping, line.values, tracks, mapping, spanFirst, spanLast);
+            addMappedSpanRecords(grouping, tracks, mapping, spanFirst, spanLast);
         }
     };
     let j = 0;
@@ -693,12 +713,12 @@ function sumTreeEvents(
 
 // Interval [first, last) of whole events: adds the accepted records of the next span to the tree node totals;
 // the first aggregation over the grid records the span
-function sumTreeRecords(grouping: SignatureGrouping, weights: Uint32Array, totals: Float64Array, first: number, last: number) {
+function sumTreeRecords(grouping: SignatureGrouping, totals: Float64Array, first: number, last: number) {
     const { signatures, records, accepted, groups } = grouping;
     const span = grouping.span++;
 
     if (!records.complete) {
-        records.addSpan(signatures, weights, first, last, grouping.cells());
+        records.addSpan(signatures, first, last, grouping.cells());
     }
 
     for (let record = records.spanStarts[span]; record < records.spanStarts[span + 1]; record++) {
@@ -806,7 +826,7 @@ function sumTreeRange(
     if (grouping === null) {
         sumTreeEvents(events!.samples, events!.values, sampleToNode, sinkId, totals, first + 1, last);
     } else {
-        sumTreeRecords(grouping, population.values, totals, first + 1, last);
+        sumTreeRecords(grouping, totals, first + 1, last);
     }
 
     const lastSample = destination(last);
@@ -1229,11 +1249,11 @@ export const methods = {
 
             // Signature records already sum events; the totals shortcut is for event scans
             if (grouping !== null) {
-                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents, grouping);
+                binMappedPopulation(viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents, grouping);
             } else if (n === 1 && sourceRanges === null && coversAxis) {
                 binMappedTotals(viewport, tracks, attributeValues, mappingToLine, axisViewport.samples.length, targetBin);
             } else {
-                binMappedPopulation(valuesLine, viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents);
+                binMappedPopulation(viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents);
             }
         } else {
             const grouping = createSignatureGrouping(valuesLine, attribute?.values ?? null, viewport, `own:${n}`, grid);

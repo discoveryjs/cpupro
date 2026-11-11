@@ -125,9 +125,9 @@ test('whole-line signature totals give attribute rows without an event pass, reg
     const memline = profile.memline!;
     const { signatures, breakdowns } = memline;
     const context = { scopeProfile: profile, scopeLine: profile.timeline };
-    const totals = signatures!.totals(memline.values);
+    const totals = signatures!.totals();
 
-    assert.equal(signatures!.totals(memline.values), totals);
+    assert.equal(signatures!.totals(), totals);
     assert.equal(totals.reduce((sum, value) => sum + value, 0), memline.axisTotal);
 
     memline.viewport.selection.setRange(100, 2000);
@@ -174,28 +174,44 @@ function createAttributesLine(...columns: ArrayLike<number>[]) {
 
     return {
         values: new Uint32Array(columns[0].length),
-        attributes: columns.map((values, index) => ({ name: names[index], values: Uint32Array.from(values), dict: [] })),
+        attributes: columns.map((values, index) => ({
+            name: names[index],
+            values: Uint32Array.from(values),
+            // Values index the dictionary
+            dict: new Array(Array.from(values).reduce((max, value) => Math.max(max, value), -1) + 1)
+        })),
         breakdowns: []
     } as unknown as ProfileLine;
 }
 
+// Ids are numbered in the order of the first events of their combinations, whatever the order of combined columns
 test.each([
-    { count: 0x10000, ids: Uint16Array },
-    { count: 0x10001, ids: Uint32Array }
-])('signature IDs widen only when signatures outgrow 16 bits ($count signatures)', ({ count, ids }) => {
-    const values = Uint32Array.from({ length: 2 * count }, (_, event) => event % count);
-    const signatures = new EventSignatures(createAttributesLine(values));
+    {
+        name: 'the first column',
+        first: [0, 0, 0, 1, 1, 1],
+        second: [1, 0, 1, 0, 0, 1],
+        ids: [0, 1, 0, 2, 2, 3],
+        events: [0, 1, 3, 5]
+    },
+    {
+        name: 'the second column',
+        first: [1, 0, 1, 0, 0, 1],
+        second: [0, 0, 0, 1, 1, 1],
+        ids: [0, 1, 0, 2, 2, 3],
+        events: [0, 1, 3, 5]
+    },
+    {
+        name: 'a column of more values',
+        first: [2, 0, 2, 1, 0, 1],
+        second: [0, 0, 0, 1, 1, 1],
+        ids: [0, 1, 0, 2, 3, 2],
+        events: [0, 1, 3, 4]
+    }
+])('signatures are numbered by their first events when $name changes slower', row => {
+    const signatures = new EventSignatures(createAttributesLine(row.first, row.second));
 
-    assert.ok(signatures.ids instanceof ids);
-    assert.equal(signatures.count, count);
-    assert.deepEqual(Array.from(signatures.ids), Array.from(values));
-});
-
-test('events with equal key hashes but different keys get different signatures', () => {
-    // Both keys hash to 3592732872 and differ in every column
-    const signatures = new EventSignatures(createAttributesLine([79780, 264364, 79780], [3077, 3837, 3077]));
-
-    assert.deepEqual(Array.from(signatures.ids), [0, 1, 0]);
+    assert.deepEqual([...signatures.ids], row.ids);
+    assert.deepEqual([...signatures.events], row.events);
 });
 
 test.each([
@@ -205,21 +221,29 @@ test.each([
     const line = createAttributesLine([0, 1, 0, 1]);
     const signatures = new EventSignatures(line);
 
-    assert.equal(signatures.cellRecords(Float64Array.from(cumulative), cumulativeEnd, line.values, windowEvents), null);
+    assert.equal(signatures.cellRecords(Float64Array.from(cumulative), cumulativeEnd, windowEvents), null);
 });
 
 test('mapped span records group events by signature, signature of the mapped event and bin', () => {
-    const source = new EventSignatures(createAttributesLine([0, 0, 0, 0, 0]));
-    const axis = new EventSignatures(createAttributesLine([0, 1, 0, 0]));
+    const sourceLine = createAttributesLine([0, 0, 0, 0, 0]);
     const targetBins = [0, 0, 0, 1];
-    const records = new BinRecords({ total: 2, step: 1, skip: 0, ranges: null, axisRanges: null }, source.count);
+    const targetBin = (target: number) => targetBins[target];
 
-    records.addMappedSpan(source, Uint32Array.of(1, 2, 4, 8, 16), 0, 5, Uint32Array.of(0, 1, 2, 2, 3), axis, target => targetBins[target], null);
+    sourceLine.values.set([1, 2, 4, 8, 16]);
+
+    const source = new EventSignatures(sourceLine);
+    const axis = new EventSignatures(createAttributesLine([0, 1, 0, 0]));
+    const records = new BinRecords(source.count, true);
+
+    records.addMappedSpan(source, 0, 5, Uint32Array.of(0, 1, 2, 2, 3), axis, targetBin, null);
 
     const grouped: string[] = [];
 
-    for (let record = 0; record < records.count; record++) {
-        grouped.push(`signature ${records.signatures[record]}, axis signature ${records.axisSignatures[record]}, bin ${records.bins[record]}: ${records.weights[record]}`);
+    for (let i = 0; i < records.count; i++) {
+        grouped.push(
+            `signature ${records.signatures[i]}, axis signature ${records.axisSignatures[i]}, ` +
+            `bin ${records.bins[i]}: ${records.weights[i]}`
+        );
     }
 
     // One record per group, in any order
@@ -245,7 +269,12 @@ test('bin records are shared by aggregations over a grid, replaced for another w
         const extent = lineWindow({ ...memline, window: memline.range });
 
         return signatures.binRecords('own:64', {
-            total: end - start, step: (end - start) / 64, skip: extent.start - start, ranges: breakdown.populationWindow.ranges, axisRanges: null
+            total: end - start,
+            step: (end - start) / 64,
+            skip: extent.start - start,
+            ranges: breakdown.populationWindow.ranges,
+            axisRanges: null,
+            mapped: false
         });
     };
 
@@ -286,7 +315,7 @@ test.each([
     // Cells for windows of 1500 events instead of millions; bin queries take the records built here
     if (options.cells) {
         for (const { population } of memline.breakdowns) {
-            const cells = signatures.cellRecords(population.cumulative, population.cumulativeEnd, memline.values, 1500);
+            const cells = signatures.cellRecords(population.cumulative, population.cumulativeEnd, 1500);
 
             assert.ok(cells !== null && cells.starts.length - 1 === 4000);
         }
@@ -385,8 +414,8 @@ test('line totals by an attribute are the totals of its signatures', async () =>
             expected[values[j]] += memline.values[j];
         }
 
-        assert.deepEqual(signatures.totalsBy(values, dict.length, memline.values), expected, name);
+        assert.deepEqual(signatures.totalsBy(values, dict.length), expected, name);
     }
 
-    assert.equal(signatures.totalsBy(new Uint32Array(memline.values.length), 1, memline.values), null);
+    assert.equal(signatures.totalsBy(new Uint32Array(memline.values.length), 1), null);
 });
