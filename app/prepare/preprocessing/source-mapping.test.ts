@@ -88,6 +88,16 @@ test('original locations belong to the original functions containing them', asyn
     assert.equal(dictionary.scripts.filter(script => script.originalFor === generatedScript).length, 3);
 });
 
+test('a location without a position belongs to the original function of its generated function start', async () => {
+    const { dictionary, generatedFunction } = createFixture();
+    const originalLocations = await new SourceMapping(dictionary).mapLocations();
+    const start = dictionary.locations[originalLocations[generatedFunction.location.id - 1]];
+    const noPosition = dictionary.locations[originalLocations[generatedFunction.noLocLocation.id - 1]];
+
+    assert.equal(noPosition, start.callFrame.noLocLocation);
+    assert.equal(noPosition.callFrame.name, 'outer');
+});
+
 test('maps only locations added since the previous call and reuses original scripts', async () => {
     const { dictionary, generatedScript, generatedFunction } = createFixture();
     const sourceMapping = new SourceMapping(dictionary);

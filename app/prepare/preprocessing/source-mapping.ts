@@ -61,7 +61,8 @@ export class SourceMapping {
         const originalScripts = new Set<CpuProScript>();
 
         for (let i = this.#lookedUpLocationsCount; i < locations.length; i++) {
-            const { script, line, column } = locations[i];
+            const location = locations[i];
+            const { script, callFrame } = location;
 
             if (script === null || script.sourceMap === null) {
                 continue;
@@ -73,8 +74,13 @@ export class SourceMapping {
                 continue;
             }
 
+            // a location without a position is somewhere in its function, e.g. a call site of a caller
+            // unknown to a profile, so the original function is looked up by the function's start
+            const position = location === callFrame.noLocLocation
+                ? callFrame.location
+                : location;
             const { decoded } = sourceMap;
-            const segment = decoded.findSegment(line, column);
+            const segment = decoded.findSegment(position.line, position.column);
             const sourceIndex = segment !== -1 ? decoded.sourceIndexes[segment] : -1;
 
             if (sourceIndex !== -1 && sourceIndex < decoded.sources.length) {
@@ -137,7 +143,9 @@ export class SourceMapping {
                 ? dictionary.resolveFunctionRangeCallFrame(script, functionRange)
                 : dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
 
-            if (location.callFrame.location === location) {
+            if (location.callFrame.noLocLocation === location) {
+                resolvedLocations[i] = callFrame.noLocLocation.id - 1;
+            } else if (location.callFrame.location === location) {
                 // the start of a generated function denotes the start of its original function
                 resolvedLocations[i] = callFrame.location.id - 1;
             } else {
