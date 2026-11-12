@@ -21,6 +21,7 @@ test('resolves a script location without a position to the script call frame loc
     const location = dictionary.locations[dictionary.resolveLocationIndex(null, script)];
 
     assert.equal(location, dictionary.resolveLocation(scriptFrame));
+    assert.equal(location, scriptFrame.noLocLocation);
     assert.equal(location.callFrame, scriptFrame);
     assert.equal(location.scriptOffset, -1);
 });
@@ -42,8 +43,8 @@ test.each([
 
     assert.equal(location, scriptFrame.location);
     assert.equal(location, dictionary.resolveLocation(null, script, 0));
-    // The script call frame adds locations without a position and of its start only
-    assert.equal(dictionary.locations.length, locationCount + 2);
+    // The script call frame adds the location of its start only, a location without a position is added on demand
+    assert.equal(dictionary.locations.length, locationCount + 1);
 });
 
 test('adds locations of well-known call frames at the indices of the call frames', () => {

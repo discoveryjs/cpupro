@@ -283,6 +283,36 @@ test('adds a node per sampled node and script offset after the call tree nodes, 
     assert.equal(result.dictionary, dictionary.locations);
 });
 
+test('locates a nested call without call coordinates at the location without a position of the caller', () => {
+    const { dictionary, scripts } = createScripts();
+    const a = dictionary.resolveCallFrameIndex({
+        scriptId: 7,
+        url: 'first.js',
+        functionName: 'a',
+        lineNumber: 0,
+        columnNumber: 9
+    }, scripts);
+
+    assert.equal(dictionary.callFrames[a].noLocLocation, null);
+
+    // the root calls "a", which calls "a" again at an unknown place
+    const result = createLocationsFromScriptOffsets(
+        dictionary,
+        new Uint32Array([0, 0, 1]),
+        new Int32Array([-1, -1, -1]),
+        new Uint32Array([dictionary.callFrames.wellKnownIndex.root, a, a]),
+        new Uint32Array([2]),
+        new Int32Array([-1])
+    )!;
+    const callFrame = dictionary.callFrames[a];
+    const nestedCallLocation = dictionary.locations[result.nodes[2]];
+
+    assert.equal(nestedCallLocation, callFrame.noLocLocation);
+    assert.notEqual(nestedCallLocation, callFrame.location);
+    assert.equal(nestedCallLocation.callFrame, callFrame);
+    assert.equal(nestedCallLocation.scriptOffset, -1);
+});
+
 test('adds no location nodes without sampled script offsets', () => {
     const { dictionary } = createScripts();
     const root = dictionary.callFrames.wellKnownIndex.root;

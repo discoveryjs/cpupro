@@ -144,7 +144,7 @@ export class SourceMapping {
                 : dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
 
             if (location.callFrame.noLocLocation === location) {
-                resolvedLocations[i] = callFrame.noLocLocation.id - 1;
+                resolvedLocations[i] = dictionary.resolveLocationIndex(callFrame);
             } else if (location.callFrame.location === location) {
                 // the start of a generated function denotes the start of its original function
                 resolvedLocations[i] = callFrame.location.id - 1;

@@ -247,7 +247,7 @@ export class Dictionary {
                 end,
                 regexp,
                 location: null as unknown as CpuProLocation, // will be set below
-                noLocLocation: null as unknown as CpuProLocation, // will be set below
+                noLocLocation: null,
                 category: module.category,
                 package: module.package,
                 module
@@ -266,7 +266,6 @@ export class Dictionary {
             // registrate the call frame in the dictionary before any calls to resolveLocation()
             callFrameIndex = this.callFrames.push(callFrame) - 1;
             callFrameByFunctionName.set(functionName, callFrameIndex);
-            callFrame.noLocLocation = this.resolveLocation(callFrame, null, -1, -1, -1);
 
             if (sourceScript) {
                 const callFrameStartLocation = this.resolveLocation(callFrame, sourceScript, start, scriptLineNumber, scriptColumnNumber);
@@ -282,7 +281,7 @@ export class Dictionary {
             } else {
                 // when no script, there is no location, so we use the noLocLocation for the callFrame.location as well;
                 // for now we ignore line/column for script=null cases anyway
-                callFrame.location = callFrame.noLocLocation;
+                callFrame.location = this.resolveLocation(callFrame, null, -1, -1, -1);
             }
         }
 
@@ -427,6 +426,7 @@ export class Dictionary {
 
         if (callFrame && !hasLoc) {
             this.#locationsByNoScriptCallFrame.set(callFrame, locationIndex);
+            callFrame.noLocLocation = location;
         }
 
         // the call frame of a location in a script is resolved once the location is registered: resolving

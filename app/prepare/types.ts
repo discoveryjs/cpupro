@@ -331,7 +331,9 @@ export type CpuProCallFrame = {
     end: number;
     regexp: string | null;
     location: CpuProLocation; // location based on line and column
-    noLocLocation: CpuProLocation; // always line=-1 and column=-1, used for signals attributed to call frame but not to a specific location in the script
+    noLocLocation: CpuProLocation | null; // signals of the call frame at an unknown place in its code, e.g. calls
+                                          // of nested call frames without call coordinates, unlike its start
+                                          // (location); added by the first such signal
     module: CpuProModule;
     package: CpuProPackage;
     category: CpuProCategory;
