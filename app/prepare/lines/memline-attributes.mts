@@ -65,118 +65,6 @@ function namedCodesTable(codes: number[]) {
     return table;
 }
 
-// The first allocation ID when IDs are consecutive, so a range of IDs is a range of allocations
-function consecutiveFirstId(
-    ids: AllocationIdVector,
-    order: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null
-) {
-    return order === 'consecutive'
-        ? ids[0]
-        : undefined;
-}
-
-export function createMemlineAllocationOwnerAttribute(
-    compilations: CpuProCompilationRecord[] | null,
-    _cpuproAllocationIds: AllocationIdVector | null,
-    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
-): ProfileLineAllocationOwnerAttribute | null {
-    if (!compilations?.length || !_cpuproAllocationIds) {
-        return null;
-    }
-
-    const values = new Uint32Array(_cpuproAllocationIds.length);
-    const firstId = consecutiveFirstId(_cpuproAllocationIds, _cpuproAllocationIdsOrder);
-    const dict: (CompilationOwner | null)[] = [null];
-    const ownerByScript = new Map<number | null, Map<number | null, number>>();
-
-    for (let i = 0; i < compilations.length; i++) {
-        const record = compilations[i];
-        let byStart = ownerByScript.get(record.scriptId);
-
-        if (byStart === undefined) {
-            byStart = new Map();
-            ownerByScript.set(record.scriptId, byStart);
-        }
-
-        let ownerIndex = byStart.get(record.start);
-
-        if (ownerIndex === undefined) {
-            ownerIndex = dict.push({
-                scriptId: record.scriptId,
-                start: record.start
-            }) - 1;
-            byStart.set(record.start, ownerIndex);
-        }
-
-        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, ownerIndex);
-    }
-
-    return {
-        name: 'allocationOwner',
-        values,
-        dict
-    };
-}
-
-export function createMemlineAllocationCompilationStageAttribute(
-    compilations: CpuProCompilationRecord[] | null,
-    _cpuproAllocationIds: AllocationIdVector | null,
-    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
-): ProfileLineAllocationCompilationStageAttribute | null {
-    if (!compilations?.length || !_cpuproAllocationIds) {
-        return null;
-    }
-
-    const dict = ['none'];
-    const stageByName = new Map<string, number>();
-
-    for (let i = 0; i < compilations.length; i++) {
-        const { name } = compilations[i];
-
-        if (!stageByName.has(name)) {
-            stageByName.set(name, dict.push(name) - 1);
-        }
-    }
-
-    const values = createDictIndexVector(_cpuproAllocationIds.length, dict.length);
-    const firstId = consecutiveFirstId(_cpuproAllocationIds, _cpuproAllocationIdsOrder);
-
-    for (let i = 0; i < compilations.length; i++) {
-        const record = compilations[i];
-
-        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, stageByName.get(record.name)!);
-    }
-
-    return {
-        name: 'allocationCompilationStage',
-        values,
-        dict
-    };
-}
-
-function fillCompilationAllocationRange(
-    values: Uint8Array | Uint32Array,
-    ids: AllocationIdVector,
-    firstId: number | undefined,
-    record: CpuProCompilationRecord,
-    value: number
-) {
-    const { allocationStart, allocationEnd } = record;
-
-    if (allocationStart === null || allocationEnd === null || allocationEnd <= allocationStart) {
-        return;
-    }
-
-    const start = firstId !== undefined
-        ? Math.max(0, Math.min(ids.length, allocationStart - firstId + 1))
-        : lowerBound(ids, allocationStart, true);
-    const end = firstId !== undefined
-        ? Math.max(0, Math.min(ids.length, allocationEnd - firstId + 1))
-        : lowerBound(ids, allocationEnd, true);
-
-    values.fill(value, start, end);
-}
-
 export function createMemlineAllocationTypeAttribute(
     _cpuproAllocationTypes: AllocationTypeVector | null,
     _cpuproAllocationTypeNames: Record<number, string> | null
@@ -192,6 +80,60 @@ export function createMemlineAllocationTypeAttribute(
 
     return {
         name: 'allocationType',
+        values,
+        dict
+    };
+}
+
+export function createMemlineAllocationSpaceAttribute(
+    _cpuproAllocationSpaces: AllocationSpaceVector | null,
+    _cpuproAllocationSpaceNames: Record<number, string> | null
+): ProfileLineAllocationSpaceAttribute | null {
+    if (!_cpuproAllocationSpaces) {
+        return null;
+    }
+
+    const names = _cpuproAllocationSpaceNames || {};
+    const codes = namedCodes(names);
+    const dict: AllocationSpaceDictEntry[] = codes.map(code => spaceDictEntry(names[code]));
+    const values = dictIndices(_cpuproAllocationSpaces, namedCodesTable(codes), dict.length);
+
+    return {
+        name: 'allocationSpace',
+        values,
+        dict
+    };
+}
+
+function spaceDictEntry(code: string): AllocationSpaceDictEntry {
+    return {
+        code,
+        color: typeColor[code.replace(/large_object_/, 'lo_')],
+        name: code
+            .replace(/_space$/, '')
+            .replace(/_/g, ' ')
+            .replace(/^(?=large object)/, 'old ')
+            .replace(/^./, str => str.toUpperCase())
+    };
+}
+
+export function createMemlineAllocationLifespanAttribute(
+    _cpuproAllocationGc: AllocationGcVector | null
+): ProfileLineAllocationLifespanAttribute | null {
+    if (!_cpuproAllocationGc) {
+        return null;
+    }
+
+    // Lifespans are the low bits of GC values, which a byte keeps
+    const values = new Uint8Array(_cpuproAllocationGc);
+    const dict: AllocationLifespan[] = ['alive', 'short-lived', 'long-lived'];
+
+    for (let i = 0; i < values.length; i++) {
+        values[i] &= 3;
+    }
+
+    return {
+        name: 'allocationLifespan',
         values,
         dict
     };
@@ -298,60 +240,6 @@ function gcEpochEntry(epoch: number): GcEpochDictEntry {
         };
 }
 
-export function createMemlineAllocationLifespanAttribute(
-    _cpuproAllocationGc: AllocationGcVector | null
-): ProfileLineAllocationLifespanAttribute | null {
-    if (!_cpuproAllocationGc) {
-        return null;
-    }
-
-    // Lifespans are the low bits of GC values, which a byte keeps
-    const values = new Uint8Array(_cpuproAllocationGc);
-    const dict: AllocationLifespan[] = ['alive', 'short-lived', 'long-lived'];
-
-    for (let i = 0; i < values.length; i++) {
-        values[i] &= 3;
-    }
-
-    return {
-        name: 'allocationLifespan',
-        values,
-        dict
-    };
-}
-
-export function createMemlineAllocationSpaceAttribute(
-    _cpuproAllocationSpaces: AllocationSpaceVector | null,
-    _cpuproAllocationSpaceNames: Record<number, string> | null
-): ProfileLineAllocationSpaceAttribute | null {
-    if (!_cpuproAllocationSpaces) {
-        return null;
-    }
-
-    const names = _cpuproAllocationSpaceNames || {};
-    const codes = namedCodes(names);
-    const dict: AllocationSpaceDictEntry[] = codes.map(code => spaceDictEntry(names[code]));
-    const values = dictIndices(_cpuproAllocationSpaces, namedCodesTable(codes), dict.length);
-
-    return {
-        name: 'allocationSpace',
-        values,
-        dict
-    };
-}
-
-function spaceDictEntry(code: string): AllocationSpaceDictEntry {
-    return {
-        code,
-        color: typeColor[code.replace(/large_object_/, 'lo_')],
-        name: code
-            .replace(/_space$/, '')
-            .replace(/_/g, ' ')
-            .replace(/^(?=large object)/, 'old ')
-            .replace(/^./, str => str.toUpperCase())
-    };
-}
-
 const normCodeTypeNames = {
     'unknown': 'Unknown',
     'ignition': 'Ignition',
@@ -394,4 +282,119 @@ export function createMemlineAllocationCodeTypeAttribute(
         values,
         dict
     };
+}
+
+export function createMemlineAllocationOwnerAttribute(
+    compilations: CpuProCompilationRecord[] | null,
+    _cpuproAllocationIds: AllocationIdVector | null,
+    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
+): ProfileLineAllocationOwnerAttribute | null {
+    if (!compilations?.length || !_cpuproAllocationIds) {
+        return null;
+    }
+
+    const values = new Uint32Array(_cpuproAllocationIds.length);
+    const firstId = consecutiveFirstId(_cpuproAllocationIds, _cpuproAllocationIdsOrder);
+    const dict: (CompilationOwner | null)[] = [null];
+    const ownerByScript = new Map<number | null, Map<number | null, number>>();
+
+    for (let i = 0; i < compilations.length; i++) {
+        const record = compilations[i];
+        let byStart = ownerByScript.get(record.scriptId);
+
+        if (byStart === undefined) {
+            byStart = new Map();
+            ownerByScript.set(record.scriptId, byStart);
+        }
+
+        let ownerIndex = byStart.get(record.start);
+
+        if (ownerIndex === undefined) {
+            ownerIndex = dict.push({
+                scriptId: record.scriptId,
+                start: record.start
+            }) - 1;
+            byStart.set(record.start, ownerIndex);
+        }
+
+        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, ownerIndex);
+    }
+
+    return {
+        name: 'allocationOwner',
+        values,
+        dict
+    };
+}
+
+export function createMemlineAllocationCompilationStageAttribute(
+    compilations: CpuProCompilationRecord[] | null,
+    _cpuproAllocationIds: AllocationIdVector | null,
+    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
+): ProfileLineAllocationCompilationStageAttribute | null {
+    if (!compilations?.length || !_cpuproAllocationIds) {
+        return null;
+    }
+
+    const dict = ['none'];
+    const stageByName = new Map<string, number>();
+
+    for (let i = 0; i < compilations.length; i++) {
+        const record = compilations[i];
+
+        if (!stageByName.has(record.name)) {
+            stageByName.set(record.name, dict.push(record.name) - 1);
+        }
+    }
+
+    const values = createDictIndexVector(_cpuproAllocationIds.length, dict.length);
+    const firstId = consecutiveFirstId(_cpuproAllocationIds, _cpuproAllocationIdsOrder);
+
+    for (let i = 0; i < compilations.length; i++) {
+        const record = compilations[i];
+
+        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, stageByName.get(record.name)!);
+    }
+
+    return {
+        name: 'allocationCompilationStage',
+        values,
+        dict
+    };
+}
+
+// The first allocation ID when IDs are consecutive, so a range of IDs is a range of allocations
+function consecutiveFirstId(
+    ids: AllocationIdVector,
+    order: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null
+) {
+    return order === 'consecutive'
+        ? ids[0]
+        : undefined;
+}
+
+// Allocations from the start to the end of a compilation record take its value; when IDs are consecutive, the range
+// of IDs gives the range of allocations without a search
+function fillCompilationAllocationRange(
+    values: Uint8Array | Uint32Array,
+    ids: AllocationIdVector,
+    firstId: number | undefined,
+    record: CpuProCompilationRecord,
+    value: number
+) {
+    if (record.allocationStart === null ||
+        record.allocationEnd === null ||
+        record.allocationEnd <= record.allocationStart
+    ) {
+        return;
+    }
+
+    const start = firstId !== undefined
+        ? Math.min(Math.max(record.allocationStart - firstId + 1, 0), ids.length)
+        : lowerBound(ids, record.allocationStart, true);
+    const end = firstId !== undefined
+        ? Math.min(Math.max(record.allocationEnd - firstId + 1, 0), ids.length)
+        : lowerBound(ids, record.allocationEnd, true);
+
+    values.fill(value, start, end);
 }

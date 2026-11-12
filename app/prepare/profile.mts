@@ -175,15 +175,15 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     // Create mappings between lines if both exist and allocation mapping is present
     if (memline && timeline) {
         if (allocationSamples && sampleAllocationIds) {
-            const { left, right } = createLineMapping(
+            const { memlineToTimeline, timelineToMemline } = createLineMapping(
                 memline,
                 allocationSamples,
                 timeline,
                 sampleAllocationIds
             );
 
-            memline.mappings.timeline = left;
-            timeline.mappings.memline = right;
+            memline.mappings.timeline = memlineToTimeline;
+            timeline.mappings.memline = timelineToMemline;
         }
     }
 
@@ -320,10 +320,13 @@ async function createCallStackTimeline(
     //
 
     // The input data is not modified, so the vectors following the order of samples are copied
-    // before the order is fixed; copies keep the element types of the input vectors
+    // before the order is fixed; copies keep the element types of the input vectors, while the last allocation IDs
+    // of samples become a Uint32Array, as the mapping of the memline to the timeline keeps them
     const dataTimeDeltas = data.timeDeltas.slice();
     const dataSamples = data.samples.slice();
-    const allocationMapping = data._cpuproAllocationMapping?.slice() ?? null;
+    const sampleAllocationIds = data._cpuproAllocationMapping
+        ? new Uint32Array(data._cpuproAllocationMapping)
+        : null;
 
     // preprocess timeDeltas, fix order if necessary
     await work('ensure correct time deltas order', () =>
@@ -331,7 +334,7 @@ async function createCallStackTimeline(
             dataTimeDeltas,
             dataSamples,
             dataScriptOffsets,
-            allocationMapping
+            sampleAllocationIds
         )
     );
 
@@ -368,9 +371,6 @@ async function createCallStackTimeline(
     // rather than to the last sample's stack, as long gaps without samples are samples of "(no samples)".
     // When the last samples have no recorded allocation ID, the allocations map to them
     const allocationIds = data._cpuproAllocationIds ?? null;
-    const sampleAllocationIds = allocationMapping !== null
-        ? new Uint32Array(allocationMapping)
-        : null;
     let allocationSamples: Uint32Array | null = null;
     let afterProfileSample = false;
 

@@ -1,4 +1,4 @@
-import { ProfileLine, ProfileLineMapping } from '../lines/types';
+import type { ProfileLine, ProfileLineMapping } from '../lines/types.js';
 import type { AllocationIdVector } from '../types.js';
 import { normalizeRanges, type RangeSet } from './coordinates.js';
 import { lowerBound } from './misc.js';
@@ -32,9 +32,13 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
     const allocationStarts = allocationPositions.starts;
     const timeStarts = timePositions.starts;
     const mapping = relation._mapping;
+    const sourceRanges = source.range.frame.rebase(ranges);
     const result: { start: number; end: number }[] = [];
 
-    for (const { start, end } of source.range.frame.rebase(ranges)) {
+    for (let i = 0; i < sourceRanges.length; i++) {
+        const start = sourceRanges[i].start;
+        const end = sourceRanges[i].end;
+
         if (source === time) {
             const first = lowerBound(mapping, lowerBound(timeStarts, start));
             const last = lowerBound(mapping, lowerBound(timeStarts, end));
@@ -95,17 +99,17 @@ export function createLineMapping(
     timeline: ProfileLine,
     sampleAllocationIds: Uint32Array
 ): {
-    left: ProfileLineMapping,
-    right: ProfileLineMapping
+    memlineToTimeline: ProfileLineMapping,
+    timelineToMemline: ProfileLineMapping
 } {
-    const source = {
+    const memlineToTimeline = {
         line: timeline,
         inverse: null as unknown as ProfileLineMapping,
         _mapping: allocationSamples,
         // The sample cursor of mapAllocationsToSamples() never moves backward
         nondecreasing: true
     };
-    const dest = {
+    const timelineToMemline = {
         line: memline,
         inverse: null as unknown as ProfileLineMapping,
         _mapping: sampleAllocationIds,
@@ -113,11 +117,11 @@ export function createLineMapping(
         nondecreasing: false
     };
 
-    source.inverse = dest;
-    dest.inverse = source;
+    memlineToTimeline.inverse = timelineToMemline;
+    timelineToMemline.inverse = memlineToTimeline;
 
     return {
-        left: source,
-        right: dest
+        memlineToTimeline,
+        timelineToMemline
     };
 }

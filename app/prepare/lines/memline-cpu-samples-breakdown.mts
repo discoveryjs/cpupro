@@ -13,15 +13,15 @@ export async function createMemlineCpuSamplesBreakdown(
     cpuSampledTreeSet: SampledTreeSet,
     work: WorkHandler
 ) {
-    // An allocation is attributed to the call stack of its CPU sample
-    const allocationCpuSamples = new Uint32Array(allocationSamples.length);
-    const cpuSamples = cpuPopulation.samples;
+    // An allocation is attributed to the call stack of its CPU sample: the node of the sample in the CPU population
+    const allocationNodes = new Uint32Array(allocationSamples.length);
+    const sampleNodes = cpuPopulation.samples;
 
     for (let i = 0; i < allocationSamples.length; i++) {
-        allocationCpuSamples[i] = cpuSamples[allocationSamples[i]];
+        allocationNodes[i] = sampleNodes[allocationSamples[i]];
     }
 
-    const population = new Population(allocationCpuSamples, allocationSizes);
+    const population = new Population(allocationNodes, allocationSizes);
     const populationViewport = new PopulationFiltered(population);
     const populationFiltered = new PopulationFiltered(populationViewport);
     const populationWindow = new PopulationFiltered(population);
