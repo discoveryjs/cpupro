@@ -1,4 +1,4 @@
-import { AllocationLifespan, typeColor } from '../const.js';
+import { allocTimespan, typeColor } from '../const.js';
 import { lowerBound } from '../computations/misc.js';
 import type {
     AllocationSpaceDictEntry,
@@ -16,6 +16,7 @@ import type {
     AllocationCodeTypeVector,
     AllocationContextInfoVector,
     AllocationGcVector,
+    AllocationIdsByGc,
     AllocationIdVector,
     AllocationSpaceVector,
     AllocationTypeVector,
@@ -126,17 +127,12 @@ export function createMemlineAllocationLifespanAttribute(
 
     // Lifespans are the low bits of GC values, which a byte keeps
     const values = new Uint8Array(_cpuproAllocationGc);
-    const dict: AllocationLifespan[] = ['alive', 'short-lived', 'long-lived'];
 
     for (let i = 0; i < values.length; i++) {
         values[i] &= 3;
     }
 
-    return {
-        name: 'allocationLifespan',
-        values,
-        dict
-    };
+    return lifespanAttribute(values);
 }
 
 // A GC value is the number of the collection a dead allocation died in, then the lifespan bits; 0 is an allocation
@@ -154,7 +150,6 @@ export function createMemlineGcEpochAttribute(
     // Entry 0 is for 0, entries from 1 are for collections from the smallest one, so the offset is the value before it
     let offset = 0xffffffff;
     let maxEpoch = 0;
-    let prevEpochId = -1;
 
     // PERF: Math.min and Math.max take the range faster than comparisons, in V8 of both Node and Chrome.
     // 0 - 1 wraps to the largest value, so allocations of no collection don't lower the offset, without a branch
@@ -178,15 +173,171 @@ export function createMemlineGcEpochAttribute(
         dict.push(gcEpochEntry(0));
     }
 
+    const epochs = presentTableEpochs(present, offset);
+    const entries = addGcEpochEntries(dict, epochs);
+
+    for (let i = 0; i < epochs.length; i++) {
+        epochIndices[epochs[i] - offset] = entries[i];
+    }
+
+    const values = createDictIndexVector(gc.length, dict.length);
+
+    for (let i = 0; i < gc.length; i++) {
+        values[i] = epochIndices[Math.max(gc[i] - offset, 0)];
+    }
+
+    return gcEpochAttribute(values, dict);
+}
+
+// GC values present in a table of values from the one after the offset, in ascending order
+function presentTableEpochs(present: Uint8Array, offset: number) {
+    const epochs: number[] = [];
+
     for (let i = 1; i < present.length; i++) {
-        if (present[i] === 0) {
-            continue;
+        if (present[i] === 1) {
+            epochs.push(offset + i);
         }
+    }
 
-        const epoch = offset + i;
-        const epochId = epoch >>> 2;
+    return epochs;
+}
 
-        // Collections without allocations of their own take "unknown" entries
+// Lifespan and GC epoch attributes of allocations from their GC, which comes either as lists of allocation IDs
+// by GC value or as a GC value per allocation
+export function createMemlineGcAttributes(
+    _cpuproAllocationGc: AllocationGcVector | null,
+    _cpuproAllocationGcIds: AllocationIdsByGc[] | null,
+    _cpuproAllocationIds: AllocationIdVector | null,
+    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null
+) {
+    if (_cpuproAllocationGcIds !== null && _cpuproAllocationIds !== null) {
+        return gcAttributesFromIds(_cpuproAllocationGcIds, _cpuproAllocationIds, _cpuproAllocationIdsOrder);
+    }
+
+    return [
+        createMemlineAllocationLifespanAttribute(_cpuproAllocationGc),
+        createMemlineGcEpochAttribute(_cpuproAllocationGc)
+    ];
+}
+
+// Lifespan and GC epoch attributes from the marking of allocations by collections, as traces give it: lists
+// of allocation IDs by GC value, a list per collection, each ID in one list only; allocations of no list are alive.
+// The values are known from the lists, so the dictionary comes before the attributes, and a single pass over
+// the lists writes both attributes
+function gcAttributesFromIds(
+    gcIds: AllocationIdsByGc[],
+    ids: AllocationIdVector,
+    idsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null
+): [ProfileLineAllocationLifespanAttribute, ProfileLineAllocationGcEpochAttribute] {
+    const dict: GcEpochDictEntry[] = [];
+    const epochs = listedEpochs(gcIds);
+    let listedIds = 0;
+
+    for (let i = 0; i < gcIds.length; i++) {
+        const keys = Object.keys(gcIds[i]);
+
+        for (let j = 0; j < keys.length; j++) {
+            listedIds += gcIds[i][keys[j]].length;
+        }
+    }
+
+    if (listedIds < ids.length) {
+        dict.push(gcEpochEntry(0));
+    }
+
+    const entries = addGcEpochEntries(dict, epochs);
+    const lifespans = new Uint8Array(ids.length);
+    const values = createDictIndexVector(ids.length, dict.length);
+    const firstId = consecutiveFirstId(ids, idsOrder);
+
+    for (let i = 0; i < gcIds.length; i++) {
+        const keys = Object.keys(gcIds[i]);
+
+        for (let j = 0; j < keys.length; j++) {
+            const gc = parseInt(keys[j]);
+            const entry = entries[lowerBound(epochs, gc)];
+
+            fillAllocationGc(lifespans, values, ids, firstId, gcIds[i][keys[j]], gc & 3, entry);
+        }
+    }
+
+    return [
+        lifespanAttribute(lifespans),
+        gcEpochAttribute(values, dict)
+    ];
+}
+
+// GC values of lists of allocation IDs in ascending order; a list of a collection may be split between chunks
+function listedEpochs(gcIds: AllocationIdsByGc[]) {
+    const gcValues = new Set<number>();
+
+    for (let i = 0; i < gcIds.length; i++) {
+        const keys = Object.keys(gcIds[i]);
+
+        for (let j = 0; j < keys.length; j++) {
+            gcValues.add(parseInt(keys[j]));
+        }
+    }
+
+    return [...gcValues].sort((a, b) => a - b);
+}
+
+// Allocations of the IDs of a list take the lifespan and the epoch entry of its GC value; when IDs are consecutive,
+// an ID gives its allocation without a search
+function fillAllocationGc(
+    lifespans: Uint8Array,
+    values: Uint8Array | Uint32Array,
+    ids: AllocationIdVector,
+    firstId: number | undefined,
+    listIds: Uint32Array,
+    lifespan: number,
+    entry: number
+) {
+    if (firstId !== undefined) {
+        for (let i = 0; i < listIds.length; i++) {
+            const index = listIds[i] - firstId;
+
+            lifespans[index] = lifespan;
+            values[index] = entry;
+        }
+    } else {
+        for (let i = 0; i < listIds.length; i++) {
+            const index = lowerBound(ids, listIds[i]);
+
+            lifespans[index] = lifespan;
+            values[index] = entry;
+        }
+    }
+}
+
+function lifespanAttribute(values: Uint8Array): ProfileLineAllocationLifespanAttribute {
+    return {
+        name: 'allocationLifespan',
+        values,
+        dict: [...allocTimespan]
+    };
+}
+
+function gcEpochAttribute(
+    values: Uint8Array | Uint32Array,
+    dict: GcEpochDictEntry[]
+): ProfileLineAllocationGcEpochAttribute {
+    return {
+        name: 'allocationGcEpoch',
+        values,
+        dict
+    };
+}
+
+// Entries of GC values in ascending order added to the dictionary, and their indices; collections without allocations
+// of their own between the values take "unknown" entries
+function addGcEpochEntries(dict: GcEpochDictEntry[], epochs: number[]) {
+    const entries = new Uint32Array(epochs.length);
+    let prevEpochId = -1;
+
+    for (let i = 0; i < epochs.length; i++) {
+        const epochId = epochs[i] >>> 2;
+
         if (prevEpochId !== -1) {
             for (let j = prevEpochId + 1; j < epochId; j++) {
                 dict.push({
@@ -197,22 +348,12 @@ export function createMemlineGcEpochAttribute(
             }
         }
 
-        epochIndices[i] = dict.length;
-        dict.push(gcEpochEntry(epoch));
+        entries[i] = dict.length;
+        dict.push(gcEpochEntry(epochs[i]));
         prevEpochId = epochId;
     }
 
-    const values = createDictIndexVector(gc.length, dict.length);
-
-    for (let i = 0; i < gc.length; i++) {
-        values[i] = epochIndices[Math.max(gc[i] - offset, 0)];
-    }
-
-    return {
-        name: 'allocationGcEpoch',
-        values,
-        dict
-    };
+    return entries;
 }
 
 // The lifespan bits of a GC value: 0 is no collection, 1 a minor one, 2 a major one

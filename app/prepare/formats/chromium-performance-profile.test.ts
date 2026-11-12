@@ -7,6 +7,7 @@ import { collectProfileUsedScriptIds } from '../preprocessing/scripts.js';
 import { Dictionary } from '../dictionary.js';
 import { createProfileSession } from '../profile-session.mjs';
 import { createProfile } from '../profile.mjs';
+import { createMemlineGcAttributes } from '../lines/memline-attributes.mjs';
 import type { V8CpuProfile } from '../types.js';
 import type { UniformCompilationRecord, UniformProfilingSession, UniformTraceEvent } from './types.js';
 
@@ -1014,16 +1015,28 @@ test('inconsistent thread isolates remain unresolved without grouping or discard
     ]);
 });
 
+// 300 collections of an allocation each take more dictionary entries than a byte indexes
+const manyGcValues: Record<number, number[]> = {};
+
+for (let i = 0; i < 300; i++) {
+    manyGcValues[5 + i * 4] = [10 + i];
+}
+
+// GC comes as the marking of allocations by collections: an allocation id in a list of one collection at most
 test.each([
     {
+        title: 'consecutive allocation ids',
         order: 'consecutive',
         ids: [10, 11, 12],
+        gcIds: [{ 5: [10, 12] }],
         gc: [5, 0, 5],
         diagnostics: []
     },
     {
+        title: 'ascending allocation ids',
         order: 'ascending',
         ids: [10, 12, 15],
+        gcIds: [{ 5: [10, 12] }],
         gc: [5, 5, 0],
         diagnostics: [[
             'Allocation ids are not consecutive, GC mapping will be slower',
@@ -1038,35 +1051,66 @@ test.each([
         ]]
     },
     {
-        order: 'ascending',
-        ids: [10, 11, 11, 12],
-        gc: [5, 0, 0, 5],
-        diagnostics: [[
-            'Allocation ids are not consecutive, GC mapping will be slower',
-            {
-                index: 2,
-                id: 11,
-                nextId: 11,
-                nextIndex: 3,
-                length: 4,
-                lastId: 12
-            }
-        ]]
+        title: 'no alive allocations',
+        order: 'consecutive',
+        ids: [10, 11, 12],
+        gcIds: [{ 5: [10, 11] }, { 9: [12] }],
+        gc: [5, 5, 9],
+        diagnostics: []
+    },
+    {
+        title: 'a collection split between chunks',
+        order: 'consecutive',
+        ids: [10, 11, 12, 13],
+        gcIds: [{ 5: [10] }, { 5: [11], 9: [13] }],
+        gc: [5, 5, 0, 9],
+        diagnostics: []
+    },
+    {
+        title: 'collections without allocations of their own',
+        order: 'consecutive',
+        ids: [10, 11, 12, 13],
+        gcIds: [{ 9: [10], 22: [12] }],
+        gc: [9, 0, 22, 0],
+        diagnostics: []
+    },
+    {
+        title: 'more collections than a byte indexes',
+        order: 'consecutive',
+        ids: Object.values(manyGcValues).flat(),
+        gcIds: [manyGcValues],
+        gc: Object.keys(manyGcValues).map(Number),
+        diagnostics: []
     }
-])('GC mapping follows $order allocation ids $ids', row => {
-    const { diagnostics, diagnose } = createDiagnosticsCollector();
-    const session = extractFromChromiumPerformanceProfile(captureEvents([
-        {
-            allocationSamples: { ids: row.ids },
-            allocationGc: { 5: [10, 12, 99] }
-        }
-    ]), diagnose);
-    const profile = session.profiles[0];
+])('GC attributes from lists of allocation ids by GC value equal those of GC values per allocation: $title', row => {
+    const extract = (gcVector: boolean) => {
+        const { diagnostics, diagnose } = createDiagnosticsCollector();
+        const chunks = row.gcIds.map(gcIds => ({ allocationGc: { ...gcIds } }));
 
-    assert.equal(profile._cpuproAllocationIdsOrder, row.order);
-    assert.deepEqual(profile._cpuproAllocationIds, new Uint32Array(row.ids));
-    assert.deepEqual(profile._cpuproAllocationGc, new Uint32Array(row.gc));
-    assert.deepEqual(diagnosticEntries(diagnostics), row.diagnostics);
+        chunks[0] = {
+            ...chunks[0],
+            allocationSamples: gcVector
+                ? { ids: row.ids, gc: row.ids.map(() => 0) }
+                : { ids: row.ids }
+        };
+
+        const profile = extractFromChromiumPerformanceProfile(captureEvents(chunks), diagnose).profiles[0];
+
+        assert.equal(profile._cpuproAllocationIdsOrder, row.order);
+        assert.deepEqual(diagnosticEntries(diagnostics), row.diagnostics);
+
+        return profile;
+    };
+    const fromVector = extract(true);
+    const fromIds = extract(false);
+
+    assert.deepEqual(fromVector._cpuproAllocationGc, new Uint32Array(row.gc));
+    assert.equal(fromVector._cpuproAllocationGcIds, undefined);
+    assert.equal(fromIds._cpuproAllocationGc, undefined);
+    assert.deepEqual(
+        createMemlineGcAttributes(null, fromIds._cpuproAllocationGcIds!, fromIds._cpuproAllocationIds!, row.order),
+        createMemlineGcAttributes(fromVector._cpuproAllocationGc!, null, fromVector._cpuproAllocationIds!, row.order)
+    );
 });
 
 test.each([
@@ -1465,7 +1509,7 @@ test('chunk vectors are decoded once in place, keeping dictionaries, so the trac
             _cpuproAllocationIdsOrder: 'consecutive',
             _cpuproAllocationTypes: new Uint32Array([1, 1, 1]),
             _cpuproAllocationTypeNames: { 1: 'OBJECT' },
-            _cpuproAllocationGc: new Uint32Array([0, 5, 0])
+            _cpuproAllocationGcIds: [allocationGc]
         });
         assert.deepEqual(first, { ids: new Uint32Array([]), types: new Uint32Array([]), typesDict });
         assert.deepEqual(second, { ids: new Uint32Array([2147483647]), types: new Uint32Array([1]) });
@@ -1503,6 +1547,7 @@ test('allocation vectors of detached chunks are taken from metadata by producer 
     const ids = new Int32Array([10, 11, 12]);
     const sizes = new Int32Array([8, 16, -1]);
     const scriptOffsets = new Int32Array([-1, 4, 5]);
+    const gcIds = new Int32Array([11]);
     const cpuChunk = {
         cpuProfile: { nodes: [], samples: [1] },
         timeDeltas: [10],
@@ -1522,7 +1567,7 @@ test('allocation vectors of detached chunks are taken from metadata by producer 
                 metadataVector(1, 8, 'allocationSamples.sizes', sizes),
                 metadataVector(1, 8, 'allocationSamples.scriptOffsets', scriptOffsets),
                 metadataVector(1, 8, 'allocationSamples.types', new Int32Array([1, 1, 1])),
-                metadataVector(1, 8, 'allocationGc.9', new Int32Array([11])),
+                metadataVector(1, 8, 'allocationGc.9', gcIds),
                 metadataVector(1, 2, 'allocationSamples.ids', new Int32Array([1]))
             ]
         }
@@ -1540,8 +1585,9 @@ test('allocation vectors of detached chunks are taken from metadata by producer 
         _cpuproAllocationLocations: new Int32Array([-1, 4, 5]),
         _cpuproAllocationTypes: new Uint32Array([1, 1, 1]),
         _cpuproAllocationTypeNames: { 1: 'OBJECT', 2: 'STRING' },
-        _cpuproAllocationGc: new Uint32Array([0, 9, 0])
+        _cpuproAllocationGcIds: [{ 9: new Uint32Array([11]) }]
     });
+    assert.equal(profile._cpuproAllocationGcIds![0][9].buffer, gcIds.buffer);
 });
 
 test.each([

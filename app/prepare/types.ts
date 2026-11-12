@@ -17,6 +17,7 @@ export type AllocationIdVector = number[] | Uint32Array | Float64Array;
 export type AllocationSizeVector = number[] | Uint32Array;
 export type AllocationScriptIdVector = Array<number | string> | Int32Array;
 export type AllocationGcVector = number[] | Uint32Array;
+export type AllocationIdsByGc = Record<string, Uint32Array>; // allocation ids by the GC value they take
 export type AllocationTypeVector = number[] | Uint32Array;
 export type AllocationSpaceVector = number[] | Uint32Array;
 export type AllocationCodeTypeVector = number[] | Uint32Array;
@@ -65,6 +66,7 @@ export type V8CpuProfileCpuproExtensions = {
     _cpuproAllocationSizes?: AllocationSizeVector; // allocation sizes
     _cpuproAllocationScriptIds?: AllocationScriptIdVector; // allocation script ids in profile-local domain
     _cpuproAllocationGc?: AllocationGcVector; // GC state (lower 2 bits) + epoch (upper bits)
+    _cpuproAllocationGcIds?: AllocationIdsByGc[]; // GC lists in order instead of _cpuproAllocationGc, unlisted take 0
     _cpuproAllocationTypes?: AllocationTypeVector; // V8 map type IDs
     _cpuproAllocationTypeNames?: Record<number, string>; // human-readable type names
     _cpuproAllocationSpaces?: AllocationSpaceVector; // V8 map space IDs

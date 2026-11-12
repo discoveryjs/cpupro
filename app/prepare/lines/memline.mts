@@ -15,12 +15,11 @@ import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import {
     createMemlineAllocationCodeTypeAttribute,
-    createMemlineAllocationLifespanAttribute,
     createMemlineAllocationSpaceAttribute,
     createMemlineAllocationTypeAttribute,
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute,
-    createMemlineGcEpochAttribute
+    createMemlineGcAttributes
 } from './memline-attributes.mjs';
 
 export type CreateMemlineOptions = {
@@ -165,11 +164,11 @@ export async function createMemline(
             data._cpuproAllocationSpaces || null,
             data._cpuproAllocationSpaceNames || null
         ),
-        createMemlineAllocationLifespanAttribute(
-            data._cpuproAllocationGc || null
-        ),
-        createMemlineGcEpochAttribute(
-            data._cpuproAllocationGc || null
+        ...createMemlineGcAttributes(
+            data._cpuproAllocationGc || null,
+            data._cpuproAllocationGcIds || null,
+            _cpuproAllocationIds || null,
+            data._cpuproAllocationIdsOrder || null
         ),
         createMemlineAllocationCodeTypeAttribute(
             data._cpuproAllocationCodeType || null,

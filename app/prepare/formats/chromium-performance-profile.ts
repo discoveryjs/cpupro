@@ -12,6 +12,7 @@ import type {
     UniformTraceEvent
 } from './types.js';
 import type {
+    AllocationIdsByGc,
     AllocationIdVector,
     ColumnNumberVector,
     LineNumberVector,
@@ -107,7 +108,6 @@ type AllocationSampleVectors = {
     codeTypes?: Uint32Array;
     gc?: Uint32Array;
 };
-type DecodedAllocationGc = Record<string, Uint32Array>;
 const signedAllocationKeys = ['scriptIds', 'scriptOffsets'] as const;
 const unsignedAllocationKeys = ['sizes', 'contextInfo', 'types', 'spaces', 'codeTypes', 'gc'] as const;
 type CompilationAllocationEventData = {
@@ -148,7 +148,7 @@ type ChromiumTraceProfileData = {
     allocationChunks: AllocationSamples[];
     // decoded vector segments of chunks, in chunk order
     allocationSegments: AllocationSampleVectors[];
-    allocationGcs: DecodedAllocationGc[];
+    allocationGcs: AllocationIdsByGc[];
     // producers of chunks whose allocation vectors are stored in metadata (jsonxl)
     allocationVectorProducers: Set<string>;
 }
@@ -825,7 +825,14 @@ export function extractFromChromiumPerformanceProfile(
                 profile._cpuproAllocationSpaceNames = buildChunkedMap(allocationVectors.spaces, allocationChunks, 'spacesDict');
                 profile._cpuproAllocationCodeType = allocationVectors.codeTypes;
                 profile._cpuproAllocationCodeTypeNames = buildChunkedMap(allocationVectors.codeTypes, allocationChunks, 'codeTypesDict');
-                profile._cpuproAllocationGc = updateAllocationsGc(diagnose, ids, idsOrder, allocationGcs, allocationVectors.gc);
+                profile._cpuproAllocationGc = allocationVectors.gc;
+                profile._cpuproAllocationGcIds = updateAllocationsGc(
+                    diagnose,
+                    ids,
+                    idsOrder,
+                    allocationGcs,
+                    allocationVectors.gc
+                );
             }
         }
 
@@ -925,7 +932,7 @@ function extractCompilations(
 // Metadata vectors of a producer have the form of a single chunk holding whole vectors
 function groupAllocationVectorsByProducer(entries: AllocationVectorEntry[] = []) {
     const encodedByProducer = new Map<string, { samples: Record<string, unknown>; gc: AllocationGc }>();
-    const decodedByProducer = new Map<string, { vectors: AllocationSampleVectors; gc: DecodedAllocationGc }>();
+    const decodedByProducer = new Map<string, { vectors: AllocationSampleVectors; gc: AllocationIdsByGc }>();
 
     for (const { pid, tid, name, data } of entries) {
         const producer = `${pid}:${tid}`;
@@ -1042,12 +1049,12 @@ function decodeAllocationSamples(allocationSamples: AllocationSamples): Allocati
 }
 
 // Decodes allocation ids per GC in place and returns them
-function decodeAllocationGc(allocationGc: AllocationGc): DecodedAllocationGc {
+function decodeAllocationGc(allocationGc: AllocationGc): AllocationIdsByGc {
     for (const key of Object.keys(allocationGc)) {
         allocationGc[key] = decodeChunkVector(allocationGc[key]!, Uint32Array);
     }
 
-    return allocationGc as DecodedAllocationGc;
+    return allocationGc as AllocationIdsByGc;
 }
 
 function decodeChunkVector<Vector extends Int32Array | Uint32Array>(
@@ -1184,19 +1191,40 @@ function buildChunkedArray<Vector extends Int32Array | Uint32Array | Float64Arra
     return result;
 }
 
+// GC of allocations comes as lists of allocation ids by GC value. The lists are written into the GC vector
+// of allocations when chunks have one, otherwise they are given as they are, and consumers take the GC
+// of allocations from them without a vector of a value per allocation
 function updateAllocationsGc(
     diagnose: Diagnose,
     allocationIds: Float64Array | Uint32Array | undefined,
     allocationIdsOrder: V8CpuProfile['_cpuproAllocationIdsOrder'],
-    allocationGcChunks: DecodedAllocationGc[],
+    allocationGcChunks: AllocationIdsByGc[],
     allocationGcs: Uint32Array | undefined
-): Uint32Array | undefined {
+): AllocationIdsByGc[] | undefined {
     if (!allocationGcChunks.length || !allocationIds) {
-        return allocationGcs;
+        return undefined;
+    }
+
+    if (allocationIdsOrder !== 'consecutive') {
+        for (let index = 1; index < allocationIds.length; index++) {
+            if (allocationIds[index] !== allocationIds[index - 1] + 1) {
+                const indexNextExpected = allocationIds.indexOf(allocationIds[index - 1] + 1, index);
+
+                diagnose('warn', 'Allocation ids are not consecutive, GC mapping will be slower', {
+                    index,
+                    id: allocationIds[index - 1],
+                    nextId: allocationIds[index],
+                    nextIndex: indexNextExpected,
+                    length: allocationIds.length,
+                    lastId: allocationIds[allocationIds.length - 1]
+                });
+                break;
+            }
+        }
     }
 
     if (!allocationGcs) {
-        allocationGcs = new Uint32Array(allocationIds.length);
+        return allocationGcChunks;
     }
 
     // Consecutive ids let us calculate the GC array index directly from the id.
@@ -1218,22 +1246,6 @@ function updateAllocationsGc(
             }
         }
     } else {
-        for (let index = 1; index < allocationIds.length; index++) {
-            if (allocationIds[index] !== allocationIds[index - 1] + 1) {
-                const indexNextExpected = allocationIds.indexOf(allocationIds[index - 1] + 1, index);
-
-                diagnose('warn', 'Allocation ids are not consecutive, GC mapping will be slower', {
-                    index,
-                    id: allocationIds[index - 1],
-                    nextId: allocationIds[index],
-                    nextIndex: indexNextExpected,
-                    length: allocationIds.length,
-                    lastId: allocationIds[allocationIds.length - 1]
-                });
-                break;
-            }
-        }
-
         const idToIndexMap = new Map<number, number>();
 
         for (let index = 0; index < allocationIds.length; index++) {
@@ -1254,5 +1266,5 @@ function updateAllocationsGc(
         }
     }
 
-    return allocationGcs;
+    return undefined;
 }
