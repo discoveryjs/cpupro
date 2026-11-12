@@ -248,15 +248,35 @@ export class RangeRecords {
 // Starts of the events of every target, for a nondecreasing mapping
 function targetStarts(mapping: Uint32Array, targetCount: number) {
     const starts = new Uint32Array(targetCount + 1);
-    let target = -1;
+    let start = 0;
 
-    for (let i = 0; i < mapping.length; i++) {
-        while (target < mapping[i]) {
-            starts[++target] = i;
+    // PERF: Targets of a nondecreasing mapping follow each other closely, so the start of a target is searched
+    // from the start of the one before it: doubling steps find an end of the search, halving finds the start in it,
+    // reading a few entries near it rather than all of them
+    for (let i = 0; i <= targetCount; i++) {
+        let end = start;
+        let step = 1;
+
+        while (end < mapping.length && mapping[end] < i) {
+            start = end + 1;
+            end += step;
+            step *= 2;
         }
-    }
 
-    starts.fill(mapping.length, target + 1);
+        end = Math.min(end, mapping.length);
+
+        while (start < end) {
+            const middle = (start + end) >>> 1;
+
+            if (mapping[middle] < i) {
+                start = middle + 1;
+            } else {
+                end = middle;
+            }
+        }
+
+        starts[i] = start;
+    }
 
     return starts;
 }

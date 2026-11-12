@@ -459,3 +459,32 @@ test.each([
     assert.deepEqual([...classes.events], row.events);
     assert.deepEqual([...classes.values], [...combined, ...implied].map(column => column.values));
 });
+
+// Targets of a nondecreasing mapping: targets without events start where the next events begin, targets past
+// the last mapped one start at the end of the events
+test.each([
+    {
+        name: 'every target with events',
+        mapping: [0, 0, 1, 2, 2],
+        targetCount: 3,
+        starts: [0, 2, 3, 5]
+    },
+    {
+        name: 'targets without events',
+        mapping: [1, 1, 4, 4, 4, 7],
+        targetCount: 9,
+        starts: [0, 0, 2, 2, 2, 5, 5, 5, 6, 6]
+    },
+    {
+        name: 'no events',
+        mapping: [],
+        targetCount: 2,
+        starts: [0, 0, 0]
+    }
+])('target records start at the first events of targets with $name', row => {
+    const line = createAttributesLine(row.mapping.map(() => 0));
+    const signatures = new EventSignatures(line);
+    const records = signatures.targetRecords(Uint32Array.from(row.mapping), row.targetCount);
+
+    assert.deepEqual([...records.starts], row.starts);
+});
