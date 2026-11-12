@@ -59,6 +59,78 @@ test.each([
         scopeBreakdown: breakdown
     };
 
-    assert.deepEqual(Array.from(methods.countSamples.call({ context }, row.count)), row.intersecting);
-    assert.deepEqual(Array.from(methods.countSamplesDiscrete.call({ context }, row.count, undefined)), row.starts);
+    // The window counts accepted events of a bin from its records and from the events without them
+    for (const records of [breakdown.population.records, null]) {
+        breakdown.populationWindow.setRecords(records);
+        assert.deepEqual(Array.from(methods.countSamples.call({ context }, row.count)), row.intersecting);
+        assert.deepEqual(Array.from(methods.countSamplesDiscrete.call({ context }, row.count, undefined)), row.starts);
+    }
+});
+
+test.each([
+    {
+        name: 'the line',
+        scopeViewport: { start: 125, end: 150 },
+        ranges: null,
+        accepts: null,
+        expected: 3
+    },
+    {
+        name: 'a segment within an event',
+        scopeViewport: { start: 127, end: 133 },
+        ranges: null,
+        accepts: null,
+        expected: 1
+    },
+    {
+        name: 'a segment between event edges',
+        scopeViewport: { start: 135, end: 145 },
+        ranges: null,
+        accepts: null,
+        expected: 1
+    },
+    {
+        name: 'a segment intersecting less than a unit of an event',
+        scopeViewport: { start: 134.5, end: 140 },
+        ranges: null,
+        accepts: null,
+        expected: 2
+    },
+    {
+        name: 'a segment over window ranges',
+        scopeViewport: { start: 125, end: 150 },
+        ranges: [{ start: 0, end: 12 }],
+        accepts: null,
+        expected: 2
+    },
+    {
+        name: 'a segment with a sample filter',
+        scopeViewport: { start: 125, end: 150 },
+        ranges: null,
+        accepts: [1, 0],
+        expected: 2
+    }
+])('a single sample bin counts accepted events intersecting $name', async row => {
+    // Events at 125–135 (sample 0), 135–145 (sample 1) and 145–150 (sample 0)
+    const { profile, line, breakdown } = await createLineFixture({ origin: 125 });
+    const window = breakdown.populationWindow;
+    const context = {
+        scopeViewport: row.scopeViewport,
+        scopeLine: line,
+        scopeProfile: profile,
+        scopeBreakdown: breakdown
+    };
+
+    window.setRanges(row.ranges);
+    window.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: 2,
+        accepts: row.accepts && Uint8Array.from(row.accepts)
+    });
+
+    for (const records of [null, window.population.records]) {
+        window.setRecords(records);
+        assert.deepEqual(Array.from(methods.countSamples.call({ context }, 1)), [row.expected]);
+    }
 });

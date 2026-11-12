@@ -31,87 +31,38 @@ export function sampleRange(cumulative: Float64Array, total: number, skip: numbe
     };
 }
 
+// Accepted events per bin of the window's ranges: events intersecting a bin, or starting in it when they don't
+// continue across bins. Positions find the events of a bin, the window counts the accepted ones
 function countSamples(n: number, viewport: PopulationFiltered, total: number, continues: boolean, skip: number) {
     const bins = new Uint32Array(n);
     const step = total / n;
-    const { population, samples, values, sinkId } = viewport;
-    const { values: originalValues, cumulative, cumulativeEnd } = population;
-    let previousEvent = -1;
-    let previousBin = -1;
+    const { cumulative, cumulativeEnd } = viewport.population;
+    const ranges = viewport.ranges ?? [{ start: 0, end: cumulativeEnd }];
 
-    for (const range of viewport.ranges ?? [{ start: 0, end: cumulativeEnd }]) {
-        const start = Math.max(0, range.start + skip);
-        const end = Math.min(total, range.end + skip);
+    for (let i = 0; i < n; i++) {
+        const events: [number, number][] = [];
 
-        if (start >= end) {
-            continue;
-        }
+        for (let j = 0; j < ranges.length; j++) {
+            const start = Math.max(i * step, ranges[j].start + skip);
+            const end = Math.min((i + 1) * step, ranges[j].end + skip);
 
-        const { first, last, offset, startCut } = sampleRange(cumulative, end - start, skip - start, cumulativeEnd);
-        let position = offset + start - startCut;
-        let binIndex = Math.floor((offset + start) / step);
-        let binEnd = (binIndex + 1) * step;
-        let count = 0;
-
-        if (continues) {
-            const lastBin = Math.min(n - 1, Math.ceil(end / step) - 1);
-
-            if (first === previousEvent && binIndex <= previousBin) {
-                count = -1;
+            if (start >= end) {
+                continue;
             }
 
-            for (let index = first; index <= last; index++) {
-                const accepted = samples[index] !== sinkId && values[index] > 0;
+            const { first, last, startCut } = sampleRange(cumulative, end - start, skip - start, cumulativeEnd);
+            const firstEvent = continues || startCut === 0 ? first : first + 1;
+            const previous = events[events.length - 1];
 
-                if (accepted) {
-                    count++;
-                }
-
-                position += originalValues[index];
-
-                if (position >= binEnd) {
-                    const nextBin = Math.floor(position / step);
-
-                    bins[binIndex] += count;
-                    count = 0;
-
-                    if (accepted) {
-                        const finish = Math.min(lastBin, position === nextBin * step ? nextBin - 1 : nextBin);
-
-                        for (let crossedBin = binIndex + 1; crossedBin <= finish; crossedBin++) {
-                            bins[crossedBin]++;
-                        }
-                    }
-
-                    binIndex = nextBin;
-                    binEnd = (binIndex + 1) * step;
-                }
-            }
-
-            previousEvent = last >= first && samples[last] !== sinkId && values[last] > 0 ? last : -1;
-            previousBin = Math.min(lastBin, Math.ceil(position / step) - 1);
-        } else {
-            const firstIndex = startCut > 0 ? first + 1 : first;
-
-            position = cumulative[firstIndex] + skip;
-
-            for (let index = firstIndex; index <= last; index++) {
-                if (position >= binEnd) {
-                    bins[binIndex] += count;
-                    count = 0;
-                    binIndex = Math.floor(position / step);
-                    binEnd = (binIndex + 1) * step;
-                }
-
-                if (samples[index] !== sinkId && values[index] > 0) {
-                    count++;
-                }
-
-                position += originalValues[index];
+            // An event at the edges of two ranges in a bin is counted once
+            if (previous !== undefined && firstEvent < previous[1]) {
+                previous[1] = Math.max(previous[1], last + 1);
+            } else if (firstEvent <= last) {
+                events.push([firstEvent, last + 1]);
             }
         }
 
-        bins[binIndex] += count;
+        bins[i] = viewport.countAccepted(events);
     }
 
     return bins;

@@ -138,6 +138,25 @@ export class PopulationRecords {
         }
     }
 
+    // Number of events with a nonzero value in the records of whole parts whose sample and event class are accepted
+    count(parts: [number, number][], sampleAccepts: Uint8Array, classAccepts: Uint8Array) {
+        const { partRecords, recordSamples, recordClasses, recordCounts } = this;
+        let count = 0;
+
+        for (let i = 0; i < parts.length; i++) {
+            const [startPart, endPart] = parts[i];
+            const end = partRecords[endPart];
+
+            for (let j = partRecords[startPart]; j < end; j++) {
+                if ((sampleAccepts[recordSamples[j]] & classAccepts[recordClasses[j]]) === 1) {
+                    count += recordCounts[j];
+                }
+            }
+        }
+
+        return count;
+    }
+
     // Event acceptance over these values is constant within an event class
     classifies(values: EventValues) {
         const { classes } = this;

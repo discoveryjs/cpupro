@@ -351,6 +351,47 @@ export class PopulationFiltered extends Observer {
         return metrics;
     }
 
+    // Number of events of intervals with a nonzero value that the filters of the population and its sources accept;
+    // ranges are left to the intervals. Records count those of whole parts, so destinations are not compiled for a count
+    countAccepted(intervals: [number, number][]) {
+        const { values, sinkId } = this.population;
+        const acceptance = this.#recordsAcceptance();
+        let count = 0;
+
+        if (acceptance === null) {
+            const { samples } = this;
+
+            for (let i = 0; i < intervals.length; i++) {
+                const [start, end] = intervals[i];
+
+                for (let j = start; j < end; j++) {
+                    if (values[j] !== 0 && samples[j] !== sinkId) {
+                        count++;
+                    }
+                }
+            }
+
+            return count;
+        }
+
+        const { records, sampleAccepts, classAccepts, accepts } = acceptance;
+        const { parts, events } = records.cover(intervals);
+
+        count += records.count(parts, sampleAccepts, classAccepts);
+
+        for (let i = 0; i < events.length; i++) {
+            const [start, end] = events[i];
+
+            for (let j = start; j < end; j++) {
+                if (values[j] !== 0 && accepts(j)) {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
     // Destinations change when the mask rejects other samples or an event acceptance is set or removed
     #updateMask(maskFn: MaskFunction, eventsChanged: boolean) {
         const previousMask = this.samplesMask.slice();
