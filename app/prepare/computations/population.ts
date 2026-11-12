@@ -1,11 +1,13 @@
-import { USE_WASM } from '../const.js';
 import { Observer, exposeGetters } from './misc.js';
-import { PopulationBufferMap, createJavaScriptApi, createWasmApi, type ComputeApi } from './compute-wasm-wrapper.js';
+import {
+    createPopulationBuffer,
+    populationApiOf,
+    type PopulationApi,
+    type PopulationBuffer
+} from './population.compute.js';
 import { PopulationFilter, singleEventClass, type EventAcceptance, type EventClasses } from './population-filter.js';
 import { PopulationRecords, type RecordSums } from './population-records.js';
 import { normalizeRanges, intersectRanges, equalRanges, type RangeSet } from './coordinates.js';
-
-const computeMetricsJavaScriptApi = createJavaScriptApi();
 
 export class Population extends Observer {
     readonly ranges: RangeSet | null = null;
@@ -134,8 +136,8 @@ export class PopulationFiltered extends Observer {
     // Sums of whole covered parts when metrics come from records
     #recordSums: RecordSums | null = null;
     // Event-sized compute workspace; allocated when destinations or values are compiled
-    #buffer: PopulationBufferMap | null = null;
-    #api: ComputeApi = computeMetricsJavaScriptApi;
+    #buffer: PopulationBuffer | null = null;
+    #api: PopulationApi | null = null;
     #counts: Uint32Array;        // size of samples plus the sink
     #totals: Float64Array;       // size of samples plus the sink
     #samplesCount: Uint32Array;  // size of samples
@@ -242,13 +244,10 @@ export class PopulationFiltered extends Observer {
     }
 
     // Event-sized compute workspace: destinations, values and per-sample aggregates of the event pass
-    get buffer(): PopulationBufferMap {
+    get buffer(): PopulationBuffer {
         if (this.#buffer === null) {
-            this.#buffer = createComputeBuffer(this.population.values.length, this.samplesMask.length, USE_WASM);
-
-            if (USE_WASM && this.#buffer.memory) {
-                this.#api = createWasmApi(this.#buffer.memory);
-            }
+            this.#buffer = createPopulationBuffer(this.population.values.length, this.samplesMask.length);
+            this.#api = populationApiOf(this.#buffer);
         }
 
         return this.#buffer;
@@ -534,7 +533,9 @@ export class PopulationFiltered extends Observer {
         const { samples, values, buffer } = this;
         const cuts = this.#boundaryCuts;
 
-        this.#api.computeMetrics(buffer, true);
+        buffer.samplesCount.fill(0);
+        buffer.samplesTotal.fill(0);
+        this.#api!.accumulateSampleMetrics(buffer);
 
         for (let i = 0; i < cuts.length; i++) {
             const { index, value } = cuts[i];
@@ -838,28 +839,6 @@ function aggregatePopulation(
     }
 
     return { samplesCount, samplesTotal };
-}
-
-function createComputeBuffer(eventCount: number, sampleCount: number, useWasm = true) {
-    const aggregateSize = sampleCount + 1;
-    // Float64 totals go first to keep their 8-byte alignment
-    const byteSize =
-        8 * aggregateSize + // samplesTotal
-        4 * eventCount +    // values
-        4 * eventCount +    // samples
-        4 * aggregateSize;  // samplesCount
-    const memory = useWasm
-        ? new WebAssembly.Memory({ initial: Math.ceil(byteSize / 0x10000) })
-        : new Uint8Array(byteSize);
-    const bufferMap: PopulationBufferMap = {
-        memory,
-        samplesTotal: new Float64Array(memory.buffer, 0, aggregateSize),
-        values: new Uint32Array(memory.buffer, 8 * aggregateSize, eventCount),
-        samples: new Uint32Array(memory.buffer, 8 * aggregateSize + 4 * eventCount, eventCount),
-        samplesCount: new Uint32Array(memory.buffer, 8 * aggregateSize + 8 * eventCount, aggregateSize)
-    };
-
-    return bufferMap;
 }
 
 function intersectRangeSets(source: RangeSet | null, ranges: RangeSet | null): RangeSet | null {

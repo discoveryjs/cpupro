@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
-import createWabt from 'wabt';
+import { compileWat } from './scripts/wat-compile.mjs';
 
 const useUsage = process.env.CPUPRO_TEST_FULL_DICTIONARY !== '1';
 
@@ -29,14 +29,8 @@ export default defineConfig({
                 const watFilename = id.replace(/\.wasm$/, '.wat');
                 if (existsSync(watFilename)) {
                     this.addWatchFile(watFilename);
-                    const wabt = await createWabt();
-                    const module = wabt.parseWat(watFilename, readFileSync(watFilename, 'utf8'));
-                    try {
-                        const { buffer } = module.toBinary({ write_debug_names: false });
-                        return `export default ${JSON.stringify(Buffer.from(buffer).toString('base64'))};`;
-                    } finally {
-                        module.destroy();
-                    }
+                    const buffer = await compileWat(watFilename);
+                    return `export default ${JSON.stringify(Buffer.from(buffer).toString('base64'))};`;
                 }
                 return `export default ${JSON.stringify(readFileSync(id).toString('base64'))};`;
             }

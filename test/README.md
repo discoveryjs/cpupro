@@ -40,7 +40,7 @@ The Vitest VS Code extension can run tests from the editor. Vite handles JS/TS a
 
 ## Computation modes
 
-Every test runs in two isolated Vitest projects, `js` and `wasm`. The test config selects `USE_WASM` without editing production files. The WASM loader compiles the current `.wat` source in memory using the existing `wabt` dependency and supplies the base64 format expected by the computation wrapper.
+Every test runs in two isolated Vitest projects, `js` and `wasm`. The test config selects `USE_WASM` without editing production files. The low-level computations of an owner `X` live in `X.compute.ts` (the compute buffer, the JavaScript twins and the binding of WASM exports) and `X.compute.wat` (the module). The WASM loader compiles the current `.wat` next to an imported `.wasm` in memory through `compileWat` of `scripts/wat-compile.mjs`, the function of `npm run build-wasm`, and supplies the module in base64, as the bundle does for `wasmBacked` of `compute-wasm.ts`.
 
 `inject('useWasm')` and `inject('useUsage')` expose the active mode to TypeScript tests. The default uses usage-local dictionaries. Run the full-dictionary alternative with:
 

@@ -1,23 +1,20 @@
-import { USE_WASM } from '../const.js';
 import { Observer, exposeGetters } from './misc.js';
 import { CpuProNode } from '../types.js';
 import { CallTree, AncestorSubsetCallTree } from './call-tree.js';
-import {
-    BufferDictionaryMetricsMap,
-    BufferDimensionMap,
-    MetricsBufferMap,
-    BufferTreeMetricsMap,
-    ComputeApi,
-    createJavaScriptApi,
-    createWasmApi
-} from './compute-wasm-wrapper.js';
 import { Population, PopulationFiltered } from './population.js';
-
-const computeJavaScriptApi = createJavaScriptApi();
-const { computeTreeMetrics } = computeJavaScriptApi;
+import {
+    computeDictionaryMetrics,
+    computeTreeMetrics,
+    createSampleBreakdownBuffer,
+    metricsApiOf,
+    metricsJavaScriptApi,
+    type BufferDimensionMap,
+    type MetricsApi,
+    type MetricsBufferMap
+} from './metrics.compute.js';
 
 function computeAll<T extends CpuProNode>(
-    api: ComputeApi,
+    api: MetricsApi,
     bufferMap: MetricsBufferMap<T>,
     population: Population | PopulationFiltered,
     clear = true
@@ -26,8 +23,8 @@ function computeAll<T extends CpuProNode>(
     bufferMap.samplesTotal.set(population.samplesTotal);
 
     for (const { treeMap: tree, dictMap: dict } of bufferMap.dimensions) {
-        api.computeTreeMetrics(tree, clear);
-        api.computeDictionaryMetrics(dict, clear);
+        computeTreeMetrics(api, tree, clear);
+        computeDictionaryMetrics(api, dict, clear);
     }
 }
 
@@ -185,7 +182,7 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
     }
 
     recompute(clear = true) {
-        computeTreeMetrics({
+        computeTreeMetrics(metricsJavaScriptApi, {
             tree: this.tree,
             sourceSamplesCount: this.population.samplesCount,
             sourceSamplesTotal: this.population.samplesTotal,
@@ -381,132 +378,6 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     }
 }
 
-function createMapsFromTree<T>(sampledTree: SampledTree<T>) {
-    const { tree, sampleToNode } = sampledTree;
-    const { nodes, nested } = tree;
-    const totalNodes = new Uint32Array(nodes.length);
-    const totalNodeToDict = new Uint32Array(nodes.length);
-    let k = 0;
-
-    for (let i = 0; i < nodes.length; i++) {
-        if (nested[i] === 0) {
-            totalNodeToDict[k] = nodes[i];
-            totalNodes[k] = i;
-            k++;
-        }
-    }
-
-    return {
-        tree,
-        sampleToNode,
-        sampleIdToDict: sampleToNode.map(id => nodes[id]),
-        totalNodes: totalNodes.slice(0, k),
-        totalNodeToDict: totalNodeToDict.slice(0, k)
-    };
-}
-
-function createSampleBreakdownBuffer<T>(
-    trees: SampledTree<T>[],
-    samplesMapSize: number,
-    useWasm = true
-) {
-    const maps = trees.map(createMapsFromTree);
-
-    // Buffer sizes: Uint32 counts and maps; Float64 sums of values, placed first to keep their 8-byte alignment
-    let valuesSize =
-        // samplesTotal
-        samplesMapSize;
-    let countsSize =
-        // samplesCount
-        samplesMapSize;
-
-    for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
-        // tree metrics: selfValues, nestedValues
-        valuesSize += 2 * tree.nodes.length;
-        countsSize +=
-            // sample-to-node map
-            sampleToNode.length +
-            // parent
-            tree.parent.length +
-            // samplesCount
-            tree.nodes.length;
-
-        // dict metrics: selfValues, totalValues
-        valuesSize += 2 * tree.dictionary.length;
-        countsSize +=
-            sampleIdToDict.length +
-            totalNodes.length +
-            totalNodeToDict.length +
-            // samplesCount
-            tree.dictionary.length;
-    }
-
-    const byteSize = 8 * valuesSize + 4 * countsSize;
-    const memory = useWasm
-        ? new WebAssembly.Memory({ initial: Math.ceil(byteSize / 0x10000) })
-        : new Uint8Array(byteSize);
-    const values = new Float64Array(memory.buffer, 0, valuesSize);
-    const counts = new Uint32Array(memory.buffer, 8 * valuesSize, countsSize);
-    let valuesOffset = 0;
-    let countsOffset = 0;
-    const bufferMap: MetricsBufferMap<T> = {
-        memory,
-        samplesCount: alloc(samplesMapSize),
-        samplesTotal: allocValues(samplesMapSize),
-        dimensions: []
-    };
-
-    for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
-        const treeMap: BufferTreeMetricsMap<T> = {
-            // input
-            sourceSamplesCount: bufferMap.samplesCount,
-            sourceSamplesTotal: bufferMap.samplesTotal,
-            // compute support
-            tree,
-            sampleToNode: adopt(sampleToNode),
-            parent: adopt(tree.parent),
-            // output
-            samplesCount: alloc(tree.nodes.length),
-            selfValues: allocValues(tree.nodes.length),
-            nestedValues: allocValues(tree.nodes.length)
-        };
-        const dictMap: BufferDictionaryMetricsMap<T> = {
-            // input
-            sourceSamplesCount: bufferMap.samplesCount,
-            sourceSamplesTotal: bufferMap.samplesTotal,
-            // compute support
-            dictionary: tree.dictionary,
-            nodeSelfValues: treeMap.selfValues,     // input from treeMap layer
-            nodeNestedValues: treeMap.nestedValues, // input from treeMap layer
-            sampleIdToDict: adopt(sampleIdToDict),
-            totalNodes: adopt(totalNodes),
-            totalNodeToDict: adopt(totalNodeToDict),
-            // output
-            samplesCount: alloc(tree.dictionary.length),
-            selfValues: allocValues(tree.dictionary.length),
-            totalValues: allocValues(tree.dictionary.length)
-        };
-
-        bufferMap.dimensions.push({ treeMap: treeMap, dictMap: dictMap });
-    }
-
-    return bufferMap;
-
-    function adopt(array: Uint32Array) {
-        counts.set(array, countsOffset);
-
-        return counts.subarray(countsOffset, countsOffset += array.length);
-    }
-
-    function alloc(size: number) {
-        return counts.subarray(countsOffset, countsOffset += size);
-    }
-
-    function allocValues(size: number) {
-        return values.subarray(valuesOffset, valuesOffset += size);
-    }
-}
-
 function createDimension<T extends CpuProNode>(
     dimensionMaps: BufferDimensionMap<T>,
     refresh: () => void
@@ -557,12 +428,9 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
     population: PopulationFiltered,
     trees: [...T]
 ) {
-    const useWasm = USE_WASM;
-    const bufferMap = createSampleBreakdownBuffer(trees, population.samplesTotal.length, useWasm);
-    const { memory, dimensions } = bufferMap;
-    const computeApi = useWasm && memory
-        ? createWasmApi(memory)
-        : computeJavaScriptApi;
+    const bufferMap = createSampleBreakdownBuffer(trees, population.samplesTotal.length);
+    const { dimensions } = bufferMap;
+    const computeApi = metricsApiOf(bufferMap);
 
     computeAll(computeApi, bufferMap, population, false);
 
@@ -585,8 +453,8 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
 
         const { treeMap, dictMap } = dimensions[index];
 
-        computeApi.computeTreeMetrics(treeMap, true);
-        computeApi.computeDictionaryMetrics(dictMap, true);
+        computeTreeMetrics(computeApi, treeMap, true);
+        computeDictionaryMetrics(computeApi, dictMap, true);
     };
 
     // Build dimensions with dict/tree separation
