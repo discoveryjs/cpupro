@@ -67,6 +67,23 @@ test('maps attribute codes to 4-byte indices when a dictionary exceeds 256 entri
     assert.deepEqual(attribute.values, new Uint32Array([0, 299]));
 });
 
+test.each([
+    {
+        name: 'beyond the named ones',
+        names: { 7: 'FIRST_TYPE', 9: 'SECOND_TYPE' },
+        values: [0, 0]
+    },
+    {
+        name: 'without names',
+        names: null,
+        values: [0, 0]
+    }
+])('maps type codes $name to dictionary index 0', row => {
+    const attribute = createMemlineAllocationTypeAttribute(new Uint32Array([10, 1000]), row.names)!;
+
+    assert.deepEqual([...attribute.values], row.values);
+});
+
 // A GC value is the collection number << 2 | lifespan, 0 is an allocation of no collection
 test.each([
     {

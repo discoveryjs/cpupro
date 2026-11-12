@@ -31,16 +31,14 @@ function createDictIndexVector(length: number, dictLength: number): Uint8Array |
         : new Uint32Array(length);
 }
 
-// Dictionary indices of codes through a table of the codes from an offset. A code outside the table takes its nearest
-// entry, so a table keeps an entry at each edge for codes beyond it. Codes repeat a few values with frequent changes,
+// Dictionary indices of codes through a table indexed by the codes. Codes repeat a few values with frequent changes,
 // so a table read per event costs less than a map lookup per change of the value
-function dictIndices(codes: ArrayLike<number>, table: Uint32Array, offset: number, dictLength: number) {
+function dictIndices(codes: ArrayLike<number>, table: Uint32Array, dictLength: number) {
     const values = createDictIndexVector(codes.length, dictLength);
-    const last = table.length - 1;
 
-    // PERF: Math.min and Math.max clamp faster than comparisons or branches here, in V8 of both Node and Chrome
+    // PERF: A code beyond the table reads undefined, which a typed array stores as index 0, instead of a clamp per code
     for (let i = 0; i < codes.length; i++) {
-        values[i] = table[Math.min(Math.max(codes[i] - offset, 0), last)];
+        values[i] = table[codes[i]];
     }
 
     return values;
@@ -53,11 +51,11 @@ function namedCodes(names: Record<number, string>) {
         .sort((a, b) => a - b);
 }
 
-// Table of the indices of codes in ascending order; the entry after the last code, index 0, is for codes beyond them
+// Table of the indices of codes in ascending order
 function namedCodesTable(codes: number[]) {
     const tableLength = codes.length > 0
-        ? codes[codes.length - 1] + 2
-        : 1;
+        ? codes[codes.length - 1] + 1
+        : 0;
     const table = new Uint32Array(tableLength);
 
     for (let i = 0; i < codes.length; i++) {
@@ -190,7 +188,7 @@ export function createMemlineAllocationTypeAttribute(
     const names = _cpuproAllocationTypeNames || {};
     const codes = namedCodes(names);
     const dict = codes.map(code => names[code].replace(/_TYPE$/, ''));
-    const values = dictIndices(_cpuproAllocationTypes, namedCodesTable(codes), 0, dict.length);
+    const values = dictIndices(_cpuproAllocationTypes, namedCodesTable(codes), dict.length);
 
     return {
         name: 'allocationType',
@@ -211,33 +209,27 @@ export function createMemlineGcEpochAttribute(
 
     const gc = _cpuproAllocationGc;
     const dict: GcEpochDictEntry[] = [];
-    let minEpoch = 0xffffffff;
+    // Entry 0 is for 0, entries from 1 are for collections from the smallest one, so the offset is the value before it
+    let offset = 0xffffffff;
     let maxEpoch = 0;
     let prevEpochId = -1;
 
-    // PERF: Math.min and Math.max take the range faster than comparisons, in V8 of both Node and Chrome
+    // PERF: Math.min and Math.max take the range faster than comparisons, in V8 of both Node and Chrome.
+    // 0 - 1 wraps to the largest value, so allocations of no collection don't lower the offset, without a branch
     for (let i = 0; i < gc.length; i++) {
-        const epoch = gc[i];
-        // 0 is no collection, it leaves the minimum as is
-        const collectionEpoch = epoch !== 0
-            ? epoch
-            : minEpoch;
-
-        minEpoch = Math.min(minEpoch, collectionEpoch);
-        maxEpoch = Math.max(maxEpoch, epoch);
+        offset = Math.min(offset, (gc[i] - 1) >>> 0);
+        maxEpoch = Math.max(maxEpoch, gc[i]);
     }
 
-    // Entry 0 is for 0, entries from 1 are for collections from the smallest one
-    const offset = minEpoch - 1;
     const tableLength = maxEpoch > offset
         ? maxEpoch - offset + 1
         : 1;
     const epochIndices = new Uint32Array(tableLength);
     const present = new Uint8Array(tableLength);
-    const last = tableLength - 1;
 
+    // 0 is at or below the offset and takes entry 0, no value is beyond the largest one
     for (let i = 0; i < gc.length; i++) {
-        present[Math.min(Math.max(gc[i] - offset, 0), last)] = 1;
+        present[Math.max(gc[i] - offset, 0)] = 1;
     }
 
     if (present[0] === 1) {
@@ -268,7 +260,11 @@ export function createMemlineGcEpochAttribute(
         prevEpochId = epochId;
     }
 
-    const values = dictIndices(gc, epochIndices, offset, dict.length);
+    const values = createDictIndexVector(gc.length, dict.length);
+
+    for (let i = 0; i < gc.length; i++) {
+        values[i] = epochIndices[Math.max(gc[i] - offset, 0)];
+    }
 
     return {
         name: 'allocationGcEpoch',
@@ -335,7 +331,7 @@ export function createMemlineAllocationSpaceAttribute(
     const names = _cpuproAllocationSpaceNames || {};
     const codes = namedCodes(names);
     const dict: AllocationSpaceDictEntry[] = codes.map(code => spaceDictEntry(names[code]));
-    const values = dictIndices(_cpuproAllocationSpaces, namedCodesTable(codes), 0, dict.length);
+    const values = dictIndices(_cpuproAllocationSpaces, namedCodesTable(codes), dict.length);
 
     return {
         name: 'allocationSpace',
