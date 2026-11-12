@@ -1,4 +1,4 @@
-import { convertParentIntoChildrenIfNeeded, isCPUProfile, normalizeCpuProfile, unrollHeadToNodesIfNeeded, unwrapSamplesIfNeeded } from './formats/cpuprofile.js';
+import { isCPUProfile, normalizeCpuProfile } from './formats/cpuprofile.js';
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuProfile, isV8LogProfile } from './formats/v8-log-processed.js';
@@ -65,16 +65,15 @@ function processProfiles(
 ): UniformProfile[] {
     const result: V8CpuProfile[] = [];
 
-    for (let profile of inputProfiles) {
+    for (const profile of inputProfiles) {
         if (isV8LogProfile(profile)) {
             result.push(convertV8LogIntoCpuProfile(profile, diagnose.withScope('v8-log')));
         } else if (isCPUProfile(profile)) {
-            profile = unrollHeadToNodesIfNeeded(profile);
-            profile = unwrapSamplesIfNeeded(profile, diagnose.withScope('cpuprofile'));
-            convertParentIntoChildrenIfNeeded(profile);
-            normalizeCpuProfile(profile);
-            Object.assign(profile, extensions);
-            result.push(profile);
+            const cpuProfile = normalizeCpuProfile(profile, diagnose.withScope('cpuprofile'));
+
+            // The normalized profile is a new object, so extensions don't change the input
+            Object.assign(cpuProfile, extensions);
+            result.push(cpuProfile);
         } else {
             rejectData('Bad format', {
                 view: 'md', source: [
@@ -137,7 +136,7 @@ export function extractAndValidate(
         }
     } else if (isV8LogProfile(data) || isCPUProfile(data)) {
         result = createProfilingDataset([
-            createProfilingSession(processProfiles([{ ...data }], extensions, rejectData, diagnose))
+            createProfilingSession(processProfiles([data], extensions, rejectData, diagnose))
         ]);
     } else {
         rejectData('Unknown format');

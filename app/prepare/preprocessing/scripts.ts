@@ -3,7 +3,6 @@ import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
 import { isArray } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
-import { isInt32Vector } from '../misc/utils.js';
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
@@ -258,11 +257,8 @@ export function scriptOffsetsFromLineColumns(
         return null;
     }
 
-    if (!isInt32Vector(lines) || !isInt32Vector(columns)) {
-        return null;
-    }
-
-    if (lines.length !== columns.length || lines.length === 0) {
+    // Lines and columns of a normalized profile come together, a line and a column per sample
+    if (lines === undefined || columns === undefined) {
         return null;
     }
 

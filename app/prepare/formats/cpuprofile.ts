@@ -23,6 +23,34 @@ type SizeSample = {
     space?: number;
 };
 
+// Allocation rows of a combined profile, aligned by their IDs
+type CombinedAllocationRows = {
+    ids?: unknown;
+    sizes?: unknown;
+    scriptIds?: unknown;
+    positions?: unknown;
+    gc?: unknown;
+    types?: unknown;
+    typesDict?: Record<string, string>;
+    spaces?: unknown;
+    spacesDict?: Record<string, string>;
+};
+
+// A profile whose samples are not yet samples of node IDs: a combined profile wraps CPU samples into `cpuProfile`
+// and gives allocation data apart, a profile of size samples gives allocations as samples
+type WrappedSamplesProfile = V8CpuProfile & {
+    samples: SampleIdVector | SizeSample[];
+    sizes?: number[];
+    scripts?: V8CpuProfileScript[];
+    allocationSampleIds?: AllocationIdVector;
+    allocationSamples?: CombinedAllocationRows;
+    cpuProfile?: {
+        samples: SampleIdVector;
+        timeDeltas?: TimeDeltaVector;
+        nodes: V8CpuProfileNode[];
+    };
+};
+
 function isObject(value: unknown): value is object {
     return typeof value === 'object' && value !== null;
 }
@@ -108,52 +136,7 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
     return true;
 }
 
-export function normalizeCpuProfile(data: V8CpuProfile) {
-    return {
-        ...data,
-        trace_ids: data.trace_ids || {},
-        lines: isInt32Vector(data.lines) && data.lines.length > 0 ? data.lines : undefined,
-        columns: isInt32Vector(data.columns) && data.columns.length > 0 ? data.columns : undefined
-    };
-}
-
-// nodes may missing children field but have parent field, rebuild children arrays then;
-// avoid updating children when nodes have parent and children fields
-export function convertParentIntoChildrenIfNeeded(data: V8CpuProfile) {
-    const nodes: (V8CpuProfileNode<unknown> & { parent?: number })[] = data.nodes;
-
-    // no action when just one node or both first nodes has no parent (since only root node can has no parent)
-    if (nodes.length < 2 || (typeof nodes[0].parent !== 'number' && typeof nodes[1].parent !== 'number')) {
-        return;
-    }
-
-    // build map for nodes with no children only
-    const nodeWithNoChildrenById = new Map();
-
-    for (const node of data.nodes) {
-        if (!Array.isArray(node.children) || node.children.length === 0) {
-            nodeWithNoChildrenById.set(node.id, node);
-        }
-    }
-
-    // rebuild children for nodes which missed it
-    if (nodeWithNoChildrenById.size > 0) {
-        for (const node of nodes) {
-            if (typeof node.parent === 'number') {
-                const parent = nodeWithNoChildrenById.get(node.parent);
-
-                if (parent !== undefined) {
-                    if (Array.isArray(parent.children)) {
-                        parent.children.push(node.id);
-                    } else {
-                        parent.children = [node.id];
-                    }
-                }
-            }
-        }
-    }
-}
-
+// Nodes of a call tree given as a head with nested children, as a list of nodes with IDs of children
 function linearCallTree(node: V8CpuProfileNode, nodes: V8CpuProfileNode[] = []) {
     const children = node.children as (V8CpuProfileNode[] | undefined);
 
@@ -163,15 +146,15 @@ function linearCallTree(node: V8CpuProfileNode, nodes: V8CpuProfileNode[] = []) 
             children: children.map(child => child.id)
         });
 
-        for (const child of children) {
-            linearCallTree(child, nodes);
+        for (let i = 0; i < children.length; i++) {
+            linearCallTree(children[i], nodes);
         }
     }
 
     return nodes;
 }
 
-export function unrollHeadToNodesIfNeeded(profile: V8CpuProfile & { head?: V8CpuProfileNode }) {
+function unrollHeadToNodes(profile: V8CpuProfile & { head?: V8CpuProfileNode }) {
     const head = profile.head;
 
     if (!head) {
@@ -184,54 +167,28 @@ export function unrollHeadToNodesIfNeeded(profile: V8CpuProfile & { head?: V8Cpu
     };
 }
 
-function extractVectorIfExists(samples: SizeSample[], property: keyof SizeSample) {
-    if (samples.length > 0 && property in samples[0]) {
-        return Array.from(samples, sample => sample[property] as number);
-    }
-}
+// Allocation data of a combined profile: the last allocation ID of every CPU sample and allocation rows in the order
+// of their IDs
+function extractCombinedAllocationData(
+    profile: WrappedSamplesProfile,
+    diagnose: Diagnose
+): V8CpuProfileCpuproExtensions | null {
+    const sampleAllocationIds = profile.allocationSampleIds;
+    const rows = profile.allocationSamples;
 
-/**
- * Extract allocation data from combined CPU+memory profile.
- * Combined profiles have:
- * - cpuProfile: standard CPU profile with samples/timeDeltas
- * - allocationSampleIds: maps CPU sample index -> last allocation ID in that sample's time range
- * - allocationSamples: allocation data (ids, sizes, gc, types, etc.)
- */
-function extractCombinedAllocationData(data: {
-    allocationSampleIds?: unknown;
-    allocationSamples?: {
-        ids?: unknown;
-        sizes?: unknown;
-        scriptIds?: unknown;
-        positions?: unknown;
-        gc?: unknown;
-        types?: unknown;
-        typesDict?: Record<string, string>;
-        spaces?: unknown;
-        spacesDict?: Record<string, string>;
-    };
-}, diagnose: Diagnose): V8CpuProfileCpuproExtensions | null {
-    const { allocationSampleIds, allocationSamples } = data;
-
-    if (!isNumberVector(allocationSampleIds)) {
+    if (!isNumberVector(sampleAllocationIds)) {
         return null;
     }
 
     const allocationData: V8CpuProfileCpuproExtensions = {
-        _cpuproAllocationMapping: allocationSampleIds
+        _cpuproAllocationMapping: sampleAllocationIds
     };
 
-    if (!allocationSamples) {
+    if (!rows || !isNumberVector(rows.ids) || !isUint32Vector(rows.sizes)) {
         return allocationData;
     }
 
-    const { ids, sizes, scriptIds, positions, gc, types, typesDict, spaces, spacesDict } = allocationSamples;
-
-    if (!isNumberVector(ids) || !isUint32Vector(sizes)) {
-        return allocationData;
-    }
-
-    const idsOrder = getNumericArrayOrder(ids);
+    const idsOrder = getNumericArrayOrder(rows.ids);
 
     if (idsOrder === 'unordered') {
         diagnose('warn', 'Ignoring allocation data with unsorted IDs');
@@ -240,74 +197,69 @@ function extractCombinedAllocationData(data: {
 
     return {
         ...allocationData,
-        _cpuproAllocationIds: ids,
+        _cpuproAllocationIds: rows.ids,
         _cpuproAllocationIdsOrder: idsOrder,
-        _cpuproAllocationSizes: sizes,
-        _cpuproAllocationScriptIds: isInt32Vector(scriptIds) ? scriptIds : undefined,
-        _cpuproAllocationLocations: isInt32Vector(positions) ? positions : undefined,
-        _cpuproAllocationGc: isUint32Vector(gc) ? gc : undefined,
-        _cpuproAllocationTypes: isUint32Vector(types) ? types : undefined,
-        _cpuproAllocationTypeNames: typesDict,
-        _cpuproAllocationSpaces: isUint32Vector(spaces) ? spaces : undefined,
-        _cpuproAllocationSpaceNames: spacesDict
+        _cpuproAllocationSizes: rows.sizes,
+        _cpuproAllocationScriptIds: isInt32Vector(rows.scriptIds)
+            ? rows.scriptIds
+            : undefined,
+        _cpuproAllocationLocations: isInt32Vector(rows.positions)
+            ? rows.positions
+            : undefined,
+        _cpuproAllocationGc: isUint32Vector(rows.gc)
+            ? rows.gc
+            : undefined,
+        _cpuproAllocationTypes: isUint32Vector(rows.types)
+            ? rows.types
+            : undefined,
+        _cpuproAllocationTypeNames: rows.typesDict,
+        _cpuproAllocationSpaces: isUint32Vector(rows.spaces)
+            ? rows.spaces
+            : undefined,
+        _cpuproAllocationSpaceNames: rows.spacesDict
     };
 }
 
+// A vector of a field of size samples, when they have the field
+function sizeSampleVector(samples: SizeSample[], field: keyof SizeSample) {
+    if (samples.length === 0 || !(field in samples[0])) {
+        return undefined;
+    }
 
-export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
-    samples: SampleIdVector | SizeSample[];
-    sizes?: number[];
-    scripts?: V8CpuProfileScript[];
-    allocationSampleIds?: AllocationIdVector;
-    allocationSamples?: {
-        ids?: unknown;
-        sizes?: unknown;
-        scriptIds?: unknown;
-        positions?: unknown;
-        gc?: unknown;
-        types?: unknown;
-        typesDict?: Record<string, string>;
-    };
-    cpuProfile?: {
-        samples: SampleIdVector;
-        timeDeltas?: TimeDeltaVector;
-        nodes: V8CpuProfileNode[];
-    };
-}, diagnose: Diagnose = diagnoseToConsole): V8CpuProfile {
-    // Handle combined profile format (ProfileChunk with cpuProfile + allocationSamples)
-    const combinedAllocationData = extractCombinedAllocationData(profile, diagnose);
-    if (combinedAllocationData) {
-        // Extract CPU profile data
+    return Array.from(samples, sample => sample[field] as number);
+}
+
+// Samples of node IDs: CPU samples of a combined profile come with its allocation data, samples of sizes become
+// allocations of their nodes
+function unwrapSamples(profile: WrappedSamplesProfile, diagnose: Diagnose): V8CpuProfile {
+    const allocationData = extractCombinedAllocationData(profile, diagnose);
+
+    if (allocationData !== null) {
         const cpuProfile = profile.cpuProfile || profile;
-        const cpuSamples = cpuProfile.samples;
-        const cpuTimeDeltas = cpuProfile.timeDeltas || profile.timeDeltas;
 
         return {
             ...profile,
             nodes: cpuProfile.nodes || profile.nodes,
-            samples: cpuSamples,
-            timeDeltas: cpuTimeDeltas,
-            ...combinedAllocationData
+            samples: cpuProfile.samples,
+            timeDeltas: cpuProfile.timeDeltas || profile.timeDeltas,
+            ...allocationData
         };
     }
 
-    // Handle legacy allocation profile format (with sizes field)
     if (isArrayOfIntegers(profile.samples) && !profile.sizes) {
         return profile;
     }
 
-    const samples = profile.samples as SizeSample[];
-    let source = samples as SizeSample[];
-
-    // allocation samples can be in any order, sort it by ordinal
-    // Note: used slice() to avoid mutation of an input array
-    source = source.slice().sort((a, b) => a.ordinal - b.ordinal);
-
-    const typeVector = extractVectorIfExists(source, 'type');
-    const scriptIdVector = extractVectorIfExists(source, 'scriptId');
+    // Samples of sizes are a format of early allocation experiments, no longer current and kept as reference only.
+    // They come in any order, so they are sorted by ordinals on a copy
+    const source = (profile.samples as SizeSample[])
+        .slice()
+        .sort((a, b) => a.ordinal - b.ordinal);
+    const typeVector = sizeSampleVector(source, 'type');
+    const scriptIdVector = sizeSampleVector(source, 'scriptId');
     // const { vector: spaceVector, names: spaceNames } = extractRemapVectorIfExists(source, 'space', ALLOCATION_SPACES);
-    const gcVector = extractVectorIfExists(source, 'gc');
-    const locationVector = extractVectorIfExists(source, 'pos');
+    const gcVector = sizeSampleVector(source, 'gc');
+    const locationVector = sizeSampleVector(source, 'pos');
 
     // return {
     //     _cpuproAllocationMapping: allocationSampleIds,
@@ -332,5 +284,35 @@ export function unwrapSamplesIfNeeded(profile: V8CpuProfile & {
         _scripts: profile._scripts || profile.scripts || undefined,
         samples: source.map(sample => sample.nodeId),
         _cpuproAllocationSizes: source.map(sample => sample.size)
+    };
+}
+
+// The common form of a CPU profile, whatever form its source gives: a list of nodes with children or a parent, as
+// the source gives them, samples of node IDs with allocation data apart, trace IDs as an object, lines and columns
+// of samples together, a line and a column per sample, or neither. Each step returns a new object when it changes
+// anything, so the input is not changed
+export function normalizeCpuProfile(data: V8CpuProfile, diagnose: Diagnose = diagnoseToConsole): V8CpuProfile {
+    let profile = unrollHeadToNodes(data);
+
+    profile = unwrapSamples(profile, diagnose);
+
+    const traceIds = isObject(profile.trace_ids) && !Array.isArray(profile.trace_ids)
+        ? profile.trace_ids
+        : {};
+    const hasLineColumns = isInt32Vector(profile.lines) &&
+        isInt32Vector(profile.columns) &&
+        profile.lines.length > 0 &&
+        profile.lines.length === profile.samples.length &&
+        profile.columns.length === profile.samples.length;
+
+    return {
+        ...profile,
+        trace_ids: traceIds,
+        lines: hasLineColumns
+            ? profile.lines
+            : undefined,
+        columns: hasLineColumns
+            ? profile.columns
+            : undefined
     };
 }

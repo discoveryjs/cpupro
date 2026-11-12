@@ -107,6 +107,7 @@ function findRootGcNodeIdWithCallFrames(
     nodes: V8CpuProfileNode[] | V8CpuProfileNode<number>[],
     callFrames: V8CpuProfileCallFrame[]
 ) {
+    const rootId = nodes[0].id;
     const rootChildren = new Set(nodes[0].children);
 
     for (let i = 0; i < nodes.length; i++) {
@@ -118,7 +119,7 @@ function findRootGcNodeIdWithCallFrames(
 
         if (isNoScriptId(callFrame.scriptId) &&
             callFrame.functionName === '(garbage collector)' &&
-            rootChildren.has(node.id)) {
+            (rootChildren.has(node.id) || node.parent === rootId)) {
             return i;
         }
     }
@@ -127,6 +128,7 @@ function findRootGcNodeIdWithCallFrames(
 }
 
 function findRootGcNodeId(nodes: V8CpuProfileNode[]) {
+    const rootId = nodes[0].id;
     const rootChildren = new Set(nodes[0].children);
 
     for (let i = 0; i < nodes.length; i++) {
@@ -135,7 +137,7 @@ function findRootGcNodeId(nodes: V8CpuProfileNode[]) {
 
         if (isNoScriptId(callFrame.scriptId) &&
             callFrame.functionName === '(garbage collector)' &&
-            rootChildren.has(node.id)) {
+            (rootChildren.has(node.id) || node.parent === rootId)) {
             return i;
         }
     }

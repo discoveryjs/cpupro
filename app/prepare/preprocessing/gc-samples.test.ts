@@ -68,3 +68,31 @@ test('attaches GC samples to the call stack of the previous sample, for numeric 
     assert.deepEqual(await sampleStacks(createProfileData(numericId)), expected);
     assert.deepEqual(await sampleStacks(createProfileData(stringId)), expected);
 });
+
+test.each([
+    { name: 'children', givesParent: false },
+    // Profiles of traces give nodes a parent instead of children
+    { name: 'a parent', givesParent: true }
+])('attaches GC samples to nested call stacks when nodes give $name', async row => {
+    const relation = (children: number[], parent?: number) => row.givesParent
+        ? { parent }
+        : { children };
+    const data = createProfileData(id => id);
+    const [root, work, gc, program] = data.nodes;
+    const innerCallFrame = { ...work.callFrame, functionName: 'inner' };
+    const nodes = [
+        { id: root.id, callFrame: root.callFrame, ...relation([2, 3, 4]) },
+        { id: work.id, callFrame: work.callFrame, ...relation([5], 1) },
+        { id: gc.id, callFrame: gc.callFrame, ...relation([], 1) },
+        { id: program.id, callFrame: program.callFrame, ...relation([], 1) },
+        { id: 5, callFrame: innerCallFrame, ...relation([], 2) }
+    ];
+
+    assert.deepEqual(await sampleStacks({ ...data, nodes, samples: [5, 3, 2, 4, 3] }), [
+        ['inner', 'work'],
+        ['(garbage collector)', 'inner', 'work'],
+        ['work'],
+        ['(program)'],
+        ['(garbage collector)', '(program)']
+    ]);
+});

@@ -80,6 +80,7 @@ export type V8CpuProfileNode<TCallFrame = V8CpuProfileCallFrame> = {
     id: number;
     callFrame: TCallFrame;
     children?: number[];
+    parent?: number; // profiles of traces give nodes a parent instead of children
     parentScriptOffset?: number;
     parentLineNumber?: number;
     parentColumnNumber?: number;

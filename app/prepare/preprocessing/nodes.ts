@@ -89,7 +89,7 @@ export function createNodeParent(
     const generatedNodesParentId = generatedNodes?.nodeParentId || [];
     const nodeParent = new Uint32Array(nodes.length + generatedNodesParentId.length);
 
-    // nodes
+    // nodes give their children or their parent
     for (let i = 0; i < nodes.length; i++) {
         const { children } = nodes[i];
 
@@ -97,6 +97,15 @@ export function createNodeParent(
             for (const childId of children) {
                 nodeParent[nodeIndexById[childId]] = i;
             }
+        }
+    }
+
+    // A node's own parent takes precedence over the children of other nodes, so parents are set after children
+    for (let i = 0; i < nodes.length; i++) {
+        const { parent } = nodes[i];
+
+        if (typeof parent === 'number' && nodeIndexById[parent] >= 0) {
+            nodeParent[i] = nodeIndexById[parent];
         }
     }
 

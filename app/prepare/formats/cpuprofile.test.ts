@@ -1,34 +1,63 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { createDiagnosticsCollector } from '../diagnostics.js';
-import { unwrapSamplesIfNeeded } from './cpuprofile.js';
+import { createDiagnosticsCollector, type Diagnose } from '../diagnostics.js';
+import { extractAndValidate } from '../index.js';
 
-type CombinedProfile = Parameters<typeof unwrapSamplesIfNeeded>[0];
+const rootCallFrame = {
+    functionName: '(root)',
+    scriptId: 0,
+    url: '',
+    lineNumber: -1,
+    columnNumber: -1
+};
+const fnCallFrame = {
+    functionName: 'fn',
+    scriptId: 1,
+    url: 'a.js',
+    lineNumber: 0,
+    columnNumber: 0
+};
+
+// A profile of two samples of one node, with fields of a test on top
+function cpuProfile(fields: object = {}) {
+    return {
+        startTime: 0,
+        endTime: 20,
+        nodes: [
+            {
+                id: 1,
+                callFrame: rootCallFrame,
+                children: [2]
+            },
+            {
+                id: 2,
+                callFrame: fnCallFrame
+            }
+        ],
+        samples: [2, 2],
+        timeDeltas: [10, 10],
+        ...fields
+    };
+}
+
+// The profile extracted from an input, which extraction never changes nor returns as is
+function extractProfile(input: object, diagnose?: Diagnose) {
+    const before = structuredClone(input);
+    const profile = extractAndValidate(input, () => {}, diagnose).sessions[0].profiles[0];
+
+    assert.deepEqual(input, before);
+    assert.notEqual(profile, input);
+
+    return profile;
+}
 
 function allocationKeys(profile: object) {
     return Object.keys(profile).filter(key => key.startsWith('_cpuproAllocation'));
 }
 
-// A combined profile wraps CPU samples into `cpuProfile`, allocation rows are aligned by `allocationSamples.ids`
-function combinedProfile(allocationSamples: unknown): CombinedProfile {
-    return {
-        startTime: 0,
-        endTime: 20,
-        samples: [],
-        timeDeltas: [],
-        nodes: [],
-        cpuProfile: { samples: [1, 2], timeDeltas: [10, 10], nodes: [] },
-        allocationSampleIds: [10, 15],
-        allocationSamples
-    } as unknown as CombinedProfile;
-}
-
-test('typed numeric vectors are adopted without copies', () => {
-    const input = {
-        startTime: 0,
-        endTime: 20,
-        nodes: [],
-        samples: new Uint32Array([1, 1]),
+test('adopts typed numeric vectors without copies', () => {
+    const input = cpuProfile({
+        samples: new Uint32Array([2, 2]),
         timeDeltas: new Uint32Array([10, 10]),
         allocationSampleIds: new Uint32Array([10, 12]),
         allocationSamples: {
@@ -37,8 +66,8 @@ test('typed numeric vectors are adopted without copies', () => {
             gc: new Uint32Array([0, 5]),
             types: new Uint32Array([1, 1])
         }
-    };
-    const profile = unwrapSamplesIfNeeded(input as unknown as CombinedProfile);
+    });
+    const profile = extractProfile(input);
 
     assert.equal(profile.samples, input.samples);
     assert.equal(profile.timeDeltas, input.timeDeltas);
@@ -47,22 +76,29 @@ test('typed numeric vectors are adopted without copies', () => {
     assert.equal(profile._cpuproAllocationTypes, input.allocationSamples.types);
 });
 
+// A combined profile wraps CPU samples into `cpuProfile`
 test.each([
     { allocationSamples: undefined },
     { allocationSamples: {} },
     { allocationSamples: { ids: [10, 15] } },
     { allocationSamples: { sizes: [8, 16] } }
-])('keeps the sample mapping without complete allocation rows: %j', row => {
-    const input = combinedProfile(row.allocationSamples);
-    const before = structuredClone(input);
-    const profile = unwrapSamplesIfNeeded(input);
+])('keeps the sample mapping of a combined profile without complete allocation rows: %j', row => {
+    const input = cpuProfile({
+        cpuProfile: {
+            samples: [2],
+            timeDeltas: [20],
+            nodes: cpuProfile().nodes
+        },
+        allocationSampleIds: [10, 15],
+        allocationSamples: row.allocationSamples
+    });
+    const profile = extractProfile(input);
 
-    assert.equal(profile.samples, input.cpuProfile!.samples);
-    assert.equal(profile.timeDeltas, input.cpuProfile!.timeDeltas);
-    assert.equal(profile.nodes, input.cpuProfile!.nodes);
+    assert.equal(profile.samples, input.cpuProfile.samples);
+    assert.equal(profile.timeDeltas, input.cpuProfile.timeDeltas);
+    assert.equal(profile.nodes, input.cpuProfile.nodes);
     assert.equal(profile._cpuproAllocationMapping, input.allocationSampleIds);
     assert.deepEqual(allocationKeys(profile), ['_cpuproAllocationMapping']);
-    assert.deepEqual(input, before);
 });
 
 test.each([
@@ -76,10 +112,12 @@ test.each([
         gc: [0, 1, 2],
         typesDict: { 1: 'OBJECT' }
     };
-    const input = combinedProfile(allocationSamples);
-    const before = structuredClone(input);
+    const input = cpuProfile({
+        allocationSampleIds: [10, 15],
+        allocationSamples
+    });
     const { diagnostics, diagnose } = createDiagnosticsCollector();
-    const profile = unwrapSamplesIfNeeded(input, diagnose);
+    const profile = extractProfile(input, diagnose);
 
     assert.equal(profile._cpuproAllocationMapping, input.allocationSampleIds);
     assert.equal(profile._cpuproAllocationIds, row.ids);
@@ -88,28 +126,100 @@ test.each([
     assert.equal(profile._cpuproAllocationTypes, allocationSamples.types);
     assert.equal(profile._cpuproAllocationGc, allocationSamples.gc);
     assert.deepEqual(diagnostics, []);
-    assert.deepEqual(input, before);
 });
 
 test('ignores allocation rows with unsorted IDs and reports it', () => {
-    const input = combinedProfile({
-        ids: [10, 12, 11],
-        sizes: [8, 16, 32],
-        types: [1, 2, 3],
-        gc: [0, 1, 2]
+    const input = cpuProfile({
+        allocationSampleIds: [10, 15],
+        allocationSamples: {
+            ids: [10, 12, 11],
+            sizes: [8, 16, 32],
+            types: [1, 2, 3],
+            gc: [0, 1, 2]
+        }
     });
-    const before = structuredClone(input);
     const { diagnostics, diagnose } = createDiagnosticsCollector();
-    const profile = unwrapSamplesIfNeeded(input, diagnose);
+    const profile = extractProfile(input, diagnose);
 
     assert.equal(profile._cpuproAllocationMapping, input.allocationSampleIds);
     assert.deepEqual(allocationKeys(profile), ['_cpuproAllocationMapping']);
     assert.deepEqual(diagnostics, [
         {
             level: 'warn',
-            scope: [],
+            scope: ['cpuprofile'],
             message: 'Ignoring allocation data with unsorted IDs'
         }
     ]);
-    assert.deepEqual(input, before);
+});
+
+test.each([
+    {
+        name: 'without trace IDs, lines and columns',
+        fields: {},
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    },
+    {
+        name: 'with trace IDs',
+        fields: { trace_ids: { 7: 1 } },
+        traceIds: { 7: 1 },
+        lines: undefined,
+        columns: undefined
+    },
+    {
+        name: 'with trace IDs of an array',
+        fields: { trace_ids: [1] },
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    },
+    {
+        name: 'with a line and a column per sample',
+        fields: { lines: [3, 4], columns: [5, 6] },
+        traceIds: {},
+        lines: [3, 4],
+        columns: [5, 6]
+    },
+    {
+        name: 'with empty lines and columns',
+        fields: { lines: [], columns: [] },
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    },
+    {
+        name: 'with lines without columns',
+        fields: { lines: [3, 4] },
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    },
+    {
+        name: 'with fewer columns than lines',
+        fields: { lines: [3, 4], columns: [5] },
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    },
+    {
+        name: 'with fewer lines and columns than samples',
+        fields: { lines: [3], columns: [5] },
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    },
+    {
+        name: 'with lines and columns of no vectors',
+        fields: { lines: '3,4', columns: { 0: 5, 1: 6 } },
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    }
+])('extracts a profile $name in the common form without changing the input', row => {
+    const profile = extractProfile(cpuProfile(row.fields));
+
+    assert.deepEqual(profile.trace_ids, row.traceIds);
+    assert.deepEqual(profile.lines, row.lines);
+    assert.deepEqual(profile.columns, row.columns);
 });
