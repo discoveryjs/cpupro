@@ -1,26 +1,45 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { noopWorkHandler } from '../misc/work.js';
 import { createMemline } from './memline.mjs';
 import {
     createMemlineAllocationLifespanAttribute,
     createMemlineAllocationTypeAttribute,
     createMemlineGcEpochAttribute
 } from './memline-attributes.mjs';
+import type { V8CpuProfile } from '../types.js';
 
-const noCpuSamples = { startTime: 0, endTime: 0, nodes: [], samples: [], timeDeltas: [] };
+// A memline of allocation data of a profile without CPU samples
+async function createAllocationMemline(allocations: Partial<V8CpuProfile>) {
+    const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
+    const data = {
+        startTime: 0,
+        endTime: 0,
+        nodes: [],
+        samples: [],
+        timeDeltas: [],
+        ...allocations
+    };
+
+    return createMemline(
+        data,
+        dictionary,
+        scriptsMap,
+        null,
+        null,
+        null,
+        Promise.resolve()
+    );
+}
 
 test('keeps allocation locations without borrowing a call stack when CPU samples are absent', async () => {
-    const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
-    const line = await createMemline({
-        ...noCpuSamples,
+    const line = await createAllocationMemline({
         _cpuproAllocationMapping: [],
         _cpuproAllocationIds: [1, 2],
         _cpuproAllocationSizes: [16, 32],
         _cpuproAllocationScriptIds: [1, 1],
         _cpuproAllocationLocations: [10, 20]
-    }, dictionary, scriptsMap, null, null, null, Promise.resolve(), { work: noopWorkHandler });
+    });
 
     assert.ok(line);
     assert.deepEqual(line.breakdowns.map(breakdown => breakdown.kind), ['location']);
@@ -28,22 +47,20 @@ test('keeps allocation locations without borrowing a call stack when CPU samples
 });
 
 test('maps allocation attribute codes to dictionary indices of 1 byte without changing the input', async () => {
-    const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
     const sizes = new Uint32Array([16, 32, 48]);
     const types = new Uint32Array([7, 7, 9]);
     const spaces = new Uint32Array([2, 4, 2]);
     // GC value is epoch << 2 | lifespan, lifespans 2, 0, 1 differ from the epoch indices
     const gc = new Uint32Array([0 << 2 | 2, 1 << 2 | 0, 2 << 2 | 1]);
-    const line = await createMemline({
-        ...noCpuSamples,
+    const line = await createAllocationMemline({
         _cpuproAllocationSizes: sizes,
         _cpuproAllocationGc: gc,
         _cpuproAllocationTypes: types,
         _cpuproAllocationTypeNames: { 7: 'FIRST_TYPE', 9: 'SECOND_TYPE' },
         _cpuproAllocationSpaces: spaces,
         _cpuproAllocationSpaceNames: { 2: 'new_space', 4: 'old_space' }
-    }, dictionary, scriptsMap, null, null, null, Promise.resolve());
-    const attribute = (name: string) => line!.attributes.find(attribute => attribute.name === name)!;
+    });
+    const attribute = (name: string) => line!.attributes.find(entry => entry.name === name)!;
 
     assert.equal(line!.values.buffer, sizes.buffer);
     assert.deepEqual(attribute('allocationType').values, new Uint8Array([0, 0, 1]));
@@ -56,18 +73,21 @@ test('maps allocation attribute codes to dictionary indices of 1 byte without ch
 });
 
 test('classes of allocations keep one lifespan implied by GC epochs from lists of traces', async () => {
-    const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
     // GC values of one collection number with different lifespans, and allocations of no list (alive)
-    const line = await createMemline({
-        ...noCpuSamples,
+    const line = await createAllocationMemline({
         _cpuproAllocationIds: [1, 2, 3, 4, 5, 6],
         _cpuproAllocationIdsOrder: 'consecutive',
         _cpuproAllocationSizes: new Uint32Array([16, 16, 16, 16, 16, 16]),
         _cpuproAllocationGcIds: [
-            { [1 << 2 | 1]: new Uint32Array([1, 4]) },
-            { [1 << 2 | 2]: new Uint32Array([2]), [2 << 2 | 1]: new Uint32Array([5]) }
+            {
+                [1 << 2 | 1]: new Uint32Array([1, 4])
+            },
+            {
+                [1 << 2 | 2]: new Uint32Array([2]),
+                [2 << 2 | 1]: new Uint32Array([5])
+            }
         ]
-    }, dictionary, scriptsMap, null, null, null, Promise.resolve(), { work: noopWorkHandler });
+    });
     const { ids, events, values } = line!.eventClasses;
     const lifespans = line!.attributes.find(attribute => attribute.name === 'allocationLifespan')!.values;
 
