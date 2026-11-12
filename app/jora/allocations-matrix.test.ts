@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { methods } from './index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
+import { findBreakdown } from '../../test/fixtures/lines.js';
 import type {
     ProfileLine,
     ProfileLineAllocationOwnerAttribute,
@@ -34,7 +35,7 @@ function addAllocationKinds(line: ProfileLine) {
 async function createNodesMatrix(mapping: number[]) {
     const { profile } = await createProfileFixture({ mapping });
     const line = profile.memline!;
-    const breakdown = line.breakdowns.find(entry => entry.kind === 'call-stack')!;
+    const breakdown = findBreakdown(line, 'call-stack');
     const nodes = breakdown.callFrames!.filtered.nodes;
     const population = breakdown.populationFiltered;
     const matrix = () => methods.allocationsMatrix.call(
@@ -185,7 +186,7 @@ test.each([
 async function createOwnerMatrix() {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const line = profile.memline!;
-    const population = line.breakdowns.find(entry => entry.kind === 'location')!.populationFiltered;
+    const population = findBreakdown(line, 'location').populationFiltered;
     const owners = createOwners();
     const stages: ProfileLineAllocationCompilationStageAttribute = {
         name: 'allocationCompilationStage',

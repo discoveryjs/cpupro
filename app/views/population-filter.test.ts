@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import jora from 'jora';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
+import { allocationAttributes, findBreakdown } from '../../test/fixtures/lines.js';
 import { SetAttributeFilter, type FilterOption } from '../prepare/computations/attribute-filter.js';
 import type { ProfileLineBreakdown } from '../prepare/lines/types.js';
 import { methods, assertions } from '../jora/index.mjs';
@@ -25,16 +26,13 @@ function evaluate(property: string | undefined, data: unknown, context: unknown 
     return query(property.replace(/^=/, ''))(data, context);
 }
 
-// Fixture allocation events weigh 16, 32, 48 and 64 bytes. Events 0 and 2 are alive, events 0 and 1 are in
-// new space, and a CPU sample 0 mapping attributes every allocation of the call-stack breakdown to one sample.
+// A CPU sample 0 mapping attributes every allocation of the call-stack breakdown to one sample
 async function createBreakdown(kind = 'call-stack') {
     const { profile } = await createProfileFixture({
-        mapping: [0, 4, 4],
-        allocationGc: [0, 1, 0, 2],
-        allocationSpaces: [1, 1, 2, 2],
-        allocationSpaceNames: { 1: 'new_space', 2: 'old_space' }
+        ...allocationAttributes,
+        mapping: [0, 4, 4]
     });
-    const breakdown = profile.memline!.breakdowns.find(entry => entry.kind === kind)!;
+    const breakdown = findBreakdown(profile.memline!, kind);
     const filter = (key: string) => breakdown.line.filters.get(key) as SetAttributeFilter;
 
     return { profile, breakdown, filter };

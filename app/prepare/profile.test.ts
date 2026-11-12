@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fixtures/profile.js';
+import { findBreakdown } from '../../test/fixtures/lines.js';
 import { createProfile } from './profile.mjs';
 import { createWorkHandler, noopWorkHandler, type WorkIdentity } from './misc/work.js';
 import { createDiagnosticsCollector } from './diagnostics.js';
@@ -266,8 +267,8 @@ describe('profile breakdowns', () => {
     ])('preserves allocation weights and attributes to CPU samples: $name', async row => {
         const { profile } = await createProfileFixture({ mapping: row.mapping });
         const line = profile.memline!;
-        const stack = line.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
-        const locations = line.breakdowns.find(breakdown => breakdown.kind === 'location')!;
+        const stack = findBreakdown(line, 'call-stack');
+        const locations = findBreakdown(line, 'location');
         const metrics = stack.callFrames!.all.nodes;
         const cpuSamples = profile.timeline!.breakdowns[0].population.samples;
         const allocationSamples = line.mappings.timeline._mapping;
@@ -285,7 +286,7 @@ describe('profile breakdowns', () => {
     test('allocations after the last CPU sample belong to an unknown call frame', async () => {
         // The last CPU sample records allocation 2, allocations 3 and 4 (48 and 64 bytes) follow it
         const { profile } = await createProfileFixture({ mapping: [1, 2, 2] });
-        const stack = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
+        const stack = findBreakdown(profile.memline!, 'call-stack');
         const timeline = profile.timeline!.breakdowns[0];
 
         assert.equal(selfValue(stack, 'callFrames', '(after profile end)'), 112);
@@ -442,7 +443,7 @@ describe('profile breakdowns', () => {
 
     test('CPU and allocation call stacks share one attribution source', async () => {
         const { profile } = await createProfileFixture();
-        const allocationStack = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
+        const allocationStack = findBreakdown(profile.memline!, 'call-stack');
 
         assert.equal(profile.timeline!.breakdowns[0].source, allocationStack.source);
     });

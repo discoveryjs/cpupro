@@ -1,12 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
-import type { ProfileLine } from '../lines/types.js';
+import { findBreakdown } from '../../../test/fixtures/lines.js';
 import { sum } from '../../../test/helpers/values.js';
-
-function findBreakdown(line: ProfileLine, kind: string) {
-    return line.breakdowns.find(breakdown => breakdown.kind === kind)!;
-}
 
 test('filtered metrics of every breakdown of a population follow its changes when they are read', async () => {
     const { profile } = await createProfileFixture();

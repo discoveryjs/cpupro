@@ -9,6 +9,7 @@ import type {
 } from '../prepare/types.js';
 import { createProfileFixture, createLineFixture } from '../../test/fixtures/profile.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
+import { findBreakdown } from '../../test/fixtures/lines.js';
 import { createProfile } from '../prepare/profile.mjs';
 import {
     analyzeEventNesting,
@@ -422,7 +423,7 @@ describe('measurements', () => {
 
     test('coverage uses model categories rather than frame kinds and does not require allocations', async () => {
         const { profile } = await createProfileFixture({ cpuOnly: true });
-        const callStack = profile.timeline!.breakdowns.find(item => item.kind === 'call-stack')!;
+        const callStack = findBreakdown(profile.timeline!, 'call-stack');
         const events = [createEvent('Later', [30, 31]), createEvent('Earlier', [10, 11])];
 
         const frames = callStack.callFrames!.tree.dictionary;

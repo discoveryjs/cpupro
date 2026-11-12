@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../../jora/index.mjs';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
+import { scopeContext } from '../../../test/fixtures/lines.js';
 import { findView, findViews, propertyQuery } from '../../../test/helpers/view-config.js';
 import { pageIndicators } from './page-indicators.js';
 import { SetAttributeFilter } from '../../prepare/computations/attribute-filter.js';
@@ -77,8 +78,8 @@ test.each([
 });
 
 test('profile values are of the scope breakdown, debounced on changes of its viewport population', async () => {
-    const { profile, line, breakdown } = await createLine('timeline');
-    const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
+    const { profile, breakdown } = await createLine('timeline');
+    const context = scopeContext(breakdown);
 
     assert.equal(viewportValues.length, 4);
 
@@ -101,7 +102,7 @@ test.each([
     ['memline', 'samples accepted by filters', acceptNothing, [0, 0, 0, 0]]
 ])('profile values of a %s count %s', async (name, _, narrow, expected) => {
     const { profile, line, breakdown } = await createLine(name);
-    const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
+    const context = scopeContext(breakdown);
     const values: number[] = [];
 
     narrow(line);
@@ -130,7 +131,7 @@ test.each([
 
 test('selection indicators follow the line range, selected samples follow the filtered population', async () => {
     const { line, breakdown } = await createLine('timeline');
-    const context = { scopeLine: line, scopeBreakdown: breakdown };
+    const context = scopeContext(breakdown);
     const rangeUpdates = findView(selectionGroup, { view: 'update-on-line-metrics-changes' });
     const samplesUpdates = findView(selectionGroup, { metrics: '=scopeBreakdown().populationFiltered' });
 

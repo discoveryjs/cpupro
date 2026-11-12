@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
+import { allocationAttributes, findBreakdown } from '../../../test/fixtures/lines.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { SetAttributeFilter } from '../computations/attribute-filter.js';
 import { PopulationFiltered } from '../computations/population.js';
@@ -10,14 +11,6 @@ import type { CpuProLocation } from '../types.js';
 import { createTimeline } from './timeline.mjs';
 import { prepareLineFilters } from './filters.js';
 import { sum } from '../../../test/helpers/values.js';
-
-// Fixture allocation events weigh 16, 32, 48 and 64 bytes.
-// Events 0 and 2 are alive, event 1 is short-lived and event 3 long-lived; events 0 and 1 are in new space.
-const allocationEvents = {
-    allocationGc: [0, 1, 0, 2],
-    allocationSpaces: [1, 1, 2, 2],
-    allocationSpaceNames: { 1: 'new_space', 2: 'old_space' }
-};
 
 test('a created timeline has no filters until they are prepared from its attribution', async () => {
     const { profile, dictionary } = await createProfileFixture({ cpuOnly: true });
@@ -66,7 +59,7 @@ test.each([
         expected: ['category', 'allocationGcEpoch', 'allocationLifespan', 'allocationSpace']
     }
 ])('registers category and attribute filters in $order attribute order', async row => {
-    const { profile } = await createProfileFixture(allocationEvents);
+    const { profile } = await createProfileFixture(allocationAttributes);
     const attributes = [...profile.memline!.attributes];
     const line = {
         ...profile.memline!,
@@ -170,7 +163,7 @@ test.each([
 });
 
 test('filters apply to the viewport and window populations shared with source-mapped breakdowns', async () => {
-    const { profile } = await createProfileFixture(allocationEvents);
+    const { profile } = await createProfileFixture(allocationAttributes);
     const breakdowns = profile.lines.flatMap(line => line.breakdowns);
 
     for (let i = 0; i < breakdowns.length; i++) {
@@ -219,7 +212,7 @@ test('category filter accepts the samples of selected categories of each breakdo
 
 test('event filters select individual allocations of a shared sample', async () => {
     // Every allocation of the call-stack breakdown is attributed to the same sample
-    const { profile } = await createProfileFixture({ mapping: [0, 4, 4], ...allocationEvents });
+    const { profile } = await createProfileFixture({ mapping: [0, 4, 4], ...allocationAttributes });
     const line = profile.memline!;
     const lifespan = line.filters.get('allocationLifespan') as SetAttributeFilter;
     const space = line.filters.get('allocationSpace') as SetAttributeFilter;
@@ -242,7 +235,7 @@ test('event filters select individual allocations of a shared sample', async () 
 });
 
 test('a settings batch updates each population once and recompiles only changed settings', async () => {
-    const { profile } = await createProfileFixture(allocationEvents);
+    const { profile } = await createProfileFixture(allocationAttributes);
     const line = profile.memline!;
     const lifespan = line.filters.get('allocationLifespan') as SetAttributeFilter;
     const space = line.filters.get('allocationSpace') as SetAttributeFilter;
@@ -275,7 +268,7 @@ test('a settings batch updates each population once and recompiles only changed 
 test('later attribution adds category options without replacing the settings or their selection', async () => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
     const original = profile.timeline!.breakdowns[0];
-    const mapped = profile.timeline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack-sm')!;
+    const mapped = findBreakdown(profile.timeline!, 'call-stack-sm');
     const viewport = new PopulationFiltered(original.population);
     const execution = {
         ...original,

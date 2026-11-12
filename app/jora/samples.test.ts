@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import { Population, PopulationFiltered } from '../prepare/computations/population.js';
 import { methods } from './samples.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
+import { scopeContext } from '../../test/fixtures/lines.js';
 import { setEventPass } from '../../test/helpers/event-pass.js';
 
 test('a population event count includes zero-weight events within ranges and accepted by filters', () => {
@@ -52,13 +53,8 @@ test.each([
     }
 ])('sample counters of $name count intersecting events per bin and visible event starts once', async row => {
     // Events at 125–135, 135–145 and 145–150
-    const { profile, line, breakdown } = await createLineFixture({ origin: 125 });
-    const context = {
-        scopeViewport: row.scopeViewport,
-        scopeLine: line,
-        scopeProfile: profile,
-        scopeBreakdown: breakdown
-    };
+    const { breakdown } = await createLineFixture({ origin: 125 });
+    const context = scopeContext(breakdown, row.scopeViewport);
 
     const assertCounts = () => {
         assert.deepEqual(Array.from(methods.countSamples.call({ context }, row.count)), row.intersecting);
@@ -116,14 +112,9 @@ test.each([
     }
 ])('a single sample bin counts accepted events intersecting $name', async row => {
     // Events at 125–135 (sample 0), 135–145 (sample 1) and 145–150 (sample 0)
-    const { profile, line, breakdown } = await createLineFixture({ origin: 125 });
+    const { breakdown } = await createLineFixture({ origin: 125 });
     const window = breakdown.populationWindow;
-    const context = {
-        scopeViewport: row.scopeViewport,
-        scopeLine: line,
-        scopeProfile: profile,
-        scopeBreakdown: breakdown
-    };
+    const context = scopeContext(breakdown, row.scopeViewport);
 
     window.setRanges(row.ranges);
     window.filter.set({

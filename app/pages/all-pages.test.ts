@@ -3,6 +3,7 @@ import { test, vi } from 'vitest';
 import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fixtures/profile.js';
+import { findBreakdown, scopeContext } from '../../test/fixtures/lines.js';
 import { findView, findViews } from '../../test/helpers/view-config.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 import { processDisplayNames } from '../prepare/preprocessing/module-names.js';
@@ -47,12 +48,10 @@ function enclosingContexts(page: object) {
 async function openPage(name: string, type: ProfileLineType, kind: string, options: ProfileFixtureOptions = {}) {
     const { profile } = await createProfileFixture(options);
     const line = profile[type]!;
-    const breakdown = line.breakdowns.find(entry => entry.kind === kind)!;
+    const breakdown = findBreakdown(line, kind);
     const context = {
         primaryProfile: profile,
-        scopeProfile: profile,
-        scopeLine: line,
-        scopeBreakdown: breakdown
+        ...scopeContext(breakdown)
     };
     const page = pages.get(name);
     const contexts = enclosingContexts(page);

@@ -4,6 +4,7 @@ import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
+import { findBreakdown } from '../../test/fixtures/lines.js';
 import { findContent, findView, contentQuery, findColumn, propertyQuery } from '../../test/helpers/view-config.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { prepareCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
@@ -127,7 +128,7 @@ test.each([
     const context = contextFor(profile, kind);
 
     assert.equal(context.allocationLine, line);
-    assert.equal(context.allocationPopulation, line.breakdowns.find(entry => entry.kind === kind).populationFiltered);
+    assert.equal(context.allocationPopulation, findBreakdown(line, kind).populationFiltered);
     assert.equal(query(allocated.colWhen)(null, context), context.allocationPopulation);
     assert.equal(query(allocationSamples.colWhen)(null, context), context.allocationPopulation);
     assert.equal(query(allocatedTotal.when)(null, context), context.allocationPopulation);
