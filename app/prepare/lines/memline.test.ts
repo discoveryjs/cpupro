@@ -55,6 +55,28 @@ test('maps allocation attribute codes to dictionary indices of 1 byte without ch
     assert.deepEqual([...gc], [0 << 2 | 2, 1 << 2 | 0, 2 << 2 | 1]);
 });
 
+test('classes of allocations keep one lifespan implied by GC epochs from lists of traces', async () => {
+    const { dictionary, scriptsMap } = await createProfileFixture({ cpuOnly: true });
+    // GC values of one collection number with different lifespans, and allocations of no list (alive)
+    const line = await createMemline({
+        ...noCpuSamples,
+        _cpuproAllocationIds: [1, 2, 3, 4, 5, 6],
+        _cpuproAllocationIdsOrder: 'consecutive',
+        _cpuproAllocationSizes: new Uint32Array([16, 16, 16, 16, 16, 16]),
+        _cpuproAllocationGcIds: [
+            { [1 << 2 | 1]: new Uint32Array([1, 4]) },
+            { [1 << 2 | 2]: new Uint32Array([2]), [2 << 2 | 1]: new Uint32Array([5]) }
+        ]
+    }, dictionary, scriptsMap, null, null, null, Promise.resolve(), { work: noopWorkHandler });
+    const { ids, events, values } = line!.eventClasses;
+    const lifespans = line!.attributes.find(attribute => attribute.name === 'allocationLifespan')!.values;
+
+    assert.ok(values.has(lifespans));
+    assert.deepEqual([...lifespans], [1, 2, 0, 1, 1, 0]);
+    assert.deepEqual([...ids].map(id => lifespans[events[id]]), [...lifespans]);
+    assert.equal(events.length, 4);
+});
+
 test('maps attribute codes to 4-byte indices when a dictionary exceeds 256 entries', () => {
     const typeNames: Record<number, string> = {};
 

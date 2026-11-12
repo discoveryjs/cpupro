@@ -6,11 +6,11 @@ import { createProfile } from '../profile.mjs';
 import { noopWorkHandler } from '../misc/work.js';
 import { methods } from '../../jora/bin.js';
 import { lineWindow } from '../../jora/viewport.js';
-import { BinRecords, EventSignatures } from './event-signatures.js';
+import { BinRecords, EventSignatures, createEventClasses } from './event-signatures.js';
 import { singleEventClass } from '../computations/population-filter.js';
 import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
-import type { ProfileLine } from './types.js';
+import type { ProfileLine, ProfileLineAttribute } from './types.js';
 
 // Deterministic pseudo-random sequence
 function sequence(seed: number) {
@@ -420,4 +420,42 @@ test('line totals by an attribute are the totals of its signatures', async () =>
     }
 
     assert.equal(signatures.totalsBy(new Uint32Array(memline.values.length), 1), null);
+});
+
+// Classes are numbered by their first events whether their columns take one pass or several; an implied column
+// is classified without being combined
+test.each([
+    {
+        name: 'one column',
+        combined: [[2, 0, 2, 1]],
+        implied: [],
+        ids: [0, 1, 0, 2],
+        events: [0, 1, 3]
+    },
+    {
+        name: 'three columns of one pass',
+        combined: [[0, 0, 1, 1, 0], [1, 1, 0, 0, 1], [0, 1, 0, 1, 0]],
+        implied: [],
+        ids: [0, 1, 2, 3, 0],
+        events: [0, 1, 2, 3]
+    },
+    {
+        name: 'an implied column',
+        combined: [[3, 1, 3, 2]],
+        implied: [[1, 0, 1, 0]],
+        ids: [0, 1, 0, 2],
+        events: [0, 1, 3]
+    }
+])('event classes of $name', row => {
+    const attribute = (values: number[]) => ({
+        values: Uint8Array.from(values),
+        dict: new Array(Math.max(...values) + 1)
+    }) as unknown as ProfileLineAttribute;
+    const combined = row.combined.map(attribute);
+    const implied = row.implied.map(attribute);
+    const classes = createEventClasses(row.combined[0].length, combined, implied);
+
+    assert.deepEqual([...classes.ids], row.ids);
+    assert.deepEqual([...classes.events], row.events);
+    assert.deepEqual([...classes.values], [...combined, ...implied].map(column => column.values));
 });

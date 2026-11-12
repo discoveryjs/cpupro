@@ -13,8 +13,8 @@ const IDENTITY_ATTRIBUTES = new Set<ProfileLineAttribute['name']>(['allocationOw
 const WINDOW_EVENTS = 1 << 20;
 // Bins of a window's data grid
 const WINDOW_BINS = 2000;
-// Combinations of ids and two columns combined in one pass; larger tables combine the columns one at a time
-const PAIR_TABLE_LENGTH = 1 << 24;
+// Combinations of ids and the columns combined in one pass; larger tables combine fewer columns at a time
+const PASS_TABLE_LENGTH = 1 << 24;
 
 type ColumnValues = Uint8Array | Uint16Array | Uint32Array;
 type SignatureColumn = {
@@ -63,10 +63,10 @@ export class EventSignatures {
         const otherColumns = keyColumns(columns)
             .filter(column => !classes.values.has(column.values))
             .sort(bySize);
-        const ids = new Uint32Array(classes.ids);
+        const ids = new Uint32Array(classes.ids.length);
 
         this.ids = ids;
-        this.events = Uint32Array.from(combineColumns(ids, Array.from(classes.events), otherColumns));
+        this.events = Uint32Array.from(combineColumns(classes.ids, ids, Array.from(classes.events), otherColumns));
         this.weights = line.values;
         this.#columns = columns;
 
@@ -504,22 +504,38 @@ export class BinRecords {
 }
 
 function equalGrids(left: BinRecordsGrid, right: BinRecordsGrid) {
-    return left.total === right.total &&
+    return (
+        left.total === right.total &&
         left.step === right.step &&
         left.skip === right.skip &&
         left.mapped === right.mapped &&
         equalRanges(left.ranges, right.ranges) &&
-        equalRanges(left.axisRanges, right.axisRanges);
+        equalRanges(left.axisRanges, right.axisRanges)
+    );
 }
 
-// Classes of events with equal values of every attribute with an event filter. Columns are combined one at a time
-// or two at a time, a column of fewer values first keeps tables smaller
-export function createEventClasses(eventCount: number, attributes: ProfileLineAttribute[]): EventClasses {
+// Classes of events with equal values of every attribute with an event filter. Columns are combined one, two or
+// three at a time, a column of fewer values first keeps tables smaller. Implied attributes are functions of the
+// combined ones: they split no class, so they are classified without being combined
+export function createEventClasses(
+    eventCount: number,
+    attributes: ProfileLineAttribute[],
+    impliedAttributes: ProfileLineAttribute[]
+): EventClasses {
     const columns = attributeColumns(attributes).sort(bySize);
     const ids = new Uint32Array(eventCount);
     // Events have one combination of no columns
     const noColumns = eventCount > 0 ? [0] : [];
-    const events = combineColumns(ids, noColumns, columns);
+    const events = combineColumns(ids, ids, noColumns, columns);
+    const values = new Set<ColumnValues>();
+
+    for (let i = 0; i < columns.length; i++) {
+        values.add(columns[i].values);
+    }
+
+    for (let i = 0; i < impliedAttributes.length; i++) {
+        values.add(impliedAttributes[i].values);
+    }
 
     return {
         // PERF: Classes rarely outgrow 16 bits, then their event-sized vector takes half the memory
@@ -527,7 +543,7 @@ export function createEventClasses(eventCount: number, attributes: ProfileLineAt
             ? new Uint16Array(ids)
             : ids,
         events: Uint32Array.from(events),
-        values: new Set(columns.map(column => column.values))
+        values
     };
 }
 
@@ -628,7 +644,7 @@ function keyColumns(columns: Map<ColumnValues, SignatureColumn>) {
         let count = 1;
 
         for (let i = 0; i < group.length; i++) {
-            count = combineColumn(sampleClasses, count, group[i].values, null, group[i].size).length;
+            count = combineColumn(sampleClasses, sampleClasses, count, group[i].values, null, group[i].size).length;
         }
 
         keys.push({
@@ -642,24 +658,38 @@ function keyColumns(columns: Map<ColumnValues, SignatureColumn>) {
 }
 
 // Combines the ids of events with the values of every column; `events` are the first events of the ids, the first
-// events of the combinations are returned. A pass over the events costs about the same for one column or two, so
-// columns read alike are combined two at a time while their table stays small
-function combineColumns(ids: Uint32Array, events: number[], columns: SignatureColumn[]) {
+// events of the combinations are returned. The first pass reads the ids from `sourceIds`, later passes from `ids`.
+// A pass over the events costs about the same for one, two or three columns, so columns read alike are combined
+// several at a time while their table stays small
+function combineColumns(sourceIds: ColumnValues, ids: Uint32Array, events: number[], columns: SignatureColumn[]) {
+    let source = sourceIds;
     let i = 0;
+
+    if (columns.length === 0) {
+        ids.set(sourceIds);
+    }
 
     while (i < columns.length) {
         const column = columns[i];
         const next = i + 1 < columns.length
             ? columns[i + 1]
             : null;
+        const third = i + 2 < columns.length
+            ? columns[i + 2]
+            : null;
 
-        if (next !== null && pairable(column, next, events.length)) {
-            events = combinePair(ids, events.length, column, next);
+        if (next !== null && third !== null && triplable(column, next, third, events.length)) {
+            events = combineTriple(source, ids, events.length, column, next, third);
+            i += 3;
+        } else if (next !== null && pairable(column, next, events.length)) {
+            events = combinePair(source, ids, events.length, column, next);
             i += 2;
         } else {
-            events = combineColumn(ids, events.length, column.values, column.samples, column.size);
+            events = combineColumn(source, ids, events.length, column.values, column.samples, column.size);
             i++;
         }
+
+        source = ids;
     }
 
     return events;
@@ -667,13 +697,67 @@ function combineColumns(ids: Uint32Array, events: number[], columns: SignatureCo
 
 // Both columns are read per event or both per sample, and the table of their combinations with `count` ids is small
 function pairable(left: SignatureColumn, right: SignatureColumn, count: number) {
-    return (left.samples === null) === (right.samples === null) &&
-        count * left.size * right.size <= PAIR_TABLE_LENGTH;
+    return (
+        (left.samples === null) === (right.samples === null) &&
+        count * left.size * right.size <= PASS_TABLE_LENGTH
+    );
+}
+
+// Three columns read per event, and the table of their combinations with `count` ids is small
+function triplable(first: SignatureColumn, second: SignatureColumn, third: SignatureColumn, count: number) {
+    return (
+        first.samples === null &&
+        second.samples === null &&
+        third.samples === null &&
+        count * first.size * second.size * third.size <= PASS_TABLE_LENGTH
+    );
+}
+
+// Replaces ids of `count` combinations of earlier columns by the ids of their combinations with the values of three
+// columns read per event, numbered in the order of their first entries; returns the first entry of every combination
+function combineTriple(
+    sourceIds: ColumnValues,
+    ids: Uint32Array,
+    count: number,
+    first: SignatureColumn,
+    second: SignatureColumn,
+    third: SignatureColumn
+) {
+    const secondSize = second.size;
+    const thirdSize = third.size;
+    const size = first.size * secondSize * thirdSize;
+    // Per id of the earlier columns and values of the columns (row-major): the id of their combination, or -1
+    const table = new Int32Array(count * size).fill(-1);
+    const firstEntries: number[] = [];
+    const firstValues = first.values;
+    const secondValues = second.values;
+    const thirdValues = third.values;
+
+    for (let i = 0; i < ids.length; i++) {
+        const valuesCombination = (firstValues[i] * secondSize + secondValues[i]) * thirdSize + thirdValues[i];
+        const combination = sourceIds[i] * size + valuesCombination;
+        let id = table[combination];
+
+        if (id === -1) {
+            id = firstEntries.push(i) - 1;
+            table[combination] = id;
+        }
+
+        ids[i] = id;
+    }
+
+    return firstEntries;
 }
 
 // Replaces ids of `count` combinations of earlier columns by the ids of their combinations with the values of two
 // columns, numbered in the order of their first entries; returns the first entry of every combination
-function combinePair(ids: Uint32Array, count: number, left: SignatureColumn, right: SignatureColumn) {
+function combinePair(
+    sourceIds: ColumnValues,
+    ids: Uint32Array,
+    count: number,
+    left: SignatureColumn,
+    right: SignatureColumn
+) {
     const rightSize = right.size;
     const size = left.size * rightSize;
     // Per id of the earlier columns and values of the columns (row-major): the id of their combination, or -1
@@ -687,7 +771,8 @@ function combinePair(ids: Uint32Array, count: number, left: SignatureColumn, rig
     // PERF: Separate loops for event and sample values keep the per-event loop free of a branch
     if (leftSamples !== null && rightSamples !== null) {
         for (let i = 0; i < ids.length; i++) {
-            const combination = ids[i] * size + leftValues[leftSamples[i]] * rightSize + rightValues[rightSamples[i]];
+            const valuesCombination = leftValues[leftSamples[i]] * rightSize + rightValues[rightSamples[i]];
+            const combination = sourceIds[i] * size + valuesCombination;
             let id = table[combination];
 
             if (id === -1) {
@@ -699,7 +784,7 @@ function combinePair(ids: Uint32Array, count: number, left: SignatureColumn, rig
         }
     } else {
         for (let i = 0; i < ids.length; i++) {
-            const combination = ids[i] * size + leftValues[i] * rightSize + rightValues[i];
+            const combination = sourceIds[i] * size + leftValues[i] * rightSize + rightValues[i];
             let id = table[combination];
 
             if (id === -1) {
@@ -717,6 +802,7 @@ function combinePair(ids: Uint32Array, count: number, left: SignatureColumn, rig
 // Replaces ids of `count` combinations of earlier columns by the ids of their combinations with a column's values,
 // numbered in the order of their first entries; returns the first entry of every combination
 function combineColumn(
+    sourceIds: ColumnValues,
     ids: Uint32Array,
     count: number,
     values: ColumnValues,
@@ -730,7 +816,7 @@ function combineColumn(
     // PERF: Separate loops for event and sample values keep the per-event loop free of a branch
     if (samples === null) {
         for (let i = 0; i < ids.length; i++) {
-            const combination = ids[i] * size + values[i];
+            const combination = sourceIds[i] * size + values[i];
             let id = table[combination];
 
             if (id === -1) {
@@ -742,7 +828,7 @@ function combineColumn(
         }
     } else {
         for (let i = 0; i < ids.length; i++) {
-            const combination = ids[i] * size + values[samples[i]];
+            const combination = sourceIds[i] * size + values[samples[i]];
             let id = table[combination];
 
             if (id === -1) {
