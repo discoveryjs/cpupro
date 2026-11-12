@@ -1,6 +1,5 @@
 import type { WorkHandler } from '../misc/work.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
-import type { AllocationIdVector } from '../types.js';
 import { createLineBreakdown } from './breakdown.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
 import { ProfileLine } from './types.js';
@@ -8,42 +7,19 @@ import { ProfileLine } from './types.js';
 export async function createMemlineCpuSamplesBreakdown(
     kind: string,
     line: ProfileLine,
-    _cpuproAllocationMapping: AllocationIdVector,
-    _cpuproAllocationIds: AllocationIdVector,
+    allocationSamples: Uint32Array, // per allocation: the index of its CPU sample
     allocationSizes: Uint32Array,
     cpuPopulation: Population,
     cpuSampledTreeSet: SampledTreeSet,
     work: WorkHandler
 ) {
-    // Build allocation sample vector: map each allocation to its CPU sample node
-    // _cpuproAllocationMapping[cpuSampleIdx] = last allocation ID when CPU sample taken
-    // We need reverse: for each allocation, which CPU sample was it captured in?
-    const allocationCount = _cpuproAllocationIds.length;
-    const allocationCpuSamples = new Uint32Array(allocationCount);
+    // An allocation is attributed to the call stack of its CPU sample
+    const allocationCpuSamples = new Uint32Array(allocationSamples.length);
     const cpuSamples = cpuPopulation.samples;
 
-    await work('map allocations to CPU samples', () => {
-        const cpuSampleCount = Math.min(_cpuproAllocationMapping.length, cpuSamples.length);
-        let allocIdx = 0;
-
-        for (let cpuIdx = 0; cpuIdx < cpuSampleCount; cpuIdx++) {
-            const targetAllocId = _cpuproAllocationMapping[cpuIdx];
-
-            if (targetAllocId === undefined) {
-                continue;
-            }
-
-            const cpuSample = cpuSamples[cpuIdx];
-
-            // All allocations up to targetAllocId belong to this CPU sample
-            while (allocIdx < allocationCount && _cpuproAllocationIds[allocIdx] <= targetAllocId) {
-                allocationCpuSamples[allocIdx] = cpuSample;
-                allocIdx++;
-            }
-        }
-
-        allocationCpuSamples.fill(cpuSamples[cpuSamples.length - 1], allocIdx);
-    });
+    for (let i = 0; i < allocationSamples.length; i++) {
+        allocationCpuSamples[i] = cpuSamples[allocationSamples[i]];
+    }
 
     const population = new Population(allocationCpuSamples, allocationSizes);
     const populationViewport = new PopulationFiltered(population);

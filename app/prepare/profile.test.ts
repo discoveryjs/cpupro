@@ -211,6 +211,18 @@ describe('profile breakdowns', () => {
             expected: [0, 1, 0, 0]
         },
         {
+            // Allocations after the last recorded ID take the first sample without an ID, as on the timeline
+            name: 'mapping shorter by two samples',
+            mapping: [1],
+            expected: [0, 1, 1, 1]
+        },
+        {
+            // IDs beyond the samples are ignored: later allocations take the sample after the profile end
+            name: 'mapping longer than the samples',
+            mapping: [1, 2, 2, 4],
+            expected: [0, 1, 2, 2]
+        },
+        {
             name: 'no allocation captured by a CPU sample',
             mapping: [0, 0, 0],
             expected: [2, 2, 2, 2]
@@ -226,8 +238,11 @@ describe('profile breakdowns', () => {
         const stack = line.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
         const locations = line.breakdowns.find(breakdown => breakdown.kind === 'location')!;
         const metrics = stack.callFrames!.all.nodes;
+        const cpuSamples = profile.timeline!.breakdowns[0].population.samples;
+        const allocationSamples = line.mappings.timeline._mapping;
 
         assert.deepEqual([...stack.population.samples], row.expected);
+        assert.deepEqual([...stack.population.samples], Array.from(allocationSamples, sample => cpuSamples[sample]));
         assert.equal(stack.population.values, line.values);
         assert.equal(stack.population.values, locations.population.values);
         assert.deepEqual([...stack.population.values], [16, 32, 48, 64]);

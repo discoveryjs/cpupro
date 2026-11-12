@@ -52,8 +52,8 @@ async function createMappedSource(
     samples = Uint32Array.from(values, (_, i) => i)
 ) {
     const { line: source, breakdown } = await createLineFixture({ type: 'memline', values, samples });
-    const axisEvents = Array.from({ length: axis.values.length }, (_, i) => i);
-    const { left, right } = createLineMapping(source, Array.from(mapping), axis, axisEvents);
+    const axisEvents = Uint32Array.from({ length: axis.values.length }, (_, i) => i);
+    const { left, right } = createLineMapping(source, mapping, axis, axisEvents);
 
     source.mappings[axis.type] = left;
     axis.mappings[source.type] = right;

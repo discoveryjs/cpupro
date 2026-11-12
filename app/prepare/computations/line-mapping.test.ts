@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { createLineMapping, mapLineRanges } from './line-mapping.js';
+import { mapAllocationsToSamples, mapLineRanges } from './line-mapping.js';
 
 test('maps time by sample timestamps and allocation ranges by overlapping occurrences', async () => {
     const { profile } = await createProfileFixture({ startTime: 100 });
@@ -56,10 +56,9 @@ test('allocations after the last sample map to the sample after the recorded one
     const { profile } = await createProfileFixture({ mapping: [1, 2, 3] });
     const time = profile.timeline!;
     const allocations = profile.memline!;
-    const { left } = createLineMapping(allocations, [1, 2, 3, 4], time, [1, 2, 3]);
     const sampled = mapLineRanges(allocations, time, [{ start: 0, end: 96 }]);
 
-    assert.deepEqual([...left._mapping], [0, 1, 2, 3]);
+    assert.deepEqual([...mapAllocationsToSamples([1, 2, 3, 4], Uint32Array.of(1, 2, 3), 3)], [0, 1, 2, 3]);
     assert.deepEqual([...allocations.mappings.timeline._mapping], [0, 1, 2, 3]);
     assert.deepEqual(mapLineRanges(allocations, time, [{ start: 96, end: 160 }]), []);
     assert.deepEqual(mapLineRanges(allocations, time, [{ start: 0, end: 160 }]), sampled);

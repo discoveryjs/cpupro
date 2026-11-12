@@ -18,7 +18,7 @@ import { SourceMapping } from './preprocessing/source-mapping.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
-import { createLineMapping } from './computations/line-mapping.js';
+import { createLineMapping, mapAllocationsToSamples } from './computations/line-mapping.js';
 import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
@@ -137,7 +137,8 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     const timeline = callStack?.timeline ?? null;
     const cpuSamplesPopulation = callStack?.population ?? null;
     const callStackSampledTreeSet = callStack?.sampledTreeSet ?? null;
-    const allocationMapping = callStack?.allocationMapping ?? null;
+    const sampleAllocationIds = callStack?.sampleAllocationIds ?? null;
+    const allocationSamples = callStack?.allocationSamples ?? null;
     const {
         codes,
         codesByCallFrame,
@@ -162,7 +163,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         profileScriptsMap,
         cpuSamplesPopulation,
         callStackSampledTreeSet,
-        allocationMapping,
+        allocationSamples,
         preparseScriptSourcesResult,
         { work, compilations }
     );
@@ -173,12 +174,12 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     // Create mappings between lines if both exist and allocation mapping is present
     if (memline && timeline) {
-        if (allocationMapping && data._cpuproAllocationIds) {
+        if (allocationSamples && sampleAllocationIds) {
             const { left, right } = createLineMapping(
                 memline,
-                data._cpuproAllocationIds,
+                allocationSamples,
                 timeline,
-                allocationMapping
+                sampleAllocationIds
             );
 
             memline.mappings.timeline = left;
@@ -367,13 +368,21 @@ async function createCallStackTimeline(
     // rather than to the last sample's stack, as long gaps without samples are samples of "(no samples)".
     // When the last samples have no recorded allocation ID, the allocations map to them
     const allocationIds = data._cpuproAllocationIds ?? null;
+    const sampleAllocationIds = allocationMapping !== null
+        ? new Uint32Array(allocationMapping)
+        : null;
+    let allocationSamples: Uint32Array | null = null;
     let afterProfileSample = false;
 
-    if (allocationIds !== null && allocationMapping !== null && allocationMapping.length === dataSamples.length) {
-        const lastAllocationId = allocationIds[allocationIds.length - 1];
-        const lastSampleAllocationId = allocationMapping[allocationMapping.length - 1];
+    if (allocationIds !== null && sampleAllocationIds !== null) {
+        allocationSamples = await work('map allocations to CPU samples', () =>
+            mapAllocationsToSamples(allocationIds, sampleAllocationIds, dataSamples.length)
+        );
 
-        afterProfileSample = lastAllocationId > lastSampleAllocationId;
+        // A profile without samples has no sample after its end
+        if (allocationSamples.length > 0 && dataSamples.length > 0) {
+            afterProfileSample = allocationSamples[allocationSamples.length - 1] === dataSamples.length;
+        }
     }
 
     // convert arrays into TypedArrays;
@@ -550,7 +559,8 @@ async function createCallStackTimeline(
         timeline,
         population: cpuSamplesPopulation,
         sampledTreeSet: callStackSampledTreeSet,
-        allocationMapping,
+        sampleAllocationIds,
+        allocationSamples,
         callFrameCodes
     };
 }

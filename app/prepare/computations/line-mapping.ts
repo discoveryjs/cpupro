@@ -65,42 +65,50 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
     return target.range.frame.resolve(normalizeRanges(result));
 }
 
+// The CPU sample of every allocation: the first sample whose last allocation ID is at or after the allocation's ID.
+// Only the first `sampleCount` IDs are of samples; an allocation after the last of them maps to the next index
+export function mapAllocationsToSamples(
+    allocationIds: AllocationIdVector,
+    sampleAllocationIds: Uint32Array,
+    sampleCount: number
+) {
+    const allocationSamples = new Uint32Array(allocationIds.length);
+    const recordedSamples = Math.min(sampleAllocationIds.length, sampleCount);
+    let sample = 0;
+
+    for (let i = 0; i < allocationIds.length; i++) {
+        while (sample < recordedSamples && allocationIds[i] > sampleAllocationIds[sample]) {
+            sample++;
+        }
+
+        allocationSamples[i] = sample;
+    }
+
+    return allocationSamples;
+}
+
+// Mappings between the memline and the timeline: the CPU sample of every allocation, and the last allocation ID
+// of every CPU sample
 export function createLineMapping(
-    sourceLine: ProfileLine,
-    sourceIds: AllocationIdVector,
-    destLine: ProfileLine,
-    destIds: AllocationIdVector
+    memline: ProfileLine,
+    allocationSamples: Uint32Array,
+    timeline: ProfileLine,
+    sampleAllocationIds: Uint32Array
 ): {
     left: ProfileLineMapping,
     right: ProfileLineMapping
 } {
-    const sourceToDest = new Uint32Array(sourceIds); // [0, 1, 2, 3, 4, ...]
-    const destToSource = new Uint32Array(destIds);
-    // [0, 0, 1, 1, 1, 3, 3, ...] -> timeline sample ids
-    // An allocation maps to the first CPU sample whose last allocation ID is at or after its ID. Allocations
-    // after the last sample's ID were recorded after the CPU profile ended: they map to the sample count, the
-    // sample of no time a profile ends with for them, rather than to the last sample
-    for (let i = 0, k = 0; i < sourceToDest.length; i++) {
-        const allocId = sourceToDest[i];
-
-        while (k < destToSource.length && allocId > destToSource[k]) {
-            k++;
-        }
-
-        sourceToDest[i] = k;
-    }
-
     const source = {
-        line: destLine,
+        line: timeline,
         inverse: null as unknown as ProfileLineMapping,
-        _mapping: sourceToDest,
-        // The target cursor above never moves backward
+        _mapping: allocationSamples,
+        // The sample cursor of mapAllocationsToSamples() never moves backward
         nondecreasing: true
     };
     const dest = {
-        line: sourceLine,
+        line: memline,
         inverse: null as unknown as ProfileLineMapping,
-        _mapping: destToSource,
+        _mapping: sampleAllocationIds,
         // Recorded allocation IDs, not ordered by construction
         nondecreasing: false
     };
