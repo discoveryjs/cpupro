@@ -14,16 +14,56 @@ const allKinds = {
     memline: ['call-stack', 'location', 'call-stack-sm', 'location-sm']
 };
 const cases: { name: string; options: ProfileFixtureOptions; populations: number }[] = [
-    { name: 'combined', options: {}, populations: 3 },
-    { name: 'context nodes', options: { contexts: [1, 2, 1, 0] }, populations: 3 },
-    { name: 'sparse CPU IDs', options: { mapping: [0, 4, 4] }, populations: 3 },
-    { name: 'unused trailing CPU ID', options: { mapping: [4, 4, 4] }, populations: 3 },
-    { name: 'uncovered allocations', options: { mapping: [1, 2, 2] }, populations: 3 },
-    { name: 'call-frame fallback', options: { fallback: true }, populations: 3 },
-    { name: 'no source maps', options: { noSourceMap: true }, populations: 3 },
-    { name: 'CPU only', options: { cpuOnly: true }, populations: 1 },
-    { name: 'stack only', options: { stackOnly: true }, populations: 2 },
-    { name: 'locations only', options: { locationsOnly: true }, populations: 2 }
+    {
+        name: 'combined',
+        options: {},
+        populations: 3
+    },
+    {
+        name: 'context nodes',
+        options: { contexts: [1, 2, 1, 0] },
+        populations: 3
+    },
+    {
+        name: 'sparse CPU IDs',
+        options: { mapping: [0, 4, 4] },
+        populations: 3
+    },
+    {
+        name: 'unused trailing CPU ID',
+        options: { mapping: [4, 4, 4] },
+        populations: 3
+    },
+    {
+        name: 'uncovered allocations',
+        options: { mapping: [1, 2, 2] },
+        populations: 3
+    },
+    {
+        name: 'call-frame fallback',
+        options: { fallback: true },
+        populations: 3
+    },
+    {
+        name: 'no source maps',
+        options: { noSourceMap: true },
+        populations: 3
+    },
+    {
+        name: 'CPU only',
+        options: { cpuOnly: true },
+        populations: 1
+    },
+    {
+        name: 'stack only',
+        options: { stackOnly: true },
+        populations: 2
+    },
+    {
+        name: 'locations only',
+        options: { locationsOnly: true },
+        populations: 2
+    }
 ];
 
 function createNode(id: number, functionName: string, children?: number[]) {
@@ -240,9 +280,10 @@ describe('profile breakdowns', () => {
         const metrics = stack.callFrames!.all.nodes;
         const cpuSamples = profile.timeline!.breakdowns[0].population.samples;
         const allocationSamples = line.mappings.timeline._mapping;
+        const cpuSampleOf = (sample: number) => cpuSamples[sample];
 
         assert.deepEqual([...stack.population.samples], row.expected);
-        assert.deepEqual([...stack.population.samples], Array.from(allocationSamples, sample => cpuSamples[sample]));
+        assert.deepEqual([...stack.population.samples], Array.from(allocationSamples, cpuSampleOf));
         assert.equal(stack.population.values, line.values);
         assert.equal(stack.population.values, locations.population.values);
         assert.deepEqual([...stack.population.values], [16, 32, 48, 64]);

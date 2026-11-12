@@ -10,7 +10,10 @@ test('maps source ids of the same node to that node in the computed order', () =
         new Uint32Array([10, 11, 12, 13]),
         []
     );
-    const sourceIdNodes = [...source.sourceIdToNode].map(node => node !== -1 ? source.nodes[node] : -1);
+    const nodeValue = (node: number) => node !== -1
+        ? source.nodes[node]
+        : -1;
+    const sourceIdNodes = [...source.sourceIdToNode].map(nodeValue);
 
     assert.deepEqual(sourceIdNodes, [13, 12, 13, -1, 12]);
 });

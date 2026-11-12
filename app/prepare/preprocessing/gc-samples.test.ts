@@ -44,8 +44,11 @@ async function sampleStacks(data: V8CpuProfile) {
         // node 0 is the root
         for (let j = sourceIdToNode[population.samples[i]]; j !== 0; j = parent[j]) {
             const entry = dictionary[nodes[j]];
+            const name = 'callFrame' in entry
+                ? entry.callFrame.name
+                : entry.name;
 
-            stack.push('callFrame' in entry ? entry.callFrame.name : entry.name);
+            stack.push(name);
         }
 
         stacks.push(stack);
@@ -81,14 +84,40 @@ test.each([
     const [root, work, gc, program] = data.nodes;
     const innerCallFrame = { ...work.callFrame, functionName: 'inner' };
     const nodes = [
-        { id: root.id, callFrame: root.callFrame, ...relation([2, 3, 4]) },
-        { id: work.id, callFrame: work.callFrame, ...relation([5], 1) },
-        { id: gc.id, callFrame: gc.callFrame, ...relation([], 1) },
-        { id: program.id, callFrame: program.callFrame, ...relation([], 1) },
-        { id: 5, callFrame: innerCallFrame, ...relation([], 2) }
+        {
+            id: root.id,
+            callFrame: root.callFrame,
+            ...relation([2, 3, 4])
+        },
+        {
+            id: work.id,
+            callFrame: work.callFrame,
+            ...relation([5], 1)
+        },
+        {
+            id: gc.id,
+            callFrame: gc.callFrame,
+            ...relation([], 1)
+        },
+        {
+            id: program.id,
+            callFrame: program.callFrame,
+            ...relation([], 1)
+        },
+        {
+            id: 5,
+            callFrame: innerCallFrame,
+            ...relation([], 2)
+        }
     ];
 
-    assert.deepEqual(await sampleStacks({ ...data, nodes, samples: [5, 3, 2, 4, 3] }), [
+    const nestedData = {
+        ...data,
+        nodes,
+        samples: [5, 3, 2, 4, 3]
+    };
+
+    assert.deepEqual(await sampleStacks(nestedData), [
         ['inner', 'work'],
         ['(garbage collector)', 'inner', 'work'],
         ['work'],

@@ -10,8 +10,16 @@ import type { CpuProLocation } from '../types.js';
 function createScripts() {
     const dictionary = new Dictionary();
     const scripts = new ProfileScriptsMap(dictionary, [
-        { id: 7, url: 'first.js', source: 'function a() { return b(); }\nfunction b() { return {}; }' },
-        { id: 8, url: 'second.js', source: 'function c() { return []; }' }
+        {
+            id: 7,
+            url: 'first.js',
+            source: 'function a() { return b(); }\nfunction b() { return {}; }'
+        },
+        {
+            id: 8,
+            url: 'second.js',
+            source: 'function c() { return []; }'
+        }
     ]);
 
     parseScriptFixture(scripts.get(7)!);
@@ -152,7 +160,9 @@ test.each<{
         scripts,
         new Uint32Array(row.scriptIds),
         new Int32Array(row.scriptOffsets),
-        row.contextInfo !== null ? new Uint32Array(row.contextInfo) : null,
+        row.contextInfo !== null
+            ? new Uint32Array(row.contextInfo)
+            : null,
         row.vmStateNames,
         row.builtinsNames
     )!;
@@ -163,8 +173,16 @@ test.each<{
 });
 
 test.each([
-    { title: 'absent script ids', scriptIds: null, scriptOffsets: new Int32Array([22]) },
-    { title: 'absent script offsets', scriptIds: new Uint32Array([7]), scriptOffsets: null },
+    {
+        title: 'absent script ids',
+        scriptIds: null,
+        scriptOffsets: new Int32Array([22])
+    },
+    {
+        title: 'absent script offsets',
+        scriptIds: new Uint32Array([7]),
+        scriptOffsets: null
+    },
     {
         title: 'script ids and offsets of different lengths',
         scriptIds: new Uint32Array([7, 7]),
@@ -212,7 +230,8 @@ test.each([
         null
     )!;
     const { samples, sourceIdToNode, nodes } = result;
-    const allocationLocations = [...samples].map(sample => dictionary.locations[nodes[sourceIdToNode[sample]]]);
+    const sampleLocation = (sample: number) => dictionary.locations[nodes[sourceIdToNode[sample]]];
+    const allocationLocations = [...samples].map(sampleLocation);
     const single = createScriptFixture(row.source);
     const resolveOneByOne = (offset: number) => single.dictionary.resolveLocation(null, single.script, offset);
 
@@ -311,13 +330,14 @@ test('adds a node per sampled node and script offset after the call tree nodes, 
 
 test('locates a nested call without call coordinates at the location without a position of the caller', () => {
     const { dictionary, scripts } = createScripts();
-    const a = dictionary.resolveCallFrameIndex({
+    const callFrameA = {
         scriptId: 7,
         url: 'first.js',
         functionName: 'a',
         lineNumber: 0,
         columnNumber: 9
-    }, scripts);
+    };
+    const a = dictionary.resolveCallFrameIndex(callFrameA, scripts);
 
     assert.equal(dictionary.callFrames[a].noLocLocation, null);
 
