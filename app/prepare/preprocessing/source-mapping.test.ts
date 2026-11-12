@@ -148,7 +148,9 @@ test('original scripts looked up in advance are registered on mapping in the sam
         location.callFrame.name
     ];
     const mapped = generatedLocations.map(index => dictionary.locations[originalLocations[index]]);
-    const singleMapped = single.generatedLocations.map(index => single.dictionary.locations[singleLocations[index]]);
+    const singleMapped = single.generatedLocations.map(index =>
+        single.dictionary.locations[singleLocations[index]]
+    );
 
     assert.deepEqual(dictionary.scripts.map(describeScript), single.dictionary.scripts.map(describeScript));
     assert.deepEqual(mapped.map(describeLocation), singleMapped.map(describeLocation));
@@ -250,4 +252,30 @@ test('original scripts start parsing once per lookup, mapping waits for the pars
     // Without new locations there is nothing to parse
     await sourceMapping.mapLocations();
     assert.equal(prepareScriptSources.mock.calls.length, 1);
+});
+
+test('mapping resolves locations of a lookup while original scripts of a later lookup are parsing', async () => {
+    let finishParsing = () => {};
+    const { dictionary, generatedScript, generatedFunction } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
+    const parsing = new Promise<undefined>(resolve => finishParsing = () => resolve(undefined));
+    const callFrameNames = () => dictionary.callFrames.map(callFrame => callFrame.name);
+
+    sourceMapping.prepareLocations();
+    const added = dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, 25);
+    prepareScriptSources.mockReturnValueOnce(parsing);
+    sourceMapping.prepareLocations();
+
+    let mapped = false;
+    const mapping = sourceMapping.mapLocations();
+    mapping.then(() => mapped = true);
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(mapped, false);
+    assert.ok(callFrameNames().includes('helper'));
+
+    finishParsing();
+    const originalLocations = await mapping;
+
+    assert.deepEqual(describeOriginal(dictionary.locations[originalLocations[added]]), ['a.js', 1, 37, 'inner']);
 });

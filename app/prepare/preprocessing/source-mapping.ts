@@ -23,10 +23,12 @@ export class SourceMapping {
     #originalScriptsByUrl: Map<string, CpuProScript[]>;
     #nextOriginalScriptId: number = -1;
     #unregisteredScripts: CpuProScript[];
-    #parsing: Promise<void>[];
 
-    // original positions of looked up locations to be resolved into original locations
+    // original positions of looked up locations to be resolved into original locations;
+    // every lookup adds a batch of them, resolvable once parsing of its original scripts is done
     #lookedUpLocationsCount: number = 0;
+    #parsing: Promise<void>[]; // by batch
+    #batchEnds: number[]; // by batch, end of the batch in pending locations
     #pendingLocations: number[];
     #pendingScripts: CpuProScript[];
     #pendingLines: number[];
@@ -43,6 +45,7 @@ export class SourceMapping {
         this.#originalScriptsByUrl = new Map();
         this.#unregisteredScripts = [];
         this.#parsing = [];
+        this.#batchEnds = [];
         this.#pendingLocations = [];
         this.#pendingScripts = [];
         this.#pendingLines = [];
@@ -99,6 +102,7 @@ export class SourceMapping {
         // function ranges of original scripts are required to resolve call frames of original locations
         if (originalScripts.size > 0) {
             this.#parsing.push(prepareScriptSources(originalScripts, this.#diagnose));
+            this.#batchEnds.push(this.#pendingLocations.length);
         }
     }
 
@@ -111,7 +115,9 @@ export class SourceMapping {
 
         // registering happens here rather than on lookup, so the order of dictionary scripts and modules
         // doesn't depend on when the locations were looked up
-        for (const script of this.#unregisteredScripts) {
+        for (let i = 0; i < this.#unregisteredScripts.length; i++) {
+            const script = this.#unregisteredScripts[i];
+
             script.module = dictionary.resolveModule(script);
 
             // ownership files are paths of original sources
@@ -126,30 +132,33 @@ export class SourceMapping {
             dictionary.scripts.push(script);
         }
 
-        await Promise.all(this.#parsing);
-
         const pendingLocations = this.#pendingLocations;
         const resolvedLocations = new Int32Array(pendingLocations.length);
 
-        for (let i = 0; i < pendingLocations.length; i++) {
-            const location = locations[pendingLocations[i]];
-            const script = this.#pendingScripts[i];
-            const line = this.#pendingLines[i];
-            const column = this.#pendingColumns[i];
-            // a position belongs to the innermost function whose declaration contains it, including the function's name;
-            // a script without source or not parsed has no functions
-            const functionRange = getFunctionAtSourceLineColumn(script, line, column);
-            const callFrame = functionRange !== null
-                ? dictionary.resolveFunctionRangeCallFrame(script, functionRange)
-                : dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+        // a batch is resolved while parsing of the following batches goes on
+        for (let i = 0, j = 0; j < this.#batchEnds.length; j++) {
+            await this.#parsing[j];
 
-            if (location.callFrame.noLocLocation === location) {
-                resolvedLocations[i] = dictionary.resolveLocationIndex(callFrame);
-            } else if (location.callFrame.location === location) {
-                // the start of a generated function denotes the start of its original function
-                resolvedLocations[i] = callFrame.location.id - 1;
-            } else {
-                resolvedLocations[i] = dictionary.resolveLocationIndex(callFrame, script, -1, line, column);
+            for (; i < this.#batchEnds[j]; i++) {
+                const location = locations[pendingLocations[i]];
+                const script = this.#pendingScripts[i];
+                const line = this.#pendingLines[i];
+                const column = this.#pendingColumns[i];
+                // a position belongs to the innermost function whose declaration contains it,
+                // including the function's name; a script without source or not parsed has no functions
+                const functionRange = getFunctionAtSourceLineColumn(script, line, column);
+                const callFrame = functionRange !== null
+                    ? dictionary.resolveFunctionRangeCallFrame(script, functionRange)
+                    : dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
+
+                if (location.callFrame.noLocLocation === location) {
+                    resolvedLocations[i] = dictionary.resolveLocationIndex(callFrame);
+                } else if (location.callFrame.location === location) {
+                    // the start of a generated function denotes the start of its original function
+                    resolvedLocations[i] = callFrame.location.id - 1;
+                } else {
+                    resolvedLocations[i] = dictionary.resolveLocationIndex(callFrame, script, -1, line, column);
+                }
             }
         }
 
@@ -172,6 +181,7 @@ export class SourceMapping {
         this.#mappedLocationsCount = locations.length;
         this.#unregisteredScripts = [];
         this.#parsing = [];
+        this.#batchEnds = [];
         this.#pendingLocations = [];
         this.#pendingScripts = [];
         this.#pendingLines = [];
@@ -220,7 +230,10 @@ export class SourceMapping {
             }
 
             // a source map may list the same source several times
-            script = scriptsByUrl.find(script => script.originalFor === generatedScript && script.source === source) ?? null;
+            const isSameScript = (script: CpuProScript) =>
+                script.originalFor === generatedScript && script.source === source;
+
+            script = scriptsByUrl.find(isSameScript) ?? null;
 
             if (script === null) {
                 script = createScript(this.#nextOriginalScriptId--, url, source);

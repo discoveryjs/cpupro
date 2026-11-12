@@ -3,6 +3,7 @@ import type { CpuProCompilationRecord, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineAttribute, ProfileLineMethods, ProfileMemline } from './types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { computeCumulative, computeCumulativeEnd, type Population } from '../computations/population.js';
+import type { SourceMapping } from '../preprocessing/source-mapping.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { Dictionary } from '../dictionary.js';
@@ -27,6 +28,7 @@ import {
 export type CreateMemlineOptions = {
     work: WorkHandler;
     compilations: CpuProCompilationRecord[] | null;
+    sourceMapping: SourceMapping | null;
 };
 
 const metricName: Record<Metric, string> = {
@@ -95,7 +97,8 @@ export async function createMemline(
 ): Promise<ProfileMemline | null> {
     const {
         work = noopWorkHandler,
-        compilations = null
+        compilations = null,
+        sourceMapping = null
     } = options || {};
     const {
         _cpuproAllocationIds,
@@ -291,6 +294,11 @@ export async function createMemline(
             _cpuproAllocationBuiltinNames
         )
     );
+
+    // Original sources of the allocation locations are parsed while the rest of the profile is created
+    if (sourceMapping !== null) {
+        await work('prepare source maps', () => sourceMapping.prepareLocations());
+    }
 
     const locationBreakdown = vectorLocations !== null
         ? await work('create location breakdown', () =>

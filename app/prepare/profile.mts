@@ -79,7 +79,9 @@ export function toggleProfile(model: Model, profile: Profile) {
         primaryProfile: newPrimaryProfile,
         profiles: profiles.map(entry => ({
             ...entry,
-            disabled: entry === bucketProfileEntry ? disable : entry.disabled
+            disabled: entry === bucketProfileEntry
+                ? disable
+                : entry.disabled
         }))
     });
 
@@ -164,7 +166,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         callStackSampledTreeSet,
         allocationSamples,
         preparseScriptSourcesResult,
-        { work, compilations }
+        { work, compilations, sourceMapping }
     );
 
     if (memline) {
