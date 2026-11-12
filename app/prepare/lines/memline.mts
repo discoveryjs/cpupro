@@ -1,5 +1,5 @@
 import type { Profile } from '../profile.mjs';
-import type { AllocationIdVector, CpuProCompilationRecord, V8CpuProfile } from '../types.js';
+import type { CpuProCompilationRecord, V8CpuProfile } from '../types.js';
 import type { Metric, ProfileLineMethods, ProfileMemline } from './types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import type { Population } from '../computations/population.js';
