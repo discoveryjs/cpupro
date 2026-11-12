@@ -364,6 +364,9 @@ export function createVectorLocations(
 // Sites of locations: script offsets of owners (call frames, call tree nodes or script ids) with context info,
 // numbered in the order they are found. The table of sites is a compute buffer: elements find their sites
 // in chunks staged into the buffer, by WASM or JavaScript, and the table grows between chunks.
+// The table grows since the number of sites is known only once they are found, and the bound from the input,
+// the number of elements, is about a hundred times the sites of an allocation trace; a temporary Array doesn't
+// fit, since WASM finds sites in the table itself.
 class LocationSites {
     count = 0;
     #buffer: SitesBufferMap;

@@ -102,7 +102,10 @@ export function powerOfTwoCapacity(size: number) {
     return 2 ** Math.ceil(Math.log2(Math.max(16, size)));
 }
 
-// A typed array of twice the length with the array's elements
+// A typed array of twice the length with the array's elements.
+// Not recommended: not a ban, but a use has to prove there is no other way. Each step copies the elements into
+// a new external allocation, and external allocations start major GCs; a length or its bound known from the input
+// structure, a temporary Array converted at the end, or a stronger move often makes growing unnecessary
 export function growTypedArray<T extends Int32Array | Uint32Array | Float64Array>(array: T): T {
     const grown = new (array.constructor as new (length: number) => T)(array.length * 2);
 
