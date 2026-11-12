@@ -6,6 +6,7 @@ import type { EventClasses } from './population-filter.js';
 import type { PreparedAttributeFilter } from './attribute-filter.js';
 import type { RangeSet } from './coordinates.js';
 import { trackReads } from '../../../test/helpers/read-tracker.js';
+import { createUint32Progression } from '../misc/utils.js';
 
 type EventValues = Uint8Array | Uint16Array | Uint32Array;
 type RecordRow = [part: number, sample: number, eventClass: number, weight: number, count: number];
@@ -80,12 +81,15 @@ function recordsOf(records: PopulationRecords) {
         const end = records.partRecords[i + 1];
 
         for (let j = records.partRecords[i]; j < end; j++) {
+            const { samples, classes, weights, counts } = records.blocks[Math.floor(j / records.blockSize)];
+            const index = j % records.blockSize;
+
             result.push([
                 i,
-                records.recordSamples[j],
-                records.recordClasses[j],
-                records.recordWeights[j],
-                records.recordCounts[j]
+                samples[index],
+                classes[index],
+                weights[index],
+                counts[index]
             ]);
         }
     }
@@ -254,6 +258,37 @@ test('splits a bin of more than 65,536 events into parts of at most 65,536 event
         [0, 0, 0, 0, 0],
         [1, 0, 0, 2000, 1]
     ]);
+});
+
+// Every event is a sample of its own, so every event is a record and records of 1.1M events fill more than a block
+// of 1M records; ranges and a sample filter cross the end of the first block
+test('metrics from records equal event aggregation across blocks of records', () => {
+    const eventCount = 1_100_000;
+    const population = new Population(createUint32Progression(eventCount), new Uint32Array(eventCount).fill(1));
+    const viewport = new PopulationFiltered(population);
+    const expected = new PopulationFiltered(population);
+    const accepts = Uint8Array.from({ length: eventCount }, (_, sample) => sample % 3 === 0 ? 0 : 1);
+    const filter: PreparedAttributeFilter = { key: 'sample', domain: 'sample', size: eventCount, accepts };
+
+    expected.setRecords(null);
+    viewport.filter.set(filter);
+    expected.filter.set(filter);
+    const rangeSets: RangeSet[] = [
+        [{ start: 1_000_000, end: 1_060_000 }],
+        [{ start: 0, end: 500_000 }, { start: 900_000, end: 1_100_000 }]
+    ];
+
+    assert.ok(population.records.blocks.length > 1);
+
+    for (let i = 0; i < rangeSets.length; i++) {
+        viewport.setRanges(rangeSets[i]);
+        expected.setRanges(rangeSets[i]);
+
+        assert.deepEqual(viewport.samplesTotal, expected.samplesTotal);
+        assert.deepEqual(viewport.samplesCount, expected.samplesCount);
+        assert.deepEqual(viewport.sink, expected.sink);
+        assert.equal(viewport.countAccepted([[0, eventCount]]), expected.countAccepted([[0, eventCount]]));
+    }
 });
 
 test('records sum values and nonzero counts of a part per sample and class', () => {
