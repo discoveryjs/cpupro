@@ -842,9 +842,12 @@ function intersectRangeSets(source: RangeSet | null, ranges: RangeSet | null): R
 
 function computeCumulative(values: Uint32Array) {
     const cumulative = new Float64Array(values.length);
+    let sum = 0;
 
-    for (let index = 1; index < values.length; index++) {
-        cumulative[index] = cumulative[index - 1] + values[index - 1];
+    // PERF: A running sum keeps the previous position in a register rather than reading back the one just stored
+    for (let i = 0; i < values.length; i++) {
+        cumulative[i] = sum;
+        sum += values[i];
     }
 
     return cumulative;
