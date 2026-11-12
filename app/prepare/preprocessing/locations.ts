@@ -1,5 +1,5 @@
 import { scriptFromScriptId } from './scripts.js';
-import { capacity, grow } from '../misc/utils.js';
+import { capacity, createUint32Progression, grow } from '../misc/utils.js';
 import type { Dictionary } from '../dictionary.js';
 import type { TreeSource } from '../computations/build-trees.js';
 import type {
@@ -15,20 +15,10 @@ export type VectorLocations = TreeSource<CpuProLocation> & {
     samples: Uint32Array;
 };
 
-/**
- * Process sample locations to build a location tree.
- *
- * Locations represent execution points that can be:
- * - Precise execution locations within functions (from profile data)
- * - Call frame definition locations
- *
- * Each location combines:
- * - callFrame: The function being executed
- * - scriptOffset: Byte offset in script (from profile or callFrame.start, or -1)
- * - line/column: Position in source (from callFrame, can compute from scriptOffset if source available)
- *
- * Returns a location tree for aggregating metrics by execution point.
- */
+// Locations of samples and of their call tree: a node of the call tree is located at the script offset of its call
+// in the parent's call frame, and a sample at its script offset in its node's call frame. A location combines
+// a call frame, a script offset and the line and column of the offset when the source is available. Samples become
+// samples of location nodes added after the call tree nodes, a node per sampled node and script offset.
 export function createLocationsFromScriptOffsets(
     dict: Dictionary,
     nodeParent: Uint32Array,
@@ -243,8 +233,8 @@ export function createVectorLocations(
     let previousScriptId: number | string = NaN;
     let previousScriptOffset = 0;
     let previousContextInfo = 0;
-    let owner = 0;
-    let site = 0;
+    let numericScriptId = 0;
+    let sample = 0;
 
     for (let i = 0; i < scriptOffsets.length; i++) {
         const scriptId = scriptIds[i];
@@ -257,18 +247,18 @@ export function createVectorLocations(
             if (scriptId !== previousScriptId) {
                 // Sites are owned by script ids in the numeric domain of the profile's scripts,
                 // some formats give script ids as strings
-                owner = typeof scriptId === 'number'
+                numericScriptId = typeof scriptId === 'number'
                     ? scriptId
                     : scriptsMap.normalizeScriptId(scriptId);
             }
 
-            site = sites.siteOf(owner, scriptOffset, contextInfoValue);
+            sample = sites.siteOf(numericScriptId, scriptOffset, contextInfoValue);
             previousScriptId = scriptId;
             previousScriptOffset = scriptOffset;
             previousContextInfo = contextInfoValue;
         }
 
-        samples[i] = site;
+        samples[i] = sample;
     }
 
     const vmStateCallFrames = buildContextVmStateDict(
@@ -332,33 +322,68 @@ export function createVectorLocations(
         return node;
     };
 
+    // Sites are resolved owner by owner in ascending script offsets, the order in which dictionary resolves
+    // locations of a script; sites of the same offset differ in context info and share the offset's location
+    const order = sites.ownerOffsetOrder();
+    const ownerOffsets = new Int32Array(sites.count);
     const siteNodes = new Int32Array(sites.count);
+    let ownerStart = 0;
 
-    for (let i = 0; i < sites.count; i++) {
-        const script = scriptFromScriptId(sites.owners[i], null, scriptsMap);
-        const scriptOffset = sites.offsets[i];
-        const contextInfoValue = sites.contexts[i];
-        // without a script and context info, the site is at the unknown location
-        let node = 1;
+    while (ownerStart < order.length) {
+        const owner = sites.owners[order[ownerStart]];
+        const script = scriptFromScriptId(owner, null, scriptsMap);
+        let ownerEnd = ownerStart + 1;
+        let offsetCount = 1;
 
-        if (script !== null) {
-            node = locationNode(dictionary.resolveLocationIndex(null, script, scriptOffset));
+        ownerOffsets[0] = sites.offsets[order[ownerStart]];
 
-            if (contextInfoValue !== 0) {
-                node = contextNode(node, contextInfoValue);
+        while (ownerEnd < order.length && sites.owners[order[ownerEnd]] === owner) {
+            const scriptOffset = sites.offsets[order[ownerEnd]];
+
+            if (ownerOffsets[offsetCount - 1] !== scriptOffset) {
+                ownerOffsets[offsetCount++] = scriptOffset;
             }
-        } else if (contextInfoValue !== 0) {
-            const callFrame = resolveCallFrameFromContextInfo(
-                dictionary,
-                contextInfoValue,
-                vmStateCallFrames,
-                builtinsCallFrames
-            );
 
-            node = locationNode(dictionary.resolveLocationIndex(callFrame));
+            ownerEnd++;
         }
 
-        siteNodes[i] = node;
+        const locationIndices = script !== null
+            ? dictionary.resolveScriptOffsetLocationIndices(script, ownerOffsets.subarray(0, offsetCount))
+            : null;
+        let offsetIndex = 0;
+
+        for (let i = ownerStart; i < ownerEnd; i++) {
+            const site = order[i];
+            const contextInfoValue = sites.contexts[site];
+            // Without a script and context info, the site is at the unknown location
+            let node = 1;
+
+            if (locationIndices !== null) {
+                // The sites ascend in script offsets as the offsets of the locations do
+                while (ownerOffsets[offsetIndex] !== sites.offsets[site]) {
+                    offsetIndex++;
+                }
+
+                node = locationNode(locationIndices[offsetIndex]);
+
+                if (contextInfoValue !== 0) {
+                    node = contextNode(node, contextInfoValue);
+                }
+            } else if (contextInfoValue !== 0) {
+                const callFrame = resolveCallFrameFromContextInfo(
+                    dictionary,
+                    contextInfoValue,
+                    vmStateCallFrames,
+                    builtinsCallFrames
+                );
+
+                node = locationNode(dictionary.resolveLocationIndex(callFrame));
+            }
+
+            siteNodes[site] = node;
+        }
+
+        ownerStart = ownerEnd;
     }
 
     return {
@@ -390,13 +415,22 @@ class LocationSites {
     siteOf(owner: number, offset: number, context: number) {
         const slots = this.#slots;
         const slotMask = slots.length - 1;
-        let slot = hashSite(owner, offset, context) & slotMask;
+        const homeSlot = hashSite(owner, offset, context) & slotMask;
+        let slot = homeSlot;
         let site = slots[slot];
 
         while (site !== -1) {
             if (this.offsets[site] === offset &&
                 this.contexts[site] === context &&
                 this.owners[site] === owner) {
+                // PERF: A found site takes its home slot, so sites met again are found at the first probe.
+                // The site displaced from the home slot takes the found one's slot, which follows the home slot
+                // in the same run of occupied slots, so a probe from its own home slot still reaches it
+                if (slot !== homeSlot) {
+                    slots[slot] = slots[homeSlot];
+                    slots[homeSlot] = site;
+                }
+
                 return site;
             }
 
@@ -424,6 +458,39 @@ class LocationSites {
         return site;
     }
 
+    // Sites in ascending offsets of each owner, the owners in the order of their first sites: a radix sort
+    // of offsets by 16-bit digits followed by a stable sort by owner
+    ownerOffsetOrder() {
+        const keys = new Uint32Array(this.count);
+        const ownerKeys = new Map<number, number>();
+
+        for (let i = 0; i < this.count; i++) {
+            keys[i] = this.offsets[i] & 0xffff;
+        }
+
+        const lowDigitOrder = countingSort(createUint32Progression(this.count), keys, 0x10000);
+
+        // The sign bit of the high digit is flipped, so negative offsets come first
+        for (let i = 0; i < this.count; i++) {
+            keys[i] = (this.offsets[i] >>> 16) ^ 0x8000;
+        }
+
+        const offsetOrder = countingSort(lowDigitOrder, keys, 0x10000);
+
+        for (let i = 0; i < this.count; i++) {
+            let ownerKey = ownerKeys.get(this.owners[i]);
+
+            if (ownerKey === undefined) {
+                ownerKey = ownerKeys.size;
+                ownerKeys.set(this.owners[i], ownerKey);
+            }
+
+            keys[i] = ownerKey;
+        }
+
+        return countingSort(offsetOrder, keys, ownerKeys.size);
+    }
+
     #rehash() {
         const slots = new Int32Array(2 * this.#slots.length).fill(-1);
         const slotMask = slots.length - 1;
@@ -440,6 +507,28 @@ class LocationSites {
 
         this.#slots = slots;
     }
+}
+
+// Indices in a stable order of their keys, the keys are below the key count
+function countingSort(indices: Uint32Array, keys: Uint32Array, keyCount: number) {
+    const keyStarts = new Uint32Array(keyCount + 1);
+    const sorted = new Uint32Array(indices.length);
+
+    for (let i = 0; i < indices.length; i++) {
+        keyStarts[keys[indices[i]] + 1]++;
+    }
+
+    for (let i = 0; i < keyCount; i++) {
+        keyStarts[i + 1] += keyStarts[i];
+    }
+
+    for (let i = 0; i < indices.length; i++) {
+        const index = indices[i];
+
+        sorted[keyStarts[keys[index]]++] = index;
+    }
+
+    return sorted;
 }
 
 function hashSite(owner: number, offset: number, context: number) {

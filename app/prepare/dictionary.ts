@@ -29,6 +29,7 @@ import { scriptFromScriptId } from './preprocessing/scripts.js';
 import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
 import {
     getFunctionAtScriptOffset,
+    getFunctionsAtScriptOffsets,
     getFunctionEndFromScriptLineColumn,
     getScriptLineColumnFromOffset,
     getScriptOffsetFromLineColumn,
@@ -428,7 +429,7 @@ export class Dictionary {
             this.#locationsByNoScriptCallFrame.set(callFrame, locationIndex);
         }
 
-        // The call frame of a location in a script is resolved once the location is registered: resolving
+        // the call frame of a location in a script is resolved once the location is registered: resolving
         // may add the call frame, which takes the location as its start when they share a position
         if (callFrame === this.#unknownCallFrame && script !== null) {
             location.callFrame = this.resolveLocationCallFrame(
@@ -519,6 +520,41 @@ export class Dictionary {
         }
 
         return locationIndex;
+    }
+
+    // locations of a script at ascending script offsets, as resolveLocationIndex() resolves them one by one;
+    // a new location inside a function takes the function's call frame; in ascending offsets, locations
+    // of a function come in a row until a nested function, so the call frame is resolved once per such row
+    resolveScriptOffsetLocationIndices(script: CpuProScript, scriptOffsets: ArrayLike<number>) {
+        const functions = getFunctionsAtScriptOffsets(script, scriptOffsets);
+        const locationIndices = new Uint32Array(scriptOffsets.length);
+        let callFrameFunction: FunctionRange | null = null;
+        let functionCallFrame: CpuProCallFrame | null = null;
+
+        for (let i = 0; i < scriptOffsets.length; i++) {
+            const scriptOffset = scriptOffsets[i];
+            const functionRange = functions[i];
+
+            // the script's start and offsets outside functions are resolved as a single location
+            if (scriptOffset <= 0 || functionRange === null) {
+                locationIndices[i] = this.resolveLocationIndex(null, script, scriptOffset);
+            } else {
+                let locationIndex = this.#findScriptLocationIndex(script, scriptOffset, -1, -1);
+
+                if (locationIndex === -1) {
+                    if (functionRange !== callFrameFunction) {
+                        functionCallFrame = this.resolveFunctionRangeCallFrame(script, functionRange);
+                        callFrameFunction = functionRange;
+                    }
+
+                    locationIndex = this.resolveLocationIndex(functionCallFrame, script, scriptOffset);
+                }
+
+                locationIndices[i] = locationIndex;
+            }
+        }
+
+        return locationIndices;
     }
 
     #findScriptLocationIndex(script: CpuProScript, scriptOffset: number, line: number, column: number) {

@@ -93,31 +93,33 @@ function binarySearchFunctionRangeIndex(starts: Uint32Array<ArrayBuffer>, positi
 }
 
 export function findFunctionAtPosition(functionRanges: FunctionRanges, position: number) {
+    return functionAtBoundary(
+        functionRanges,
+        binarySearchFunctionRangeIndex(functionRanges.starts, position),
+        position
+    );
+}
+
+// The function at a position, given the last boundary at or before the position (-1 when there is none)
+function functionAtBoundary(functionRanges: FunctionRanges, rangeIndex: number, position: number) {
+    const { indexes, ranges } = functionRanges;
     let candidate: FunctionRange | null = null;
 
-    if (functionRanges.starts.length > 0) {
-        const { starts, indexes, ranges } = functionRanges;
-        const rangeIndex = binarySearchFunctionRangeIndex(
-            starts,
-            position
-        );
+    if (rangeIndex !== -1) {
+        const rangeIndex2 = indexes[rangeIndex];
 
-        if (rangeIndex !== -1) {
-            const rangeIndex2 = indexes[rangeIndex];
+        if (rangeIndex2 !== -1) {
+            candidate = ranges[rangeIndex2];
+        }
 
-            if (rangeIndex2 !== -1) {
-                candidate = ranges[rangeIndex2];
-            }
+        if ((candidate === null || candidate.callFrameStart !== position) && rangeIndex > 0) {
+            const prevIndex = indexes[rangeIndex - 1];
 
-            if ((candidate === null || candidate.callFrameStart !== position) && rangeIndex > 0) {
-                const prevIndex = indexes[rangeIndex - 1];
+            if (prevIndex !== -1) {
+                const prevRange = ranges[prevIndex];
 
-                if (prevIndex !== -1) {
-                    const prevRange = ranges[prevIndex];
-
-                    if (prevRange.end === position) {
-                        candidate = prevRange;
-                    }
+                if (prevRange.end === position) {
+                    candidate = prevRange;
                 }
             }
         }
@@ -189,6 +191,30 @@ export function getFunctionAtScriptOffset(script: CpuProScript | null, offset: n
     return functionRanges !== null
         ? findFunctionAtPosition(functionRanges, offset)
         : null;
+}
+
+// Functions at ascending offsets of a script, as getFunctionAtScriptOffset() finds them: range boundaries
+// strictly ascend, so the last boundary at or before each offset is found by a single walk over them
+export function getFunctionsAtScriptOffsets(script: CpuProScript | null, offsets: ArrayLike<number>) {
+    const functionRanges = getScriptFunctionRanges(script);
+    const functions: (FunctionRange | null)[] = new Array(offsets.length).fill(null);
+
+    if (functionRanges !== null) {
+        const { starts } = functionRanges;
+        let rangeIndex = -1;
+
+        for (let i = 0; i < offsets.length; i++) {
+            const offset = offsets[i];
+
+            while (rangeIndex + 1 < starts.length && starts[rangeIndex + 1] <= offset) {
+                rangeIndex++;
+            }
+
+            functions[i] = functionAtBoundary(functionRanges, rangeIndex, offset);
+        }
+    }
+
+    return functions;
 }
 
 export function getFunctionAtSourceLineColumn(script: CpuProScript, line: number, column: number) {

@@ -15,6 +15,7 @@ import {
     getFunctionAtScriptOffset,
     getFunctionAtSourceLineColumn,
     getFunctionEndFromScriptLineColumn,
+    getFunctionsAtScriptOffsets,
     getScriptLineColumnFromOffset,
     getScriptOffsetFromLineColumn,
     isScriptTopLevelOffset,
@@ -147,6 +148,8 @@ test.each([
     'function outer(value = () => 1) { return value(); }'
 ])('agrees with an inclusive runtime-range oracle for %s', source => {
     const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
+    const offsets = Array.from({ length: source.length + 2 }, (_, offset) => offset);
+    const functionsAtOffsets = getFunctionsAtScriptOffsets(createScriptFixture(source).script, offsets);
 
     for (let i = 0; i <= source.length + 1; i++) {
         const startsAt = (range: FunctionRange) => range.callFrameStart === i;
@@ -161,6 +164,7 @@ test.each([
 
         assert.equal(findFunctionAtPosition(ranges, i), expected, `offset ${i}`);
         assert.equal(findFunctionAtLineColumn(ranges, line, column), expected, `line/column at ${i}`);
+        assert.deepEqual(functionsAtOffsets[i], expected, `ascending offsets at ${i}`);
     }
 });
 

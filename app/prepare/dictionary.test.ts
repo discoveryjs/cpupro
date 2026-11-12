@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { Dictionary } from './dictionary.js';
 import { createScript } from './preprocessing/scripts.js';
+import type { CpuProLocation } from './types.js';
+import { createScriptFixture } from '../../test/fixtures/scripts.js';
 
 test('resolves a script location without a position to the script call frame location', () => {
     const dictionary = new Dictionary();
@@ -53,4 +55,33 @@ test('adds locations of well-known call frames at the indices of the call frames
     for (let i = 0; i < indices.length; i++) {
         assert.equal(dictionary.locations[indices[i]], dictionary.callFrames[indices[i]].location);
     }
+});
+
+test('resolves locations of a script at ascending offsets as it resolves them one by one', () => {
+    const source = 'function outer() {\n  const inner = () => [1];\n  return inner() + 1;\n}\nouter();\n';
+    // offsets from before the script's start to after its end, inside nested functions, at their bounds and between
+    const scriptOffsets = Array.from({ length: source.length + 3 }, (_, offset) => offset - 1);
+    const describeLocation = (location: CpuProLocation) => [
+        location.scriptOffset,
+        location.line,
+        location.column,
+        location.callFrame.name,
+        location.callFrame.start,
+        location.callFrame.end
+    ].join(' ');
+    const batch = createScriptFixture(source);
+    const single = createScriptFixture(source);
+    const resolveOneByOne = (offset: number) => single.dictionary.resolveLocation(null, single.script, offset);
+    const batchLocation = (index: number) => batch.dictionary.locations[index];
+    const locationIndices = batch.dictionary.resolveScriptOffsetLocationIndices(batch.script, scriptOffsets);
+
+    assert.deepEqual(
+        [...locationIndices].map(batchLocation).map(describeLocation),
+        scriptOffsets.map(resolveOneByOne).map(describeLocation)
+    );
+    // the same locations are added, in another order
+    assert.deepEqual(
+        batch.dictionary.locations.map(describeLocation).sort(),
+        single.dictionary.locations.map(describeLocation).sort()
+    );
 });

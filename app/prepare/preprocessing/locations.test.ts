@@ -173,32 +173,53 @@ test.each([
     assert.equal(result, null);
 });
 
-test('maps allocations at locations added by resolving other locations to nodes of these locations', () => {
-    const source = 'function outer() {\n  return [1].map(function inner(x) { return { x }; });\n}\nouter();';
-    const { dictionary, scripts, script } = createScriptFixture(source);
+const nestedSource = 'function outer() {\n  return [1].map(function inner(x) { return { x }; });\n}\nouter();';
+const longSource = `function first() { return {}; }\nfunction second() {${' '.repeat(0x10000)}return []; }`;
+
+test.each([
+    {
+        // the call frame of a location inside "outer" adds locations of "outer", including its start;
+        // another location inside "outer" is added after them, then an allocation hits the start of "outer"
+        title: 'added by resolving other locations',
+        source: nestedSource,
+        scriptOffsets: [nestedSource.indexOf('return'), nestedSource.indexOf('[1]'), nestedSource.indexOf('()')]
+    },
+    {
+        // locations of a script are resolved in ascending offsets, ordered by both 16-bit digits of the offsets
+        title: 'of offsets differing in either 16-bit digit',
+        source: longSource,
+        scriptOffsets: [0x10010, 20, -1, 0x10000, 15, 0x10010, 0xffff]
+    }
+])('maps allocations at locations $title to nodes of these locations', row => {
+    const { dictionary, scripts, script } = createScriptFixture(row.source);
     const { wellKnownIndex } = dictionary.callFrames;
 
     // the profile's tree resolves unknown and root locations first
     dictionary.resolveLocationIndex(dictionary.callFrames[wellKnownIndex.unknown]);
     dictionary.resolveLocationIndex(dictionary.callFrames[wellKnownIndex.root]);
 
-    // the call frame of a location inside "outer" adds locations of "outer", including its start;
-    // another location inside "outer" is added after them, then an allocation hits the start of "outer"
-    const scriptOffsets = [source.indexOf('return'), source.indexOf('[1]'), source.indexOf('()')];
     const result = createVectorLocations(
         dictionary,
         scripts,
-        scriptOffsets.map(() => 7),
-        scriptOffsets,
+        row.scriptOffsets.map(() => 7),
+        row.scriptOffsets,
         null,
         null,
         null
     )!;
     const { samples, sourceIdToNode, nodes } = result;
+    const allocationLocations = [...samples].map(sample => dictionary.locations[nodes[sourceIdToNode[sample]]]);
+    const single = createScriptFixture(row.source);
+    const resolveOneByOne = (offset: number) => single.dictionary.resolveLocation(null, single.script, offset);
 
     assert.deepEqual(
-        [...samples].map(sample => nodes[sourceIdToNode[sample]]),
-        scriptOffsets.map(offset => dictionary.resolveLocationIndex(null, script, offset))
+        allocationLocations,
+        row.scriptOffsets.map(offset => dictionary.resolveLocation(null, script, offset))
+    );
+    // the locations have the call frames that resolving them one by one gives
+    assert.deepEqual(
+        allocationLocations.map(describeLocation),
+        row.scriptOffsets.map(resolveOneByOne).map(describeLocation)
     );
 });
 
