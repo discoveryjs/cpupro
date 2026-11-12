@@ -14,6 +14,30 @@ export function applyRangeToPopulation(view: RangeView, filtered: PopulationFilt
     return unsubscribe;
 }
 
+type ScaleLine = Pick<ProfileLine, 'kind' | 'range' | 'profile'>;
+
+// The viewport without a request: the extent of the scale a line's events are placed on (absolute coordinates).
+// Time is the clock of the session the line's profile is in, so a line of time spans the capture bounds of every
+// profile of its session; other lines are scales of their own. Histograms without a zoom show it, zooming narrows
+// the viewport within it, and windows of a zoom are cells of its halving levels
+export function lineViewportBounds(line: ScaleLine): Range {
+    const profiles = line.kind === 'time'
+        ? line.profile?.thread?.process?.session.profiles ?? []
+        : [];
+    let { start, end } = line.range.resolvedExtent;
+
+    for (let i = 0; i < profiles.length; i++) {
+        const timeline = profiles[i].timeline;
+
+        if (timeline) {
+            start = Math.min(start, timeline.axisStart);
+            end = Math.max(end, timeline.axisEnd);
+        }
+    }
+
+    return { start, end };
+}
+
 // The window of a viewport: aligned cells of the extent's halving levels, at the level whose cell is the largest
 // within twice the viewport size. The window contains the viewport and is 1 to 4 viewport sizes, so a fixed number
 // of window bins gives at least one bin per display column at a quarter of that number of columns
@@ -59,50 +83,42 @@ export function windowHolds(window: RangeSet | null, ranges: RangeSet | null, ex
         ? extent
         : rangesEnvelope(window);
 
-    return windowBounds.start <= start &&
+    return (
+        windowBounds.start <= start &&
         end <= windowBounds.end &&
-        windowBounds.end - windowBounds.start <= 4 * (end - start);
+        windowBounds.end - windowBounds.start <= 4 * (end - start)
+    );
+}
+
+// The extent windows of a line's zoom are cells of: the requested viewport, or the line's scale without a request,
+// so windows are aligned to the bins of histograms without a zoom
+export function lineWindowExtent(line: ScaleLine & Pick<ProfileLine, 'viewport'>): Range {
+    const ranges = line.viewport.selection.ranges;
+
+    return ranges?.length
+        ? rangesEnvelope(ranges)
+        : lineViewportBounds(line);
 }
 
 // The window of the zoom within the viewport: aligned cells of the viewport's halving levels, or the viewport itself.
 // The window is kept while it holds the zoom, so zooming and panning inside it change only how histograms are
 // displayed. A new viewport is shown whole, it ends the zoom request and gets a window of its own
-export function prepareLineWindow({ viewport, zoom, window }: ProfileLine) {
-    const scopeExtent = () => {
-        const scope = viewport.selection.ranges;
-
-        return scope?.length
-            ? rangesEnvelope(scope)
-            : viewport.resolvedExtent;
-    };
+export function prepareLineWindow(line: ProfileLine) {
+    const { viewport, zoom, window } = line;
     const zoomWindow = () => {
         const ranges = zoom.selection.ranges ?? viewport.selection.ranges;
-        const scope = scopeExtent();
 
-        const bounds = ranges !== null && ranges.length > 0
-            ? rangesEnvelope(ranges)
-            : null;
-
-        if (bounds === null || (scope.start <= bounds.start && bounds.end <= scope.end)) {
-            return viewportWindow(ranges, scope) ?? viewport.selection.ranges;
-        }
-
-        // A zoom shared by profiles reaches beyond the extent of a line covering a part of their bounds, the cells
-        // are aligned to both so the window stays within the zoom sizes
-        const extent = {
-            start: Math.min(scope.start, bounds.start),
-            end: Math.max(scope.end, bounds.end)
-        };
-
-        return viewportWindow(ranges, extent) ?? [extent];
+        return viewportWindow(ranges, lineWindowExtent(line)) ?? viewport.selection.ranges;
     };
     const unsubscribeViewport = viewport.selection.subscribe(() => {
         zoom.selection.resetRange();
         window.selection.setRanges(zoomWindow());
     });
     const unsubscribeZoom = zoom.selection.subscribe(() => {
-        // A window for the whole line extent is no request, there is no viewport then
-        if (!windowHolds(window.selection.ranges, zoom.selection.ranges ?? viewport.selection.ranges, viewport.resolvedExtent)) {
+        const ranges = zoom.selection.ranges ?? viewport.selection.ranges;
+
+        // A window for the whole scale is no request, there is no viewport then
+        if (!windowHolds(window.selection.ranges, ranges, lineViewportBounds(line))) {
             window.selection.setRanges(zoomWindow());
         }
     });

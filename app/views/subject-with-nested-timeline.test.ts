@@ -4,7 +4,7 @@ import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { resolveScopeProfileLine } from '../jora/profile.js';
 import { createProfile } from '../prepare/profile.mjs';
-import { createProfileFixture } from '../../test/fixtures/profile.js';
+import { createProfileFixture, joinSession } from '../../test/fixtures/profile.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 import { findContent, findView, lineMetricsValueContext } from '../../test/helpers/view-config.js';
 import * as lineWindow from './misc/line-window.js';
@@ -35,8 +35,10 @@ const nestedTime = findView(findView(subjectBins, { className: 'nested-time' }),
 const nestedWork = findView(subjectBins, { className: 'nested-work' });
 const nestedWorkHistogram = findView(nestedWork, { view: 'line-histogram' });
 
-// The context of a page showing the timeline of its primary profile among the profiles
+// The context of a page showing the timeline of its primary profile among the profiles of a loaded recording
 function pageContext(profile: unknown, profiles = [profile]) {
+    joinSession(profiles as object[]);
+
     return {
         primaryProfile: profile,
         primaryLineType: 'timeline',

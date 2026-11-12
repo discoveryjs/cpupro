@@ -2,8 +2,8 @@ import { SourceMapGenerator } from 'source-map-js';
 import { Dictionary } from '../../app/prepare/dictionary.js';
 import { ProfileScriptsMap } from '../../app/prepare/preprocessing/scripts.js';
 import { SourceMapping } from '../../app/prepare/preprocessing/source-mapping.js';
-import { createProfile } from '../../app/prepare/profile.mjs';
-import type { V8CpuProfile } from '../../app/prepare/types.js';
+import { createProfile, type Profile } from '../../app/prepare/profile.mjs';
+import type { CpuProSession, CpuProThread, V8CpuProfile } from '../../app/prepare/types.js';
 import { noopWorkHandler } from '../../app/prepare/misc/work.js';
 import { Population, PopulationFiltered } from '../../app/prepare/computations/population.js';
 import { RangeSelection, RangeView } from '../../app/prepare/computations/range.js';
@@ -84,6 +84,19 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
     processDisplayNames(dictionary.modules);
 
     return { profile, dictionary, scriptsMap, sourceMapping };
+}
+
+// Links profiles to one session, as profiles of a loaded recording are: their lines of time share its clock
+export function joinSession<T extends object>(profiles: T[]) {
+    const session = { profiles } as unknown as CpuProSession;
+
+    for (let i = 0; i < profiles.length; i++) {
+        const profile = profiles[i] as Partial<Profile>;
+
+        profile.thread = { ...profile.thread, process: { session } } as CpuProThread;
+    }
+
+    return session;
 }
 
 // Values of a line of the length with many events per unit, e.g. for zooming that stops at a number of events:

@@ -14,7 +14,7 @@ export function withScopeValue(name, metrics, value, content, valueContext) {
 
 // Context of a value binned over the line viewport
 export const scopeBinsContext = `
-    $scope: scopeLine().lineViewport(#.data.profiles);
+    $scope: scopeLine().lineViewport();
     { ...#, scopeViewport: $scope, binCount: 2000.binCount($scope) }
 `;
 

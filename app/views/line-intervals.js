@@ -31,10 +31,9 @@ discovery.view.define('line-intervals', function(el, config, data, context) {
 
     if (config.zoom) {
         const line = resolveScopeProfileLine(config.line, context);
-        const profiles = context.data?.profiles;
         const destroyEl = utils.createElement('destroy-line-intervals');
         const followZoom = () => {
-            const display = lineZoom(line, profiles);
+            const display = lineZoom(line);
 
             el.style.setProperty('--display-start', (display.start - range.start) / length);
             el.style.setProperty('--display-scale', length / (display.end - display.start));

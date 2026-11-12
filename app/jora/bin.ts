@@ -1057,7 +1057,7 @@ export const methods = {
             return [];
         }
 
-        const context = { ...this.context, scopeViewport: lineViewport(scopeLine, this.context.data?.profiles) };
+        const context = { ...this.context, scopeViewport: lineViewport(scopeLine) };
 
         return methods.binLineToAxisLine.call({ ...this, context }, line, attribute, undefined, 1, 'populationViewport');
     },
@@ -1076,7 +1076,7 @@ export const methods = {
             return null;
         }
 
-        const extent = lineViewport(scopeLine, this.context.data?.profiles);
+        const extent = lineViewport(scopeLine);
         const maxByDuration = new Map<number, ColumnMax>();
         const columnMax = (duration: number, origin: number) => {
             let max = maxByDuration.get(duration);

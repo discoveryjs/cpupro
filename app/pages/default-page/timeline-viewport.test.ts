@@ -4,7 +4,7 @@ import jora from 'jora';
 import { methods } from '../../jora/index.mjs';
 import { chartUsedHeap } from './chart-used-heap.js';
 import { userTimingsTimeline } from './user-timings-timeline.js';
-import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
+import { createLineFixture, createProfileFixture, joinSession } from '../../../test/fixtures/profile.js';
 import type { SetAttributeFilter } from '../../prepare/computations/attribute-filter.js';
 import { histCodes } from './hist-codes.js';
 import { histHeapTotal } from './hist-heap-total.js';
@@ -44,8 +44,10 @@ const categoryBins = findView(timeline, { name: 'categoryBins' });
 const mappingBins = findView(timeline, { name: 'mappingBins' });
 const [, gcEvents, timeCharts] = section.content;
 
-// The context of the page for the timeline of its primary profile among the profiles
+// The context of the page for the timeline of its primary profile among the profiles of a loaded recording
 function pageContext(profile, profiles = [profile]) {
+    joinSession(profiles);
+
     return { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles } };
 }
 
@@ -332,14 +334,14 @@ test.each([
             { tm: 35, event: 'new', size: 40, address: '0x3' }
         ]
     };
-    profile.thread = { counters: [
+    profile.thread = { ...profile.thread, counters: [
         { name: 'used-heap-size', values: [{ tm: 0, value: 100, event: null }, { tm: 10, value: 300, event: null }, { tm: 20, value: 200, event: null }, { tm: 30, value: 500, event: null }] },
         { name: 'total-heap-size', values: [{ tm: 0, value: 400, event: null }, { tm: 30, value: 600, event: null }] }
     ] } as typeof profile.thread;
     line.viewport.selection.setRanges(viewport);
     line.zoom.selection.setRanges(zoom);
 
-    assert.deepEqual(methods.lineWindow(line, [profile]), window);
+    assert.deepEqual(methods.lineWindow(line), window);
     assert.equal(propQuery(histHeapTotal.metrics)(null, context), line.viewport);
     assert.equal(propQuery(chartUsedHeap.metrics)(null, context), line.viewport);
     assert.deepEqual(lineMetricsValueContext(histHeapTotal, null, context, query).heapScope.value, heapTotals);
@@ -349,7 +351,7 @@ test.each([
 test('the used heap scale covers used sizes above the total size', async () => {
     const { profile } = await createProfileFixture({ cpuOnly: true });
 
-    profile.thread = { counters: [
+    profile.thread = { ...profile.thread, counters: [
         { name: 'used-heap-size', values: [{ tm: 0, value: 100, event: null }, { tm: 20, value: 700, event: null }] },
         { name: 'total-heap-size', values: [{ tm: 0, value: 400, event: null }, { tm: 20, value: 600, event: null }] }
     ] } as typeof profile.thread;

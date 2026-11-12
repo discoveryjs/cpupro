@@ -10,7 +10,7 @@ export function withLineWindow(config) {
         name: 'lineWindow',
         metrics: '=scopeBreakdown().populationWindow',
         value: `
-            $window: scopeLine().lineWindow(#.data.profiles);
+            $window: scopeLine().lineWindow();
             { ...#, scopeViewport: $window, binCount: 2000.binCount($window) }
         `,
         ...config

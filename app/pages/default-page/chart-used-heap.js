@@ -4,7 +4,7 @@ import { withScopeValue, scopeValueContent } from './scope-values.js';
 // Points of the whole profile are drawn and the zoom is displayed within them; the stats and the scale of sizes
 // are of the line viewport, with the counters interpolated at its edges
 export const chartUsedHeap = withScopeValue('usedHeapScope', '=scopeLine().viewport', `
-    $scope: scopeLine().lineViewport(#.data.profiles);
+    $scope: scopeLine().lineViewport();
     $counters: scopeProfile().thread.counters;
     $used: $counters[=> name = "used-heap-size"].values.selectCountersWithOuters($scope.start, $scope.end);
     $total: $counters[=> name = "total-heap-size"].values.selectCountersWithOuters($scope.start, $scope.end);

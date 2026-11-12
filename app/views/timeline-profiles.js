@@ -135,11 +135,10 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
     const line = context.primaryProfile?.timeline;
 
     if (line && primaryBarEl !== null && range > 0) {
-        const profiles = context.data?.profiles;
         const selectionsEl = utils.createElement('div', 'selections');
         const viewportEl = utils.createElement('div', 'viewport-window');
         const zoomEl = utils.createElement('div', 'zoom-window');
-        const readViewport = () => line.viewport.selection.ranges ? lineViewport(line, profiles) : null;
+        const readViewport = () => line.viewport.selection.ranges ? lineViewport(line) : null;
         const renderWindow = (windowEl, window) => {
             windowEl.hidden = window === null;
             windowEl.style.setProperty('--x1', window ? (window.start - min) / range : 0);
@@ -147,7 +146,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
         };
         const renderViewport = () => {
             renderWindow(viewportEl, readViewport());
-            renderWindow(zoomEl, line.zoom.selection.ranges ? lineZoom(line, profiles) : null);
+            renderWindow(zoomEl, line.zoom.selection.ranges ? lineZoom(line) : null);
         };
         const renderSelections = () => {
             selectionsEl.replaceChildren(...(line.range.selection.ranges || []).map(({ start, end }) => {
@@ -188,7 +187,7 @@ discovery.view.define('timeline-profiles', function(el, props, data, context) {
             },
             onChange(api) {
                 const viewport = api.state.selection;
-                const bounds = lineViewportBounds(line, profiles);
+                const bounds = lineViewportBounds(line);
 
                 updatingViewport = true;
 

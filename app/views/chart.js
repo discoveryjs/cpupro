@@ -134,9 +134,8 @@ discovery.view.define('cpupro-chart', function(el, config, data, context) {
 
         if (config.zoom) {
             const line = resolveScopeProfileLine(config.line, context);
-            const profiles = context.data?.profiles;
             const followZoom = () => {
-                options.viewport = lineZoom(line, profiles);
+                options.viewport = lineZoom(line);
                 setRangeCoverage(el, options.extent, options.viewport);
 
                 // Until the canvas is sized its first draw is pending anyway

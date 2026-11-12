@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { createProfileFixture } from '../../../test/fixtures/profile.js';
+import { createLineFixture, createProfileFixture, joinSession } from '../../../test/fixtures/profile.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
 import { CoordinateFrame } from '../computations/coordinates.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
@@ -188,19 +188,37 @@ test('a window is kept while it contains the zoom within 4 zoom sizes', async ()
     line.zoom.resetRange();
 });
 
-test('the window of a zoom reaching beyond the line extent is aligned to both, within the zoom sizes', async () => {
-    const { profile } = await createProfileFixture();
-    const line = profile.memline!;
-    const total = line.axisTotal;
-    const window = () => line.window.selection.ranges?.map(({ start, end }) => [start / total, end / total]) ?? null;
+// A timeline over 120–180 alone, or in a recording with a profile over 100–200: windows of its zoom are cells
+// of the scale its histograms show without a zoom, so a window shares its bin edges
+test.each([
+    {
+        name: 'its extent alone',
+        recording: false,
+        zoom: { start: 150, end: 160 },
+        window: [{ start: 150, end: 165 }]
+    },
+    {
+        name: 'the time bounds of its recording',
+        recording: true,
+        zoom: { start: 150, end: 160 },
+        window: [{ start: 150, end: 162.5 }]
+    },
+    {
+        name: 'the time bounds of its recording beyond its extent',
+        recording: true,
+        zoom: { start: 100, end: 110 },
+        window: [{ start: 100, end: 112.5 }]
+    }
+])('the window of a timeline zoom is cells of $name', async row => {
+    const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]) });
+    const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
 
-    // E.g. a zoom shared by profiles, whose bounds are wider than the line
-    line.zoom.setRange(total * -0.125, total * 1.125);
-    assert.deepEqual(window(), [[-0.125, 1.125]]);
-    line.zoom.setRange(total * 0.875, total * 1.125);
-    assert.deepEqual(window(), [[0.84375, 1.125]]);
-    line.zoom.resetRange();
-    assert.equal(window(), null);
+    if (row.recording) {
+        joinSession([line.profile, other.profile]);
+    }
+
+    line.zoom.selection.setRange(row.zoom.start, row.zoom.end);
+    assert.deepEqual(line.window.selection.ranges, row.window);
 });
 
 test('the window of the zoom is within the viewport, a new viewport ends the zoom and is shown whole', async () => {

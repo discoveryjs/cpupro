@@ -12,9 +12,8 @@ const defaultTooltipContent = [
 discovery.view.define('track-timeline', function(el, config, data, context) {
     const scopeLine = resolveScopeProfileLine(config.line, context);
     const viewport = resolveScopeViewport(config.viewport, context);
-    const profiles = context.data?.profiles;
     // With zoom the view follows the line zoom, drawn for the viewport bounds
-    const bounds = config.zoom ? lineViewportBounds(scopeLine, profiles) : viewport;
+    const bounds = config.zoom ? lineViewportBounds(scopeLine) : viewport;
     const { range } = scopeLine;
     const { selection } = range;
     const {
@@ -73,7 +72,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
             }
         },
         // With zoom the wheel moves the line zoom, kept within the line viewport
-        onViewChange: config.zoom ? (start, end) => setLineZoom(scopeLine, profiles, { start, end }) : null
+        onViewChange: config.zoom ? (start, end) => setLineZoom(scopeLine, { start, end }) : null
     });
 
     let rangeSubscription = null;
@@ -99,7 +98,7 @@ discovery.view.define('track-timeline', function(el, config, data, context) {
     }
 
     function syncViewport() {
-        const { start, end } = lineZoom(scopeLine, profiles);
+        const { start, end } = lineZoom(scopeLine);
 
         trackTimeline.setView(start, end);
     }

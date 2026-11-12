@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import jora from 'jora';
 import { methods, binningRange, rangeBins, setLineZoom, subscribeLineZoom, timestampExtent } from './viewport.js';
-import { createLineFixture, denseValues } from '../../test/fixtures/profile.js';
+import { createLineFixture, denseValues, joinSession } from '../../test/fixtures/profile.js';
 
 const query = jora.setup({ methods });
 
-// A timeline over 120–180 with 5 units without samples on each side, and another over 105–195
+// A timeline over 120–180 with 5 units without samples on each side, another over 105–195 and a memline
+// over 120–180
 async function createTimelines() {
     const { line } = await createLineFixture({ origin: 120, values: new Uint32Array([60]), before: 5, after: 5 });
     const other = await createLineFixture({ origin: 105, values: new Uint32Array([90]), before: 5, after: 5 });
@@ -23,7 +24,7 @@ test.each([
         viewport: { start: 120, end: 180 }
     },
     {
-        name: 'the time bounds of all profiles without a request',
+        name: 'the time bounds of the profiles of its recording without a request',
         ranges: null,
         peers: true,
         viewport: { start: 100, end: 200 }
@@ -42,12 +43,15 @@ test.each([
     }
 ])('the viewport of a timeline is $name', async row => {
     const { ranges, peers, viewport } = row;
-    const { line, other } = await createTimelines();
-    const profiles = peers ? [other, line.profile, { timeline: null }] : [];
+    const { line, other, memory } = await createTimelines();
+
+    if (peers) {
+        joinSession([other, line.profile, memory.profile]);
+    }
 
     line.viewport.selection.setRanges(ranges);
 
-    assert.deepEqual(query('line.lineViewport(@.profiles)')({ line, profiles }), viewport);
+    assert.deepEqual(query('lineViewport()')(line), viewport);
     assert.deepEqual(methods.lineExtent(line), { start: 120, end: 180 });
 });
 
@@ -56,8 +60,9 @@ test('viewport bounds are the viewport without a request, cumulative bytes take 
 
     line.viewport.selection.setRange(130, 150);
     assert.deepEqual(methods.lineViewportBounds(line), { start: 120, end: 180 });
-    assert.deepEqual(methods.lineViewportBounds(line, [other]), { start: 100, end: 200 });
-    assert.deepEqual(methods.lineViewport(memory, [other, line.profile]), { start: 120, end: 180 });
+    joinSession([line.profile, other, memory.profile]);
+    assert.deepEqual(methods.lineViewportBounds(line), { start: 100, end: 200 });
+    assert.deepEqual(methods.lineViewport(memory), { start: 120, end: 180 });
 });
 
 test.each([
@@ -141,12 +146,14 @@ test.each([
     }
 );
 
-// A line of 10000 events over 100–200, and a profile over 50–250
+// A line of 10000 events over 100–200, and a profile of its recording over 50–250
 async function createZoomLine() {
     const { line } = await createLineFixture({ origin: 100, values: denseValues(100) });
     const other = await createLineFixture({ origin: 50, values: new Uint32Array([200]) });
 
-    return { line, profiles: [other.profile] };
+    joinSession([line.profile, other.profile]);
+
+    return { line };
 }
 
 test.each([
@@ -170,12 +177,12 @@ test.each([
     }
 ])('the displayed range is $name', async row => {
     const { viewport, zoom, displayed } = row;
-    const { line, profiles } = await createZoomLine();
+    const { line } = await createZoomLine();
 
     line.viewport.selection.setRanges(viewport && [viewport]);
     line.zoom.selection.setRanges(zoom && [zoom]);
 
-    assert.deepEqual(query('lineZoom(#.profiles)')(line, { profiles }), displayed);
+    assert.deepEqual(query('lineZoom()')(line), displayed);
 });
 
 test('changes of the viewport and of the zoom are followed until unsubscribed', async () => {
@@ -226,11 +233,11 @@ test.each([
     }
 ])('a zoom request $name of 100–200 is kept within it, the whole viewport is no request', async row => {
     const { zoom, request, ranges } = row;
-    const { line, profiles } = await createZoomLine();
+    const { line } = await createZoomLine();
 
     line.viewport.selection.setRange(100, 200);
     line.zoom.selection.setRanges(zoom && [zoom]);
-    setLineZoom(line, profiles, request);
+    setLineZoom(line, request);
 
     assert.deepEqual(line.zoom.selection.ranges, ranges);
 });
@@ -261,21 +268,21 @@ test('zooming in stops at the shortest zoom around the point the request scales 
     const line = await createDensityLine();
 
     line.viewport.selection.setRange(0, 50);
-    setLineZoom(line, [], { start: 10, end: 30 });
-    setLineZoom(line, [], { start: 14.5, end: 16.5 });
+    setLineZoom(line, { start: 10, end: 30 });
+    setLineZoom(line, { start: 14.5, end: 16.5 });
     assert.deepEqual(line.zoom.selection.ranges, [{ start: 13.75, end: 18.75 }]);
-    setLineZoom(line, [], { start: 15, end: 16 });
+    setLineZoom(line, { start: 15, end: 16 });
     assert.deepEqual(line.zoom.selection.ranges, [{ start: 13.75, end: 18.75 }]);
     // Panning at the shortest zoom keeps it
-    setLineZoom(line, [], { start: 20, end: 25 });
+    setLineZoom(line, { start: 20, end: 25 });
     assert.deepEqual(line.zoom.selection.ranges, [{ start: 20, end: 25 }]);
     // A zoom below the shortest one (e.g. shared by a profile with denser data) panned to a request shorter than
     // the shortest one: the shortest zoom around the middle of the request
     line.zoom.selection.setRange(20, 22);
-    setLineZoom(line, [], { start: 30, end: 32 });
+    setLineZoom(line, { start: 30, end: 32 });
     assert.deepEqual(line.zoom.selection.ranges, [{ start: 28.5, end: 33.5 }]);
 
     line.viewport.selection.setRange(50, 100);
-    setLineZoom(line, [], { start: 60, end: 70 });
+    setLineZoom(line, { start: 60, end: 70 });
     assert.equal(line.zoom.selection.ranges, null);
 });

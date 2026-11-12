@@ -54,8 +54,7 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
     const readSelection = getSelectionReader(rangeManager, multiple);
     // Zoom moves the line zoom within the line viewport and the ruler follows the zoom; markers and labels keep
     // the steps and the origin of the viewport bounds, the whole recordings
-    const profiles = context.data?.profiles;
-    const bounds = zoom ? lineViewportBounds(scopeLine, profiles) : null;
+    const bounds = zoom ? lineViewportBounds(scopeLine) : null;
     // With zoom the range and segments describe a grid of bins and the ruler segments are their columns.
     // A window value gives the grid of the current line window instead, its range and number of bins
     let grid = zoom && segments ? createState(range, segments) : null;
@@ -80,7 +79,7 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
     return this.render(el, {
         ...rest,
         view: 'ruler',
-        range: zoom ? lineZoom(scopeLine, profiles) : range,
+        range: zoom ? lineZoom(scopeLine) : range,
         bounds,
         segments: readGrid() !== null
             ? (range, width) => {
@@ -125,7 +124,7 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
                 }
             });
             const unsubscribeZoom = zoom
-                ? subscribeLineZoom(scopeLine, () => api.setRange(lineZoom(scopeLine, profiles)))
+                ? subscribeLineZoom(scopeLine, () => api.setRange(lineZoom(scopeLine)))
                 : null;
 
             return () => {
@@ -136,8 +135,8 @@ discovery.view.define('line-ruler', function(el, props, data, context) {
         },
         onRangeChange: zoom && (api => {
             // The zoom is kept within the viewport, the ruler shows what is requested
-            setLineZoom(scopeLine, profiles, api.state.range);
-            api.setRange(lineZoom(scopeLine, profiles));
+            setLineZoom(scopeLine, api.state.range);
+            api.setRange(lineZoom(scopeLine));
         }),
         onChange(api, data, context) {
             if (rangeManager) {

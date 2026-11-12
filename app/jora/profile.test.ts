@@ -3,7 +3,7 @@ import { test } from 'vitest';
 import jora from 'jora';
 import { methods, resolveScopeViewport } from './profile.js';
 import { methods as viewportMethods } from './viewport.js';
-import { createLineFixture } from '../../test/fixtures/profile.js';
+import { createLineFixture, joinSession } from '../../test/fixtures/profile.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 const query = jora.setup({ methods: { ...methods, ...viewportMethods } });
@@ -16,6 +16,9 @@ async function createContext(): Promise<Parameters<typeof resolveScopeViewport>[
     primaryProfile.lines.push(memline);
     memline.profile = primaryProfile;
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+
+    joinSession([primaryProfile, other.profile]);
+
     return {
         primaryProfile,
         primaryLineType: 'timeline',

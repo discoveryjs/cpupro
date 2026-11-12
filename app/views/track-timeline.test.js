@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { afterEach, test, vi } from 'vitest';
 import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.js';
 import { lineViewportBounds, lineZoom, setLineZoom, subscribeLineZoom } from '../jora/viewport.js';
-import { createLineFixture, denseValues } from '../../test/fixtures/profile.js';
+import { createLineFixture, denseValues, joinSession } from '../../test/fixtures/profile.js';
 import { TrackTimeline as CanvasTrackTimeline } from './track-timeline/index.js';
 import { layoutSpans } from './track-timeline/layout.js';
 import { SpanIndex } from './track-timeline/span-index.js';
@@ -436,6 +436,9 @@ async function renderTimeline(config = {}, scopeViewport, initialSelection) {
     });
     const { selection } = scopeLine.range;
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
+
+    joinSession([scopeLine.profile, other.profile]);
+
     const context = {
         scopeLine,
         scopeViewport,

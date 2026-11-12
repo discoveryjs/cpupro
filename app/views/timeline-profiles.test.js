@@ -3,7 +3,7 @@ import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { lineViewport, lineViewportBounds, lineZoom, subscribeLineZoom } from '../jora/viewport.js';
-import { createLineFixture } from '../../test/fixtures/profile.js';
+import { createLineFixture, joinSession } from '../../test/fixtures/profile.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
 
 const query = jora.setup({ methods });
@@ -34,12 +34,12 @@ function createElement(tagName, className = '') {
 const position = element => [element.style.values.get('--x1'), element.style.values.get('--x2')];
 const windowState = element => [element.hidden, ...position(element)];
 
-// Two profiles over 100–200 and 150–250
+// Two profiles of a recording over 100–200 and 150–250
 async function createProfiles() {
     const first = await createLineFixture({ origin: 100, values: new Uint32Array([100]) });
     const second = await createLineFixture({ origin: 150, values: new Uint32Array([100]) });
 
-    return [first.profile, second.profile];
+    return joinSession([first.profile, second.profile]).profiles;
 }
 
 // Items of a bucket, a profile with its state

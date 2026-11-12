@@ -323,7 +323,7 @@ const categoriesTimeline = {
             view: 'line-intervals',
             className: 'events-x',
             when: 'scopeLine().type = "timeline"',
-            context: '{ ...#, scopeViewport: scopeLine().lineViewportBounds(#.data.profiles) }',
+            context: '{ ...#, scopeViewport: scopeLine().lineViewportBounds() }',
             zoom: true,
             data: `
                 scopeProfile().thread.events.[name in ["MinorGC", "MajorGC"]].({
@@ -341,7 +341,7 @@ const categoriesTimeline = {
             when: 'scopeProfile().timeline',
             context: `
                 $timeline: scopeProfile().timeline;
-                { ...#, scopeLine: $timeline, scopeBreakdown: null, scopeViewport: $timeline.lineViewportBounds(#.data.profiles) }
+                { ...#, scopeLine: $timeline, scopeBreakdown: null, scopeViewport: $timeline.lineViewportBounds() }
             `,
             content: [chartUsedHeap, userTimingsTimeline]
         }

@@ -118,7 +118,7 @@ export function resolveScopeViewport(viewport: unknown, context: MethodContext):
             resolvedViewport = context.scopeViewport;
         } else {
             const line = resolveScopeProfileLine(null, context);
-            resolvedViewport = line ? lineViewport(line, context.data?.profiles) : null;
+            resolvedViewport = line ? lineViewport(line) : null;
         }
     } else if (isRange(viewport)) {
         resolvedViewport = viewport;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createRulerHarness } from '../../test/helpers/ruler.js';
-import { createLineFixture, createProfileFixture, denseValues } from '../../test/fixtures/profile.js';
+import { createLineFixture, createProfileFixture, denseValues, joinSession } from '../../test/fixtures/profile.js';
 import { resolveScopeProfileLine } from '../jora/profile.js';
 import { createState, rangeToSegments } from './ruler-range.js';
 import { binsPerColumn } from './bins-histogram/index.js';
@@ -112,11 +112,14 @@ function createRoundingManager() {
 
 const createTimeSelection = () => new RangeSelection({ name: 'time', unit: 'us' });
 
-// A line of 100 units of dense events from 0; a second profile from -20 widens the viewport bounds of time lines
-// to the range from -20 to 100
+// A line of 100 units of dense events from 0; a second profile of the recording from -20 widens the viewport bounds
+// of time lines to the range from -20 to 100
 async function createZoomFixture() {
     const { profile } = await createLineFixture({ values: denseValues(100) });
     const other = await createProfileFixture({ startTime: -20 });
+
+    joinSession([profile, other.profile]);
+
     const context = {
         primaryProfile: profile,
         data: { profiles: [profile, other.profile] }
@@ -224,7 +227,7 @@ test.each([
     assert.equal(config.formatLabel(value, { start: 0, end: range }), label);
 });
 
-// Zoomed labels keep the unit of the viewport bounds: 30 seconds of a timeline (widened by profiles),
+// Zoomed labels keep the unit of the viewport bounds: 30 seconds of a timeline (widened by a profile of the recording),
 // 160 bytes of a memline
 test.each([
     ['timeline', [0, 30_000_000], ['0s', '5s', '10s']],
@@ -235,9 +238,12 @@ test.each([
 ])('labels of a %s zoomed to %o of its bounds start with %o', async (type, zoom, labels) => {
     const { profile } = await createProfileFixture({ startTime: 456_706_000_000 });
     const start = lineViewportBounds(profile.timeline).start;
-    const profiles = [{ timeline: { axisStart: start, axisEnd: start + 30_000_000 } }];
+    const profiles = [profile, { timeline: { axisStart: start, axisEnd: start + 30_000_000 } }];
     const line = profile[type];
-    const origin = lineViewportBounds(line, profiles).start;
+
+    joinSession(profiles);
+
+    const origin = lineViewportBounds(line).start;
     const harness = createRulerHarness();
 
     line.zoom.selection.setRange(origin + zoom[0], origin + zoom[1]);

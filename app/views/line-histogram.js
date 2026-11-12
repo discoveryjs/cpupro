@@ -12,8 +12,7 @@ discovery.view.define('line-histogram', function(el, props, data, context) {
     const viewport = resolveScopeViewport(props.viewport, context) || extent;
 
     // With zoom the bins span a window of the line zoom and the display follows the line zoom within it
-    const profiles = context.data?.profiles;
-    const display = props.zoom ? lineZoom(line, profiles) : viewport;
+    const display = props.zoom ? lineZoom(line) : viewport;
 
     validateRange(extent);
     validateRange(viewport);
@@ -35,7 +34,7 @@ discovery.view.define('line-histogram', function(el, props, data, context) {
         binsMax: props.binsMax,
         scale: props.scale,
         onInit: props.zoom && (api => subscribeLineZoom(line, () => {
-            const display = lineZoom(line, profiles);
+            const display = lineZoom(line);
 
             setRangeCoverage(el, extent, display);
             api.setViewport(display);

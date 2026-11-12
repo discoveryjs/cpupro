@@ -11,7 +11,7 @@ import { subtreeFromParent, nestedFromNodesSubtree } from '../prepare/computatio
 import type { Range } from '../prepare/computations/coordinates.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
 import { createState, selectRange } from '../views/ruler-range.js';
-import { createLineFixture, createProfileFixture } from '../../test/fixtures/profile.js';
+import { createLineFixture, createProfileFixture, joinSession } from '../../test/fixtures/profile.js';
 import { createLineMapping } from '../prepare/computations/line-mapping.js';
 import { EventSignatures } from '../prepare/lines/event-signatures.js';
 import { PopulationFiltered } from '../prepare/computations/population.js';
@@ -136,7 +136,6 @@ test('binCount uses the resolved viewport only when its argument is omitted', as
     const other = await createLineFixture({ origin: 100, values: new Uint32Array([200]) });
     const nested = { ...context, scopeViewport: { start: 120, end: 125 } };
     const lineViewport = { ...context, scopeViewport: null };
-    const profilesViewport = { ...lineViewport, data: { profiles: [other.profile] } };
 
     assert.equal(query('500.binCount()')({}, context), 100);
     assert.equal(query('500.binCount(scopeViewport())')({}, context), 100);
@@ -145,7 +144,8 @@ test('binCount uses the resolved viewport only when its argument is omitted', as
     assert.equal(query('500.binCount(0)')({}, nested), 1);
     assert.equal(query('500.binCount({ start: 0, end: 30 })')({}, nested), 30);
     assert.equal(query('500.binCount()')({}, lineViewport), 25);
-    assert.equal(query('500.binCount()')({}, profilesViewport), 200);
+    joinSession([context.scopeProfile, other.profile]);
+    assert.equal(query('500.binCount()')({}, lineViewport), 200);
 });
 
 //
@@ -160,7 +160,7 @@ test.each([
         expected: [0, 0, 5, 5, 5, 0, 0, 0, 0, 0]
     },
     {
-        name: 'the viewport of all profiles',
+        name: 'the viewport of the profiles of its recording',
         scopeViewport: null,
         profiles: [new Uint32Array([100])],
         expected: [0, 0, 5, 5, 5, 0, 0, 0, 0, 0]
@@ -180,10 +180,10 @@ test.each([
 ])('sample and category bins of a short population are placed on $name', async row => {
     const createProfile = async (values: Uint32Array) => (await createLineFixture({ origin: 100, values })).profile;
     const others = await Promise.all(row.profiles.map(createProfile));
-    const context = {
-        ...await createContext({}, row.scopeViewport),
-        data: { profiles: others }
-    };
+    const context = await createContext({}, row.scopeViewport);
+
+    joinSession([context.scopeProfile, ...others]);
+
     const metrics = createFlatMetrics([category, idle], new Uint32Array([0, 1]));
 
     assert.deepEqual(methods.binCallsFromMask.call({ context }, new Uint8Array([1, 0]), 10), row.expected);

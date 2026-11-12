@@ -2,14 +2,17 @@ import { rangesEnvelope, type Range } from '../prepare/computations/coordinates.
 import type { ProfileLine } from '../prepare/lines/types.js';
 import { lowerBound } from '../prepare/computations/misc.js';
 import { lineEventPositions } from '../prepare/computations/line-mapping.js';
+import { lineViewportBounds } from '../prepare/lines/range.js';
 
-type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'axisStart' | 'axisEnd' | 'viewport'>;
+type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'profile' | 'viewport'>;
 type WindowLine = ViewportLine & Pick<ProfileLine, 'window'>;
 type ZoomLine = ViewportLine & Pick<ProfileLine, 'zoom' | 'breakdowns'>;
 
 // Zooming in stops where a zoom holds this many events (samples, allocations) at the average density of the viewport,
 // so the deepest zoom still has an event per column of a histogram on average; denser data zooms in deeper
 const ZOOM_MIN_EVENTS = 500;
+
+export { lineViewportBounds };
 
 export function lineExtent(line: Pick<ProfileLine, 'range'>) {
     const { frame, extent } = line.range;
@@ -27,7 +30,7 @@ export function timestampExtent(line: Pick<ProfileLine, 'axisStart' | 'axisEnd'>
     };
 }
 
-export function lineViewport(line: ViewportLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
+export function lineViewport(line: ViewportLine): Range {
     const ranges = line.viewport.selection.ranges;
 
     if (ranges) {
@@ -39,31 +42,14 @@ export function lineViewport(line: ViewportLine, profiles: readonly { timeline?:
             : { start, end: start };
     }
 
-    return lineViewportBounds(line, profiles);
-}
-
-// The viewport without a request; zooming narrows the viewport within it
-export function lineViewportBounds(line: ViewportLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
-    const extent = lineExtent(line);
-
-    // Current recordings share timestamps. Cumulative bytes have no cross-thread coordinate relation.
-    if (line.kind === 'time' && profiles.length > 0) {
-        for (const { timeline } of profiles) {
-            if (timeline) {
-                extent.start = Math.min(extent.start, timeline.axisStart);
-                extent.end = Math.max(extent.end, timeline.axisEnd);
-            }
-        }
-    }
-
-    return extent;
+    return lineViewportBounds(line);
 }
 
 // The range displayed by timelines: the zoom within the viewport, the viewport itself without a zoom request
-export function lineZoom(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
+export function lineZoom(line: ZoomLine): Range {
     return line.zoom.selection.ranges
-        ? lineViewport({ ...line, viewport: line.zoom }, profiles)
-        : lineViewport(line, profiles);
+        ? lineViewport({ ...line, viewport: line.zoom })
+        : lineViewport(line);
 }
 
 // Follows changes of the displayed range: a new viewport without a zoom request changes it too
@@ -78,8 +64,8 @@ export function subscribeLineZoom(line: Pick<ProfileLine, 'viewport' | 'zoom'>, 
 }
 
 // The shortest zoom of a line: the length holding ZOOM_MIN_EVENTS events at the average density of the viewport
-export function lineZoomMinLength(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[] = []) {
-    const scope = lineViewport(line, profiles);
+export function lineZoomMinLength(line: ZoomLine) {
+    const scope = lineViewport(line);
     const [range] = line.range.frame.rebase([scope]);
     const { starts } = lineEventPositions(line);
     const events = lowerBound(starts, range.end) - lowerBound(starts, range.start);
@@ -90,13 +76,13 @@ export function lineZoomMinLength(line: ZoomLine, profiles: readonly { timeline?
 // Requests a zoom moved inside the viewport, the length of the viewport or more is no request. A zoom shorter
 // than the shortest one stops at it: the request is scaled to it around the point it scales the current zoom around
 // when zooming in, around its middle otherwise (e.g. panning a zoom shared by a profile with a shorter one)
-export function setLineZoom(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[], range: Range) {
-    const scope = lineViewport(line, profiles);
-    const minLength = lineZoomMinLength(line, profiles);
+export function setLineZoom(line: ZoomLine, range: Range) {
+    const scope = lineViewport(line);
+    const minLength = lineZoomMinLength(line);
     let { start: requestStart, end: requestEnd } = range;
 
     if (requestEnd - requestStart < minLength) {
-        const current = lineZoom(line, profiles);
+        const current = lineZoom(line);
         const scale = (requestEnd - requestStart) / (current.end - current.start);
         const anchor = scale < 1
             ? (requestStart - scale * current.start) / (1 - scale)
@@ -119,8 +105,8 @@ export function setLineZoom(line: ZoomLine, profiles: readonly { timeline?: View
 }
 
 // The range of histogram data: the line's window, which contains the zoom
-export function lineWindow(line: WindowLine, profiles: readonly { timeline?: ViewportLine | null }[] = []): Range {
-    return lineViewport({ ...line, viewport: line.window }, profiles);
+export function lineWindow(line: WindowLine): Range {
+    return lineViewport({ ...line, viewport: line.window });
 }
 
 // The view rejects a viewport that isn't a finite ordered range
