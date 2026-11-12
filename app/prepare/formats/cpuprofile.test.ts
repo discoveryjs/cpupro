@@ -227,3 +227,24 @@ test.each([
     assert.deepEqual(profile.lines, row.lines);
     assert.deepEqual(profile.columns, row.columns);
 });
+
+// Samples of sizes are a format of early allocation experiments, no longer current, and samples without time deltas
+// have no time: neither is a CPU profile, so both are rejected rather than failing while the profile is created
+test.each([
+    {
+        name: 'of size samples',
+        fields: { samples: [{ nodeId: 2, size: 32, ordinal: 1 }], timeDeltas: undefined }
+    },
+    {
+        name: 'of no samples without time deltas',
+        fields: { samples: [], timeDeltas: undefined }
+    }
+])('rejects a profile $name as an unknown format', row => {
+    const reasons: string[] = [];
+    const rejectData = (reason: string) => {
+        reasons.push(reason);
+    };
+
+    assert.throws(() => extractAndValidate(cpuProfile(row.fields), rejectData), /Unknown format/);
+    assert.deepEqual(reasons, ['Unknown format']);
+});

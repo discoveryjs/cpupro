@@ -100,15 +100,6 @@ function isArrayLike(value: unknown, check: (value: unknown) => boolean): boolea
         : true;
 }
 
-function isSizeSamples(value: unknown): value is SizeSample[] {
-    return isArrayLike(value, (item) =>
-        typeof item === 'object' &&
-        item !== null &&
-        'size' in item &&
-        typeof item.size === 'number'
-    );
-}
-
 // TODO: split into isCPUProfile & isAllocationProfile
 export function isCPUProfile(data: unknown): data is V8CpuProfile {
     const maybe = data as Partial<V8CpuProfile>;
@@ -121,16 +112,14 @@ export function isCPUProfile(data: unknown): data is V8CpuProfile {
         return false;
     }
 
-    if (!isSizeSamples(maybe.samples)) {
-        if (!isUint32Vector(maybe.samples) ||
-            !isArrayOfIntegers(maybe.samples)
-        ) {
-            return false;
-        }
+    if (!isUint32Vector(maybe.samples) ||
+        !isArrayOfIntegers(maybe.samples)
+    ) {
+        return false;
+    }
 
-        if (!isArrayOfIntegers(maybe.timeDeltas)) {
-            return false;
-        }
+    if (!isArrayOfIntegers(maybe.timeDeltas)) {
+        return false;
     }
 
     return true;
@@ -250,8 +239,8 @@ function unwrapSamples(profile: WrappedSamplesProfile, diagnose: Diagnose): V8Cp
         return profile;
     }
 
-    // Samples of sizes are a format of early allocation experiments, no longer current and kept as reference only.
-    // They come in any order, so they are sorted by ordinals on a copy
+    // Samples of sizes are a format of early allocation experiments, no longer current and kept as reference only:
+    // detection doesn't accept them. They come in any order, so they are sorted by ordinals on a copy
     const source = (profile.samples as SizeSample[])
         .slice()
         .sort((a, b) => a.ordinal - b.ordinal);
