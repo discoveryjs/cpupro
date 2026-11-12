@@ -473,6 +473,9 @@ test.each([
     viewport.filter.setEventClasses(records.classes);
     viewport.setRecords(records);
     selection.setRecords(records);
+    // The expected populations aggregate events
+    expectedViewport.setRecords(null);
+    expectedSelection.setRecords(null);
 
     for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
@@ -499,6 +502,7 @@ test('metrics from records equal event aggregation for ranges with edges next to
 
     viewport.filter.setEventClasses(records.classes);
     viewport.setRecords(records);
+    expected.setRecords(null);
 
     for (let i = 0; i < 60; i++) {
         const startPart = random(records.partCount);
@@ -532,6 +536,7 @@ test('ignores records of other events and returns to the event pass without reco
     };
     viewport.filter.set(sampleFilter);
     expected.filter.set(sampleFilter);
+    expected.setRecords(null);
 
     viewport.setRecords(otherRecords);
     viewport.setRange(1005, 15_005);
@@ -559,6 +564,7 @@ test('a range change over records reads base values only at range edges and in t
     const spaceFilter = createEventFilter('space', space, Uint8Array.of(0, 1));
     viewport.filter.setEventClasses(records.classes);
     viewport.setRecords(records);
+    expected.setRecords(null);
     viewport.filter.batch(() => {
         viewport.filter.set(lifespanFilter);
         viewport.filter.set(spaceFilter);
@@ -660,9 +666,7 @@ test.each([
     }
 
     for (let i = 65; i < 130; i++) {
-        samples[i] = i === 97
-            ? 6
-            : 5;
+        samples[i] = i === 97 ? 6 : 5;
     }
 
     values[64] = 1;

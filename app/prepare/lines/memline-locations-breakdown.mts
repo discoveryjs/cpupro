@@ -11,18 +11,19 @@ export async function createMemlineLocationsBreakdown(
     line: ProfileLine,
     dictionary: Dictionary,
     allocationSizes: Uint32Array,
+    cumulative: Float64Array, // prefix sums of allocation sizes, shared by the populations of the memline
     vectorLocations: VectorLocations,
     work: WorkHandler
 ): Promise<ProfileLineBreakdown> {
     const { samples, ...locationSource } = vectorLocations;
     const population = await work('create allocation location population', () => {
-        const sizesPopulation = line.breakdowns.find(breakdown => breakdown.population.values === allocationSizes)?.population;
         // PERF: Samples are indices of sourceIdToNode, so their count needs no scan over the allocations
         const population = new Population(
             samples,
             allocationSizes,
             locationSource.sourceIdToNode.length,
-            sizesPopulation?.cumulative
+            cumulative,
+            line.eventClasses
         );
         const populationViewport = new PopulationFiltered(population);
         const populationFiltered = new PopulationFiltered(populationViewport);

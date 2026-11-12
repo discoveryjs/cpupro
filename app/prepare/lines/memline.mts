@@ -1,15 +1,17 @@
 import type { Profile } from '../profile.mjs';
 import type { CpuProCompilationRecord, V8CpuProfile } from '../types.js';
-import type { Metric, ProfileLineMethods, ProfileMemline } from './types.js';
+import type { Metric, ProfileLineAttribute, ProfileLineMethods, ProfileMemline } from './types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
-import type { Population } from '../computations/population.js';
+import { computeCumulative, computeCumulativeEnd, type Population } from '../computations/population.js';
 import { createVectorLocations } from '../preprocessing/locations.js';
 import { ProfileScriptsMap } from '../preprocessing/scripts.js';
 import { Dictionary } from '../dictionary.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
-import { asInt32Array, asUint32Array, fractionDigits, sum } from '../misc/utils.js';
+import { createEventClasses } from './event-signatures.js';
+import { createAttributeFilter } from './filters/attribute.js';
+import { asInt32Array, asUint32Array, fractionDigits } from '../misc/utils.js';
 import { stepFractionDigits } from '../misc/time-utils.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
@@ -151,8 +153,11 @@ export async function createMemline(
     //     }
     // }
 
-    // Calculate total allocation size as axis total
-    const totalAllocationSize = sum(allocationSizes);
+    // Populations of the memline share the prefix sums of allocation sizes; their end is the axis total
+    const cumulative = await work('compute memline cumulative sizes', () =>
+        computeCumulative(allocationSizes)
+    );
+    const totalAllocationSize = computeCumulativeEnd(allocationSizes, cumulative);
 
     // Memline attributes
     const attributes = await work('create memline attributes', () => [
@@ -187,6 +192,13 @@ export async function createMemline(
         )
     ].filter(attr => attr !== null));
 
+    // Populations of the memline share the classes of allocations with equal values of every event filter
+    const hasEventFilter = (attribute: ProfileLineAttribute) =>
+        createAttributeFilter(attribute, allocationSizes.length) !== null;
+    const eventClasses = await work('compute memline event classes', () =>
+        createEventClasses(allocationSizes.length, attributes.filter(hasEventFilter))
+    );
+
     const range = new RangeSelection({ name: 'cumulative-allocated-bytes', unit: 'bytes' })
         .view({ start: 0, end: totalAllocationSize });
     const line: ProfileMemline = {
@@ -207,6 +219,7 @@ export async function createMemline(
 
         values: allocationSizes,
         attributes,
+        eventClasses,
         filters: new FilterSet(),
         viewport: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
         zoom: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
@@ -229,6 +242,7 @@ export async function createMemline(
                 line,
                 allocationSamples,
                 allocationSizes,
+                cumulative,
                 cpuPopulation,
                 callStackTreeSet,
                 work
@@ -273,6 +287,7 @@ export async function createMemline(
                 line,
                 dictionary,
                 allocationSizes,
+                cumulative,
                 vectorLocations,
                 work
             )

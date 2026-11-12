@@ -1,8 +1,8 @@
 import { USE_WASM } from '../const.js';
 import { Observer, exposeGetters } from './misc.js';
 import { PopulationBufferMap, createJavaScriptApi, createWasmApi, type ComputeApi } from './compute-wasm-wrapper.js';
-import { PopulationFilter, type EventAcceptance } from './population-filter.js';
-import type { PopulationRecords, RecordSums } from './population-records.js';
+import { PopulationFilter, singleEventClass, type EventAcceptance, type EventClasses } from './population-filter.js';
+import { PopulationRecords, type RecordSums } from './population-records.js';
 import { normalizeRanges, intersectRanges, equalRanges, type RangeSet } from './coordinates.js';
 
 const computeMetricsJavaScriptApi = createJavaScriptApi();
@@ -21,34 +21,42 @@ export class Population extends Observer {
     readonly cumulativeEnd: number;
     samplesCount: Uint32Array; // size of samples
     samplesTotal: Float64Array; // size of samples
+    readonly records: PopulationRecords; // events by sample and class, read by the populations derived from it
 
     constructor(
         samples: Uint32Array,
         values: Uint32Array,
         sampleCount = findMaxId(samples) + 1,
-        // Populations over the same values share their prefix sums
-        cumulative: Float64Array = computeCumulative(values)
+        cumulative: Float64Array = computeCumulative(values), // shared by the populations over the same values
+        classes: EventClasses = singleEventClass(values.length) // shared by the populations of a line
     ) {
         super();
 
         this.samples = samples;
         this.values = values;
         this.cumulative = cumulative;
-        this.cumulativeEnd = values.length ? this.cumulative[values.length - 1] + values[values.length - 1] : 0;
+        this.cumulativeEnd = computeCumulativeEnd(values, cumulative);
         this.sinkId = sampleCount;
 
         const samplesCount = new Uint32Array(sampleCount + 1);
         const samplesTotal = new Float64Array(sampleCount + 1);
         this.samplesCount = samplesCount.subarray(0, sampleCount);
         this.samplesTotal = samplesTotal.subarray(0, sampleCount);
+        this.records = new PopulationRecords(samples, values, cumulative, this.cumulativeEnd, classes);
 
-        computeMetricsJavaScriptApi.computeMetrics({
-            memory: null,
-            values: this.values,
-            samples: this.samples,
-            samplesCount,
-            samplesTotal
-        }, false);
+        // PERF: Records already sum the events of every sample, a few events per record, so the metrics of samples
+        // are sums of all records rather than another pass over the events
+        this.records.sum(
+            [[0, this.records.partCount]],
+            new Uint8Array(sampleCount).fill(1),
+            new Uint8Array(classes.events.length).fill(1),
+            {
+                sampleTotals: samplesTotal,
+                sampleCounts: samplesCount,
+                classTotals: new Float64Array(classes.events.length),
+                classCounts: new Uint32Array(classes.events.length)
+            }
+        );
         this.sink = {
             count: samplesCount[this.sinkId],
             total: samplesTotal[this.sinkId]
@@ -160,6 +168,8 @@ export class PopulationFiltered extends Observer {
         };
 
         this.filter = new PopulationFilter(sampleCount, population.values.length, applyFilters);
+        this.filter.setEventClasses(population.records.classes);
+        this.#records = population.records;
         this.#setEffectiveRanges(source.ranges);
 
         let samplesRevision = source.samplesRevision;
@@ -285,7 +295,8 @@ export class PopulationFiltered extends Observer {
         };
     }
 
-    // Records of the base population grouped by event classes; with them, metrics are summed from records
+    // Replaces the records metrics are summed from: records of the base events by other classes, or null for
+    // the pass over events
     setRecords(records: PopulationRecords | null) {
         this.#records = records !== null && records.samples === this.population.samples ? records : null;
         this.#metricsChanged();
@@ -841,7 +852,7 @@ function intersectRangeSets(source: RangeSet | null, ranges: RangeSet | null): R
     return normalizeRanges(result);
 }
 
-function computeCumulative(values: Uint32Array) {
+export function computeCumulative(values: Uint32Array) {
     const cumulative = new Float64Array(values.length);
     let sum = 0;
 
@@ -852,6 +863,13 @@ function computeCumulative(values: Uint32Array) {
     }
 
     return cumulative;
+}
+
+// End of the prefix sums of values: the sum of all values
+export function computeCumulativeEnd(values: Uint32Array, cumulative: Float64Array) {
+    return values.length > 0
+        ? cumulative[values.length - 1] + values[values.length - 1]
+        : 0;
 }
 
 export function findCumulativeBoundary(cumulative: Float64Array, value: number, afterEqual: boolean) {

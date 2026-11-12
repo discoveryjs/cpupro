@@ -95,6 +95,7 @@ export async function createTimeline(
 
         values: population.values,
         attributes: [],
+        eventClasses: population.records.classes,
         filters: new FilterSet(),
         viewport: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),
         zoom: new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent),

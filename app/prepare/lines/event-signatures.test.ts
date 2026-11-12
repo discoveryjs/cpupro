@@ -7,6 +7,7 @@ import { noopWorkHandler } from '../misc/work.js';
 import { methods } from '../../jora/bin.js';
 import { lineWindow } from '../../jora/viewport.js';
 import { BinRecords, EventSignatures } from './event-signatures.js';
+import { singleEventClass } from '../computations/population-filter.js';
 import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
 import type { ProfileLine } from './types.js';
@@ -143,9 +144,9 @@ test('whole-line signature totals give attribute rows without an event pass, reg
     }
 });
 
-test('filter classes group events with equal values of every registered event filter', async () => {
+test('event classes of a line group events with equal values of every registered event filter', async () => {
     const { memline } = await createSignaturesProfile();
-    const { ids, events, values } = memline!.signatures!.filterClasses;
+    const { ids, events, values } = memline!.eventClasses;
     const filterValues = [...new Set(memline!.breakdowns.flatMap(({ populationViewport }) => populationViewport.filter.filters
         .filter(filter => filter.domain === 'event' && filter.values !== undefined)
         .map(filter => filter.values!)))];
@@ -180,6 +181,7 @@ function createAttributesLine(...columns: ArrayLike<number>[]) {
             // Values index the dictionary
             dict: new Array(Array.from(values).reduce((max, value) => Math.max(max, value), -1) + 1)
         })),
+        eventClasses: singleEventClass(columns[0].length),
         breakdowns: []
     } as unknown as ProfileLine;
 }

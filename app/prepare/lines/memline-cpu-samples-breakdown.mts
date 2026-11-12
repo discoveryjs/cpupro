@@ -9,6 +9,7 @@ export async function createMemlineCpuSamplesBreakdown(
     line: ProfileLine,
     allocationSamples: Uint32Array, // per allocation: the index of its CPU sample
     allocationSizes: Uint32Array,
+    cumulative: Float64Array, // prefix sums of allocation sizes, shared by the populations of the memline
     cpuPopulation: Population,
     cpuSampledTreeSet: SampledTreeSet,
     work: WorkHandler
@@ -21,7 +22,14 @@ export async function createMemlineCpuSamplesBreakdown(
         allocationNodes[i] = sampleNodes[allocationSamples[i]];
     }
 
-    const population = new Population(allocationNodes, allocationSizes);
+    // PERF: Nodes are indices of the CPU tree source, so their count needs no scan over the allocations
+    const population = new Population(
+        allocationNodes,
+        allocationSizes,
+        cpuSampledTreeSet.source.sourceIdToNode.length,
+        cumulative,
+        line.eventClasses
+    );
     const populationViewport = new PopulationFiltered(population);
     const populationFiltered = new PopulationFiltered(populationViewport);
     const populationWindow = new PopulationFiltered(population);

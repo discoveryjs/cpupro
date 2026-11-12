@@ -2,6 +2,7 @@ import { CallTree } from '../computations/call-tree';
 import type { FilterSet } from '../computations/filter-set.js';
 import type { RangeView } from '../computations/range.js';
 import type { EventSignatures } from './event-signatures.js';
+import type { EventClasses } from '../computations/population-filter.js';
 import type { TreeSource } from '../computations/build-trees';
 import { DictionaryMetrics, TreeMetrics } from '../computations/metrics';
 import { TreeValueBounds } from '../computations/tree-node-bounds';
@@ -149,6 +150,9 @@ export type ProfileLine = {
     // Stream of signals (e.g. time deltas, memory allocations) for this line in its primary axis
     values: Uint32Array;
     attributes: ProfileLineAttribute[];
+    // Classes of the events by the values of attributes with event filters; populations of the line group their
+    // events by them, and signatures combine them with other columns
+    eventClasses: EventClasses;
     filters: FilterSet;
     // The scope of populations: tables, totals, indicators and filters follow it
     viewport: RangeView;

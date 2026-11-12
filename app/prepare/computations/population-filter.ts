@@ -18,6 +18,18 @@ export type EventClasses = {
     events: Uint32Array;
     values: ReadonlySet<Uint8Array | Uint16Array | Uint32Array>;
 };
+
+// Events without filters over their values are of one class
+export function singleEventClass(eventCount: number): EventClasses {
+    return {
+        ids: new Uint8Array(eventCount),
+        events: eventCount > 0
+            ? Uint32Array.of(0)
+            : new Uint32Array(0),
+        values: new Set()
+    };
+}
+
 type ApplyFilters = (updateMask: (mask: Uint32Array) => void, acceptedEvents: EventAcceptance | null) => void;
 
 const ACCEPTED_FLAG = Uint8Array.of(0, 1);

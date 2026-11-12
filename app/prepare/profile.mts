@@ -24,7 +24,6 @@ import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { prepareLineFilters } from './lines/filters.js';
 import { EventSignatures } from './lines/event-signatures.js';
-import { PopulationRecords } from './computations/population-records.js';
 import { prepareLineRange } from './lines/range.js';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
@@ -254,38 +253,10 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
         prepareLineFilters(line);
         prepareLineRange(line);
-        const signatures = await work(`compute ${line.type} event signatures`, () => new EventSignatures(line));
-        const classes = signatures.filterClasses;
-        const records = new Map<Population, PopulationRecords>();
 
-        line.signatures = signatures;
-
-        for (let j = 0; j < line.breakdowns.length; j++) {
-            const {
-                population,
-                populationViewport,
-                populationWindow,
-                populationFiltered
-            } = line.breakdowns[j];
-
-            if (!records.has(population)) {
-                records.set(population, await work(`group ${line.type} events by samples and signatures`, () =>
-                    new PopulationRecords(
-                        population.samples,
-                        population.values,
-                        population.cumulative,
-                        population.cumulativeEnd,
-                        classes
-                    )
-                ));
-            }
-
-            populationViewport.filter.setEventClasses(classes);
-            populationWindow.filter.setEventClasses(classes);
-            populationViewport.setRecords(records.get(population)!);
-            populationWindow.setRecords(records.get(population)!);
-            populationFiltered.setRecords(records.get(population)!);
-        }
+        line.signatures = await work(`compute ${line.type} event signatures`, () =>
+            new EventSignatures(line)
+        );
     }
 
     return profile;

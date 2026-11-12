@@ -23,8 +23,6 @@ type SignatureColumn = {
     samples: Uint32Array | null;
     // Values are below it
     size: number;
-    // Values of a registered event filter
-    filtered: boolean;
 };
 
 export type BinRecordsGrid = {
@@ -47,9 +45,6 @@ export class EventSignatures {
     readonly ids: Uint32Array;     // per event
     readonly events: Uint32Array;  // per signature: its first event
     readonly weights: Uint32Array; // per event: the line's value
-    // Classes of events with equal values of every registered event filter: such filters accept or reject
-    // the events of a class together. Each signature belongs to one class, so classes group signatures.
-    readonly filterClasses: EventClasses;
     readonly #columns: Map<ColumnValues, SignatureColumn>;
     readonly #signatureValues = new Map<ColumnValues, Uint32Array>();
     readonly #binRecords = new Map<string, { grid: BinRecordsGrid; records: BinRecords }>();
@@ -59,34 +54,19 @@ export class EventSignatures {
     readonly #cellRecords = new Map<Float64Array, RangeRecords | null>();
     #totals: Float64Array | null = null;
 
-    // Columns are combined one at a time: a dense table maps an id of the columns combined so far and a value
-    // of the next column to the id of their combination, so an event takes a table read per column. Filtered
-    // columns are combined first, so the ids after them are the classes; a column of fewer values first keeps
-    // tables smaller.
+    // Columns other than those of the classes are combined with the classes of events: a dense table maps an id
+    // of the columns combined so far and a value of the next column to the id of their combination, so an event
+    // takes a table read per column
     constructor(line: ProfileLine) {
+        const classes = line.eventClasses;
         const columns = collectSignatureColumns(line);
-        const keys = keyColumns(columns);
-        const bySize = (left: SignatureColumn, right: SignatureColumn) => left.size - right.size;
-        const filtered = keys.filter(column => column.filtered).sort(bySize);
-        const unfiltered = keys.filter(column => !column.filtered).sort(bySize);
-        const ids = new Uint32Array(line.values.length);
-        // Events have one combination of no columns
-        const noColumns = ids.length > 0
-            ? [0]
-            : [];
-        const classEvents = combineColumns(ids, noColumns, filtered);
-
-        this.filterClasses = {
-            // PERF: Classes rarely outgrow 16 bits, then their event-sized copy takes half the memory
-            ids: classEvents.length <= 0x10000
-                ? new Uint16Array(ids)
-                : ids.slice(),
-            events: Uint32Array.from(classEvents),
-            values: new Set(filtered.map(column => column.values))
-        };
+        const otherColumns = keyColumns(columns)
+            .filter(column => !classes.values.has(column.values))
+            .sort(bySize);
+        const ids = new Uint32Array(classes.ids);
 
         this.ids = ids;
-        this.events = Uint32Array.from(combineColumns(ids, classEvents, unfiltered));
+        this.events = Uint32Array.from(combineColumns(ids, Array.from(classes.events), otherColumns));
         this.weights = line.values;
         this.#columns = columns;
 
@@ -161,9 +141,9 @@ export class EventSignatures {
         const accepted = new Uint8Array(events.length);
 
         for (let i = 0; i < events.length; i++) {
-            accepted[i] = destination(events[i]) !== sinkId
-                ? 1
-                : 0;
+            if (destination(events[i]) !== sinkId) {
+                accepted[i] = 1;
+            }
         }
 
         return accepted;
@@ -532,35 +512,61 @@ function equalGrids(left: BinRecordsGrid, right: BinRecordsGrid) {
         equalRanges(left.axisRanges, right.axisRanges);
 }
 
+// Classes of events with equal values of every attribute with an event filter. Columns are combined one at a time
+// or two at a time, a column of fewer values first keeps tables smaller
+export function createEventClasses(eventCount: number, attributes: ProfileLineAttribute[]): EventClasses {
+    const columns = attributeColumns(attributes).sort(bySize);
+    const ids = new Uint32Array(eventCount);
+    // Events have one combination of no columns
+    const noColumns = eventCount > 0 ? [0] : [];
+    const events = combineColumns(ids, noColumns, columns);
+
+    return {
+        // PERF: Classes rarely outgrow 16 bits, then their event-sized vector takes half the memory
+        ids: events.length <= 0x10000
+            ? new Uint16Array(ids)
+            : ids,
+        events: Uint32Array.from(events),
+        values: new Set(columns.map(column => column.values))
+    };
+}
+
+// Columns of the values of attributes, given per event
+function attributeColumns(attributes: ProfileLineAttribute[]) {
+    const columns: SignatureColumn[] = [];
+
+    for (let i = 0; i < attributes.length; i++) {
+        columns.push({
+            values: attributes[i].values,
+            samples: null,
+            size: attributes[i].dict.length
+        });
+    }
+
+    return columns;
+}
+
+function bySize(left: SignatureColumn, right: SignatureColumn) {
+    return left.size - right.size;
+}
+
 // Columns of the line's attributes, breakdown categories and registered filters, one per vector of values
 function collectSignatureColumns(line: ProfileLine) {
     const columns = new Map<ColumnValues, SignatureColumn>();
-    const add = (values: ColumnValues, samples: Uint32Array | null, filtered: boolean) => {
-        const column = columns.get(values);
-
-        if (column === undefined) {
+    const add = (values: ColumnValues, samples: Uint32Array | null) => {
+        if (!columns.has(values)) {
             columns.set(values, {
                 values,
                 samples,
-                size: valueCount(values),
-                filtered
+                size: valueCount(values)
             });
-        } else {
-            column.filtered ||= filtered;
         }
     };
 
-    for (let i = 0; i < line.attributes.length; i++) {
-        const { name, values, dict } = line.attributes[i];
+    const attributes = attributeColumns(line.attributes.filter(attribute => !IDENTITY_ATTRIBUTES.has(attribute.name)));
 
-        if (!IDENTITY_ATTRIBUTES.has(name)) {
-            columns.set(values, {
-                values,
-                samples: null,
-                size: dict.length,
-                filtered: false
-            });
-        }
+    for (let i = 0; i < attributes.length; i++) {
+        columns.set(attributes[i].values, attributes[i]);
     }
 
     for (let i = 0; i < line.breakdowns.length; i++) {
@@ -568,7 +574,7 @@ function collectSignatureColumns(line: ProfileLine) {
         const { filters } = populationViewport.filter;
 
         if (categories !== null) {
-            add(categories.sampleToNode, population.samples, false);
+            add(categories.sampleToNode, population.samples);
         }
 
         for (let j = 0; j < filters.length; j++) {
@@ -578,7 +584,7 @@ function collectSignatureColumns(line: ProfileLine) {
                 : null;
 
             if (values !== undefined) {
-                add(values, samples, domain === 'event');
+                add(values, samples);
             }
         }
     }
@@ -628,8 +634,7 @@ function keyColumns(columns: Map<ColumnValues, SignatureColumn>) {
         keys.push({
             values: sampleClasses,
             samples,
-            size: count,
-            filtered: false
+            size: count
         });
     }
 

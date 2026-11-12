@@ -125,6 +125,7 @@ export async function createLineFixture({
     line.axisEndNoSamples = after;
     line.axisTotal = population.cumulativeEnd;
     line.values = values;
+    line.eventClasses = population.records.classes;
     line.sourceInfo = { nodes: source.nodes.length, samples: samples.length, samplesInterval: 10 };
     line.attributes = [];
     line.filters = new FilterSet();

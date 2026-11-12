@@ -2030,7 +2030,8 @@ test('seeks sparse ranges without reading event weights in the gaps', async () =
     ]) {
         reads = 0;
         compute();
-        assert.ok(reads <= 24, `${reads} weight reads for 20 visible events`);
+        // Visible events are read once; the four edge events up to twice more, for their acceptance and their weight
+        assert.ok(reads <= 20 + 2 * 4, `${reads} weight reads for 20 visible events`);
     }
 });
 
