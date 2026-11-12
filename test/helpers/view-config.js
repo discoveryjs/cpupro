@@ -40,6 +40,30 @@ export function findViews(config, match, found = []) {
     return found;
 }
 
+// A property of a view holds a query after "=" (`'=total.formatValue()'`); returns the query compiled by `query`,
+// a Jora setup of the test
+export function propertyQuery(query, value) {
+    return query(value.slice(1));
+}
+
+// A content of a view holds a query after the name of the view (`'text:label'`); returns the query compiled by `query`
+export function contentQuery(query, content) {
+    return query(content.slice(content.indexOf(':') + 1));
+}
+
+// A column of a table view by its header, a text or a config with the text
+export function findColumn(table, header) {
+    for (let i = 0; i < table.cols.length; i++) {
+        const column = table.cols[i];
+
+        if (column.header === header || column.header.text === header) {
+            return column;
+        }
+    }
+
+    throw new Error('No column ' + header);
+}
+
 // Content queries of views (`text:…`, `metric:…`) have no identity of their own, they are found by their beginning:
 // returns the first string starting with `prefix`, in depth-first order
 export function findContent(config, prefix) {

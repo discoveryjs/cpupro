@@ -7,7 +7,7 @@ import { createScript } from '../prepare/preprocessing/scripts.js';
 import { processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
 import { parseScriptFixture } from '../../test/fixtures/scripts.js';
-import { findContent, findView } from '../../test/helpers/view-config.js';
+import { findContent, findView, contentQuery, findColumn } from '../../test/helpers/view-config.js';
 
 let page;
 vi.stubGlobal('discovery', { page: { define(name, config) {
@@ -23,7 +23,6 @@ try {
 const query = jora.setup({ methods });
 // Byte sizes are compared unformatted
 const bytesQuery = jora.setup({ methods: { ...methods, bytes: value => value } });
-const contentQuery = content => bytesQuery(content.slice(content.indexOf(':') + 1));
 
 // Scripts are listed and parsed by the preparation stage, then summarized by the rendering stage
 const prepare = page.content;
@@ -38,18 +37,6 @@ async function listScripts(context) {
     const entries = await query(prepare.data)(null, context);
 
     return query(render.data)(entries, context);
-}
-
-function findColumn(name) {
-    for (let i = 0; i < table.cols.length; i++) {
-        const header = table.cols[i].header;
-
-        if (header === name || header.text === name) {
-            return table.cols[i];
-        }
-    }
-
-    throw new Error('No column ' + name);
 }
 
 function parsedScript(id, url, source) {
@@ -182,7 +169,7 @@ test.each([
     ['not compiled', null, null, 'unobserved']
 ])('a shared script shows its compilation in the scope thread: %s', async (_, stage, compiledBytes, state) => {
     const shared = parsedScript(1, 'shared.js', 'function shared() {}');
-    const functions = query(findColumn('Functions').details.data);
+    const functions = query(findColumn(table, 'Functions').details.data);
     const context = { primaryProfile: { thread: createThread(shared, 'CompileFunction') } };
 
     // The script is listed for a thread where it's compiled first
@@ -217,7 +204,7 @@ test.each([
     ['Observed compiled', { compiledBytes: 1 }, { compiledBytes: 2 }],
     ['%', { compiledBytes: 1, byteLength: 4 }, { compiledBytes: 1, byteLength: 2 }]
 ])('the %s column sorts larger values first', (header, smaller, larger) => {
-    assert.deepEqual(query(`sort(${findColumn(header).sorting})`)([smaller, larger]), [larger, smaller]);
+    assert.deepEqual(query(`sort(${findColumn(table, header).sorting})`)([smaller, larger]), [larger, smaller]);
 });
 
 test.each([
@@ -225,7 +212,7 @@ test.each([
     ['UTF-16', 2],
     ['Unavailable', null]
 ])('the storage of a script is %s', (label, bytesPerChar) => {
-    assert.equal(contentQuery(findColumn('Storage').content)({ bytesPerChar }), label);
+    assert.equal(contentQuery(bytesQuery, findColumn(table, 'Storage').content)({ bytesPerChar }), label);
 });
 
 test.each([
@@ -233,7 +220,7 @@ test.each([
     ['unavailable without compilation', null, 20, '–'],
     ['unavailable without source bytes', 0, 0, '–']
 ])('the compiled share of a script is %s', (_, compiledBytes, byteLength, share) => {
-    assert.equal(contentQuery(findColumn('%').content)({ compiledBytes, byteLength }), share);
+    assert.equal(contentQuery(bytesQuery, findColumn(table, '%').content)({ compiledBytes, byteLength }), share);
 });
 
 test.each([
@@ -246,9 +233,9 @@ test.each([
         { byteLength: 5, compiledBytes: compiledBytes[2] }
     ];
 
-    assert.equal(contentQuery(findContent(summary, 'text-numeric:size()'))(rows), 3);
-    assert.equal(contentQuery(findContent(summary, 'text:sum(=>byteLength'))(rows), 25);
-    assert.equal(contentQuery(findContent(summary, 'text:.[compiledBytes'))(rows), compiled);
+    assert.equal(contentQuery(bytesQuery, findContent(summary, 'text-numeric:size()'))(rows), 3);
+    assert.equal(contentQuery(bytesQuery, findContent(summary, 'text:sum(=>byteLength'))(rows), 25);
+    assert.equal(contentQuery(bytesQuery, findContent(summary, 'text:.[compiledBytes'))(rows), compiled);
 });
 
 test.each([
@@ -257,7 +244,7 @@ test.each([
     ['/* a\u044f\ud83d\ude00 */', [10, 9, 1, 10], [[7, 0.7], [3, 0.3]]]
 ])('storage details show code-unit composition and whole-string overhead: %s', (source, counts, groups) => {
     const script = parsedScript(1, 'fixture.js', source);
-    const column = findColumn('Storage');
+    const column = findColumn(table, 'Storage');
     const details = query(column.details.data)({ script });
 
     assert.deepEqual([details.codeUnits, details.codePoints, details.supplementary, details.extraBytes], counts);
@@ -266,7 +253,7 @@ test.each([
 });
 
 test('UTF chars column counts non-Latin-1 code points and sorts missing source last', () => {
-    const column = findColumn('UTF chars');
+    const column = findColumn(table, 'UTF chars');
     const sources = [null, '/* caf\u00e9 */', '/* \u044f\ud83d\ude00 */', '', '/* \\u0100 */'];
     const rows = [];
 
@@ -328,8 +315,8 @@ test('Unicode context counts code points across newlines without splitting surro
 
 test('Storage and UTF chars details scan the selected source and share occurrence rows', () => {
     const script = parsedScript(1, 'fixture.js', '/* \u044f\ud83d\ude00 */');
-    const storage = findColumn('Storage');
-    const utf = findColumn('UTF chars');
+    const storage = findColumn(table, 'Storage');
+    const utf = findColumn(table, 'UTF chars');
     const context = query(utf.context)({ script });
     const count = query(utf.data)({ script }, context);
     const utfInput = query(utf.details.data)(count, context);

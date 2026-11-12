@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import jora from 'jora';
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
-import { findView, findViews } from '../../../test/helpers/view-config.js';
+import { findView, findViews, contentQuery, propertyQuery } from '../../../test/helpers/view-config.js';
 import { methods } from '../../jora/index.mjs';
 import {
     signalWindows,
@@ -17,8 +17,6 @@ type Measurement = { value: number | null; of?: number };
 
 const query = jora.setup({ methods });
 // Queries of a `=query` property and of a `<view>:query` content
-const propQuery = (value: string) => query(value.slice(1));
-const contentQuery = (content: string) => query(content.slice(content.indexOf(':') + 1));
 
 // Values of the measurement rows shown for the scope, by their titles
 function measure(scope: unknown) {
@@ -451,8 +449,8 @@ describe('correlations', () => {
         // segment bounds are inclusive
         const segment = { segmentStart: 1, segmentEnd: 2 };
 
-        assert.equal(contentQuery(details[0])(coverage, segment), 'All: 14');
-        assert.equal(contentQuery(details[1])(coverage, segment), ' / Outside: 3');
+        assert.equal(contentQuery(query, details[0])(coverage, segment), 'All: 14');
+        assert.equal(contentQuery(query, details[1])(coverage, segment), ' / Outside: 3');
         assert.deepEqual(legend.map(item => item.value), [15, 3]);
     });
 
@@ -467,7 +465,7 @@ describe('correlations', () => {
     test('allocations outside stages are split into before, within and after the CPU window', () => {
         const within = findView(memline, { header: 'Within CPU window' });
 
-        assert.equal(contentQuery(within.content)({ outside: 10, before: 2, after: 3 }), 5);
+        assert.equal(contentQuery(query, within.content)({ outside: 10, before: 2, after: 3 }), 5);
         assert.deepEqual(findViews(timeline, { header: 'Within CPU window' }), []);
     });
 
@@ -490,13 +488,13 @@ describe('correlations', () => {
             { category: { name: 'gc' }, total: 2 }
         ];
         const matrix = findView(timeline, { className: 'signal-matrix' });
-        const cols = propQuery(matrix.cols)([], { categories });
+        const cols = propertyQuery(query, matrix.cols)([], { categories });
         const scriptCell = cols[2].content;
         const row = { count: 4, counts: [0, 1, 3] };
 
         assert.deepEqual(cols.map(column => column.header), ['Event / stage', 'Samples', 'script', 'gc']);
-        assert.equal(propQuery(scriptCell.value)(row), 1);
-        assert.equal(propQuery(scriptCell.total)(row, { categories, denominator: 'event' }), 4);
-        assert.equal(propQuery(scriptCell.total)(row, { categories, denominator: 'category' }), 3);
+        assert.equal(propertyQuery(query, scriptCell.value)(row), 1);
+        assert.equal(propertyQuery(query, scriptCell.total)(row, { categories, denominator: 'event' }), 4);
+        assert.equal(propertyQuery(query, scriptCell.total)(row, { categories, denominator: 'category' }), 3);
     });
 });

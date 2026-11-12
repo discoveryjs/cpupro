@@ -4,7 +4,7 @@ import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
-import { findView } from '../../test/helpers/view-config.js';
+import { findView, contentQuery, propertyQuery } from '../../test/helpers/view-config.js';
 
 let page;
 
@@ -18,8 +18,6 @@ evaluateModule(new URL('./events.js', import.meta.url), {
 });
 
 const query = jora.setup({ methods });
-const propQuery = value => query(value.slice(1));
-const contentQuery = content => query(content.slice(content.indexOf(':') + 1));
 const prepare = query(page.content.data);
 const eventsTimeline = methods.eventsTimeline;
 const processSelect = findView(page, { name: 'pageProcess' });
@@ -28,7 +26,7 @@ const spanValues = findView(page, { view: 'labeled-value-list' });
 
 test('the process selector lists processes by name, labeled by the name or as a process', () => {
     const processes = [{ name: 'Renderer', pid: 2 }, { name: 'Browser', pid: 1 }];
-    const label = contentQuery(processSelect.item);
+    const label = contentQuery(query, processSelect.item);
 
     assert.deepEqual(query(processSelect.data)({ defaultSession: { processes } }), [processes[1], processes[0]]);
     assert.equal(label({ value: processes[1] }), 'Browser (pid:1)');
@@ -36,8 +34,8 @@ test('the process selector lists processes by name, labeled by the name or as a 
 });
 
 test('intervals of garbage collections are selected at first, an interval is labeled by its text or name', () => {
-    const checked = propQuery(intervalSelect.checkbox.checked);
-    const label = contentQuery(intervalSelect.checkbox.content);
+    const checked = propertyQuery(query, intervalSelect.checkbox.checked);
+    const label = contentQuery(query, intervalSelect.checkbox.content);
 
     // Options of the page are evaluated in another realm
     assert.deepEqual(Array.from(intervalSelect.data, interval => [label(interval), checked(interval)]), [

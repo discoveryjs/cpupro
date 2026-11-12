@@ -3,16 +3,14 @@ import { test } from 'vitest';
 import jora from 'jora';
 import { methods } from '../../jora/index.mjs';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { findView, findViews } from '../../../test/helpers/view-config.js';
+import { findView, findViews, propertyQuery } from '../../../test/helpers/view-config.js';
 import { pageIndicators } from './page-indicators.js';
 import { SetAttributeFilter } from '../../prepare/computations/attribute-filter.js';
 import type { ProfileLine } from '../../prepare/lines/types.js';
 
 const query = jora.setup({ methods });
-const propQuery = (value: string) => query(value.slice(1));
 // Values are compared unformatted
 const valueQuery = jora.setup({ methods: { ...methods, formatValue: (value: number) => value } });
-const rawValue = (value: string) => valueQuery(value.slice(1));
 
 const runtime = findView(pageIndicators, { title: 'Runtime' });
 const samplingInterval = findView(pageIndicators, { title: 'Sampling interval' });
@@ -48,15 +46,16 @@ test.each([
 ])('the runtime indicator names %s', (_, profileRuntime, className, value) => {
     const profile = { runtime: profileRuntime };
 
-    assert.equal(propQuery(runtime.className)(profile), className);
-    assert.equal(propQuery(runtime.value)(profile), value);
+    assert.equal(propertyQuery(query, runtime.className)(profile), className);
+    assert.equal(propertyQuery(query, runtime.value)(profile), value);
 });
 
 test('metric hints name and define the metric of the line, the total notes the viewport and filters', async () => {
     const { line } = await createLine('memline');
     const context = { scopeLine: line };
-    const totalHint = propQuery(findView(pageIndicators, { title: '="axis".metricName()' }).hint.source)(null, context);
-    const samplingHint = propQuery(samplingInterval.hint.source)(null, context);
+    const total = findView(pageIndicators, { title: '="axis".metricName()' });
+    const totalHint = propertyQuery(query, total.hint.source)(null, context);
+    const samplingHint = propertyQuery(query, samplingInterval.hint.source)(null, context);
 
     assert.ok(totalHint.startsWith('#### Memory allocated\n\nThe total memory allocated during the profiling session'));
     assert.ok(totalHint.endsWith('\n\nIn the viewport, for the samples accepted by the filters.'));
@@ -73,8 +72,8 @@ test.each([
     const { line } = await createLine(name);
     const context = { scopeLine: line };
 
-    assert.equal(propQuery(samplingInterval.value)(null, context), line.sourceInfo.samplesInterval);
-    assert.equal(propQuery(samplingInterval.unit)(null, context), unit);
+    assert.equal(propertyQuery(query, samplingInterval.value)(null, context), line.sourceInfo.samplesInterval);
+    assert.equal(propertyQuery(query, samplingInterval.unit)(null, context), unit);
 });
 
 test('profile values are of the scope breakdown, debounced on changes of its viewport population', async () => {
@@ -88,7 +87,7 @@ test('profile values are of the scope breakdown, debounced on changes of its vie
         const data = query(view.data)(profile, context);
 
         assert.equal(data, breakdown);
-        assert.equal(propQuery(view.metrics)(data, context), breakdown.populationViewport);
+        assert.equal(propertyQuery(query, view.metrics)(data, context), breakdown.populationViewport);
         assert.equal(view.debounce, true);
     }
 });
@@ -111,7 +110,7 @@ test.each([
         const view = viewportValues[i];
         const data = query(view.data)(profile, context);
 
-        values.push(rawValue(findView(view, { view: 'text-with-unit' }).value)(data, context));
+        values.push(propertyQuery(valueQuery, findView(view, { view: 'text-with-unit' }).value)(data, context));
     }
 
     assert.deepEqual(values, expected);
@@ -137,9 +136,9 @@ test('selection indicators follow the line range, selected samples follow the fi
 
     line.range.setRanges([{ start: 0, end: 15 }]);
 
-    assert.equal(propQuery(rangeUpdates.metrics)(null, context), line.range);
-    assert.equal(propQuery(samplesUpdates.metrics)(null, context), breakdown.populationFiltered);
-    assert.equal(propQuery(selectionSamples.value)(null, context), 2);
+    assert.equal(propertyQuery(query, rangeUpdates.metrics)(null, context), line.range);
+    assert.equal(propertyQuery(query, samplesUpdates.metrics)(null, context), breakdown.populationFiltered);
+    assert.equal(propertyQuery(query, selectionSamples.value)(null, context), 2);
 });
 
 const overlapping = [{ start: -10, end: 15 }, { start: 5, end: 20 }, { start: 25, end: 35 }];
@@ -156,7 +155,7 @@ test.each([
 
     line.range.setRanges(ranges);
 
-    assert.equal(rawValue(selectedInterval.value)(null, { scopeLine: line }), length);
+    assert.equal(propertyQuery(valueQuery, selectedInterval.value)(null, { scopeLine: line }), length);
 });
 
 test.each([
@@ -168,8 +167,8 @@ test.each([
 
     line.range.setRanges([{ start: 0, end }]);
 
-    assert.equal(propQuery(selectedInterval.value)(null, context), value);
-    assert.equal(propQuery(selectedInterval.title)(null, context), title);
+    assert.equal(propertyQuery(query, selectedInterval.value)(null, context), value);
+    assert.equal(propertyQuery(query, selectedInterval.title)(null, context), title);
 });
 
 test('the selected interval does not depend on filters', async () => {
@@ -178,5 +177,5 @@ test('the selected interval does not depend on filters', async () => {
     line.range.setRanges([{ start: 0, end: 20 }]);
     acceptNothing(line);
 
-    assert.equal(rawValue(selectedInterval.value)(null, { scopeLine: line }), 20);
+    assert.equal(propertyQuery(valueQuery, selectedInterval.value)(null, { scopeLine: line }), 20);
 });

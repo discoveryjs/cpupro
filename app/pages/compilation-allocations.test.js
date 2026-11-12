@@ -4,7 +4,7 @@ import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
-import { findContent, findView } from '../../test/helpers/view-config.js';
+import { findContent, findView, contentQuery, findColumn, propertyQuery } from '../../test/helpers/view-config.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { prepareCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
 import {
@@ -21,8 +21,6 @@ await import('./compilations.js');
 vi.unstubAllGlobals();
 
 const query = jora.setup({ methods });
-const propQuery = value => query(value.slice(1));
-const contentQuery = content => query(content.slice(content.indexOf(':') + 1));
 
 // The same compilation table is shown with and without allocations
 const compilationTable = findView(page, { metrics: '=#.allocationPopulation' }).content;
@@ -37,10 +35,6 @@ const stages = findView(page, { view: 'expand' });
 const stageControls = findView(stages, { view: 'context' });
 const stageOptions = findView(stageControls, { view: 'list' });
 const allStages = findView(stageControls, { view: 'button' });
-
-function findColumn(config, header) {
-    return config.cols.find(column => column.header === header);
-}
 
 function contextFor(profile, kind = 'location') {
     return query(page.content.context)(null, {
@@ -108,13 +102,13 @@ function stageFilterControls(profile, context) {
     const filterContext = query(stageControls.context)(profile, context);
     const filter = query(stageControls.data)(profile, filterContext);
     const options = query(stageOptions.data)(filter, filterContext);
-    const checked = option => propQuery(stageOptions.item.checked)(option, filterContext);
+    const checked = option => propertyQuery(query, stageOptions.item.checked)(option, filterContext);
     const setEnabled = (key, enabled) => {
         const option = options.find(entry => entry.key === key);
 
-        propQuery(stageOptions.item.onChange)(option, filterContext)(enabled);
+        propertyQuery(query, stageOptions.item.onChange)(option, filterContext)(enabled);
     };
-    const allowAll = () => propQuery(allStages.onClick)(filter, filterContext)();
+    const allowAll = () => propertyQuery(query, allStages.onClick)(filter, filterContext)();
 
     return { options, checked, setEnabled, allowAll };
 }
@@ -318,7 +312,7 @@ test('stage options are the compilation stages of the allocations, all enabled a
         const updates = findView(stages, { view: 'update-on-line-metrics-changes' });
 
         assert.equal(query(stages.when)(null, context), stageAttribute);
-        assert.equal(propQuery(updates.metrics)(null, context), line.filters);
+        assert.equal(propertyQuery(query, updates.metrics)(null, context), line.filters);
         assert.deepEqual(controls.options.map(option => [option.key, controls.checked(option)]), [
             ['Compile', true],
             ['Parse', true]
@@ -379,7 +373,7 @@ test('a compilation takes the most advanced state of complete records, activated
 
     const context = contextFor(profile);
     const rows = subjectRows(null, context);
-    const summaryCount = prefix => contentQuery(findContent(summary, prefix))(rows, context);
+    const summaryCount = prefix => contentQuery(query, findContent(summary, prefix))(rows, context);
 
     assert.deepEqual(rows.map(row => [row.state, row.activated, row.events]), [
         ['unobserved', false, 1],
