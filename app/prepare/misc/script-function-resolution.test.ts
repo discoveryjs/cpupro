@@ -24,6 +24,7 @@ import {
     terminateParseWorkerPool
 } from './script-function-resolution.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
+import { computeLineStarts } from './line-boundaries.js';
 import type { CpuProLocation, CpuProScript } from '../types.js';
 import { createScriptFixture } from '../../../test/fixtures/scripts.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
@@ -56,6 +57,7 @@ class ParseWorker extends EventTarget {
         createFunctionRangeColumns,
         writeFunctionRanges,
         computeScriptSourceMetrics,
+        computeLineStarts,
         postMessage: (message: unknown, transfer: ArrayBuffer[]) => {
             const data = structuredClone(message, { transfer });
 

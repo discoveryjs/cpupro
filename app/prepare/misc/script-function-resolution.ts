@@ -371,6 +371,7 @@ type ParseWorkerPayload = Array<{
 type ParseWorkerResult = {
     scripts: ParseSourceWorkerScriptResult[];
     ranges: FunctionRangeColumns;
+    lineStarts: Uint32Array;
     types: string[];
 };
 type WorkerEntry = {
@@ -603,16 +604,20 @@ export async function prepareScriptSources(
                 source: script.source!
             });
             const result = await parseWorkerPool.parse(scriptsForWorker.map(toPayload));
-            const { scripts: scriptParsedResults, ranges: rangeColumns, types } = result;
+            const { scripts: scriptParsedResults, ranges: rangeColumns, lineStarts, types } = result;
             let rangeOffset = 0;
+            let lineOffset = 0;
 
             for (let i = 0; i < scriptParsedResults.length; i++) {
-                const { sourceMetrics, ranges, rangeCount } = scriptParsedResults[i];
+                const { sourceMetrics, ranges, rangeCount, lineCount } = scriptParsedResults[i];
                 const script = scriptsForWorker[i];
+                const scriptLineStarts = lineStarts.subarray(lineOffset, lineOffset + lineCount);
 
                 ranges.ranges = readFunctionRanges(rangeColumns, rangeOffset, rangeCount, types);
                 rangeOffset += rangeCount;
+                lineOffset += lineCount;
                 setScriptFunctionRanges(script, ranges, diagnose, sourceMetrics);
+                scriptLines.set(script, createLineBoundaries(script.source!, scriptLineStarts));
             }
         } finally {
             for (const script of scriptsForWorker) {

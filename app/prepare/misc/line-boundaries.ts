@@ -1,62 +1,57 @@
-/**
- * Factory function for creating a line boundaries utility.
- * Builds line boundary information incrementally as needed for efficient offset lookups.
- * Optimized for sequential access patterns (adjacent ranges).
- */
-export function createLineBoundaries(document: string) {
-    const lineStarts: number[] = [0]; // Line starts cache (always includes 0)
-    let lastLineStart = 0;
+// Offsets of the starts of the lines of a document; \n, \r and \r\n end a line
+export function computeLineStarts(document: string) {
+    // the number of lines is known once the document is searched; the first line starts at 0
+    const lineStarts = [0];
     // PERF: Line ends are found by indexOf() rather than a regular expression. The next \n and the next \r
     // are kept until a line start passes them, so a document is searched for each of them once
-    let nextLineFeed = nextIndexOf('\n', 0);
-    let nextCarriageReturn = nextIndexOf('\r', 0);
-    let lastLineIndex = 0; // Cache for last looked up line index
-    let fullyScanned = false; // Whether we've scanned the entire document
+    let nextLineFeed = nextIndexOf(document, '\n', 0);
+    let nextCarriageReturn = nextIndexOf(document, '\r', 0);
 
-    // The position of the next character from an offset, the end of the document when there's none,
-    // as a line without a line break ends there
-    function nextIndexOf(char: string, offset: number) {
-        const index = document.indexOf(char, offset);
+    while (true) {
+        const lineEnd = Math.min(nextLineFeed, nextCarriageReturn);
 
-        return index !== -1
-            ? index
-            : document.length;
-    }
+        if (lineEnd === document.length) {
+            break;
+        }
 
-    /**
-     * Ensure we have scanned enough lines.
-     * If lineCount is provided, ensures we have at least that many lines cached.
-     * If targetOffset is provided, scans until we've covered that offset.
-     */
-    function ensureLines(lineCount: number, targetOffset?: number): void {
-        // Scan until we have enough lines or covered the offset or reach end of document
-        while (!fullyScanned) {
-            if (lineCount <= lineStarts.length &&
-                (targetOffset === undefined || lastLineStart > targetOffset)) {
-                break;
-            }
+        // \r\n ends a line as a whole
+        const lineStart = lineEnd === nextCarriageReturn && document.charCodeAt(lineEnd + 1) === 10 /* \n */
+            ? lineEnd + 2
+            : lineEnd + 1;
 
-            if (nextLineFeed < lastLineStart) {
-                nextLineFeed = nextIndexOf('\n', lastLineStart);
-            }
+        lineStarts.push(lineStart);
 
-            if (nextCarriageReturn < lastLineStart) {
-                nextCarriageReturn = nextIndexOf('\r', lastLineStart);
-            }
+        if (nextLineFeed < lineStart) {
+            nextLineFeed = nextIndexOf(document, '\n', lineStart);
+        }
 
-            const lineEnd = Math.min(nextLineFeed, nextCarriageReturn);
-
-            if (lineEnd === document.length) {
-                fullyScanned = true;
-            } else {
-                // \r\n ends a line as a whole
-                lastLineStart = lineEnd === nextCarriageReturn && document[lineEnd + 1] === '\n'
-                    ? lineEnd + 2
-                    : lineEnd + 1;
-                lineStarts.push(lastLineStart);
-            }
+        if (nextCarriageReturn < lineStart) {
+            nextCarriageReturn = nextIndexOf(document, '\r', lineStart);
         }
     }
+
+    return new Uint32Array(lineStarts);
+}
+
+// The position of the next character from an offset, the end of the document when there's none,
+// as a line without a line break ends there
+function nextIndexOf(document: string, char: string, offset: number) {
+    const index = document.indexOf(char, offset);
+
+    return index !== -1
+        ? index
+        : document.length;
+}
+
+/**
+ * Factory function for creating a line boundaries utility over the line starts of a document.
+ * Optimized for sequential access patterns (adjacent ranges).
+ */
+export function createLineBoundaries(
+    document: string,
+    lineStarts: Uint32Array = computeLineStarts(document)
+) {
+    let lastLineIndex = 0; // Cache for last looked up line index
 
     /**
      * Binary search for line index in the given range.
@@ -97,10 +92,7 @@ export function createLineBoundaries(document: string) {
                 // Offset is on the same line as last lookup - cache hit!
                 lineIndex = lastLineIndex;
             } else {
-                // Slow track: offset is beyond cached range or on last line
-                // Scan until we cover this offset
-                ensureLines(lastLineIndex + 2, offset);
-
+                // Slow track: offset is beyond the cached line or on the last line
                 // Binary search in [lastLineIndex...lineStarts.length - 1]
                 lineIndex = binarySearchLineIndex(lastLineIndex, lineStarts.length - 1, offset);
             }
@@ -119,7 +111,6 @@ export function createLineBoundaries(document: string) {
             if (targetLineIndex < 0) {
                 lineIndex = 0;
             } else if (lines > 0) {
-                ensureLines(targetLineIndex + 1);
                 lineIndex = Math.min(targetLineIndex, lineStarts.length - 1);
             } else {
                 lineIndex = targetLineIndex;
@@ -156,9 +147,6 @@ export function createLineBoundaries(document: string) {
 
         const lineIndex = line - 1;
 
-        // Ensure we have scanned the requested line and the next one to know where current line ends
-        ensureLines(lineIndex + 2);
-
         // Clamp to available lines
         const actualLineIndex = Math.min(lineIndex, lineStarts.length - 1);
         const lineStart = lineStarts[actualLineIndex];
@@ -184,9 +172,6 @@ export function createLineBoundaries(document: string) {
 
     function getLineEnd(offset: number, lines = 0): number {
         const lineIndex = getLineIndex(offset, lines);
-
-        // Ensure we have the next line to get the end
-        ensureLines(lineIndex + 2);
 
         // The line end is the start of the next line, or document.length
         return lineIndex + 1 < lineStarts.length
@@ -249,8 +234,6 @@ export function createLineBoundaries(document: string) {
     }
 
     function getLastLine(): number {
-        // Ensure we've scanned the entire document
-        ensureLines(Infinity);
         return lineStarts.length;
     }
 
@@ -260,8 +243,12 @@ export function createLineBoundaries(document: string) {
 
     function getMaxLineEnd(fromLine?: number, toLine?: number): number {
         const lastLine = getLastLine();
-        const from = fromLine === undefined ? 1 : Math.max(1, fromLine);
-        const to = toLine === undefined ? lastLine : Math.min(lastLine, toLine);
+        const from = fromLine === undefined
+            ? 1
+            : Math.max(1, fromLine);
+        const to = toLine === undefined
+            ? lastLine
+            : Math.min(lastLine, toLine);
 
         if (from > to) {
             return 0;
@@ -272,8 +259,12 @@ export function createLineBoundaries(document: string) {
 
     function getMaxLineContentEnd(fromLine?: number, toLine?: number): number {
         const lastLine = getLastLine();
-        const from = fromLine === undefined ? 1 : Math.max(1, fromLine);
-        const to = toLine === undefined ? lastLine : Math.min(lastLine, toLine);
+        const from = fromLine === undefined
+            ? 1
+            : Math.max(1, fromLine);
+        const to = toLine === undefined
+            ? lastLine
+            : Math.min(lastLine, toLine);
 
         if (from > to) {
             return 0;

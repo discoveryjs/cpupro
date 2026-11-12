@@ -8,12 +8,14 @@ import {
     type FunctionRangeColumns
 } from '../misc/parse-script-source-ranges.js';
 import { computeScriptSourceMetrics } from '../misc/source-text-metrics.js';
+import { computeLineStarts } from '../misc/line-boundaries.js';
 import type { ParseSourceWorkerScriptResult } from './types.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 
 type Message = {
     scripts: ParseSourceWorkerScriptResult[];
     ranges: FunctionRangeColumns;
+    lineStarts: Uint32Array;
     types: string[];
 };
 type Post = {
@@ -22,11 +24,11 @@ type Post = {
     buffers: ArrayBuffer[];
 };
 
-test('posts one message with function ranges in columns and source metrics of every script', async () => {
+test('posts function ranges and line starts in columns of one message with metrics of every script', async () => {
     const sources = [
         'function outer() { return () => "\u0100"; }',
         '',
-        'const text = "caf\u00e9";',
+        'const text = "caf\u00e9";\r\nlet a;\n',
         'function broken(\u0100'
     ];
     const posts: Post[] = [];
@@ -48,6 +50,8 @@ test('posts one message with function ranges in columns and source metrics of ev
             }
         }
 
+        buffers.push(message.lineStarts.buffer);
+
         // a clone brings the message into this realm, as a worker message does
         posts.push({ message: structuredClone(message), transfer, buffers });
     };
@@ -56,6 +60,7 @@ test('posts one message with function ranges in columns and source metrics of ev
         createFunctionRangeColumns,
         writeFunctionRanges,
         computeScriptSourceMetrics,
+        computeLineStarts,
         postMessage
     }, 'onmessage');
 
@@ -73,12 +78,15 @@ test('posts one message with function ranges in columns and source metrics of ev
     assert.deepEqual([...message.ranges.type], [0, 1]);
     assert.deepEqual(message.scripts.map(script => script.rangeCount), [2, 0, 0, 0]);
 
-    // index buffers of every script and range columns are transferred rather than copied
-    assert.equal(transfer.length, 4 * 3 + 12);
+    // index buffers of every script, range columns and line starts are transferred rather than copied
+    assert.equal(transfer.length, 4 * 3 + 12 + 1);
 
     for (let i = 0; i < buffers.length; i++) {
         assert.equal(transfer[i], buffers[i]);
     }
+
+    assert.deepEqual(message.scripts.map(script => script.lineCount), [1, 1, 3, 1]);
+    assert.deepEqual([...message.lineStarts], [0, 0, 0, 22, 29, 0]);
 
     for (let i = 0, offset = 0; i < sources.length; i++) {
         const { ranges, rangeCount } = message.scripts[i];
@@ -104,10 +112,10 @@ test('posts one message with function ranges in columns and source metrics of ev
     });
     assert.deepEqual(text.sourceMetrics, {
         bytesPerChar: 1,
-        byteLength: 20,
+        byteLength: 29,
         nonLatin1CodeUnits: 0,
         surrogatePairs: 0,
-        selfSize: 20
+        selfSize: 29
     });
     // an unparsed source has no exclusive size
     assert.equal(broken.ranges.parsed, false);

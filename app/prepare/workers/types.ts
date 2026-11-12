@@ -12,4 +12,6 @@ export type ParseSourceWorkerScriptResult = {
     // the ranges are posted in the columns of the message and are empty here
     ranges: FunctionRanges;
     rangeCount: number;
+    // the line starts are posted in a column of the message
+    lineCount: number;
 };
