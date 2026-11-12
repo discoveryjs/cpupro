@@ -1,6 +1,6 @@
 import { USE_WASM } from '../const.js';
 import { scriptFromScriptId } from './scripts.js';
-import { capacity, createUint32Progression } from '../misc/utils.js';
+import { createUint32Progression, powerOfTwoCapacity } from '../misc/utils.js';
 import {
     createJavaScriptApi,
     createWasmApi,
@@ -370,7 +370,7 @@ class LocationSites {
     #api: ComputeApi;
 
     constructor(size: number) {
-        this.#buffer = createSitesBuffer(capacity(size));
+        this.#buffer = createSitesBuffer(powerOfTwoCapacity(size));
         this.#api = createSitesApi(this.#buffer);
     }
 
@@ -402,7 +402,7 @@ class LocationSites {
 
             // The table grows to room for the chunk's sites, the chunk of a grown table is no smaller
             if (this.count + size > this.owners.length) {
-                this.#grow(capacity(this.count + size));
+                this.#grow(powerOfTwoCapacity(this.count + size));
             }
 
             const buffer = this.#buffer;

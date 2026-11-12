@@ -3,6 +3,7 @@ import type { EventClasses } from '../computations/population-filter.js';
 import type { PreparedAttributeFilter } from '../computations/attribute-filter.js';
 import { equalRanges, type RangeSet } from '../computations/coordinates.js';
 import { lowerBound } from '../computations/misc.js';
+import { growTypedArray } from '../misc/utils.js';
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
 
 // Identity-like attributes have about as many values as there are signatures; grouping by them would
@@ -489,13 +490,13 @@ export class BinRecords {
 
     #push(signature: number, axisSignature: number, bin: number) {
         if (this.count === this.signatures.length) {
-            this.signatures = grow(this.signatures);
-            this.weights = grow(this.weights);
+            this.signatures = growTypedArray(this.signatures);
+            this.weights = growTypedArray(this.weights);
 
             if (this.#mapped) {
-                this.axisSignatures = grow(this.axisSignatures);
-                this.bins = grow(this.bins);
-                this.#nextRecords = grow(this.#nextRecords);
+                this.axisSignatures = growTypedArray(this.axisSignatures);
+                this.bins = growTypedArray(this.bins);
+                this.#nextRecords = growTypedArray(this.#nextRecords);
             }
         }
 
@@ -515,7 +516,7 @@ export class BinRecords {
 
     #endSpan() {
         if (this.spanCount + 1 === this.spanStarts.length) {
-            this.spanStarts = grow(this.spanStarts);
+            this.spanStarts = growTypedArray(this.spanStarts);
         }
 
         this.spanStarts[++this.spanCount] = this.count;
@@ -762,12 +763,4 @@ function signatureValues(column: SignatureColumn, events: Uint32Array) {
     }
 
     return result;
-}
-
-function grow<T extends Uint32Array | Int32Array | Float64Array>(array: T): T {
-    const grown = new (array.constructor as new (length: number) => T)(array.length * 2);
-
-    grown.set(array);
-
-    return grown;
 }

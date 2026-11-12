@@ -1,4 +1,5 @@
 import type { EventClasses } from './population-filter.js';
+import { growTypedArray, powerOfTwoCapacity } from '../misc/utils.js';
 
 // Parts follow a grid of bins on the population's own value axis, so ranges on that grid cover whole parts;
 // bins with many events are split, so a range edge inside one costs a bounded number of events
@@ -210,7 +211,7 @@ function groupParts(
         maxPartEvents = Math.max(maxPartEvents, partEvents[i + 1] - partEvents[i]);
     }
 
-    const slots = new Int32Array(capacity(2 * maxPartEvents)).fill(-1);
+    const slots = new Int32Array(powerOfTwoCapacity(2 * maxPartEvents)).fill(-1);
     const classRecords = new Int32Array(classCount).fill(-1);
     let byRuns = false;
 
@@ -368,7 +369,7 @@ class RecordsBuilder {
 
     constructor(eventCount: number, partCount: number) {
         // PERF: Records grow from a size bounded by the population's, so small ones allocate little
-        const size = capacity(Math.min(eventCount, 1 << 20));
+        const size = powerOfTwoCapacity(Math.min(eventCount, 1 << 20));
 
         this.samples = new Uint32Array(size);
         this.classes = new Uint32Array(size);
@@ -380,10 +381,10 @@ class RecordsBuilder {
 
     add(sample: number, eventClass: number) {
         if (this.count === this.samples.length) {
-            this.samples = grow(this.samples);
-            this.classes = grow(this.classes);
-            this.weights = grow(this.weights);
-            this.counts = grow(this.counts);
+            this.samples = growTypedArray(this.samples);
+            this.classes = growTypedArray(this.classes);
+            this.weights = growTypedArray(this.weights);
+            this.counts = growTypedArray(this.counts);
         }
 
         const record = this.count++;
@@ -416,17 +417,4 @@ class RecordsBuilder {
 
 function hashKey(sample: number, eventClass: number) {
     return (Math.imul(sample, 0x9e3779b1) ^ Math.imul(eventClass + 0x7f4a7c15, 0x85ebca6b)) >>> 0;
-}
-
-// Power of two size of a table or a growing array, at least 16
-function capacity(size: number) {
-    return 2 ** Math.ceil(Math.log2(Math.max(16, size)));
-}
-
-function grow<T extends Uint32Array | Float64Array>(array: T): T {
-    const grown = new (array.constructor as new (length: number) => T)(array.length * 2);
-
-    grown.set(array);
-
-    return grown;
 }

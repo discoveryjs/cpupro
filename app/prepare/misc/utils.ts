@@ -97,15 +97,13 @@ export function createInt32Progression(length: number) {
     return result;
 }
 
-// Convert bytes into WebAssembly memory pages
-const WASM_PAGE_SIZE = 64 * 1024;
-// Power of two size of a growing array, at least 16
-export function capacity(size: number) {
+// Power of two size of a table or a growing typed array, at least 16
+export function powerOfTwoCapacity(size: number) {
     return 2 ** Math.ceil(Math.log2(Math.max(16, size)));
 }
 
 // A typed array of twice the length with the array's elements
-export function grow<T extends Int32Array | Uint32Array | Float64Array>(array: T): T {
+export function growTypedArray<T extends Int32Array | Uint32Array | Float64Array>(array: T): T {
     const grown = new (array.constructor as new (length: number) => T)(array.length * 2);
 
     grown.set(array);
@@ -113,6 +111,8 @@ export function grow<T extends Int32Array | Uint32Array | Float64Array>(array: T
     return grown;
 }
 
+// Convert bytes into WebAssembly memory pages
+const WASM_PAGE_SIZE = 64 * 1024;
 export function bytesToWasmMemoryPages(bytes: number) {
     return Math.ceil(bytes / WASM_PAGE_SIZE);
 }
