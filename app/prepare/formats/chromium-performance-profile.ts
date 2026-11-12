@@ -693,6 +693,15 @@ export function extractFromChromiumPerformanceProfile(
                     break;
                 }
 
+                // PERF: Compilation events of V8 take no sample trace id, which the inspector of Blink gives to its
+                // events, so their args aren't searched for one; the args of an event take several lookups of many
+                // shapes, and compilation events are about half of the events of a trace that records them
+                if (cat === 'disabled-by-default-v8.compile' ||
+                    cat === 'disabled-by-default-v8.compilation_allocations') {
+                    addTraceEventToThread(diagnose, eventChannels, event, ph, cat, args);
+                    break;
+                }
+
                 if ('sampleTraceId' in args) {
                     sampleTraceId = args.sampleTraceId;
                     data = args;
@@ -718,9 +727,7 @@ export function extractFromChromiumPerformanceProfile(
                             args?.traceId || null
                         );
                     }
-                } else if (cat === 'disabled-by-default-v8.compile' ||
-                    cat === 'disabled-by-default-v8.compilation_allocations' ||
-                    ph === 'X' || ph === 'b' || ph === 'e') {
+                } else if (ph === 'X' || ph === 'b' || ph === 'e') {
                     addTraceEventToThread(diagnose, eventChannels, event, ph, cat, args);
                 }
             }
