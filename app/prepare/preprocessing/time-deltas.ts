@@ -169,6 +169,8 @@ export function enumerateLongTimeDeltas(
     };
 }
 
+// Splits long time deltas into a sample of the allowed duration and a "(no samples)" sample after it; returns the new
+// index of every sample, then the new sample count, so relations to samples can follow them
 export function processLongTimeDeltas(
     longDeltas: LongTimeDeltas,
     timeDeltas: Uint32Array,
@@ -184,6 +186,9 @@ export function processLongTimeDeltas(
 
     // the size of the original arrays before adding new samples for long time deltas
     const originalSize = timeDeltas.length - longTimeDeltasCount;
+    const sampleIndices = new Uint32Array(originalSize + 1);
+
+    sampleIndices[originalSize] = timeDeltas.length;
 
     // create no-samples node
     const noSamplesNodeId = generatedNodes.addNode(
@@ -202,6 +207,7 @@ export function processLongTimeDeltas(
             timeDeltas[i] = delta - allowedSampleDuration;
             samples[i - 1] = samples[j];
             samples[i] = noSamplesNodeId;
+            sampleIndices[j] = i - 1;
 
             if (sampleScriptOffsets !== null) {
                 sampleScriptOffsets[i - 1] = sampleScriptOffsets[j];
@@ -213,10 +219,13 @@ export function processLongTimeDeltas(
         } else {
             timeDeltas[i] = delta;
             samples[i] = samples[j];
+            sampleIndices[j] = i;
 
             if (sampleScriptOffsets !== null) {
                 sampleScriptOffsets[i] = sampleScriptOffsets[j];
             }
         }
     }
+
+    return sampleIndices;
 }

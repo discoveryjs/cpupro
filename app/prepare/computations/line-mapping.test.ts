@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { mapAllocationsToSamples, mapLineRanges } from './line-mapping.js';
+import { insertSamplesIntoAllocationMapping, mapAllocationsToSamples, mapLineRanges } from './line-mapping.js';
 
 test('maps time by sample timestamps and allocation ranges by overlapping occurrences', async () => {
     const { profile } = await createProfileFixture({ startTime: 100 });
@@ -65,4 +65,20 @@ test('allocations after the last sample map to the sample after the recorded one
     assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 40 }]), [{ start: 0, end: 96 }]);
     // A range past the end of the recording covers the instant of its end
     assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 1000 }]), [{ start: 0, end: 160 }]);
+});
+
+// A sample inserted after sample 1 takes its last allocation ID, so no allocation moves to it; sample 3 records
+// no ID, so allocation 13 maps to the sample after the recorded ones before and after the insertion
+test('allocations keep their samples when samples are inserted', () => {
+    const sampleAllocationIds = Uint32Array.of(10, 11, 12);
+    const allocationSamples = mapAllocationsToSamples([10, 11, 12, 13], sampleAllocationIds, 4);
+    const insertedAllocationIds = insertSamplesIntoAllocationMapping(
+        allocationSamples,
+        sampleAllocationIds,
+        Uint32Array.of(0, 1, 3, 4, 5)
+    );
+
+    assert.deepEqual([...allocationSamples], [0, 1, 3, 4]);
+    assert.deepEqual([...insertedAllocationIds], [10, 11, 11, 12]);
+    assert.deepEqual([...mapAllocationsToSamples([10, 11, 12, 13], insertedAllocationIds, 5)], [0, 1, 3, 4]);
 });

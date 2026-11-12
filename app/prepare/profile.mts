@@ -18,7 +18,11 @@ import { SourceMapping } from './preprocessing/source-mapping.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
-import { createLineMapping, mapAllocationsToSamples } from './computations/line-mapping.js';
+import {
+    createLineMapping,
+    insertSamplesIntoAllocationMapping,
+    mapAllocationsToSamples
+} from './computations/line-mapping.js';
 import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
@@ -402,9 +406,12 @@ async function createCallStackTimeline(
         }
     }
 
+    // The last allocation ID of every sample of the timeline, also of the samples inserted for long time deltas
+    let timelineAllocationIds = sampleAllocationIds;
+
     // process long time deltas if needed
     if (longDeltas !== null) {
-        await work('process long time deltas', () =>
+        const sampleIndices = await work('process long time deltas', () =>
             processLongTimeDeltas(
                 longDeltas,
                 timeDeltas,
@@ -413,6 +420,17 @@ async function createCallStackTimeline(
                 generatedNodes
             )
         );
+
+        // The CPU sample of every allocation was found before "(no samples)" samples were inserted
+        if (allocationSamples !== null && sampleAllocationIds !== null) {
+            timelineAllocationIds = await work('insert samples into allocation mapping', () =>
+                insertSamplesIntoAllocationMapping(
+                    allocationSamples,
+                    sampleAllocationIds,
+                    sampleIndices
+                )
+            );
+        }
     }
 
     // attach root GC node samples to previous call stack;
@@ -531,7 +549,7 @@ async function createCallStackTimeline(
         timeline,
         population: cpuSamplesPopulation,
         sampledTreeSet: callStackSampledTreeSet,
-        sampleAllocationIds,
+        sampleAllocationIds: timelineAllocationIds,
         allocationSamples,
         callFrameCodes
     };

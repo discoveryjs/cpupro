@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { fixTimeDeltasOrderIfNeeded } from './time-deltas.js';
+import { Dictionary } from '../dictionary.js';
+import { GeneratedNodes } from './nodes.js';
+import { enumerateLongTimeDeltas, fixTimeDeltasOrderIfNeeded, processLongTimeDeltas } from './time-deltas.js';
 
 test('moves samples, script offsets and allocation ids together when deltas are out of order', () => {
     const timeDeltas = [10, 20, -5, 7];
@@ -47,4 +49,18 @@ test('keeps ordered input intact and tolerates a mapping shorter than samples', 
 
     assert.deepEqual(shortSamples, [2, 1]);
     assert.deepEqual(shortMapping, [3]);
+});
+
+// A long delta keeps the allowed duration and the rest goes to a "(no samples)" sample after it, so the samples
+// after it move by one
+test('gives the new index of every sample when long deltas are split', () => {
+    const timeDeltas = Uint32Array.of(10, 50, 10, 0);
+    const samples = Uint32Array.of(1, 2, 3, 0);
+    const generatedNodes = new GeneratedNodes(new Dictionary(), 4);
+    const longDeltas = enumerateLongTimeDeltas(10, timeDeltas.subarray(0, 3))!;
+    const sampleIndices = processLongTimeDeltas(longDeltas, timeDeltas, samples, null, generatedNodes);
+
+    assert.deepEqual([...timeDeltas], [10, 12, 38, 10]);
+    assert.deepEqual([...samples], [1, 2, generatedNodes.noSamplesNodeId, 3]);
+    assert.deepEqual([...sampleIndices], [0, 1, 3, 4]);
 });
