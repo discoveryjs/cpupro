@@ -4,23 +4,7 @@ import { resolveScopeProfileLine, resolveScopeViewport } from '../jora/profile.j
 import { lineZoom, subscribeLineZoom } from '../jora/viewport.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
-
-function createElement(tagName, className) {
-    const element = {
-        tagName,
-        className,
-        children: [],
-        styles: new Map(),
-        style: {
-            setProperty: (name, value) => element.styles.set(name, value)
-        },
-        append(...children) {
-            element.children.push(...children);
-        }
-    };
-
-    return element;
-}
+import { createElement } from '../../test/helpers/dom.js';
 
 // A line over the range from 100 to 200
 async function createLine() {

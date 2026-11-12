@@ -8,6 +8,7 @@ import { min, max } from '../prepare/misc/utils.js';
 import { chartPointAt, chartScaleY, drawChart } from './chart/index.js';
 import usage from './chart.usage.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
+import { createElement, rangeCoverage } from '../../test/helpers/dom.js';
 
 function createContext(width, height) {
     let path = null;
@@ -233,35 +234,12 @@ test('marks a point beyond an edge of the viewport where the curve from it cross
     assert.deepEqual(chartPointAt(series, before, 105), { index: 0, x: 110, y: 10 });
 });
 
-function createElement(tagName, className) {
-    const listeners = new Map();
-    const element = {
-        tagName,
-        className,
-        clientWidth: 1000,
-        hidden: false,
-        textContent: '',
-        children: [],
-        styles: new Map(),
-        classList: new Set(),
-        style: {
-            setProperty(name, value) {
-                element.styles.set(name, value);
-            }
-        },
-        addEventListener(type, listener) {
-            listeners.set(type, listener);
-        },
-        dispatch(type, event) {
-            listeners.get(type)(event);
-        },
-        getContext() {
-            return createContext(0, 0);
-        },
-        append(...children) {
-            element.children.push(...children);
-        }
-    };
+// Elements of the chart are laid out 1000 pixels wide; a canvas gives a recording context
+function createChartElement(tagName, className) {
+    const element = createElement(tagName, className);
+
+    element.clientWidth = 1000;
+    element.getContext = () => createContext(0, 0);
 
     return element;
 }
@@ -357,13 +335,13 @@ function renderView(config, data, context, computedColor = '#abc') {
         },
         window: { devicePixelRatio: 2 },
         getComputedStyle: () => ({ getPropertyValue: () => computedColor }),
-        utils: { createElement },
+        utils: { createElement: createChartElement },
         HTMLElement: class {},
         customElements: { define: (name, Element) => lifecycle = { name, Element } },
-        document: { createElement }
+        document: { createElement: createChartElement }
     });
 
-    const element = createElement('div');
+    const element = createChartElement('div');
     const host = {
         render: (el, content, input, scope) => renders.push({ el, content, data: input, context: scope })
     };
@@ -420,7 +398,6 @@ function renderView(config, data, context, computedColor = '#abc') {
 }
 
 const displayed = view => view.draws.at(-1).viewport;
-const coverage = view => [view.element.styles.get('--range-pad-start'), view.element.styles.get('--range-pad-end')];
 const labelText = label => label.textContent;
 const labelTop = label => label.styles.get('--top');
 
@@ -538,7 +515,7 @@ test.each([
     };
     const view = renderView(config, null, {});
 
-    assert.deepEqual(coverage(view), row.coverage);
+    assert.deepEqual(rangeCoverage(view.element), row.coverage);
 });
 
 test('without zoom the range of minX and maxX is displayed and the line zoom is not followed', async () => {
@@ -565,11 +542,11 @@ test('with zoom the line zoom is displayed, the coverage is over it', async () =
     const view = renderView(config, null, { scopeLine: line });
 
     line.zoom.selection.setRange(130, 180);
-    assert.deepEqual(coverage(view), [0.2, 0]);
+    assert.deepEqual(rangeCoverage(view.element), [0.2, 0]);
 
     view.show(100);
     assert.deepEqual(displayed(view), { start: 130, end: 180 });
-    assert.deepEqual(coverage(view), [0, 0]);
+    assert.deepEqual(rangeCoverage(view.element), [0, 0]);
 });
 
 test('with zoom a zoom change before the canvas is sized schedules no draw', async () => {
@@ -597,7 +574,7 @@ test('with zoom changes of the line zoom are drawn once on the next frame', asyn
     line.zoom.selection.setRange(140, 190);
     assert.equal(view.draws.length, 1);
     assert.equal(view.frames.size, 1);
-    assert.deepEqual(coverage(view), [0, 0]);
+    assert.deepEqual(rangeCoverage(view.element), [0, 0]);
 
     view.flush();
     assert.deepEqual(displayed(view), { start: 140, end: 190 });

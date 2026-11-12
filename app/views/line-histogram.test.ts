@@ -7,6 +7,7 @@ import { createLineFixture } from '../../test/fixtures/profile.js';
 import usage from './line-histogram.usage.js';
 import { setRangeCoverage } from './misc/range-coverage.js';
 import { evaluateModule } from '../../test/helpers/evaluate-module.js';
+import { createElement, rangeCoverage } from '../../test/helpers/dom.js';
 
 type Range = { start: number; end: number };
 type Line = Awaited<ReturnType<typeof createLineFixture>>['line'];
@@ -47,10 +48,7 @@ function renderHistogram(props: object, context: object = {}) {
     });
 
     const data = new Float64Array([0, 2, 4]);
-    const classList = new Set<string>();
-    const styles = new Map<string, number>();
-    const setProperty = (name: string, value: number) => styles.set(name, value);
-    const element = { classList, style: { setProperty } };
+    const element = createElement('div');
     const calls: unknown[][] = [];
     const completion = Promise.resolve();
     const host = {
@@ -64,18 +62,12 @@ function renderHistogram(props: object, context: object = {}) {
     return {
         element,
         data,
-        classList,
-        styles,
+        classList: element.classList,
         calls,
         result,
         completion,
         child: calls[0][1] as HistogramConfig
     };
-}
-
-// Shares of the displayed range before and after the extent, [start, end]
-function coverage(styles: Map<string, number>) {
-    return [styles.get('--range-pad-start'), styles.get('--range-pad-end')];
 }
 
 test('renders the bins over the viewport with display props unchanged', () => {
@@ -165,9 +157,9 @@ test.each([
         primaryLineType: 'timeline',
         scopeViewport: { start: 100, end: 200 }
     };
-    const { styles } = renderHistogram(props, histogramContext);
+    const { element } = renderHistogram(props, histogramContext);
 
-    assert.deepEqual(coverage(styles), [0.2, 0.2]);
+    assert.deepEqual(rangeCoverage(element), [0.2, 0.2]);
 });
 
 test.each([
@@ -214,11 +206,11 @@ test.each([
     const line = await createLine(120, 180);
     const other = await createLine(100, 200);
     const [props, context] = scope(line, other);
-    const { styles, child } = renderHistogram(props, context);
+    const { element, child } = renderHistogram(props, context);
 
     assert.deepEqual(child.range, range);
     assert.equal(child.viewport, child.range);
-    assert.deepEqual(coverage(styles), pads);
+    assert.deepEqual(rangeCoverage(element), pads);
 });
 
 test.each([
@@ -237,10 +229,10 @@ test.each([
     ['empty within the extent', { start: 150, end: 150 }, [0, 1]],
     ['empty at the extent start', { start: 120, end: 120 }, [0, 1]]
 ])('pads a viewport %s by its shares not covered by the extent', (_, viewport, pads) => {
-    const { classList, styles } = renderHistogram({ extent: { start: 120, end: 180 }, viewport });
+    const { classList, element } = renderHistogram({ extent: { start: 120, end: 180 }, viewport });
 
     assert.ok(classList.has('range-coverage'));
-    assert.deepEqual(coverage(styles), pads);
+    assert.deepEqual(rangeCoverage(element), pads);
 });
 
 test('with zoom, displays the line zoom within the viewport of bins and follows it until unsubscribed', async () => {
@@ -249,15 +241,15 @@ test('with zoom, displays the line zoom within the viewport of bins and follows 
 
     line.zoom.selection.setRange(130, 150);
 
-    const { styles, child } = renderHistogram({ zoom: true }, { scopeLine: line, scopeViewport: viewport });
+    const { element, child } = renderHistogram({ zoom: true }, { scopeLine: line, scopeViewport: viewport });
     const displayed: unknown[] = [];
 
     assert.equal(child.range, viewport);
     assert.deepEqual(child.viewport, { start: 130, end: 150 });
-    assert.deepEqual(coverage(styles), [0, 0]);
+    assert.deepEqual(rangeCoverage(element), [0, 0]);
     assert.ok(child.onInit);
 
-    const setViewport = (display: Range) => displayed.push([display, ...coverage(styles)]);
+    const setViewport = (display: Range) => displayed.push([display, ...rangeCoverage(element)]);
     const unsubscribe = child.onInit({ setViewport });
 
     line.zoom.selection.setRange(110, 130);
