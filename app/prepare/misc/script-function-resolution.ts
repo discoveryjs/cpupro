@@ -371,6 +371,9 @@ type ParseWorkerPayload = Array<{
 type ParseWorkerResult = {
     scripts: ParseSourceWorkerScriptResult[];
     ranges: FunctionRangeColumns;
+    parents: Int32Array<ArrayBuffer>;
+    starts: Uint32Array<ArrayBuffer>;
+    indexes: Int32Array<ArrayBuffer>;
     lineStarts: Uint32Array;
     types: string[];
 };
@@ -604,17 +607,37 @@ export async function prepareScriptSources(
                 source: script.source!
             });
             const result = await parseWorkerPool.parse(scriptsForWorker.map(toPayload));
-            const { scripts: scriptParsedResults, ranges: rangeColumns, lineStarts, types } = result;
+            const {
+                scripts: scriptParsedResults,
+                ranges: rangeColumns,
+                parents,
+                starts,
+                indexes,
+                lineStarts,
+                types
+            } = result;
             let rangeOffset = 0;
+            let indexOffset = 0;
             let lineOffset = 0;
 
             for (let i = 0; i < scriptParsedResults.length; i++) {
-                const { sourceMetrics, ranges, rangeCount, lineCount } = scriptParsedResults[i];
+                const { sourceMetrics, parsed, error, rangeCount, indexCount, lineCount } = scriptParsedResults[i];
                 const script = scriptsForWorker[i];
                 const scriptLineStarts = lineStarts.subarray(lineOffset, lineOffset + lineCount);
+                const ranges: FunctionRanges = {
+                    parsed,
+                    ranges: readFunctionRanges(rangeColumns, rangeOffset, rangeCount, types),
+                    starts: starts.subarray(indexOffset, indexOffset + indexCount),
+                    indexes: indexes.subarray(indexOffset, indexOffset + indexCount),
+                    parents: parents.subarray(rangeOffset, rangeOffset + rangeCount)
+                };
 
-                ranges.ranges = readFunctionRanges(rangeColumns, rangeOffset, rangeCount, types);
+                if (error !== undefined) {
+                    ranges.error = error;
+                }
+
                 rangeOffset += rangeCount;
+                indexOffset += indexCount;
                 lineOffset += lineCount;
                 setScriptFunctionRanges(script, ranges, diagnose, sourceMetrics);
                 scriptLines.set(script, createLineBoundaries(script.source!, scriptLineStarts));

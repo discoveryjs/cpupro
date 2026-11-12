@@ -5,10 +5,8 @@ import { computeLineStarts } from '../misc/line-boundaries.js';
 onmessage = async function(event) {
     const { data: scripts } = event;
     const result = [];
-    const transferable = [];
+    const scriptRanges = [];
     const scriptLineStarts = [];
-    let rangeCount = 0;
-    let lineCount = 0;
 
     for (const { id, url, source } of scripts) {
         const functionRanges = parseScriptSourceRanges(source, url, true);
@@ -22,56 +20,80 @@ onmessage = async function(event) {
         result.push({
             id,
             sourceMetrics,
-            ranges: functionRanges,
+            parsed: functionRanges.parsed,
+            error: functionRanges.error,
             rangeCount: functionRanges.ranges.length,
+            indexCount: functionRanges.starts.length,
             lineCount: lineStarts.length
         });
+        scriptRanges.push(functionRanges);
         scriptLineStarts.push(lineStarts);
-        transferable.push(
-            functionRanges.starts.buffer,
-            functionRanges.indexes.buffer,
-            functionRanges.parents.buffer
-        );
-        rangeCount += functionRanges.ranges.length;
-        lineCount += lineStarts.length;
     }
 
-    // Ranges of all the scripts are posted as columns, since a structured clone of range objects
-    // or of typed arrays per script costs several times more than a transfer of a few large arrays
-    const ranges = createFunctionRangeColumns(rangeCount);
-    const types = new Map();
-    let offset = 0;
-
-    const columns = Object.values(ranges);
-
-    for (let i = 0; i < result.length; i++) {
-        const script = result[i];
-
-        writeFunctionRanges(ranges, offset, script.ranges.ranges, types);
-        offset += script.rangeCount;
-        script.ranges.ranges = [];
-    }
-
-    for (let i = 0; i < columns.length; i++) {
-        if (ArrayBuffer.isView(columns[i])) {
-            transferable.push(columns[i].buffer);
-        }
-    }
-
-    // Line starts of all the scripts are posted as a column for the same reason
-    const lineStarts = new Uint32Array(lineCount);
-
-    for (let i = 0, lineOffset = 0; i < scriptLineStarts.length; i++) {
-        lineStarts.set(scriptLineStarts[i], lineOffset);
-        lineOffset += scriptLineStarts[i].length;
-    }
-
-    transferable.push(lineStarts.buffer);
+    const columns = createColumns(scriptRanges, scriptLineStarts);
 
     postMessage({
         scripts: result,
+        ...columns
+    }, columnBuffers(columns));
+};
+
+// Ranges, range indexes and line starts of all the scripts are posted as columns, since a structured clone
+// of range objects or a transfer of typed arrays per script costs several times more than a transfer
+// of a few large arrays
+function createColumns(scriptRanges, scriptLineStarts) {
+    let rangeCount = 0;
+    let indexCount = 0;
+    let lineCount = 0;
+
+    for (let i = 0; i < scriptRanges.length; i++) {
+        rangeCount += scriptRanges[i].ranges.length;
+        indexCount += scriptRanges[i].starts.length;
+        lineCount += scriptLineStarts[i].length;
+    }
+
+    const ranges = createFunctionRangeColumns(rangeCount);
+    const parents = new Int32Array(rangeCount);
+    const starts = new Uint32Array(indexCount);
+    const indexes = new Int32Array(indexCount);
+    const lineStarts = new Uint32Array(lineCount);
+    const types = new Map();
+
+    for (let i = 0, offset = 0, indexOffset = 0, lineOffset = 0; i < scriptRanges.length; i++) {
+        const functionRanges = scriptRanges[i];
+
+        writeFunctionRanges(ranges, offset, functionRanges.ranges, types);
+        parents.set(functionRanges.parents, offset);
+        starts.set(functionRanges.starts, indexOffset);
+        indexes.set(functionRanges.indexes, indexOffset);
+        lineStarts.set(scriptLineStarts[i], lineOffset);
+        offset += functionRanges.ranges.length;
+        indexOffset += functionRanges.starts.length;
+        lineOffset += scriptLineStarts[i].length;
+    }
+
+    return {
         ranges,
+        parents,
+        starts,
+        indexes,
         lineStarts,
         types: [...types.keys()]
-    }, transferable);
-};
+    };
+}
+
+// Buffers of the typed array columns, which are transferred rather than copied
+function columnBuffers(columns) {
+    const buffers = [];
+    const rangeColumns = Object.values(columns.ranges);
+
+    for (let i = 0; i < rangeColumns.length; i++) {
+        if (ArrayBuffer.isView(rangeColumns[i])) {
+            buffers.push(rangeColumns[i].buffer);
+        }
+    }
+
+    buffers.push(columns.parents.buffer, columns.starts.buffer, columns.indexes.buffer, columns.lineStarts.buffer);
+
+    return buffers;
+}
