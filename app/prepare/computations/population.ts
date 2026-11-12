@@ -584,6 +584,7 @@ export class PopulationFiltered extends Observer {
         const { ids, events } = records.classes;
         const sampleAccepts = new Uint8Array(this.samplesMask.length).fill(1);
         const classAccepts = new Uint8Array(events.length).fill(1);
+        // eslint-disable-next-line @typescript-eslint/no-this-alias -- a cursor over the chain of sources from this one
         let population: Population | PopulationFiltered = this;
 
         while (population instanceof PopulationFiltered) {
