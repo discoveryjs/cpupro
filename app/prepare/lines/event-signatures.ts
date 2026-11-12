@@ -57,6 +57,8 @@ export class EventSignatures {
     // Per cumulative vector of the line's events
     readonly #cellRecords = new Map<Float64Array, RangeRecords | null>();
     #totals: Float64Array | null = null;
+    // Per population: the acceptance of signatures at the revision of its samples, the destinations of its events
+    readonly #acceptance = new WeakMap<PopulationFiltered, { samplesRevision: number; accepted: Uint8Array | null }>();
 
     // Columns other than those of the classes are combined with the classes of events: a dense table maps an id
     // of the columns combined so far and a value of the next column to the id of their combination, so an event
@@ -145,8 +147,24 @@ export class EventSignatures {
     }
 
     // Acceptance of every signature by a population of the line, or null when the population may accept
-    // events of one signature differently: a filter over other values
+    // events of one signature differently: a filter over other values. It is computed from the destinations of events
+    // and kept until the population's samples (its destinations) change, since every binning of the population takes it
     acceptance(population: PopulationFiltered) {
+        const { samplesRevision } = population;
+        const kept = this.#acceptance.get(population);
+
+        if (kept !== undefined && kept.samplesRevision === samplesRevision) {
+            return kept.accepted;
+        }
+
+        const accepted = this.#computeAcceptance(population);
+
+        this.#acceptance.set(population, { samplesRevision, accepted });
+
+        return accepted;
+    }
+
+    #computeAcceptance(population: PopulationFiltered) {
         if (population.source !== population.population) {
             return null;
         }

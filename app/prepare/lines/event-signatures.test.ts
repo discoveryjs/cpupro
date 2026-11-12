@@ -415,6 +415,30 @@ test('signatures leave acceptance to events when a population filters values tha
     assert.equal(signatures.acceptance(viewport), null);
 });
 
+// The acceptance of signatures follows the destinations of events, which a filter changes and a range doesn't
+test('acceptance of signatures is kept until the destinations of events change', async () => {
+    const line = (await createSignaturesProfile()).memline!;
+    const signatures = line.signatures!;
+    const viewport = line.breakdowns[0].populationViewport;
+    const accepted = signatures.acceptance(viewport)!;
+
+    assert.equal(signatures.acceptance(viewport), accepted);
+    line.viewport.selection.setRange(100, 2000);
+    assert.equal(signatures.acceptance(viewport), accepted);
+
+    (line.filters.get('allocationSpace') as SetAttributeFilter).setSelection('include', ['old_space']);
+
+    const filtered = signatures.acceptance(viewport)!;
+    const { destination } = viewport.eventReader();
+    const filterRejectsSignatures = filtered.some((value, signature) => value !== accepted[signature]);
+
+    assert.ok(filterRejectsSignatures);
+    assert.deepEqual(
+        Array.from(filtered),
+        Array.from(signatures.events, event => destination(event) === viewport.sinkId ? 0 : 1)
+    );
+});
+
 test('line totals by an attribute are the totals of its signatures', async () => {
     const profile = await createSignaturesProfile();
     const memline = profile.memline!;
