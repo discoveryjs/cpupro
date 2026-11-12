@@ -1012,14 +1012,15 @@ export const methods = {
     allocationAttributeRows(name: ProfileLineAttribute['name']) {
         const line = resolveScopeProfileLine('memline', this.context);
         const attribute = line?.attributes.find(attribute => attribute.name === name);
+        // Base populations of the line's breakdowns hold all of its events, so the first one gives the line's
+        // totals; a line without populations has no rows, as it has no histograms
+        const breakdown = line?.breakdowns[0];
 
-        if (!line || !attribute) {
+        if (!attribute || !breakdown) {
             return [];
         }
 
-        // Base populations of the line's breakdowns hold all of its events, so any of them gives the line's totals
-        const { population } = lineBreakdown(line, resolveScopeProfileLineBreakdown(null, null, this.context));
-        const totals = population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+        const totals = breakdown.population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
 
         return attribute.dict.map((entry, index) => ({
             index,

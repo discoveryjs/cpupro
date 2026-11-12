@@ -1532,6 +1532,14 @@ test.each([
     assert.deepEqual(methods[method].call({ context: memline }, 'allocationSpace'), []);
 });
 
+test('allocationAttributeRows gives no rows for a memline without populations', async () => {
+    const context = await createContext({ type: 'memline' });
+
+    context.scopeLine.attributes = [{ name: 'allocationType', values: new Uint32Array(3), dict: ['array'] }];
+    context.scopeLine.breakdowns = [];
+    assert.deepEqual(methods.allocationAttributeRows.call({ context }, 'allocationType'), []);
+});
+
 // Allocations of 3 and 4 bytes have no mapping to CPU samples: byte offsets are no positions on the timeline
 test.each([
     { method: 'binAllocationAttribute', expected: [] },
