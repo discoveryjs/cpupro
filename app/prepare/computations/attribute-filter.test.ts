@@ -47,10 +47,30 @@ test.each([
 });
 
 test.each([
-    { mode: 'exclude', key: 'script', enabled: false, selected: ['gc', 'script'] },
-    { mode: 'exclude', key: 'gc', enabled: true, selected: [] },
-    { mode: 'include', key: 'script', enabled: true, selected: ['gc', 'script'] },
-    { mode: 'include', key: 'gc', enabled: false, selected: [] }
+    {
+        mode: 'exclude',
+        key: 'script',
+        enabled: false,
+        selected: ['gc', 'script']
+    },
+    {
+        mode: 'exclude',
+        key: 'gc',
+        enabled: true,
+        selected: []
+    },
+    {
+        mode: 'include',
+        key: 'script',
+        enabled: true,
+        selected: ['gc', 'script']
+    },
+    {
+        mode: 'include',
+        key: 'gc',
+        enabled: false,
+        selected: []
+    }
 ] as const)('setEnabled($key, $enabled) in $mode mode of [gc] selects $selected', row => {
     const { mode, key, enabled, selected } = row;
     const filter = createFilter();

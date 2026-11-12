@@ -21,8 +21,8 @@ const allocationEvents = {
 function sum(values: ArrayLike<number>) {
     let total = 0;
 
-    for (let index = 0; index < values.length; index++) {
-        total += values[index];
+    for (let i = 0; i < values.length; i++) {
+        total += values[i];
     }
 
     return total;
@@ -32,10 +32,27 @@ test('a created timeline has no filters until they are prepared from its attribu
     const { profile, dictionary } = await createProfileFixture({ cpuOnly: true });
     const { population, source } = profile.timeline!.breakdowns[0];
     const trees = await createSampledTreeSet(dictionary, source, noopWorkHandler);
+    const data = {
+        startTime: 0,
+        endTime: 30,
+        nodes: [],
+        samples: [],
+        timeDeltas: []
+    };
+    const sourceInfo = {
+        start: 0,
+        end: 30,
+        startNoSamples: 0,
+        endNoSamples: 0,
+        total: 30,
+        samplesInterval: 10
+    };
     const line = await createTimeline(
-        { startTime: 0, endTime: 30, nodes: [], samples: [], timeDeltas: [] },
-        { start: 0, end: 30, startNoSamples: 0, endNoSamples: 0, total: 30, samplesInterval: 10 },
-        population, trees, { work: noopWorkHandler }
+        data,
+        sourceInfo,
+        population,
+        trees,
+        { work: noopWorkHandler }
     );
 
     assert.ok(line);
@@ -57,23 +74,41 @@ test.each([
         reverse: true,
         expected: ['category', 'allocationGcEpoch', 'allocationLifespan', 'allocationSpace']
     }
-])('registers category and attribute filters in $order attribute order', async ({ reverse, expected }) => {
+])('registers category and attribute filters in $order attribute order', async row => {
     const { profile } = await createProfileFixture(allocationEvents);
     const attributes = [...profile.memline!.attributes];
-    const line = { ...profile.memline!, filters: new FilterSet(), attributes: reverse ? attributes.reverse() : attributes };
+    const line = {
+        ...profile.memline!,
+        filters: new FilterSet(),
+        attributes: row.reverse
+            ? attributes.reverse()
+            : attributes
+    };
 
     prepareLineFilters(line);
 
-    assert.deepEqual(line.filters.filters.map(filter => filter.key), expected);
+    assert.deepEqual(line.filters.filters.map(filter => filter.key), row.expected);
     assert.deepEqual(profile.timeline!.filters.filters.map(filter => filter.key), ['category']);
 });
 
 test.each([
-    { name: 'lifespan and GC epoch without a value for every event', options: { allocationGc: [0] } },
-    { name: 'space without a value for every event', options: { allocationSpaces: [1], allocationSpaceNames: { 1: 'new_space' } } },
-    { name: 'space without option names', options: { allocationSpaces: [1, 1, 1, 1] } }
-])('skips $name', async ({ options }) => {
-    const { profile } = await createProfileFixture(options);
+    {
+        name: 'lifespan and GC epoch without a value for every event',
+        options: { allocationGc: [0] }
+    },
+    {
+        name: 'space without a value for every event',
+        options: {
+            allocationSpaces: [1],
+            allocationSpaceNames: { 1: 'new_space' }
+        }
+    },
+    {
+        name: 'space without option names',
+        options: { allocationSpaces: [1, 1, 1, 1] }
+    }
+])('skips $name', async row => {
+    const { profile } = await createProfileFixture(row.options);
 
     assert.deepEqual(profile.memline!.filters.filters.map(filter => filter.key), ['category']);
 });
@@ -119,55 +154,73 @@ test('every attribute but identity-like ones gets a filter with an option per di
 });
 
 test.each([
-    { name: 'with a value for every event', values: [1, 1, 2, 0], expected: ['category', 'allocationCompilationStage'] },
-    { name: 'without a value for every event', values: [1], expected: ['category'] }
-])('registers the compilation stage filter only $name', async ({ values, expected }) => {
+    {
+        name: 'with a value for every event',
+        values: [1, 1, 2, 0],
+        expected: ['category', 'allocationCompilationStage']
+    },
+    {
+        name: 'without a value for every event',
+        values: [1],
+        expected: ['category']
+    }
+])('registers the compilation stage filter only $name', async row => {
     const { profile } = await createProfileFixture();
-    const attributes = [{ name: 'allocationCompilationStage' as const, values: Uint8Array.from(values), dict: ['none', 'Compile', 'Finalize'] }];
-    const line = { ...profile.memline!, filters: new FilterSet(), attributes };
+    const stages = {
+        name: 'allocationCompilationStage' as const,
+        values: Uint8Array.from(row.values),
+        dict: ['none', 'Compile', 'Finalize']
+    };
+    const line = { ...profile.memline!, filters: new FilterSet(), attributes: [stages] };
 
     prepareLineFilters(line);
 
-    assert.deepEqual(line.filters.filters.map(filter => filter.key), expected);
+    assert.deepEqual(line.filters.filters.map(filter => filter.key), row.expected);
 });
 
 test('filters apply to the viewport and window populations shared with source-mapped breakdowns', async () => {
     const { profile } = await createProfileFixture(allocationEvents);
+    const breakdowns = profile.lines.flatMap(line => line.breakdowns);
 
-    for (const line of profile.lines) {
-        const keys = line.filters.filters.map(filter => filter.key);
+    for (let i = 0; i < breakdowns.length; i++) {
+        const breakdown = breakdowns[i];
+        const keys = breakdown.line.filters.filters.map(filter => filter.key);
 
-        for (const breakdown of line.breakdowns) {
-            assert.deepEqual(breakdown.populationViewport.filter.filters.map(filter => filter.key), keys);
-            assert.deepEqual(breakdown.populationWindow.filter.filters.map(filter => filter.key), keys);
-            assert.deepEqual(breakdown.populationFiltered.filter.filters, []);
+        assert.deepEqual(breakdown.populationViewport.filter.filters.map(filter => filter.key), keys);
+        assert.deepEqual(breakdown.populationWindow.filter.filters.map(filter => filter.key), keys);
+        assert.deepEqual(breakdown.populationFiltered.filter.filters, []);
+
+        if (!breakdown.kind.endsWith('-sm')) {
+            continue;
         }
 
-        for (const breakdown of line.breakdowns.filter(entry => !entry.kind.endsWith('-sm'))) {
-            const mapped = line.breakdowns.find(entry => entry.kind === breakdown.kind + '-sm')!;
+        const original = breakdown.line.breakdowns.find(entry => entry.kind + '-sm' === breakdown.kind)!;
 
-            assert.equal(breakdown.populationViewport.filter, mapped.populationViewport.filter);
-            assert.equal(breakdown.populationWindow, mapped.populationWindow);
-        }
+        assert.equal(breakdown.populationViewport.filter, original.populationViewport.filter);
+        assert.equal(breakdown.populationWindow, original.populationWindow);
     }
 });
 
 test('category filter accepts the samples of selected categories of each breakdown', async () => {
     const { profile } = await createProfileFixture();
+    const breakdowns = profile.lines.flatMap(line => line.breakdowns);
 
-    for (const line of profile.lines) {
+    for (let i = 0; i < breakdowns.length; i++) {
+        const { line, populationViewport, categories } = breakdowns[i];
+        const { tree, sampleToNode } = categories!;
         const category = line.filters.get('category') as SetAttributeFilter;
 
-        for (const { populationViewport, categories } of line.breakdowns) {
-            for (const option of category.options) {
-                category.setSelection('include', [option.key]);
-                const { values, accepts } = populationViewport.filter.get('category')!;
+        for (let j = 0; j < category.options.length; j++) {
+            const option = category.options[j];
 
-                for (let sampleId = 0; sampleId < populationViewport.samplesCount.length; sampleId++) {
-                    const node = categories!.tree.nodes[categories!.sampleToNode[sampleId]];
+            category.setSelection('include', [option.key]);
+            const { values, accepts } = populationViewport.filter.get('category')!;
 
-                    assert.equal(accepts![values![sampleId]] === 1, categories!.tree.dictionary[node].name === option.key);
-                }
+            for (let k = 0; k < populationViewport.samplesCount.length; k++) {
+                const node = tree.nodes[sampleToNode[k]];
+                const accepted = accepts![values![k]] === 1;
+
+                assert.equal(accepted, tree.dictionary[node].name === option.key);
             }
         }
     }
@@ -187,7 +240,8 @@ test('event filters select individual allocations of a shared sample', async () 
     });
 
     // Only event 0 is alive and in new space
-    for (const { populationFiltered, callFrames } of line.breakdowns) {
+    for (let i = 0; i < line.breakdowns.length; i++) {
+        const { populationFiltered, callFrames } = line.breakdowns[i];
         const { selfValues, nestedValues } = callFrames!.filtered.nodes;
 
         assert.equal(sum(populationFiltered.samplesTotal), 16);
@@ -205,8 +259,8 @@ test('a settings batch updates each population once and recompiles only changed 
     const categories = populations.map(population => population.filter.get('category'));
     const updates = populations.map(() => 0);
 
-    for (const [index, population] of populations.entries()) {
-        population.subscribe(() => updates[index]++);
+    for (let i = 0; i < populations.length; i++) {
+        populations[i].subscribe(() => updates[i]++);
     }
 
     line.filters.batch(() => {
@@ -215,8 +269,8 @@ test('a settings batch updates each population once and recompiles only changed 
     });
 
     assert.deepEqual(updates, [1, 1]);
-    for (const [index, population] of populations.entries()) {
-        assert.equal(population.filter.get('category'), categories[index]);
+    for (let i = 0; i < populations.length; i++) {
+        assert.equal(populations[i].filter.get('category'), categories[i]);
     }
 
     const result = populations[0].filter.get('allocationLifespan');
@@ -232,8 +286,16 @@ test('later attribution adds category options without replacing the settings or 
     const original = profile.timeline!.breakdowns[0];
     const mapped = profile.timeline!.breakdowns.find(breakdown => breakdown.kind === 'call-stack-sm')!;
     const viewport = new PopulationFiltered(original.population);
-    const execution = { ...original, populationViewport: viewport, populationFiltered: new PopulationFiltered(viewport) };
-    const line = { ...profile.timeline!, filters: new FilterSet(), breakdowns: [execution] };
+    const execution = {
+        ...original,
+        populationViewport: viewport,
+        populationFiltered: new PopulationFiltered(viewport)
+    };
+    const line = {
+        ...profile.timeline!,
+        filters: new FilterSet(),
+        breakdowns: [execution]
+    };
     const category = line.filters.add(new SetAttributeFilter('category', 'Categories', []));
     const total = sum(original.population.samplesTotal);
 
@@ -247,12 +309,24 @@ test('later attribution adds category options without replacing the settings or 
     stop();
 
     const locations = mapped.source.dictionary as CpuProLocation[];
+    const sourceOnlyLocation = (location: CpuProLocation) => ({
+        ...location,
+        callFrame: {
+            ...location.callFrame,
+            category: { id: -1, name: 'source-only' }
+        }
+    });
     const source = {
         ...mapped.source,
-        dictionary: locations.map(entry => ({ ...entry, callFrame: { ...entry.callFrame, category: { id: -1, name: 'source-only' } } }))
+        dictionary: locations.map(sourceOnlyLocation)
     };
 
-    line.breakdowns.push({ ...mapped, source, populationViewport: viewport, populationFiltered: execution.populationFiltered });
+    line.breakdowns.push({
+        ...mapped,
+        source,
+        populationViewport: viewport,
+        populationFiltered: execution.populationFiltered
+    });
     prepareLineFilters(line);
 
     assert.equal(line.filters.get('category'), category);
