@@ -622,3 +622,54 @@ test('single-event readers derive destinations and values from records without c
     assert.deepEqual(readProbes(), { destinations: [7, 4, 4, 7, 4], values: [0, 1, 1, 1, 0] });
     assert.ok(samples.reads.length + values.reads.length <= 3 * probes.length);
 });
+
+// Two parts of 65 events of zero values but the last one, classes alternate. The second part is grouped by class
+// within runs of one sample when the first part has long runs, then sample 5 recurring after sample 6 takes records
+// of its own; otherwise records are by sample and class in the part. Rows are ordered by part, sample and class.
+test.each([
+    {
+        name: 'long runs',
+        firstPartSamples: () => 3,
+        rows: [
+            [0, 3, 0, 1, 1],
+            [0, 3, 1, 0, 0],
+            [1, 5, 0, 0, 0],
+            [1, 5, 0, 0, 0],
+            [1, 5, 1, 0, 0],
+            [1, 5, 1, 1, 1],
+            [1, 6, 1, 0, 0]
+        ]
+    },
+    {
+        name: 'short runs',
+        firstPartSamples: (i: number) => 3 + i % 2,
+        rows: [
+            [0, 3, 0, 1, 1],
+            [0, 4, 1, 0, 0],
+            [1, 5, 0, 0, 0],
+            [1, 5, 1, 1, 1],
+            [1, 6, 1, 0, 0]
+        ]
+    }
+])('groups a part by class within runs of one sample after a part of $name', row => {
+    const samples = new Uint32Array(130);
+    const values = new Uint32Array(130);
+
+    for (let i = 0; i < 65; i++) {
+        samples[i] = row.firstPartSamples(i);
+    }
+
+    for (let i = 65; i < 130; i++) {
+        samples[i] = i === 97
+            ? 6
+            : 5;
+    }
+
+    values[64] = 1;
+    values[129] = 1;
+
+    const population = new Population(samples, values);
+    const classes = classify([Uint32Array.from(values, (_, i) => i % 2)], values.length);
+
+    assert.deepEqual(recordsOf(createRecords(population, classes)), row.rows);
+});
