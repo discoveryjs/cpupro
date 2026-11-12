@@ -101,17 +101,16 @@ export class SourceMapping {
             const position = location === callFrame.noLocLocation
                 ? callFrame.location
                 : location;
-            const { index } = sourceMap;
-            const sourceIndex = index.findOriginalPosition(position.line, position.column);
+            const originalPosition = sourceMap.index.findOriginalPosition(position.line, position.column);
 
-            if (sourceIndex !== -1) {
-                const originalScript = this.#getOriginalScript(script, sourceMap, sourceIndex);
+            if (originalPosition !== null) {
+                const originalScript = this.#getOriginalScript(script, sourceMap, originalPosition.source);
 
                 originalScripts.add(originalScript);
                 this.#pendingLocations.push(locationIndex);
                 this.#pendingScripts.push(originalScript);
-                this.#pendingLines.push(index.originalLine);
-                this.#pendingColumns.push(index.originalColumn);
+                this.#pendingLines.push(originalPosition.line);
+                this.#pendingColumns.push(originalPosition.column);
             }
         }
 

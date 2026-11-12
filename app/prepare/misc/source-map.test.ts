@@ -5,16 +5,16 @@ import { SourceMapIndex } from './source-map.js';
 import type { SourceMap } from '../types.js';
 
 function originalPositionFor(index: SourceMapIndex, line: number, column: number) {
-    const sourceIndex = index.findOriginalPosition(line, column);
+    const originalPosition = index.findOriginalPosition(line, column);
 
-    if (sourceIndex === -1) {
+    if (originalPosition === null) {
         return { source: null, line: null, column: null };
     }
 
     return {
-        source: index.sources[sourceIndex],
-        line: index.originalLine + 1,
-        column: index.originalColumn
+        source: index.sources[originalPosition.source],
+        line: originalPosition.line + 1,
+        column: originalPosition.column
     };
 }
 
