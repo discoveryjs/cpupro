@@ -1,7 +1,7 @@
 import { CpuProCallFrame, CpuProScript } from '../types';
 import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import { createLineBoundaries } from './line-boundaries.js';
-import { computeScriptSourceMetrics } from './source-text-metrics.js';
+import { computeScriptSourceMetrics, type SourceMetrics } from './source-text-metrics.js';
 import { createParseWorker } from '../workers/index.js';
 import {
     FunctionRange,
@@ -48,8 +48,12 @@ function setScriptFunctionRanges(
     script: CpuProScript,
     ranges: FunctionRanges,
     diagnose: Diagnose = diagnoseToConsole,
-    sourceMetrics = computeScriptSourceMetrics(script.source, ranges.parsed ? ranges.ranges : null)
+    sourceMetrics: SourceMetrics | null = null // computed from the ranges when not given
 ) {
+    const parsedRanges = ranges.parsed
+        ? ranges.ranges
+        : null;
+
     if (ranges.error !== undefined) {
         diagnose('error', 'Failed to parse script for function ranges', {
             scriptId: script.id,
@@ -58,12 +62,14 @@ function setScriptFunctionRanges(
         });
     }
 
-    script.functionRanges = ranges.parsed ? ranges.ranges : null;
-    script.sourceMetrics = sourceMetrics;
+    script.functionRanges = parsedRanges;
+    script.sourceMetrics = sourceMetrics ?? computeScriptSourceMetrics(script.source, parsedRanges);
     scriptFunctionRanges.set(script, ranges);
     let maxPrelude = 0;
 
-    for (const range of ranges.ranges) {
+    for (let i = 0; i < ranges.ranges.length; i++) {
+        const range = ranges.ranges[i];
+
         maxPrelude = Math.max(maxPrelude, range.callFrameStart - range.start);
     }
 
@@ -147,7 +153,9 @@ function functionAtBoundary(functionRanges: FunctionRanges, rangeIndex: number, 
 // }
 
 function comparePositions(lineA: number, columnA: number, lineB: number, columnB: number) {
-    return lineA !== lineB ? lineA - lineB : columnA - columnB;
+    return lineA !== lineB
+        ? lineA - lineB
+        : columnA - columnB;
 }
 
 // The innermost function containing a position, its start and end included;
@@ -226,7 +234,7 @@ export function getFunctionAtSourceLineColumn(script: CpuProScript, line: number
         const { starts, indexes, ranges } = functionRanges;
         const rangeIndex = binarySearchFunctionRangeIndex(starts, position);
         const lastStart = position + scriptMaxFunctionPrelude.get(script)!;
-        let candidateIndex = rangeIndex !== -1
+        const candidateIndex = rangeIndex !== -1
             ? indexes[rangeIndex]
             : -1;
 
@@ -248,7 +256,6 @@ export function getFunctionAtSourceLineColumn(script: CpuProScript, line: number
                         range.end - range.start < candidate.end - candidate.start
                     ) {
                         candidate = range;
-                        candidateIndex = index;
                     }
                 }
             }
@@ -580,83 +587,101 @@ export async function prepareScriptSources(
         Math.max(1, parseWorkerPool.idleWorkerCount(), Math.ceil(totalSourceSize / 4_000_000)),
         Math.max(1, Math.floor(navigator.hardwareConcurrency / 2))
     );
+    const buckets = distributeScriptsBySourceSize(scriptsToParse, workerCount);
 
-    scriptsToParse.sort((a, b) => b.source!.length - a.source!.length);
-    const scriptBuckets: CpuProScript[][] = Array.from({ length: workerCount }, () => []);
-    const scriptBucketsSizes: number[] = Array.from({ length: workerCount }, () => 0);
-    for (let i = 0; i < scriptsToParse.length; i++) {
-        let minBucketIndex = 0;
+    for (let i = 0; i < buckets.length; i++) {
+        const bucket = buckets[i];
+        // the parsing runs synchronously up to its first await, so the registration precedes its cleanup
+        const parsing = parseScriptBucket(bucket, diagnose);
 
-        for (let j = 1; j < workerCount; j++) {
-            if (scriptBucketsSizes[j] < scriptBucketsSizes[minBucketIndex]) {
-                minBucketIndex = j;
-            }
+        pending.add(parsing);
+
+        for (let j = 0; j < bucket.length; j++) {
+            parsingScripts.set(bucket[j], parsing);
         }
-
-        scriptBuckets[minBucketIndex].push(scriptsToParse[i]);
-        scriptBucketsSizes[minBucketIndex] += scriptsToParse[i].source!.length;
     }
 
-    const buckets = Array.from({ length: workerCount }, async (_, bucketIndex) => {
-        const scriptsForWorker = scriptBuckets[bucketIndex];
-
-        try {
-            const toPayload = (script: CpuProScript) => ({
-                id: script.id, // for debugging purposes
-                url: script.url,
-                source: script.source!
-            });
-            const result = await parseWorkerPool.parse(scriptsForWorker.map(toPayload));
-            const {
-                scripts: scriptParsedResults,
-                ranges: rangeColumns,
-                parents,
-                starts,
-                indexes,
-                lineStarts,
-                types
-            } = result;
-            let rangeOffset = 0;
-            let indexOffset = 0;
-            let lineOffset = 0;
-
-            for (let i = 0; i < scriptParsedResults.length; i++) {
-                const { sourceMetrics, parsed, error, rangeCount, indexCount, lineCount } = scriptParsedResults[i];
-                const script = scriptsForWorker[i];
-                const scriptLineStarts = lineStarts.subarray(lineOffset, lineOffset + lineCount);
-                const ranges: FunctionRanges = {
-                    parsed,
-                    ranges: readFunctionRanges(rangeColumns, rangeOffset, rangeCount, types),
-                    starts: starts.subarray(indexOffset, indexOffset + indexCount),
-                    indexes: indexes.subarray(indexOffset, indexOffset + indexCount),
-                    parents: parents.subarray(rangeOffset, rangeOffset + rangeCount)
-                };
-
-                if (error !== undefined) {
-                    ranges.error = error;
-                }
-
-                rangeOffset += rangeCount;
-                indexOffset += indexCount;
-                lineOffset += lineCount;
-                setScriptFunctionRanges(script, ranges, diagnose, sourceMetrics);
-                scriptLines.set(script, createLineBoundaries(script.source!, scriptLineStarts));
-            }
-        } finally {
-            for (const script of scriptsForWorker) {
-                parsingScripts.delete(script);
-            }
-        }
-    });
-
-    // the bucket bodies run synchronously up to the first await, so the registration precedes any cleanup
-    buckets.forEach((bucket, index) => {
-        pending.add(bucket);
-
-        for (const script of scriptBuckets[index]) {
-            parsingScripts.set(script, bucket);
-        }
-    });
-
     await Promise.all(pending);
+}
+
+// Scripts go one by one, the largest first, into the bucket of the smallest source size,
+// so the buckets of the parse workers get about equal sizes
+function distributeScriptsBySourceSize(scripts: CpuProScript[], bucketCount: number) {
+    const bySourceSizeDesc = (a: CpuProScript, b: CpuProScript) => b.source!.length - a.source!.length;
+    const buckets: CpuProScript[][] = [];
+    const bucketSizes = new Float64Array(bucketCount);
+
+    for (let i = 0; i < bucketCount; i++) {
+        buckets.push([]);
+    }
+
+    scripts.sort(bySourceSizeDesc);
+
+    for (let i = 0; i < scripts.length; i++) {
+        let smallestBucket = 0;
+
+        for (let j = 1; j < bucketCount; j++) {
+            if (bucketSizes[j] < bucketSizes[smallestBucket]) {
+                smallestBucket = j;
+            }
+        }
+
+        buckets[smallestBucket].push(scripts[i]);
+        bucketSizes[smallestBucket] += scripts[i].source!.length;
+    }
+
+    return buckets;
+}
+
+// Parses the sources of a bucket of scripts in a parse worker
+// and sets the function ranges and line boundaries of the scripts
+async function parseScriptBucket(scripts: CpuProScript[], diagnose: Diagnose) {
+    const toPayload = (script: CpuProScript) => ({
+        id: script.id, // for debugging purposes
+        url: script.url,
+        source: script.source!
+    });
+
+    try {
+        const result = await parseWorkerPool.parse(scripts.map(toPayload));
+        const {
+            scripts: scriptParsedResults,
+            ranges: rangeColumns,
+            parents,
+            starts,
+            indexes,
+            lineStarts,
+            types
+        } = result;
+        let rangeOffset = 0;
+        let indexOffset = 0;
+        let lineOffset = 0;
+
+        for (let i = 0; i < scriptParsedResults.length; i++) {
+            const { sourceMetrics, parsed, error, rangeCount, indexCount, lineCount } = scriptParsedResults[i];
+            const script = scripts[i];
+            const scriptLineStarts = lineStarts.subarray(lineOffset, lineOffset + lineCount);
+            const ranges: FunctionRanges = {
+                parsed,
+                ranges: readFunctionRanges(rangeColumns, rangeOffset, rangeCount, types),
+                starts: starts.subarray(indexOffset, indexOffset + indexCount),
+                indexes: indexes.subarray(indexOffset, indexOffset + indexCount),
+                parents: parents.subarray(rangeOffset, rangeOffset + rangeCount)
+            };
+
+            if (error !== undefined) {
+                ranges.error = error;
+            }
+
+            rangeOffset += rangeCount;
+            indexOffset += indexCount;
+            lineOffset += lineCount;
+            setScriptFunctionRanges(script, ranges, diagnose, sourceMetrics);
+            scriptLines.set(script, createLineBoundaries(script.source!, scriptLineStarts));
+        }
+    } finally {
+        for (let i = 0; i < scripts.length; i++) {
+            parseWorkerPool.parsingScripts.delete(scripts[i]);
+        }
+    }
 }
