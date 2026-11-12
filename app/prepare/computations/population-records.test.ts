@@ -639,6 +639,31 @@ test('a range change over records reads base values only at range edges and in t
     assertEqualPopulations(viewport, expected, 'range with edges inside parts');
 });
 
+test('a base population sums groupings of event classes from its class sums without reading events', () => {
+    const { population, lifespan, space, other, classes } = createFixture();
+    const classified = new Population(population.samples, population.values, 50, population.cumulative, classes);
+    const samples = trackReads(classified.samples);
+    const values = trackReads(classified.values);
+    const groupings: Grouping[] = [[lifespan, 3], [space, 5], [classes.ids, classes.events.length]];
+    classified.samples = samples.array;
+    classified.values = values.array;
+
+    for (let i = 0; i < groupings.length; i++) {
+        const [groups, count] = groupings[i];
+
+        assert.deepEqual(
+            classified.aggregateBy(groups, count),
+            population.aggregateBy(groups, count),
+            `${count} groups`
+        );
+    }
+
+    assert.equal(samples.reads.length + values.reads.length, 0);
+
+    // Other groupings take a pass over the events
+    assert.deepEqual(classified.aggregateBy(other, 2), population.aggregateBy(other, 2));
+});
+
 test('single-event readers derive destinations and values from records without compiling all events', () => {
     const { population, records } = createRegularFixture();
     const viewport = new PopulationFiltered(population);

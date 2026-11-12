@@ -1,6 +1,5 @@
 import { SetAttributeFilter, type AttributeFilterSettings } from '../prepare/computations/attribute-filter.js';
 import type { ProfileLineAttribute, ProfileLineBreakdown } from '../prepare/lines/types.js';
-import { lineAttributeTotals } from './bin.js';
 
 // Totals of the options of a filter: categories from per-sample totals, attribute values from totals by value
 function aggregateFilterOptions(
@@ -63,12 +62,13 @@ export function filterOptionTotals(breakdown: ProfileLineBreakdown, filter: SetA
 
 // Options present in the line: totals count events of nonzero values only, so an option with events has a total
 export function filterOptions(breakdown: ProfileLineBreakdown, filter: SetAttributeFilter) {
+    const { population } = breakdown;
     const attributeTotals = (attribute: ProfileLineAttribute) =>
-        lineAttributeTotals(breakdown.line, attribute);
+        population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
     const totals = aggregateFilterOptions(
         breakdown,
         filter,
-        breakdown.population.samplesTotal,
+        population.samplesTotal,
         attributeTotals
     );
 

@@ -1517,10 +1517,6 @@ test('allocation attribute rows take dictionary order, entry colors and whole-li
         accepts: Uint8Array.of(0, 0, 0, 0)
     });
     assert.deepEqual(rows(), expected);
-
-    // Per-signature totals of the line give the same totals
-    line.signatures = new EventSignatures(line);
-    assert.deepEqual(rows(), expected);
 });
 
 test.each([

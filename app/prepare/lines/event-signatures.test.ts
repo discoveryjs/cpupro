@@ -121,26 +121,25 @@ test('signatures group allocations by equal attribute, category and filter value
     }
 });
 
-test('whole-line signature totals give attribute rows without an event pass, regardless of viewport and filters', async () => {
+test('attribute rows give totals over the whole line, regardless of viewport and filters', async () => {
     const profile = await createSignaturesProfile();
-    const memline = profile.memline!;
-    const { signatures, breakdowns } = memline;
+    const line = profile.memline!;
     const context = { scopeProfile: profile, scopeLine: profile.timeline };
-    const totals = signatures!.totals();
 
-    assert.equal(signatures!.totals(), totals);
-    assert.equal(totals.reduce((sum, value) => sum + value, 0), memline.axisTotal);
-
-    memline.viewport.selection.setRange(100, 2000);
+    line.viewport.selection.setRange(100, 2000);
     profile.timeline!.viewport.selection.setRange(500, 1500);
-    (memline.filters.get('allocationSpace') as SetAttributeFilter).setSelection('include', ['old_space']);
+    (line.filters.get('allocationSpace') as SetAttributeFilter).setSelection('include', ['old_space']);
 
-    for (const attribute of memline.attributes) {
-        const rows = methods.allocationAttributeRows.call({ context }, attribute.name);
-        const { samplesTotal } = breakdowns[0].population.aggregateBy(attribute.values, attribute.dict.length);
+    for (const { name, values, dict } of line.attributes) {
+        const rows = methods.allocationAttributeRows.call({ context }, name);
+        const expected = new Float64Array(dict.length);
 
-        assert.deepEqual(rows.map(row => row.value), Array.from(samplesTotal));
-        assert.deepEqual(rows.map(row => [row.index, row.entry]), attribute.dict.map((entry, index) => [index, entry]));
+        for (let i = 0; i < values.length; i++) {
+            expected[values[i]] += line.values[i];
+        }
+
+        assert.deepEqual(rows.map(row => row.value), Array.from(expected), name);
+        assert.deepEqual(rows.map(row => [row.index, row.entry]), dict.map((entry, index) => [index, entry]), name);
     }
 });
 
@@ -437,57 +436,6 @@ test('acceptance of signatures is kept until the destinations of events change',
         Array.from(filtered),
         Array.from(signatures.events, event => destination(event) === viewport.sinkId ? 0 : 1)
     );
-});
-
-test('line totals by an attribute are the totals of its signatures', async () => {
-    const profile = await createSignaturesProfile();
-    const memline = profile.memline!;
-    const signatures = memline.signatures!;
-
-    for (let i = 0; i < memline.attributes.length; i++) {
-        const { name, values, dict } = memline.attributes[i];
-        const expected = new Float64Array(dict.length);
-
-        for (let j = 0; j < values.length; j++) {
-            expected[values[j]] += memline.values[j];
-        }
-
-        assert.deepEqual(signatures.totalsBy(values, dict.length), expected, name);
-    }
-
-    assert.equal(signatures.totalsBy(new Uint32Array(memline.values.length), 1), null);
-});
-
-test('line totals by attributes of the classes come from class totals without reading event weights', async () => {
-    const { memline } = await createSignaturesProfile();
-    const signatures = memline!.signatures!;
-    const classified = memline!.attributes.filter(attribute => memline!.eventClasses.values.has(attribute.values));
-    let reads = 0;
-
-    (signatures as { weights: Uint32Array }).weights = new Proxy(signatures.weights, {
-        get(target, property) {
-            if (typeof property === 'string' && /^\d+$/.test(property)) {
-                reads++;
-            }
-
-            return Reflect.get(target, property, target);
-        }
-    });
-
-    assert.ok(classified.length >= 2);
-
-    for (let i = 0; i < classified.length; i++) {
-        const { name, values, dict } = classified[i];
-        const expected = new Float64Array(dict.length);
-
-        for (let j = 0; j < values.length; j++) {
-            expected[values[j]] += memline!.values[j];
-        }
-
-        assert.deepEqual(signatures.totalsBy(values, dict.length), expected, name);
-    }
-
-    assert.equal(reads, 0);
 });
 
 // Classes are numbered by their first events whether their columns take one pass or several; an implied column

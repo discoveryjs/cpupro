@@ -196,7 +196,14 @@ export class PopulationRecords {
 
     // Value of every event class for event values that the event classes classify
     classValues(values: EventValues) {
-        return Uint32Array.from(this.classes.events, event => values[event]);
+        const { events } = this.classes;
+        const classValues = new Uint32Array(events.length);
+
+        for (let i = 0; i < events.length; i++) {
+            classValues[i] = values[events[i]];
+        }
+
+        return classValues;
     }
 }
 

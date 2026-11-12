@@ -42,25 +42,6 @@ function attributeEntryColor(entry: ProfileLineAttribute['dict'][number]) {
     return entry && 'color' in entry ? entry.color : 'green';
 }
 
-// Totals of the attribute's values over the whole line, regardless of the viewport and filters
-export function lineAttributeTotals(line: ProfileLine, attribute: ProfileLineAttribute) {
-    const { values, dict } = attribute;
-    const signatureTotals = line.signatures?.totalsBy(values, dict.length) ?? null;
-
-    if (signatureTotals !== null) {
-        return signatureTotals;
-    }
-
-    // Values that are not a column of the signatures are summed over the line's events
-    const totals = new Float64Array(dict.length);
-
-    for (let i = 0; i < values.length; i++) {
-        totals[values[i]] += line.values[i];
-    }
-
-    return totals;
-}
-
 function timestampBins(line: ProfileLine, viewport: Range | null, count: number, lastTime: number, origin = line.axisStart) {
     // Codes are relative to axisStart; V8 heap events retain log timestamps (origin zero).
     // Samples do not define either stream's end. Retain events beyond the sample recording.
@@ -1036,7 +1017,9 @@ export const methods = {
             return [];
         }
 
-        const totals = lineAttributeTotals(line, attribute);
+        // Base populations of the line's breakdowns hold all of its events, so any of them gives the line's totals
+        const { population } = lineBreakdown(line, resolveScopeProfileLineBreakdown(null, null, this.context));
+        const totals = population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
 
         return attribute.dict.map((entry, index) => ({
             index,

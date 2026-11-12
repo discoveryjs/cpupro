@@ -24,7 +24,8 @@ export class Population extends Observer {
     samplesCount: Uint32Array; // size of samples
     samplesTotal: Float64Array; // size of samples
     readonly records: PopulationRecords; // events by sample and class, read by the populations derived from it
-    readonly classTotals: Float64Array; // per event class: the sum of its event values
+    readonly #classTotals: Float64Array; // per event class: the sum of its event values
+    readonly #classCounts: Uint32Array;  // per event class: the number of its events with a nonzero value
 
     constructor(
         samples: Uint32Array,
@@ -46,10 +47,11 @@ export class Population extends Observer {
         this.samplesCount = samplesCount.subarray(0, sampleCount);
         this.samplesTotal = samplesTotal.subarray(0, sampleCount);
         this.records = new PopulationRecords(samples, values, cumulative, this.cumulativeEnd, classes);
-        this.classTotals = new Float64Array(classes.events.length);
+        this.#classTotals = new Float64Array(classes.events.length);
+        this.#classCounts = new Uint32Array(classes.events.length);
 
         // PERF: Records already sum the events of every sample and class, a few events per record, so the metrics
-        // of samples and the totals of classes are sums of all records rather than another pass over the events
+        // of samples and the sums of classes are sums of all records rather than another pass over the events
         this.records.sum(
             [[0, this.records.partCount]],
             new Uint8Array(sampleCount).fill(1),
@@ -57,8 +59,8 @@ export class Population extends Observer {
             {
                 sampleTotals: samplesTotal,
                 sampleCounts: samplesCount,
-                classTotals: this.classTotals,
-                classCounts: new Uint32Array(classes.events.length)
+                classTotals: this.#classTotals,
+                classCounts: this.#classCounts
             }
         );
         this.sink = {
@@ -68,6 +70,21 @@ export class Population extends Observer {
     }
 
     aggregateBy(groups: Uint8Array | Uint32Array, groupCount: number) {
+        // Groupings constant within an event class are summed from the sums of classes
+        if (this.records.classifies(groups)) {
+            const { samplesTotal, samplesCount } = sumClassGroups(
+                this.records.classValues(groups),
+                this.#classTotals,
+                this.#classCounts,
+                groupCount
+            );
+
+            return {
+                samplesCount: samplesCount.subarray(0, groupCount),
+                samplesTotal: samplesTotal.subarray(0, groupCount)
+            };
+        }
+
         return aggregatePopulation(this, [[0, this.values.length]], groups, groupCount);
     }
 
@@ -310,17 +327,13 @@ export class PopulationFiltered extends Observer {
         if (acceptance !== null && acceptance.records.classifies(groups)) {
             const { records } = acceptance;
             const { events } = records.cover(this.#coverage);
-            const classGroups = records.classValues(groups);
             const { classTotals, classCounts } = this.#recordSums ?? this.#sumRecords(acceptance);
-            const samplesTotal = new Float64Array(groupCount + 1);
-            const samplesCount = new Uint32Array(groupCount + 1);
-
-            for (let i = 0; i < classGroups.length; i++) {
-                const group = classGroups[i];
-
-                samplesTotal[group] += classTotals[i];
-                samplesCount[group] += classCounts[i];
-            }
+            const { samplesTotal, samplesCount } = sumClassGroups(
+                records.classValues(groups),
+                classTotals,
+                classCounts,
+                groupCount
+            );
 
             this.#sumEvents(acceptance, events, groups, samplesTotal, samplesCount);
 
@@ -822,6 +835,27 @@ function aggregateRange(
             samplesTotal[group] += value;
         }
     }
+}
+
+// Sums of groups from the sums of event classes and the group of every class, with an entry after the groups
+// for the events a population rejects
+function sumClassGroups(
+    classGroups: Uint32Array,
+    classTotals: Float64Array,
+    classCounts: Uint32Array,
+    groupCount: number
+) {
+    const samplesTotal = new Float64Array(groupCount + 1);
+    const samplesCount = new Uint32Array(groupCount + 1);
+
+    for (let i = 0; i < classGroups.length; i++) {
+        const group = classGroups[i];
+
+        samplesTotal[group] += classTotals[i];
+        samplesCount[group] += classCounts[i];
+    }
+
+    return { samplesTotal, samplesCount };
 }
 
 function aggregatePopulation(

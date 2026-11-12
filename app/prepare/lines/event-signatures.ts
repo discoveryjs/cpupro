@@ -45,10 +45,6 @@ export class EventSignatures {
     readonly ids: Uint32Array;     // per event
     readonly events: Uint32Array;  // per signature: its first event
     readonly weights: Uint32Array; // per event: the line's value
-    // Classes of the line's events: each signature belongs to one class, so classes group signatures
-    readonly #classes: EventClasses;
-    // Per class: the weight of its events over the whole line; null when no population of the line has the classes
-    readonly #classTotals: Float64Array | null;
     readonly #columns: Map<ColumnValues, SignatureColumn>;
     readonly #signatureValues = new Map<ColumnValues, Uint32Array>();
     readonly #binRecords = new Map<string, { grid: BinRecordsGrid; records: BinRecords }>();
@@ -56,7 +52,6 @@ export class EventSignatures {
     readonly #targetRecords = new Map<Uint32Array, RangeRecords>();
     // Per cumulative vector of the line's events
     readonly #cellRecords = new Map<Float64Array, RangeRecords | null>();
-    #totals: Float64Array | null = null;
     // Per population: the acceptance of signatures at the revision of its samples, the destinations of its events
     readonly #acceptance = new WeakMap<PopulationFiltered, { samplesRevision: number; accepted: Uint8Array | null }>();
 
@@ -70,13 +65,7 @@ export class EventSignatures {
             .filter(column => !classes.values.has(column.values))
             .sort(bySize);
         const ids = new Uint32Array(classes.ids.length);
-        // Records of a base population sum every event of the line by its classes, so the class totals of a population
-        // grouped by the line's classes are the line's; a pass of their own would cost 40-60 ms over 34-50M events
-        const classBreakdown = line.breakdowns
-            .find(breakdown => breakdown.population.records.classes === classes);
 
-        this.#classes = classes;
-        this.#classTotals = classBreakdown?.population.classTotals ?? null;
         this.ids = ids;
         this.events = Uint32Array.from(combineColumns(classes.ids, ids, Array.from(classes.events), otherColumns));
         this.weights = line.values;
@@ -95,55 +84,6 @@ export class EventSignatures {
     // Value of every signature for an attribute or a breakdown's sample-to-category-node mapping
     valuesOf(values: ColumnValues) {
         return this.#signatureValues.get(values) ?? null;
-    }
-
-    // Weight of the events of every signature over the whole line, computed on the first use and kept,
-    // since neither the events nor their signatures change
-    totals() {
-        if (this.#totals === null) {
-            const { ids, weights } = this;
-
-            this.#totals = new Float64Array(this.count);
-
-            for (let i = 0; i < ids.length; i++) {
-                this.#totals[ids[i]] += weights[i];
-            }
-        }
-
-        return this.#totals;
-    }
-
-    // Weight of the line's events by a column's values: values of the classes from the totals of classes when given,
-    // other columns from the weights of signatures; null when the values are neither
-    totalsBy(values: ColumnValues, valueCount: number) {
-        const classTotals = this.#classTotals;
-
-        // Values of the classes are given by the first events of the classes, whose totals need no pass over events
-        if (classTotals !== null && this.#classes.values.has(values)) {
-            const classEvents = this.#classes.events;
-            const totals = new Float64Array(valueCount);
-
-            for (let i = 0; i < classEvents.length; i++) {
-                totals[values[classEvents[i]]] += classTotals[i];
-            }
-
-            return totals;
-        }
-
-        const signatureValues = this.valuesOf(values);
-
-        if (signatureValues === null) {
-            return null;
-        }
-
-        const signatureTotals = this.totals();
-        const totals = new Float64Array(valueCount);
-
-        for (let i = 0; i < signatureTotals.length; i++) {
-            totals[signatureValues[i]] += signatureTotals[i];
-        }
-
-        return totals;
     }
 
     // Acceptance of every signature by a population of the line, or null when the population may accept
