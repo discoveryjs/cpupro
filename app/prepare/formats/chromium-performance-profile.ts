@@ -207,42 +207,71 @@ function getOrCreateProcess(event: ChromiumTraceEvent, processes: Map<number, Un
     return process;
 };
 
-function getOrCreateEventChannel(event: { pid: number; tid: number }, eventChannels: Map<string, EventChannel>): EventChannel {
-    const threadId = getEventThreadId(event);
-    let eventChannel = eventChannels.get(threadId);
+// Event channels by the pid and tid of their thread, in the order of creation
+class EventChannels {
+    #channels: EventChannel[] = [];
+    #channelsByPid = new Map<number, Map<number, EventChannel>>();
+    #lastChannel: EventChannel | null = null;
 
-    if (!eventChannel) {
-        const events: UniformTraceEvent[] = [];
-        const userTimings: UniformTraceEvent[] = [];
-
-        eventChannels.set(threadId, eventChannel = {
-            thread: {
-                pid: event.pid,
-                tid: event.tid,
-                name: null,
-                isolate: null,
-                scripts: [],
-                events,
-                userTimings
-            },
-            events,
-            userTimings,
-            traceEventsBE: new Map(),
-            traceEventsSF: new Map(),
-            scripts: new Map()
-        });
+    values() {
+        return this.#channels;
     }
 
-    return eventChannel;
-};
+    getOrCreate(event: { pid: number; tid: number }): EventChannel {
+        const { pid, tid } = event;
+        const lastChannel = this.#lastChannel;
 
-function getEventId(event: ChromiumTraceEvent): string | number | null {
-    if (event.ph === 'b' || event.ph === 'e') {
+        // PERF: Events of a thread come in runs, so the channel of the previous event is checked before a lookup
+        if (lastChannel !== null && lastChannel.thread.tid === tid && lastChannel.thread.pid === pid) {
+            return lastChannel;
+        }
+
+        let channelsByTid = this.#channelsByPid.get(pid);
+
+        if (channelsByTid === undefined) {
+            channelsByTid = new Map();
+            this.#channelsByPid.set(pid, channelsByTid);
+        }
+
+        let eventChannel = channelsByTid.get(tid);
+
+        if (eventChannel === undefined) {
+            const events: UniformTraceEvent[] = [];
+            const userTimings: UniformTraceEvent[] = [];
+
+            eventChannel = {
+                thread: {
+                    pid,
+                    tid,
+                    name: null,
+                    isolate: null,
+                    scripts: [],
+                    events,
+                    userTimings
+                },
+                events,
+                userTimings,
+                traceEventsBE: new Map(),
+                traceEventsSF: new Map(),
+                scripts: new Map()
+            };
+            channelsByTid.set(tid, eventChannel);
+            this.#channels.push(eventChannel);
+        }
+
+        this.#lastChannel = eventChannel;
+
+        return eventChannel;
+    }
+}
+
+function getEventId(event: ChromiumTraceEvent, ph: string): string | number | null {
+    if (ph === 'b' || ph === 'e') {
         const id = event.id ?? event.id2?.local ?? null;
         return id !== null ? `${event.name}:${id}` : null;
     }
 
-    if (event.ph === 's' || event.ph === 'f') {
+    if (ph === 's' || ph === 'f') {
         return event.id ?? null;
     }
 
@@ -348,24 +377,27 @@ function applyScriptSourceText(
 
 function addTraceEventToThread(
     diagnose: Diagnose,
-    threadsMap: Map<string, EventChannel>,
+    eventChannels: EventChannels,
     event: ChromiumTraceEvent,
     data: unknown,
     sampleTraceId: number | null = null
 ) {
-    const thread = getOrCreateEventChannel(event, threadsMap);
-    const eventId = getEventId(event);
-    const eventMap = event.ph === 'b' || event.ph === 'e'
+    // PERF: Events of a trace take many shapes, which makes every read of their fields a megamorphic lookup,
+    // so each field is read once
+    const { ph, name, cat } = event;
+    const thread = eventChannels.getOrCreate(event);
+    const eventId = getEventId(event, ph);
+    const eventMap = ph === 'b' || ph === 'e'
         ? thread.traceEventsBE
         : thread.traceEventsSF;
     let tm = event.ts;
     let duration = event.dur || 0;
 
-    if (event.ph === 'e' || event.ph === 'f') {
+    if (ph === 'e' || ph === 'f') {
         if (eventId === null) {
             diagnose('warn', 'Ignoring end event without id', {
-                cat: event.cat,
-                name: event.name,
+                cat,
+                name,
                 pid: event.pid,
                 tid: event.tid
             });
@@ -381,8 +413,8 @@ function addTraceEventToThread(
         } else {
             diagnose('warn', 'Could not find start event for end event', {
                 eventId,
-                cat: event.cat,
-                name: event.name,
+                cat,
+                name,
                 pid: event.pid,
                 tid: event.tid
             });
@@ -392,8 +424,8 @@ function addTraceEventToThread(
     }
 
     const traceEvent: UniformTraceEvent = {
-        name: event.name,
-        cat: event.cat,
+        name,
+        cat,
         tm,
         duration,
         eventId,
@@ -402,11 +434,11 @@ function addTraceEventToThread(
     };
     // traceEvent.event = event;
 
-    if (event.ph === 'b' || event.ph === 's') {
+    if (ph === 'b' || ph === 's') {
         if (eventId === null) {
             diagnose('warn', 'Ignoring begin event without id', {
-                cat: event.cat,
-                name: event.name,
+                cat,
+                name,
                 pid: event.pid,
                 tid: event.tid
             });
@@ -417,7 +449,7 @@ function addTraceEventToThread(
         traceEvent.duration = -1;
     }
 
-    if (event.cat === 'blink.user_timing') {
+    if (cat === 'blink.user_timing') {
         thread.userTimings.push(traceEvent);
     } else {
         thread.events.push(traceEvent);
@@ -435,7 +467,7 @@ export function extractFromChromiumPerformanceProfile(
 
     // Maps pid/tid pairs to thread names
     const processesMap = new Map<number, UniformProcess>();
-    const eventChannels = new Map<string, EventChannel>();
+    const eventChannels = new EventChannels();
     const scriptSourceChunks: ScriptSourceChunks = new Map();
 
     // Metadata and source maps
@@ -485,7 +517,7 @@ export function extractFromChromiumPerformanceProfile(
             case 'Profile': {
                 const data = event.args.data as Partial<V8CpuProfile> & { isolate?: string };
                 const profileId = `${event.pid}:${event.id}`;
-                const eventChannel = getOrCreateEventChannel(event, eventChannels);
+                const eventChannel = eventChannels.getOrCreate(event);
                 const threadId = getEventThreadId(event);
                 const profileData: ChromiumTraceProfileData = {
                     eventChannel,
@@ -515,7 +547,7 @@ export function extractFromChromiumPerformanceProfile(
             }
 
             case 'thread_name': {
-                getOrCreateEventChannel(event, eventChannels).thread.name = event.args.name;
+                eventChannels.getOrCreate(event).thread.name = event.args.name;
                 break;
             }
 
@@ -526,7 +558,7 @@ export function extractFromChromiumPerformanceProfile(
 
             case 'ScriptCatchup':
             case 'LargeScriptCatchup': {
-                const eventChannel = getOrCreateEventChannel(event, eventChannels);
+                const eventChannel = eventChannels.getOrCreate(event);
                 const scripts = eventChannel.scripts;
                 const props = event.args.data as unknown as ScriptCatchupEventData;
                 const scriptId = Number(props.scriptId);
@@ -576,7 +608,7 @@ export function extractFromChromiumPerformanceProfile(
 
             case 'MinorGC':
             case 'MajorGC': {
-                getOrCreateEventChannel(event, eventChannels).events.push({
+                eventChannels.getOrCreate(event).events.push({
                     name: event.name,
                     cat: event.cat,
                     tm: event.ts,
@@ -642,47 +674,49 @@ export function extractFromChromiumPerformanceProfile(
             }
 
             default: {
+                // PERF: Fields of an event are read once, see addTraceEventToThread()
+                const { ph, cat, args } = event;
                 let sampleTraceId: number | null = null;
                 let data: unknown = null;
 
                 // flow events (s/f) are not used
-                if (event.ph === 's' || event.ph === 'f') {
+                if (ph === 's' || ph === 'f') {
                     continue;
                 }
 
-                if (event.cat === 'disabled-by-default-devtools.timeline' &&
+                if (cat === 'disabled-by-default-devtools.timeline' &&
                     event.name === 'UpdateCounters') {
-                    addTraceEventToThread(diagnose, eventChannels, event, event.args.data);
+                    addTraceEventToThread(diagnose, eventChannels, event, args.data);
                     break;
                 }
 
-                if ('sampleTraceId' in event.args) {
-                    sampleTraceId = event.args.sampleTraceId;
-                    data = event.args;
-                } else if (typeof event.args.data?.sampleTraceId === 'number') {
-                    sampleTraceId = event.args.data.sampleTraceId;
-                    data = event.args.data;
-                } else if (typeof event.args.beginData?.sampleTraceId === 'number') {
-                    sampleTraceId = event.args.beginData.sampleTraceId;
-                    data = event.args.beginData;
+                if ('sampleTraceId' in args) {
+                    sampleTraceId = args.sampleTraceId;
+                    data = args;
+                } else if (typeof args.data?.sampleTraceId === 'number') {
+                    sampleTraceId = args.data.sampleTraceId;
+                    data = args.data;
+                } else if (typeof args.beginData?.sampleTraceId === 'number') {
+                    sampleTraceId = args.beginData.sampleTraceId;
+                    data = args.beginData;
                 }
 
                 if (sampleTraceId !== null) {
                     addTraceEventToThread(diagnose, eventChannels, event, data, sampleTraceId);
-                } else if (event.cat === 'blink.user_timing') {
-                    if (event.ph === 'b' || event.ph === 'e') {
+                } else if (cat === 'blink.user_timing') {
+                    if (ph === 'b' || ph === 'e') {
                         addTraceEventToThread(
                             diagnose,
                             eventChannels,
                             event,
-                            event.args,
-                            event.args?.traceId || null
+                            args,
+                            args?.traceId || null
                         );
                     }
-                } else if (event.cat === 'disabled-by-default-v8.compile' ||
-                    event.cat === 'disabled-by-default-v8.compilation_allocations' ||
-                    event.ph === 'X' || event.ph === 'b' || event.ph === 'e') {
-                    addTraceEventToThread(diagnose, eventChannels, event, event.args);
+                } else if (cat === 'disabled-by-default-v8.compile' ||
+                    cat === 'disabled-by-default-v8.compilation_allocations' ||
+                    ph === 'X' || ph === 'b' || ph === 'e') {
+                    addTraceEventToThread(diagnose, eventChannels, event, args);
                 }
             }
         }
@@ -805,7 +839,7 @@ export function extractFromChromiumPerformanceProfile(
         scenarioId: null,
 
         processes: [...processesMap.values()],
-        threads: [...eventChannels.values()]
+        threads: eventChannels.values()
             .map(({ thread }) => thread)
             .sort((a, b) => a.pid - b.pid || a.tid - b.tid),
 
