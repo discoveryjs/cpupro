@@ -44,18 +44,25 @@ export type BufferDictionaryMetricsMap<T> = {
 export type MetricsApi = typeof metricsJavaScriptApi;
 
 // Passes of metrics.compute.wat: self metrics of nodes or dictionary entries from the metrics of samples
-// (dest[map[i]] += source[i]), then nested values of nodes and total values of dictionary entries
+// (dest[map[i]] += source[i] for counts and values), then nested values of nodes and total values of dictionary
+// entries
 export const metricsJavaScriptApi = {
-    accumulateCounts: accumulateMetrics<Uint32Array>,
-    accumulateValues: accumulateMetrics<Float64Array>,
+    accumulateMetrics,
     rollupTreeMetrics,
     rollupDictionaryMetrics
 };
 export const metricsApiOf = wasmBacked(metricsWasm, metricsJavaScriptApi, bindMetricsWasm);
 
-function accumulateMetrics<T extends Uint32Array | Float64Array>(source: T, map: Uint32Array, dest: T) {
-    for (let i = source.length - 1; i >= 0; i--) {
-        dest[map[i]] += source[i];
+function accumulateMetrics(
+    sourceCounts: Uint32Array,
+    sourceValues: Float64Array,
+    map: Uint32Array,
+    destCounts: Uint32Array,
+    destValues: Float64Array
+) {
+    for (let i = sourceCounts.length - 1; i >= 0; i--) {
+        destCounts[map[i]] += sourceCounts[i];
+        destValues[map[i]] += sourceValues[i];
     }
 }
 
@@ -82,23 +89,17 @@ function rollupDictionaryMetrics(
 }
 
 function bindMetricsWasm(
-    wasm: WasmExports<'accumulateCounts' | 'accumulateValues' | 'rollupTreeMetrics' | 'rollupDictionaryMetrics'>
+    wasm: WasmExports<'accumulateMetrics' | 'rollupTreeMetrics' | 'rollupDictionaryMetrics'>
 ): MetricsApi {
     return {
-        accumulateCounts(source, map, dest) {
-            wasm.accumulateCounts(
-                source.length,
-                source.byteOffset,
+        accumulateMetrics(sourceCounts, sourceValues, map, destCounts, destValues) {
+            wasm.accumulateMetrics(
+                sourceCounts.length,
+                sourceCounts.byteOffset,
+                sourceValues.byteOffset,
                 map.byteOffset,
-                dest.byteOffset
-            );
-        },
-        accumulateValues(source, map, dest) {
-            wasm.accumulateValues(
-                source.length,
-                source.byteOffset,
-                map.byteOffset,
-                dest.byteOffset
+                destCounts.byteOffset,
+                destValues.byteOffset
             );
         },
         rollupTreeMetrics(parent, selfValues, nestedValues) {
@@ -133,8 +134,13 @@ export function computeTreeMetrics<T>(
         map.nestedValues.fill(0);
     }
 
-    api.accumulateCounts(map.sourceSamplesCount, map.sampleToNode, map.samplesCount);
-    api.accumulateValues(map.sourceSamplesTotal, map.sampleToNode, map.selfValues);
+    api.accumulateMetrics(
+        map.sourceSamplesCount,
+        map.sourceSamplesTotal,
+        map.sampleToNode,
+        map.samplesCount,
+        map.selfValues
+    );
     api.rollupTreeMetrics(map.parent, map.selfValues, map.nestedValues);
 }
 
@@ -149,8 +155,13 @@ export function computeDictionaryMetrics<T>(
         map.totalValues.fill(0);
     }
 
-    api.accumulateCounts(map.sourceSamplesCount, map.sampleIdToDict, map.samplesCount);
-    api.accumulateValues(map.sourceSamplesTotal, map.sampleIdToDict, map.selfValues);
+    api.accumulateMetrics(
+        map.sourceSamplesCount,
+        map.sourceSamplesTotal,
+        map.sampleIdToDict,
+        map.samplesCount,
+        map.selfValues
+    );
     api.rollupDictionaryMetrics(
         map.totalNodes,
         map.nodeSelfValues,

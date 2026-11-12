@@ -164,6 +164,20 @@ function cutsOf(population: PopulationFiltered) {
     return cuts.sort();
 }
 
+// Samples with a value and no counted events: none, since metrics of trees and dictionaries skip a sample by its
+// zero count
+function valuedSamplesWithoutCount(population: PopulationFiltered) {
+    const samples: number[] = [];
+
+    for (let i = 0; i < population.samplesCount.length; i++) {
+        if (population.samplesCount[i] === 0 && population.samplesTotal[i] !== 0) {
+            samples.push(i);
+        }
+    }
+
+    return samples;
+}
+
 function assertEqualPopulations(
     actual: PopulationFiltered,
     expected: PopulationFiltered,
@@ -174,6 +188,7 @@ function assertEqualPopulations(
 
     assert.deepEqual([...actual.samplesTotal], [...expected.samplesTotal], `${step}: totals`);
     assert.deepEqual([...actual.samplesCount], [...expected.samplesCount], `${step}: counts`);
+    assert.deepEqual(valuedSamplesWithoutCount(actual), [], `${step}: values of samples without counted events`);
     assert.deepEqual(actual.sink, expected.sink, `${step}: sink`);
     assert.equal(actual.rangeSamples, expected.rangeSamples, `${step}: rangeSamples`);
     assert.deepEqual(cutsOf(actual), cutsOf(expected), `${step}: boundary cuts`);

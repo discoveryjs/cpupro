@@ -70,6 +70,20 @@ function expectedPopulation(base: Population, source: RangeSet | null, own: Rang
     };
 }
 
+// Samples with a value and no counted events: none, since metrics of trees and dictionaries skip a sample by its
+// zero count
+function valuedSamplesWithoutCount(population: PopulationFiltered) {
+    const samples: number[] = [];
+
+    for (let i = 0; i < population.samplesCount.length; i++) {
+        if (population.samplesCount[i] === 0 && population.samplesTotal[i] !== 0) {
+            samples.push(i);
+        }
+    }
+
+    return samples;
+}
+
 function assertPopulation(actual: PopulationFiltered, expected: ReturnType<typeof expectedPopulation>) {
     assert.deepEqual(actual.samples, expected.samples);
     assert.deepEqual(actual.values, expected.values);
@@ -77,6 +91,7 @@ function assertPopulation(actual: PopulationFiltered, expected: ReturnType<typeo
     assert.deepEqual(actual.samplesCount, expected.samplesCount);
     assert.deepEqual(actual.sink, expected.sink);
     assert.equal(actual.rangeSamples, expected.rangeSamples);
+    assert.deepEqual(valuedSamplesWithoutCount(actual), []);
 }
 
 // Ordered disjoint intervals between pairs of sorted coordinates, touching and empty ones included
