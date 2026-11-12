@@ -108,8 +108,8 @@ function sourceFixture(cpuOnly = false) {
             _cpuproAllocationIds: [10, 11, 20, 21],
             _cpuproAllocationMapping: [10, 20, 21],
             _cpuproAllocationSizes: [8, 16, 32, 64],
-            _cpuproAllocationScriptIds: [7, 7, 7, 7],
-            _cpuproAllocationLocations: [14, 14, 14, 14]
+            _cpuproAllocationScriptIds: new Int32Array([7, 7, 7, 7]),
+            _cpuproAllocationLocations: new Int32Array([14, 14, 14, 14])
         });
     }
 

@@ -243,12 +243,17 @@ export async function createMemline(
     // for call frame resolution by line-column or script-offset.
     await work('parse script sources', () => preparseScriptSourcesResult);
 
+    // Script ids of allocations are normalized by the scripts map, as script ids of call frames are
+    const allocationScriptIds = _cpuproAllocationScriptIds !== null
+        ? profileScriptsMap.normalizeScriptIdVector(_cpuproAllocationScriptIds)
+        : null;
+
     // Create vector of allocation locations for breakdown
     const vectorLocations = await work('create allocation locations vector', () =>
         createVectorLocations(
             dictionary,
             profileScriptsMap,
-            _cpuproAllocationScriptIds,
+            allocationScriptIds,
             _cpuproAllocationLocations,
             _cpuproAllocationContextInfo,
             _cpuproAllocationVmStateNames,

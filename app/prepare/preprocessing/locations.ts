@@ -1,10 +1,17 @@
+import { USE_WASM } from '../const.js';
 import { scriptFromScriptId } from './scripts.js';
-import { capacity, createUint32Progression, grow } from '../misc/utils.js';
+import { capacity, createUint32Progression } from '../misc/utils.js';
+import {
+    createJavaScriptApi,
+    createWasmApi,
+    hashSite,
+    type ComputeApi,
+    type SitesBufferMap
+} from '../computations/compute-wasm-wrapper.js';
 import type { Dictionary } from '../dictionary.js';
 import type { TreeSource } from '../computations/build-trees.js';
 import type {
     AllocationContextInfoVector,
-    AllocationScriptIdVector,
     CpuProCallFrame,
     CpuProLocation,
     IProfileScriptsMap,
@@ -33,71 +40,53 @@ export function createLocationsFromScriptOffsets(
 
     const callFrames = dict.callFrames;
     const treeNodeCount = nodeParent.length;
-    // A location per site of a call frame at a script offset
+    // A location per site of a call frame at a script offset, resolved in the order the sites are found
     const callFrameSites = new LocationSites(treeNodeCount);
     const callFrameSiteLocations: number[] = [];
-    // A node per site of a sampled node at a script offset, the nodes follow the call tree nodes
-    const sampleSites = new LocationSites(Math.min(samples.length, 1 << 12));
-    const sampleLocations: number[] = [];
-    const sampleParents: number[] = [];
-    const treeLocations = new Uint32Array(treeNodeCount);
 
-    const locationOf = (callFrameIndex: number, scriptOffset: number) => {
-        const count = callFrameSites.count;
-        const site = callFrameSites.siteOf(callFrameIndex, scriptOffset, 0);
+    const locationsOf = (callFrameIndices: Uint32Array, scriptOffsets: Int32Array) => {
+        const locations = new Uint32Array(scriptOffsets.length);
 
-        if (site === count) {
+        callFrameSites.sitesOf(callFrameIndices, scriptOffsets, null, locations);
+
+        for (let i = callFrameSiteLocations.length; i < callFrameSites.count; i++) {
             callFrameSiteLocations.push(dict.resolveLocationIndex(
-                callFrames[callFrameIndex],
+                callFrames[callFrameSites.owners[i]],
                 null,
-                scriptOffset
+                callFrameSites.offsets[i]
             ));
         }
 
-        return callFrameSiteLocations[site];
+        for (let i = 0; i < locations.length; i++) {
+            locations[i] = callFrameSiteLocations[locations[i]];
+        }
+
+        return locations;
     };
 
     // The location of a node is the script offset of its call in the parent's call frame
-    for (let i = 0; i < treeNodeCount; i++) {
-        treeLocations[i] = locationOf(nodeCallFrames[nodeParent[i]], nodeScriptOffsets[i]);
-    }
+    const treeLocations = locationsOf(callFramesOfNodes(nodeCallFrames, nodeParent), nodeScriptOffsets);
 
-    // A sample becomes a sample of the node of its script offset in its node's call frame;
-    // a sample of the previous node and offset takes its sample without a lookup
-    let previousNode = -1;
-    let previousScriptOffset = 0;
-    let sample = 0;
+    // A sample becomes a sample of the site of its node at its script offset, the site is located
+    // at the script offset in the node's call frame
+    const sampleSites = new LocationSites(Math.min(samples.length, 1 << 12));
 
-    for (let i = 0; i < samples.length; i++) {
-        const node = samples[i];
-        const scriptOffset = sampledScriptOffsets[i];
+    sampleSites.sitesOf(samples, sampledScriptOffsets, null, samples);
 
-        if (node !== previousNode || scriptOffset !== previousScriptOffset) {
-            const count = sampleSites.count;
-
-            sample = sampleSites.siteOf(node, scriptOffset, 0);
-
-            if (sample === count) {
-                sampleLocations.push(locationOf(nodeCallFrames[node] || 0, scriptOffset));
-                sampleParents.push(node);
-            }
-
-            previousNode = node;
-            previousScriptOffset = scriptOffset;
-        }
-
-        samples[i] = sample;
-    }
-
-    const nodeCount = treeNodeCount + sampleLocations.length;
+    const sampleCount = sampleSites.count;
+    const sampleLocations = locationsOf(
+        callFramesOfNodes(nodeCallFrames, sampleSites.owners.subarray(0, sampleCount)),
+        sampleSites.offsets.subarray(0, sampleCount)
+    );
+    const nodeCount = treeNodeCount + sampleCount;
     const nodes = new Uint32Array(nodeCount);
     const parent = new Uint32Array(nodeCount);
-    const sourceIdToNode = new Int32Array(sampleLocations.length);
+    const sourceIdToNode = new Int32Array(sampleCount);
 
     nodes.set(treeLocations);
     nodes.set(sampleLocations, treeNodeCount);
     parent.set(nodeParent);
-    parent.set(sampleParents, treeNodeCount);
+    parent.set(sampleSites.owners.subarray(0, sampleCount), treeNodeCount);
 
     for (let i = 0; i < sourceIdToNode.length; i++) {
         sourceIdToNode[i] = treeNodeCount + i;
@@ -205,6 +194,17 @@ function buildContextBuiltinDict(
     return builtinsCallFrames;
 }
 
+// Call frames of the nodes; a node beyond the call frames of all nodes takes 0, as a typed array stores undefined
+function callFramesOfNodes(nodeCallFrames: Uint32Array, nodes: ArrayLike<number>) {
+    const callFrames = new Uint32Array(nodes.length);
+
+    for (let i = 0; i < nodes.length; i++) {
+        callFrames[i] = nodeCallFrames[nodes[i]];
+    }
+
+    return callFrames;
+}
+
 const emptyDict = Object.freeze({});
 
 // Allocations repeat their sites (a script, a script offset and context info) heavily: tens of millions
@@ -216,7 +216,7 @@ const emptyDict = Object.freeze({});
 export function createVectorLocations(
     dictionary: Dictionary,
     scriptsMap: IProfileScriptsMap,
-    scriptIds: AllocationScriptIdVector | null,
+    scriptIds: Int32Array | null, // script ids normalized by the scripts map
     scriptOffsets: ScriptOffsetVector | null,
     contextInfo: AllocationContextInfoVector | null,
     vmStateNames: Record<number, string> | null,
@@ -229,37 +229,9 @@ export function createVectorLocations(
     const samples = new Uint32Array(scriptOffsets.length);
     // PERF: Sites grow from a size bounded by the allocation count, so short vectors allocate little
     const sites = new LocationSites(Math.min(scriptOffsets.length, 1 << 12));
-    // NaN differs from any script id, so the first allocation looks its site up
-    let previousScriptId: number | string = NaN;
-    let previousScriptOffset = 0;
-    let previousContextInfo = 0;
-    let numericScriptId = 0;
-    let sample = 0;
 
-    for (let i = 0; i < scriptOffsets.length; i++) {
-        const scriptId = scriptIds[i];
-        const scriptOffset = scriptOffsets[i];
-        const contextInfoValue = contextInfo !== null ? contextInfo[i] : 0;
-
-        if (scriptOffset !== previousScriptOffset ||
-            contextInfoValue !== previousContextInfo ||
-            scriptId !== previousScriptId) {
-            if (scriptId !== previousScriptId) {
-                // Sites are owned by script ids in the numeric domain of the profile's scripts,
-                // some formats give script ids as strings
-                numericScriptId = typeof scriptId === 'number'
-                    ? scriptId
-                    : scriptsMap.normalizeScriptId(scriptId);
-            }
-
-            sample = sites.siteOf(numericScriptId, scriptOffset, contextInfoValue);
-            previousScriptId = scriptId;
-            previousScriptOffset = scriptOffset;
-            previousContextInfo = contextInfoValue;
-        }
-
-        samples[i] = sample;
-    }
+    // Sites are owned by script ids
+    sites.sitesOf(scriptIds, scriptOffsets, contextInfo, samples);
 
     const vmStateCallFrames = buildContextVmStateDict(
         dictionary,
@@ -396,66 +368,64 @@ export function createVectorLocations(
 }
 
 // Sites of locations: script offsets of owners (call frames, call tree nodes or script ids) with context info,
-// numbered in the order they are added. A hash table finds the site of an owner, an offset and context info.
+// numbered in the order they are found. The table of sites is a compute buffer: elements find their sites
+// in chunks staged into the buffer, by WASM or JavaScript, and the table grows between chunks.
 class LocationSites {
-    owners: Int32Array;
-    offsets: Int32Array;
-    contexts: Uint32Array;
     count = 0;
-    #slots: Int32Array;
+    #buffer: SitesBufferMap;
+    #api: ComputeApi;
 
     constructor(size: number) {
-        this.owners = new Int32Array(capacity(size));
-        this.offsets = new Int32Array(this.owners.length);
-        this.contexts = new Uint32Array(this.owners.length);
-        this.#slots = new Int32Array(2 * this.owners.length).fill(-1);
+        this.#buffer = createSitesBuffer(capacity(size));
+        this.#api = createSitesApi(this.#buffer);
     }
 
-    // The site of an owner's script offset with context info; a missing site is added as the next one
-    siteOf(owner: number, offset: number, context: number) {
-        const slots = this.#slots;
-        const slotMask = slots.length - 1;
-        const homeSlot = hashSite(owner, offset, context) & slotMask;
-        let slot = homeSlot;
-        let site = slots[slot];
+    get owners() {
+        return this.#buffer.siteOwners;
+    }
 
-        while (site !== -1) {
-            if (this.offsets[site] === offset &&
-                this.contexts[site] === context &&
-                this.owners[site] === owner) {
-                // PERF: A found site takes its home slot, so sites met again are found at the first probe.
-                // The site displaced from the home slot takes the found one's slot, which follows the home slot
-                // in the same run of occupied slots, so a probe from its own home slot still reaches it
-                if (slot !== homeSlot) {
-                    slots[slot] = slots[homeSlot];
-                    slots[homeSlot] = site;
-                }
+    get offsets() {
+        return this.#buffer.siteOffsets;
+    }
 
-                return site;
+    get contexts() {
+        return this.#buffer.siteContexts;
+    }
+
+    // Sites of the elements of owners, offsets and contexts (zero when absent); sites may be owners,
+    // since a chunk of elements is staged before its sites are written
+    sitesOf(
+        owners: Int32Array | Uint32Array,
+        offsets: Int32Array,
+        contexts: Uint32Array | null,
+        sites: Uint32Array
+    ) {
+        let start = 0;
+
+        while (start < offsets.length) {
+            const end = Math.min(offsets.length, start + this.#buffer.sites.length);
+            const size = end - start;
+
+            // The table grows to room for the chunk's sites, the chunk of a grown table is no smaller
+            if (this.count + size > this.owners.length) {
+                this.#grow(capacity(this.count + size));
             }
 
-            slot = (slot + 1) & slotMask;
-            site = slots[slot];
+            const buffer = this.#buffer;
+
+            buffer.owners.set(owners.subarray(start, end));
+            buffer.offsets.set(offsets.subarray(start, end));
+
+            if (contexts !== null) {
+                buffer.contexts.set(contexts.subarray(start, end));
+            } else {
+                buffer.contexts.fill(0);
+            }
+
+            this.count = this.#api.findSites(buffer, size, this.count);
+            sites.set(buffer.sites.subarray(0, size), start);
+            start = end;
         }
-
-        site = this.count++;
-
-        if (site === this.owners.length) {
-            this.owners = grow(this.owners);
-            this.offsets = grow(this.offsets);
-            this.contexts = grow(this.contexts);
-        }
-
-        this.owners[site] = owner;
-        this.offsets[site] = offset;
-        this.contexts[site] = context;
-        slots[slot] = site;
-
-        if (2 * this.count > slots.length) {
-            this.#rehash();
-        }
-
-        return site;
     }
 
     // Sites in ascending offsets of each owner, the owners in the order of their first sites: a radix sort
@@ -491,9 +461,14 @@ class LocationSites {
         return countingSort(offsetOrder, keys, ownerKeys.size);
     }
 
-    #rehash() {
-        const slots = new Int32Array(2 * this.#slots.length).fill(-1);
+    #grow(size: number) {
+        const buffer = createSitesBuffer(size);
+        const slots = buffer.slots;
         const slotMask = slots.length - 1;
+
+        buffer.siteOwners.set(this.owners.subarray(0, this.count));
+        buffer.siteOffsets.set(this.offsets.subarray(0, this.count));
+        buffer.siteContexts.set(this.contexts.subarray(0, this.count));
 
         for (let i = 0; i < this.count; i++) {
             let slot = hashSite(this.owners[i], this.offsets[i], this.contexts[i]) & slotMask;
@@ -505,8 +480,54 @@ class LocationSites {
             slots[slot] = i;
         }
 
-        this.#slots = slots;
+        this.#buffer = buffer;
+        this.#api = createSitesApi(buffer);
     }
+}
+
+// PERF: WASM reads its own memory only, so chunks of elements are staged into the buffer: the buffer stays small
+// for any number of elements, and V8 replaces the baseline code of a WASM function by optimized code between calls
+// rather than during one, so chunks after the first run optimized code
+const sitesChunkSize = 1 << 16;
+const sitesJavaScriptApi = createJavaScriptApi();
+
+// A buffer of a table for a capacity of sites, its slots stay at most half occupied
+function createSitesBuffer(siteCapacity: number) {
+    const chunkSize = Math.min(siteCapacity, sitesChunkSize);
+    const slotCount = 2 * siteCapacity;
+    const byteSize =
+        4 * chunkSize +    // owners
+        4 * chunkSize +    // offsets
+        4 * chunkSize +    // contexts
+        4 * chunkSize +    // sites
+        4 * slotCount +    // slots
+        4 * siteCapacity + // siteOwners
+        4 * siteCapacity + // siteOffsets
+        4 * siteCapacity;  // siteContexts
+    const memory = USE_WASM
+        ? new WebAssembly.Memory({ initial: Math.ceil(byteSize / 0x10000) })
+        : new Uint8Array(byteSize);
+    const slotsOffset = 16 * chunkSize;
+    const sitesOffset = slotsOffset + 4 * slotCount;
+    const bufferMap: SitesBufferMap = {
+        memory,
+        owners: new Int32Array(memory.buffer, 0, chunkSize),
+        offsets: new Int32Array(memory.buffer, 4 * chunkSize, chunkSize),
+        contexts: new Uint32Array(memory.buffer, 8 * chunkSize, chunkSize),
+        sites: new Uint32Array(memory.buffer, 12 * chunkSize, chunkSize),
+        slots: new Int32Array(memory.buffer, slotsOffset, slotCount).fill(-1),
+        siteOwners: new Int32Array(memory.buffer, sitesOffset, siteCapacity),
+        siteOffsets: new Int32Array(memory.buffer, sitesOffset + 4 * siteCapacity, siteCapacity),
+        siteContexts: new Uint32Array(memory.buffer, sitesOffset + 8 * siteCapacity, siteCapacity)
+    };
+
+    return bufferMap;
+}
+
+function createSitesApi(buffer: SitesBufferMap) {
+    return buffer.memory instanceof WebAssembly.Memory
+        ? createWasmApi(buffer.memory)
+        : sitesJavaScriptApi;
 }
 
 // Indices in a stable order of their keys, the keys are below the key count
@@ -529,11 +550,4 @@ function countingSort(indices: Uint32Array, keys: Uint32Array, keyCount: number)
     }
 
     return sorted;
-}
-
-function hashSite(owner: number, offset: number, context: number) {
-    const key = owner ^ Math.imul(offset, 0x85ebca6b) ^ Math.imul(context, 0xc2b2ae35);
-    const hash = Math.imul(key, 0x9e3779b1);
-
-    return (hash ^ (hash >>> 16)) >>> 0;
 }

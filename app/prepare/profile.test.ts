@@ -4,6 +4,7 @@ import { createProfileFixture, type ProfileFixtureOptions } from '../../test/fix
 import { createProfile } from './profile.mjs';
 import { createWorkHandler, noopWorkHandler, type WorkIdentity } from './misc/work.js';
 import { createDiagnosticsCollector } from './diagnostics.js';
+import { Dictionary } from './dictionary.js';
 import type { CpuProLocation, V8CpuProfile } from './types.js';
 import type { ProfileLineBreakdown } from './lines/types.js';
 
@@ -73,8 +74,8 @@ describe('profile breakdowns', () => {
             _cpuproAllocationMapping: [],
             _cpuproAllocationIds: [1, 2],
             _cpuproAllocationSizes: [16, 32],
-            _cpuproAllocationScriptIds: [0, 0],
-            _cpuproAllocationLocations: [-1, -1]
+            _cpuproAllocationScriptIds: new Int32Array([0, 0]),
+            _cpuproAllocationLocations: new Int32Array([-1, -1])
         };
         const checkCpuPopulation = async function<T>(identity: WorkIdentity, callback: () => T): Promise<T> {
             const result = callback();
@@ -106,8 +107,8 @@ describe('profile breakdowns', () => {
             timeDeltas: [10, 10],
             _cpuproAllocationIds: [1, 2],
             _cpuproAllocationSizes: [16, 32],
-            _cpuproAllocationScriptIds: [0, 0],
-            _cpuproAllocationLocations: [-1, -1]
+            _cpuproAllocationScriptIds: new Int32Array([0, 0]),
+            _cpuproAllocationLocations: new Int32Array([-1, -1])
         };
         const profile = await createProfile(data, { diagnose });
 
@@ -117,6 +118,41 @@ describe('profile breakdowns', () => {
         assert.deepEqual(diagnostics.map(entry => [entry.message, entry.details]), [
             ['Ignored CPU samples of a profile with no call tree nodes', { samples: 2 }]
         ]);
+    });
+
+    test('resolves ":N" and URL allocation script ids to the scripts of call frames of the same ids', async () => {
+        const url = 'https://example.com/second.js';
+        const data: V8CpuProfile = {
+            startTime: 0,
+            endTime: 20,
+            nodes: [
+                createNode(1, '(root)', [2, 3]),
+                {
+                    id: 2,
+                    callFrame: { scriptId: ':5', url: 'first.js', functionName: 'a', lineNumber: 0, columnNumber: 0 }
+                },
+                {
+                    id: 3,
+                    callFrame: { scriptId: url, url, functionName: 'b', lineNumber: 0, columnNumber: 0 }
+                }
+            ],
+            samples: [2, 3],
+            timeDeltas: [10, 10],
+            _cpuproAllocationIds: [1, 2, 3],
+            _cpuproAllocationSizes: [16, 32, 48],
+            _cpuproAllocationScriptIds: [url, ':5', ':5'],
+            _cpuproAllocationLocations: new Int32Array([-1, -1, -1])
+        };
+        const dictionary = new Dictionary();
+        const profile = await createProfile(data, { dictionary });
+        const { source, population } = profile.memline!.breakdowns.find(breakdown => breakdown.kind === 'location')!;
+        const scriptIdOf = (name: string) =>
+            dictionary.callFrames.find(callFrame => callFrame.name === name)!.script!.id;
+        const allocationScriptIds = Array.from(population.samples, sample =>
+            source.dictionary[source.nodes[source.sourceIdToNode[sample]]].script!.id
+        );
+
+        assert.deepEqual(allocationScriptIds, [scriptIdOf('b'), scriptIdOf('a'), scriptIdOf('a')]);
     });
 
     test('binds allocation ranges to samples after fixing out-of-order time deltas', async () => {

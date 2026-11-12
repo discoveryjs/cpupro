@@ -150,9 +150,9 @@ test.each<{
     const result = createVectorLocations(
         dictionary,
         scripts,
-        row.scriptIds,
-        row.scriptOffsets,
-        row.contextInfo,
+        new Int32Array(row.scriptIds),
+        new Int32Array(row.scriptOffsets),
+        row.contextInfo !== null ? new Uint32Array(row.contextInfo) : null,
         row.vmStateNames,
         row.builtinsNames
     )!;
@@ -163,9 +163,13 @@ test.each<{
 });
 
 test.each([
-    { title: 'absent script ids', scriptIds: null, scriptOffsets: [22] },
-    { title: 'absent script offsets', scriptIds: [7], scriptOffsets: null },
-    { title: 'script ids and offsets of different lengths', scriptIds: [7, 7], scriptOffsets: [22] }
+    { title: 'absent script ids', scriptIds: null, scriptOffsets: new Int32Array([22]) },
+    { title: 'absent script offsets', scriptIds: new Int32Array([7]), scriptOffsets: null },
+    {
+        title: 'script ids and offsets of different lengths',
+        scriptIds: new Int32Array([7, 7]),
+        scriptOffsets: new Int32Array([22])
+    }
 ])('maps no allocation locations for $title', row => {
     const { dictionary, scripts } = createScripts();
     const result = createVectorLocations(dictionary, scripts, row.scriptIds, row.scriptOffsets, null, null, null);
@@ -201,8 +205,8 @@ test.each([
     const result = createVectorLocations(
         dictionary,
         scripts,
-        row.scriptOffsets.map(() => 7),
-        row.scriptOffsets,
+        new Int32Array(row.scriptOffsets.length).fill(7),
+        new Int32Array(row.scriptOffsets),
         null,
         null,
         null
@@ -223,23 +227,45 @@ test.each([
     );
 });
 
-test('maps allocations of a script id given as a string the same way as of a numeric one', () => {
-    const paths = (scriptIds: Array<number | string>) => {
-        const { dictionary, scripts } = createScriptFixture('function f() { return {}; }');
-        const result = createVectorLocations(
-            dictionary,
-            scripts,
-            scriptIds,
-            [-1, -1, 9],
-            [1, 0, 2],
-            { 1: 'gc', 2: 'parser' },
-            null
-        )!;
+test('numbers allocation sites in the order of their first allocations across chunks of a growing table', () => {
+    const { dictionary, scripts } = createScripts();
+    const size = 3 * (1 << 16) + 5;
+    const scriptOffsets = new Int32Array(size);
+    const contextInfo = new Uint32Array(size);
+    const expectedSamples = new Uint32Array(size);
+    const siteByKey = new Map<number, number>();
 
-        return allocationPaths(dictionary, result);
-    };
+    // sites come in runs of two allocations, five frequent sites alternate with 20011 sites
+    // recurring over the whole vector
+    for (let i = 0; i < size; i++) {
+        const run = i >> 1;
+        const key = run % 2 === 0
+            ? 20011 + (run >> 1) % 5
+            : Math.imul(run >> 1, 7919) % 20011;
+        let site = siteByKey.get(key);
 
-    assert.deepEqual(paths(['0', '0', '7']), paths([0, 0, 7]));
+        if (site === undefined) {
+            site = siteByKey.size;
+            siteByKey.set(key, site);
+        }
+
+        scriptOffsets[i] = key >> 1;
+        contextInfo[i] = key & 1;
+        expectedSamples[i] = site;
+    }
+
+    const result = createVectorLocations(
+        dictionary,
+        scripts,
+        new Int32Array(size).fill(7),
+        scriptOffsets,
+        contextInfo,
+        { 1: 'gc' },
+        null
+    )!;
+
+    assert.deepEqual(result.samples, expectedSamples);
+    assert.equal(result.sourceIdToNode.length, siteByKey.size);
 });
 
 test('adds a node per sampled node and script offset after the call tree nodes, located at call sites', () => {

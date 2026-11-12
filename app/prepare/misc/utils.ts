@@ -25,6 +25,10 @@ export function asUint32Array(source: number[] | Uint32Array): Uint32Array {
     return Array.isArray(source) ? new Uint32Array(source) : source;
 }
 
+export function asInt32Array(source: number[] | Int32Array): Int32Array {
+    return Array.isArray(source) ? new Int32Array(source) : source;
+}
+
 export function sum(array: number[] | Int32Array | Uint32Array | Float64Array) {
     let sum = 0;
 

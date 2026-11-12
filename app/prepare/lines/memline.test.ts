@@ -18,8 +18,8 @@ test('keeps allocation locations without borrowing a call stack when CPU samples
         _cpuproAllocationMapping: [],
         _cpuproAllocationIds: [1, 2],
         _cpuproAllocationSizes: [16, 32],
-        _cpuproAllocationScriptIds: [1, 1],
-        _cpuproAllocationLocations: [10, 20]
+        _cpuproAllocationScriptIds: new Int32Array([1, 1]),
+        _cpuproAllocationLocations: new Int32Array([10, 20])
     }, dictionary, scriptsMap, null, null, null, Promise.resolve(), { work: noopWorkHandler });
 
     assert.ok(line);

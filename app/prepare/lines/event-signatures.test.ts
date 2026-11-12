@@ -71,9 +71,9 @@ async function createSignaturesProfile({ mapped = true } = {}) {
         _cpuproAllocationGc: Array.from({ length: allocationCount }, () => random(2) === 0 ? 0 : (1 + random(3)) << 2 | (1 + random(2))),
         _cpuproAllocationSpaces: Array.from({ length: allocationCount }, () => random(3)),
         _cpuproAllocationSpaceNames: { 0: 'new_space', 1: 'old_space', 2: 'code_space' },
-        _cpuproAllocationScriptIds: Array.from({ length: allocationCount }, () => random(2)),
-        _cpuproAllocationLocations: Array.from({ length: allocationCount }, () => 10 * random(3)),
-        _cpuproAllocationContextInfo: Array.from({ length: allocationCount }, () => random(3)),
+        _cpuproAllocationScriptIds: Int32Array.from({ length: allocationCount }, () => random(2)),
+        _cpuproAllocationLocations: Int32Array.from({ length: allocationCount }, () => 10 * random(3)),
+        _cpuproAllocationContextInfo: Uint32Array.from({ length: allocationCount }, () => random(3)),
         _cpuproAllocationVmStateNames: { 1: 'gc', 2: 'parser' }
     } as V8CpuProfile;
     const dictionary = new Dictionary();

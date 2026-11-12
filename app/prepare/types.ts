@@ -11,7 +11,7 @@ export type SampleIdVector = number[] | Uint32Array;
 export type MemorySampleSizeVector = number[] | Int32Array | Uint32Array | Float64Array;
 export type LineNumberVector = number[] | Int32Array;
 export type ColumnNumberVector = number[] | Int32Array;
-export type ScriptOffsetVector = number[] | Int32Array;
+export type ScriptOffsetVector = Int32Array;
 
 export type AllocationIdVector = number[] | Uint32Array | Float64Array;
 export type AllocationSizeVector = number[] | Uint32Array;
@@ -20,7 +20,7 @@ export type AllocationGcVector = number[] | Uint32Array;
 export type AllocationTypeVector = number[] | Uint32Array;
 export type AllocationSpaceVector = number[] | Uint32Array;
 export type AllocationCodeTypeVector = number[] | Uint32Array;
-export type AllocationContextInfoVector = number[] | Uint32Array;
+export type AllocationContextInfoVector = Uint32Array;
 
 export type V8CpuProfile = {
     startTime: number;

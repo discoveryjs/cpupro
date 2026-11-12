@@ -1,4 +1,12 @@
-import type { CpuProCompilationRecord, CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import type {
+    AllocationScriptIdVector,
+    CpuProCompilationRecord,
+    CpuProModule,
+    CpuProScript,
+    IProfileScriptsMap,
+    V8CpuProfile,
+    V8CpuProfileScript
+} from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
@@ -180,6 +188,28 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         }
 
         return scriptId;
+    }
+
+    normalizeScriptIdVector(scriptIds: AllocationScriptIdVector): Int32Array {
+        if (scriptIds instanceof Int32Array) {
+            return scriptIds;
+        }
+
+        const result = new Int32Array(scriptIds.length);
+        let prevScriptId: number | string | null = null;
+        let numericScriptId = 0;
+
+        // Script ids form long runs, so a script id is normalized on value changes only
+        for (let i = 0; i < scriptIds.length; i++) {
+            if (scriptIds[i] !== prevScriptId) {
+                prevScriptId = scriptIds[i];
+                numericScriptId = this.normalizeScriptId(prevScriptId);
+            }
+
+            result[i] = numericScriptId;
+        }
+
+        return result;
     }
 }
 

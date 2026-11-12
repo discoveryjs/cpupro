@@ -25,6 +25,20 @@ export type PopulationBufferMap = {
     samplesTotal: Float64Array;
 };
 
+// Elements of owners, offsets and contexts get their sites; the table of sites holds the site of each key
+// at slots and the keys of sites at siteOwners, siteOffsets and siteContexts
+export type SitesBufferMap = {
+    memory: WebAssembly.Memory | Uint8Array | null;
+    owners: Int32Array;
+    offsets: Int32Array;
+    contexts: Uint32Array;
+    sites: Uint32Array;
+    slots: Int32Array;
+    siteOwners: Int32Array;
+    siteOffsets: Int32Array;
+    siteContexts: Uint32Array;
+};
+
 export type BufferTreeMetricsMap<T> = {
     tree: CallTree<T>;
     sourceSamplesCount: Uint32Array;
@@ -86,6 +100,19 @@ type ComputeMetricsWasmModuleInstance = {
             totalNodeToDict: number,
             totalValues: number
         ): void;
+        findSites(
+            size: number,
+            owners: number,
+            offsets: number,
+            contexts: number,
+            sites: number,
+            slots: number,
+            slotMask: number,
+            siteOwners: number,
+            siteOffsets: number,
+            siteContexts: number,
+            count: number
+        ): number;
     }
 }
 
@@ -102,6 +129,12 @@ export type ComputeApi = {
         map: BufferDictionaryMetricsMap<T>,
         clear: boolean
     ): void;
+    // Sites of the first size elements, the table has room for size more sites; returns the site count
+    findSites(
+        map: SitesBufferMap,
+        size: number,
+        count: number
+    ): number;
 };
 
 function createWasmModule(source: string, imports = {}) {
@@ -119,7 +152,8 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
         accumulateCounts,
         accumulateValues,
         rollupTreeMetrics,
-        rollupDictionaryMetrics
+        rollupDictionaryMetrics,
+        findSites
     } = wasmModule.exports;
 
     return {
@@ -196,6 +230,22 @@ export function createWasmApi(memory: WebAssembly.Memory | Uint8Array): ComputeA
                 map.nodeNestedValues.byteOffset,
                 map.totalNodeToDict.byteOffset,
                 map.totalValues.byteOffset
+            );
+        },
+
+        findSites(map, size, count) {
+            return findSites(
+                size,
+                map.owners.byteOffset,
+                map.offsets.byteOffset,
+                map.contexts.byteOffset,
+                map.sites.byteOffset,
+                map.slots.byteOffset,
+                map.slots.length - 1,
+                map.siteOwners.byteOffset,
+                map.siteOffsets.byteOffset,
+                map.siteContexts.byteOffset,
+                count
             );
         }
     };
@@ -303,6 +353,77 @@ export function createJavaScriptApi(): ComputeApi {
             accumulateMetrics(sourceSamplesCount, sampleIdToDict, samplesCount);
             accumulateMetrics(sourceSamplesTotal, sampleIdToDict, selfValues);
             rollupDictionaryMetrics(totalNodes, nodeSelfValues, nodeNestedValues, totalNodeToDict, totalValues);
+        },
+
+        findSites(map, size, count) {
+            const {
+                owners,
+                offsets,
+                contexts,
+                sites,
+                slots,
+                siteOwners,
+                siteOffsets,
+                siteContexts
+            } = map;
+            const slotMask = slots.length - 1;
+            let owner = 0;
+            let offset = 0;
+            let context = 0;
+            let site = 0;
+
+            for (let i = 0; i < size; i++) {
+                // An element of the previous key takes its site without a lookup
+                if (i === 0 ||
+                    offsets[i] !== offset ||
+                    contexts[i] !== context ||
+                    owners[i] !== owner) {
+                    owner = owners[i];
+                    offset = offsets[i];
+                    context = contexts[i];
+
+                    const homeSlot = hashSite(owner, offset, context) & slotMask;
+                    let slot = homeSlot;
+
+                    site = slots[slot];
+
+                    while (site !== -1) {
+                        if (siteOffsets[site] === offset &&
+                            siteContexts[site] === context &&
+                            siteOwners[site] === owner) {
+                            break;
+                        }
+
+                        slot = (slot + 1) & slotMask;
+                        site = slots[slot];
+                    }
+
+                    if (site === -1) {
+                        site = count++;
+                        siteOwners[site] = owner;
+                        siteOffsets[site] = offset;
+                        siteContexts[site] = context;
+                        slots[slot] = site;
+                    } else if (slot !== homeSlot) {
+                        // PERF: A found site takes its home slot, so sites met again are found at the first probe.
+                        // The site displaced from the home slot takes the found one's slot, which follows the home slot
+                        // in the same run of occupied slots, so a probe from its own home slot still reaches it
+                        slots[slot] = slots[homeSlot];
+                        slots[homeSlot] = site;
+                    }
+                }
+
+                sites[i] = site;
+            }
+
+            return count;
         }
     };
+}
+
+export function hashSite(owner: number, offset: number, context: number) {
+    const key = owner ^ Math.imul(offset, 0x85ebca6b) ^ Math.imul(context, 0xc2b2ae35);
+    const hash = Math.imul(key, 0x9e3779b1);
+
+    return (hash ^ (hash >>> 16)) >>> 0;
 }

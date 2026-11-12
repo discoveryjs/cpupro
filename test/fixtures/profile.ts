@@ -69,9 +69,9 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
         });
         if (!options.stackOnly) {
             Object.assign(data, {
-                _cpuproAllocationScriptIds: [1, 1, 1, 0],
-                _cpuproAllocationLocations: [10, 20, 10, -1],
-                _cpuproAllocationContextInfo: options.contexts || [0, 0, 0, 0],
+                _cpuproAllocationScriptIds: new Int32Array([1, 1, 1, 0]),
+                _cpuproAllocationLocations: new Int32Array([10, 20, 10, -1]),
+                _cpuproAllocationContextInfo: new Uint32Array(options.contexts || [0, 0, 0, 0]),
                 _cpuproAllocationVmStateNames: { 1: 'gc', 2: 'parser' }
             });
         }
