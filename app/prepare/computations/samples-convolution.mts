@@ -1,4 +1,3 @@
-import type { Profile } from '../profile.mjs';
 import { CpuProCallFrame } from '../types.js';
 import { SampleConvolutionRule } from './call-tree.js';
 
