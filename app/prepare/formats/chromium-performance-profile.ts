@@ -379,74 +379,76 @@ function addTraceEventToThread(
     diagnose: Diagnose,
     eventChannels: EventChannels,
     event: ChromiumTraceEvent,
+    ph: string, // ph and cat of the event, read once by the caller
+    cat: string,
     data: unknown,
     sampleTraceId: number | null = null
 ) {
-    // PERF: Events of a trace take many shapes, which makes every read of their fields a megamorphic lookup,
-    // so each field is read once
-    const { ph, name, cat } = event;
     const thread = eventChannels.getOrCreate(event);
-    const eventId = getEventId(event, ph);
-    const eventMap = ph === 'b' || ph === 'e'
-        ? thread.traceEventsBE
-        : thread.traceEventsSF;
-    let tm = event.ts;
-    let duration = event.dur || 0;
-
-    if (ph === 'e' || ph === 'f') {
-        if (eventId === null) {
-            diagnose('warn', 'Ignoring end event without id', {
-                cat,
-                name,
-                pid: event.pid,
-                tid: event.tid
-            });
-            return;
-        }
-
-        const startEvent = eventMap.get(eventId);
-
-        if (startEvent) {
-            startEvent.duration = tm - startEvent.tm;
-            eventMap.delete(eventId);
-            return;
-        } else {
-            diagnose('warn', 'Could not find start event for end event', {
-                eventId,
-                cat,
-                name,
-                pid: event.pid,
-                tid: event.tid
-            });
-            duration = tm;
-            tm = -1;
-        }
-    }
-
+    const name = event.name;
     const traceEvent: UniformTraceEvent = {
         name,
         cat,
-        tm,
-        duration,
-        eventId,
+        tm: event.ts,
+        duration: event.dur || 0,
+        eventId: null,
         sampleTraceId,
         data
     };
     // traceEvent.event = event;
 
-    if (ph === 'b' || ph === 's') {
-        if (eventId === null) {
-            diagnose('warn', 'Ignoring begin event without id', {
-                cat,
-                name,
-                pid: event.pid,
-                tid: event.tid
-            });
-            return;
+    // PERF: Most events are complete ones, which pair with no other event, so only the begin and end events
+    // take an id to be paired
+    if (ph === 'b' || ph === 'e' || ph === 's' || ph === 'f') {
+        const eventId = getEventId(event, ph);
+        const eventMap = ph === 'b' || ph === 'e'
+            ? thread.traceEventsBE
+            : thread.traceEventsSF;
+
+        if (ph === 'e' || ph === 'f') {
+            if (eventId === null) {
+                diagnose('warn', 'Ignoring end event without id', {
+                    cat,
+                    name,
+                    pid: event.pid,
+                    tid: event.tid
+                });
+                return;
+            }
+
+            const startEvent = eventMap.get(eventId);
+
+            if (startEvent) {
+                startEvent.duration = traceEvent.tm - startEvent.tm;
+                eventMap.delete(eventId);
+                return;
+            } else {
+                diagnose('warn', 'Could not find start event for end event', {
+                    eventId,
+                    cat,
+                    name,
+                    pid: event.pid,
+                    tid: event.tid
+                });
+                traceEvent.duration = traceEvent.tm;
+                traceEvent.tm = -1;
+            }
+        } else {
+            if (eventId === null) {
+                diagnose('warn', 'Ignoring begin event without id', {
+                    cat,
+                    name,
+                    pid: event.pid,
+                    tid: event.tid
+                });
+                return;
+            }
+
+            eventMap.set(eventId, traceEvent);
+            traceEvent.duration = -1;
         }
 
-        eventMap.set(eventId, traceEvent);
-        traceEvent.duration = -1;
+        traceEvent.eventId = eventId;
     }
 
     if (cat === 'blink.user_timing') {
@@ -674,7 +676,8 @@ export function extractFromChromiumPerformanceProfile(
             }
 
             default: {
-                // PERF: Fields of an event are read once, see addTraceEventToThread()
+                // PERF: Events of a trace take many shapes, which makes every read of their fields a megamorphic
+                // lookup, so each field is read once, for addTraceEventToThread() as well
                 const { ph, cat, args } = event;
                 let sampleTraceId: number | null = null;
                 let data: unknown = null;
@@ -686,7 +689,7 @@ export function extractFromChromiumPerformanceProfile(
 
                 if (cat === 'disabled-by-default-devtools.timeline' &&
                     event.name === 'UpdateCounters') {
-                    addTraceEventToThread(diagnose, eventChannels, event, args.data);
+                    addTraceEventToThread(diagnose, eventChannels, event, ph, cat, args.data);
                     break;
                 }
 
@@ -702,13 +705,15 @@ export function extractFromChromiumPerformanceProfile(
                 }
 
                 if (sampleTraceId !== null) {
-                    addTraceEventToThread(diagnose, eventChannels, event, data, sampleTraceId);
+                    addTraceEventToThread(diagnose, eventChannels, event, ph, cat, data, sampleTraceId);
                 } else if (cat === 'blink.user_timing') {
                     if (ph === 'b' || ph === 'e') {
                         addTraceEventToThread(
                             diagnose,
                             eventChannels,
                             event,
+                            ph,
+                            cat,
                             args,
                             args?.traceId || null
                         );
@@ -716,7 +721,7 @@ export function extractFromChromiumPerformanceProfile(
                 } else if (cat === 'disabled-by-default-v8.compile' ||
                     cat === 'disabled-by-default-v8.compilation_allocations' ||
                     ph === 'X' || ph === 'b' || ph === 'e') {
-                    addTraceEventToThread(diagnose, eventChannels, event, args);
+                    addTraceEventToThread(diagnose, eventChannels, event, ph, cat, args);
                 }
             }
         }
