@@ -157,24 +157,24 @@ test('resolves positions on lines of many segments as source-map-js does', () =>
     assertConsumerPositions(JSON.parse(generator.toString()), 4, 310);
 });
 
+const noPosition = { source: null, line: null, column: null };
+const positionInA = (column: number) => ({ source: 'a.js', line: 1, column });
+
 test.each([
-    { line: 0, column: 3, source: null },
-    { line: 0, column: 4, source: 'a.js', originalColumn: 0 },
-    { line: 0, column: 9, source: 'a.js', originalColumn: 0 },
-    { line: 0, column: 10, source: 'a.js', originalColumn: 1 },
-    { line: 0, column: 100, source: 'a.js', originalColumn: 1 },
-    { line: 1, column: 0, source: null },
-    { line: 2, column: 5, source: 'a.js', originalColumn: 3 },
-    { line: 3, column: 0, source: null }
+    { line: 0, column: 3, original: noPosition },
+    { line: 0, column: 4, original: positionInA(0) },
+    { line: 0, column: 9, original: positionInA(0) },
+    { line: 0, column: 10, original: positionInA(1) },
+    { line: 0, column: 100, original: positionInA(1) },
+    { line: 1, column: 0, original: noPosition },
+    { line: 2, column: 5, original: positionInA(3) },
+    { line: 3, column: 0, original: noPosition }
 ])('line $line, column $column resolves to the first of the segments at the rightmost column before it', row => {
     // line 0: column 4 → a.js 0:0, column 10 → a.js 0:1, column 10 again → a.js 0:2; line 1 is empty;
     // line 2: column 0 → a.js 0:3
     const index = new SourceMapIndex(createSourceMap(undefined, ['a.js'], 'IAAA,MAAC,AAAC;;KAAC'));
-    const expected = row.source === null
-        ? { source: null, line: null, column: null }
-        : { source: row.source, line: 1, column: row.originalColumn };
 
-    assert.deepEqual(originalPositionFor(index, row.line, row.column), expected);
+    assert.deepEqual(originalPositionFor(index, row.line, row.column), row.original);
 });
 
 test('sources resolve against the source root, missing contents are none', () => {

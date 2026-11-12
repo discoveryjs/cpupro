@@ -233,11 +233,17 @@ test.each([
 test.each([
     {
         name: 'of size samples',
-        fields: { samples: [{ nodeId: 2, size: 32, ordinal: 1 }], timeDeltas: undefined }
+        fields: {
+            samples: [{ nodeId: 2, size: 32, ordinal: 1 }],
+            timeDeltas: undefined
+        }
     },
     {
         name: 'of no samples without time deltas',
-        fields: { samples: [], timeDeltas: undefined }
+        fields: {
+            samples: [],
+            timeDeltas: undefined
+        }
     }
 ])('rejects a profile $name as an unknown format', row => {
     const reasons: string[] = [];

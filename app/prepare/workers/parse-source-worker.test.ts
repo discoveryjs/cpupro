@@ -95,7 +95,10 @@ test('posts ranges, their indexes and line starts of all scripts in columns of o
     assert.deepEqual(message.scripts.map(script => script.lineCount), [1, 1, 3, 1]);
     assert.deepEqual([...message.lineStarts], [0, 0, 0, 22, 29, 0]);
 
-    for (let i = 0, offset = 0, indexOffset = 0; i < sources.length; i++) {
+    let offset = 0;
+    let indexOffset = 0;
+
+    for (let i = 0; i < sources.length; i++) {
         const { parsed, error, rangeCount, indexCount } = message.scripts[i];
         const ranges: FunctionRanges = {
             parsed,
