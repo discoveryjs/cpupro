@@ -66,12 +66,13 @@ test('a kept dictionary entry is current after a change without reading the entr
 
     assert.ok(kept.some(value => value > 0));
     assert.equal(dict.entries, entries);
-    assert.deepEqual(Object.keys(entries[0]), [
-        'entryIndex',
+    // Jora reads own properties: the fields of an entry are its own enumerable properties, in any order
+    assert.deepEqual(Object.keys(entries[0]).sort(), [
         'entry',
+        'entryIndex',
+        'nestedValue',
         'samples',
         'selfValue',
-        'nestedValue',
         'totalValue'
     ]);
 
