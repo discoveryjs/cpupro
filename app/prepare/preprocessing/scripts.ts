@@ -1,16 +1,7 @@
-import type {
-    AllocationScriptIdVector,
-    CpuProCompilationRecord,
-    CpuProModule,
-    CpuProScript,
-    IProfileScriptsMap,
-    V8CpuProfile,
-    V8CpuProfileScript
-} from '../types.js';
+import type { CpuProCompilationRecord, CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
-import { isArray } from '@discoveryjs/discovery/lib/core/utils/index-script.js';
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
@@ -189,28 +180,6 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
 
         return scriptId;
     }
-
-    normalizeScriptIdVector(scriptIds: AllocationScriptIdVector): Int32Array {
-        if (scriptIds instanceof Int32Array) {
-            return scriptIds;
-        }
-
-        const result = new Int32Array(scriptIds.length);
-        let prevScriptId: number | string | null = null;
-        let numericScriptId = 0;
-
-        // Script ids form long runs, so a script id is normalized on value changes only
-        for (let i = 0; i < scriptIds.length; i++) {
-            if (scriptIds[i] !== prevScriptId) {
-                prevScriptId = scriptIds[i];
-                numericScriptId = this.normalizeScriptId(prevScriptId);
-            }
-
-            result[i] = numericScriptId;
-        }
-
-        return result;
-    }
 }
 
 // Script ids come as numbers or as strings (e.g. in profiles of the DevTools protocol), 0 denotes no script in both forms
@@ -363,10 +332,8 @@ export function collectProfileUsedScriptIds(data: V8CpuProfile, compilations: re
         }
     }
 
-    // isArray() is used here since it treats both Array and TypedArray as arrays,
-    // which is useful for _cpuproAllocationScriptIds that can be either
-    if (isArray(_cpuproAllocationScriptIds)) {
-        let prevScriptId: number | string | null = null;
+    if (_cpuproAllocationScriptIds !== undefined) {
+        let prevScriptId: number | null = null;
 
         // Allocation script ids form long runs, so the set is updated only on value changes
         for (let i = 0; i < _cpuproAllocationScriptIds.length; i++) {

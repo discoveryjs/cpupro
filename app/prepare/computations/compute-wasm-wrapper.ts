@@ -29,12 +29,12 @@ export type PopulationBufferMap = {
 // at slots and the keys of sites at siteOwners, siteOffsets and siteContexts
 export type SitesBufferMap = {
     memory: WebAssembly.Memory | Uint8Array | null;
-    owners: Int32Array;
+    owners: Uint32Array;
     offsets: Int32Array;
     contexts: Uint32Array;
     sites: Uint32Array;
     slots: Int32Array;
-    siteOwners: Int32Array;
+    siteOwners: Uint32Array;
     siteOffsets: Int32Array;
     siteContexts: Uint32Array;
 };

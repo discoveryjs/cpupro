@@ -150,7 +150,7 @@ test.each<{
     const result = createVectorLocations(
         dictionary,
         scripts,
-        new Int32Array(row.scriptIds),
+        new Uint32Array(row.scriptIds),
         new Int32Array(row.scriptOffsets),
         row.contextInfo !== null ? new Uint32Array(row.contextInfo) : null,
         row.vmStateNames,
@@ -164,10 +164,10 @@ test.each<{
 
 test.each([
     { title: 'absent script ids', scriptIds: null, scriptOffsets: new Int32Array([22]) },
-    { title: 'absent script offsets', scriptIds: new Int32Array([7]), scriptOffsets: null },
+    { title: 'absent script offsets', scriptIds: new Uint32Array([7]), scriptOffsets: null },
     {
         title: 'script ids and offsets of different lengths',
-        scriptIds: new Int32Array([7, 7]),
+        scriptIds: new Uint32Array([7, 7]),
         scriptOffsets: new Int32Array([22])
     }
 ])('maps no allocation locations for $title', row => {
@@ -205,7 +205,7 @@ test.each([
     const result = createVectorLocations(
         dictionary,
         scripts,
-        new Int32Array(row.scriptOffsets.length).fill(7),
+        new Uint32Array(row.scriptOffsets.length).fill(7),
         new Int32Array(row.scriptOffsets),
         null,
         null,
@@ -257,7 +257,7 @@ test('numbers allocation sites in the order of their first allocations across ch
     const result = createVectorLocations(
         dictionary,
         scripts,
-        new Int32Array(size).fill(7),
+        new Uint32Array(size).fill(7),
         scriptOffsets,
         contextInfo,
         { 1: 'gc' },

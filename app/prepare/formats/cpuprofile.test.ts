@@ -65,6 +65,7 @@ test('adopts typed numeric vectors without copies', () => {
             sizes: new Uint32Array([8, 16]),
             gc: new Uint32Array([0, 5]),
             types: new Uint32Array([1, 1]),
+            scriptIds: new Uint32Array([7, 7]),
             positions: new Int32Array([9, 12])
         }
     });
@@ -75,6 +76,7 @@ test('adopts typed numeric vectors without copies', () => {
     assert.equal(profile._cpuproAllocationIds, input.allocationSamples.ids);
     assert.equal(profile._cpuproAllocationGc, input.allocationSamples.gc);
     assert.equal(profile._cpuproAllocationTypes, input.allocationSamples.types);
+    assert.equal(profile._cpuproAllocationScriptIds, input.allocationSamples.scriptIds);
     assert.equal(profile._cpuproAllocationLocations, input.allocationSamples.positions);
 });
 
@@ -224,17 +226,4 @@ test.each([
     assert.deepEqual(profile.trace_ids, row.traceIds);
     assert.deepEqual(profile.lines, row.lines);
     assert.deepEqual(profile.columns, row.columns);
-});
-
-test('gives allocation script offsets given as numbers as a typed vector', () => {
-    const profile = extractProfile(cpuProfile({
-        allocationSampleIds: [10, 12],
-        allocationSamples: {
-            ids: [10, 11, 12],
-            sizes: [8, 16, 32],
-            positions: [-1, 9, 12]
-        }
-    }));
-
-    assert.deepEqual(profile._cpuproAllocationLocations, new Int32Array([-1, 9, 12]));
 });

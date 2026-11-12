@@ -10,13 +10,7 @@ import {
 } from '../computations/compute-wasm-wrapper.js';
 import type { Dictionary } from '../dictionary.js';
 import type { TreeSource } from '../computations/build-trees.js';
-import type {
-    AllocationContextInfoVector,
-    CpuProCallFrame,
-    CpuProLocation,
-    IProfileScriptsMap,
-    ScriptOffsetVector
-} from '../types.js';
+import type { CpuProCallFrame, CpuProLocation, IProfileScriptsMap } from '../types.js';
 
 export type VectorLocations = TreeSource<CpuProLocation> & {
     samples: Uint32Array;
@@ -216,9 +210,9 @@ const emptyDict = Object.freeze({});
 export function createVectorLocations(
     dictionary: Dictionary,
     scriptsMap: IProfileScriptsMap,
-    scriptIds: Int32Array | null, // script ids normalized by the scripts map
-    scriptOffsets: ScriptOffsetVector | null,
-    contextInfo: AllocationContextInfoVector | null,
+    scriptIds: Uint32Array | null,
+    scriptOffsets: Int32Array | null,
+    contextInfo: Uint32Array | null,
     vmStateNames: Record<number, string> | null,
     builtinsNames: Record<number, string> | null
 ): VectorLocations | null {
@@ -395,7 +389,7 @@ class LocationSites {
     // Sites of the elements of owners, offsets and contexts (zero when absent); sites may be owners,
     // since a chunk of elements is staged before its sites are written
     sitesOf(
-        owners: Int32Array | Uint32Array,
+        owners: Uint32Array,
         offsets: Int32Array,
         contexts: Uint32Array | null,
         sites: Uint32Array
@@ -511,12 +505,12 @@ function createSitesBuffer(siteCapacity: number) {
     const sitesOffset = slotsOffset + 4 * slotCount;
     const bufferMap: SitesBufferMap = {
         memory,
-        owners: new Int32Array(memory.buffer, 0, chunkSize),
+        owners: new Uint32Array(memory.buffer, 0, chunkSize),
         offsets: new Int32Array(memory.buffer, 4 * chunkSize, chunkSize),
         contexts: new Uint32Array(memory.buffer, 8 * chunkSize, chunkSize),
         sites: new Uint32Array(memory.buffer, 12 * chunkSize, chunkSize),
         slots: new Int32Array(memory.buffer, slotsOffset, slotCount).fill(-1),
-        siteOwners: new Int32Array(memory.buffer, sitesOffset, siteCapacity),
+        siteOwners: new Uint32Array(memory.buffer, sitesOffset, siteCapacity),
         siteOffsets: new Int32Array(memory.buffer, sitesOffset + 4 * siteCapacity, siteCapacity),
         siteContexts: new Uint32Array(memory.buffer, sitesOffset + 8 * siteCapacity, siteCapacity)
     };

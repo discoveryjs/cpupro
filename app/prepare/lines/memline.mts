@@ -9,7 +9,7 @@ import { Dictionary } from '../dictionary.js';
 import { noopWorkHandler, WorkHandler } from '../misc/work.js';
 import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdown.mjs';
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
-import { asUint32Array, fractionDigits, sum } from '../misc/utils.js';
+import { asInt32Array, asUint32Array, fractionDigits, sum } from '../misc/utils.js';
 import { stepFractionDigits } from '../misc/time-utils.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
@@ -242,9 +242,15 @@ export async function createMemline(
     // for call frame resolution by line-column or script-offset.
     await work('parse script sources', () => preparseScriptSourcesResult);
 
-    // Script ids of allocations are normalized by the scripts map, as script ids of call frames are
+    // Locations take typed vectors, so allocation vectors given as plain arrays are converted as sizes are
     const allocationScriptIds = _cpuproAllocationScriptIds !== null
-        ? profileScriptsMap.normalizeScriptIdVector(_cpuproAllocationScriptIds)
+        ? asUint32Array(_cpuproAllocationScriptIds)
+        : null;
+    const allocationScriptOffsets = _cpuproAllocationLocations !== null
+        ? asInt32Array(_cpuproAllocationLocations)
+        : null;
+    const allocationContextInfo = _cpuproAllocationContextInfo !== null
+        ? asUint32Array(_cpuproAllocationContextInfo)
         : null;
 
     // Create vector of allocation locations for breakdown
@@ -253,8 +259,8 @@ export async function createMemline(
             dictionary,
             profileScriptsMap,
             allocationScriptIds,
-            _cpuproAllocationLocations,
-            _cpuproAllocationContextInfo,
+            allocationScriptOffsets,
+            allocationContextInfo,
             _cpuproAllocationVmStateNames,
             _cpuproAllocationBuiltinNames
         )

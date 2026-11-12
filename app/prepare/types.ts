@@ -11,17 +11,17 @@ export type SampleIdVector = number[] | Uint32Array;
 export type MemorySampleSizeVector = number[] | Int32Array | Uint32Array | Float64Array;
 export type LineNumberVector = number[] | Int32Array;
 export type ColumnNumberVector = number[] | Int32Array;
-export type ScriptOffsetVector = Int32Array;
+export type ScriptOffsetVector = number[] | Int32Array;
 
 export type AllocationIdVector = number[] | Uint32Array | Float64Array;
 export type AllocationSizeVector = number[] | Uint32Array;
-export type AllocationScriptIdVector = Array<number | string> | Int32Array;
+export type AllocationScriptIdVector = number[] | Uint32Array;
 export type AllocationGcVector = number[] | Uint32Array;
 export type AllocationIdsByGc = Record<string, Uint32Array>; // allocation ids by the GC value they take
 export type AllocationTypeVector = number[] | Uint32Array;
 export type AllocationSpaceVector = number[] | Uint32Array;
 export type AllocationCodeTypeVector = number[] | Uint32Array;
-export type AllocationContextInfoVector = Uint32Array;
+export type AllocationContextInfoVector = number[] | Uint32Array;
 
 export type V8CpuProfile = {
     startTime: number;
@@ -64,7 +64,7 @@ export type V8CpuProfileCpuproExtensions = {
     _cpuproAllocationIds?: AllocationIdVector; // sorted allocation IDs; all allocation vectors share this row order
     _cpuproAllocationIdsOrder?: 'consecutive' | 'ascending';
     _cpuproAllocationSizes?: AllocationSizeVector; // allocation sizes
-    _cpuproAllocationScriptIds?: AllocationScriptIdVector; // allocation script ids in profile-local domain
+    _cpuproAllocationScriptIds?: AllocationScriptIdVector; // allocation script ids in profile-local numeric domain
     _cpuproAllocationGc?: AllocationGcVector; // GC state (lower 2 bits) + epoch (upper bits)
     _cpuproAllocationGcIds?: AllocationIdsByGc[]; // GC lists in order instead of _cpuproAllocationGc, unlisted take 0
     _cpuproAllocationTypes?: AllocationTypeVector; // V8 map type IDs

@@ -100,7 +100,7 @@ type AllocationGc = {
 type AllocationSampleVectors = {
     ids?: Uint32Array;
     sizes?: Uint32Array;
-    scriptIds?: Int32Array;
+    scriptIds?: Uint32Array;
     scriptOffsets?: Int32Array;
     contextInfo?: Uint32Array;
     types?: Uint32Array;
@@ -108,8 +108,8 @@ type AllocationSampleVectors = {
     codeTypes?: Uint32Array;
     gc?: Uint32Array;
 };
-const signedAllocationKeys = ['scriptIds', 'scriptOffsets'] as const;
-const unsignedAllocationKeys = ['sizes', 'contextInfo', 'types', 'spaces', 'codeTypes', 'gc'] as const;
+const signedAllocationKeys = ['scriptOffsets'] as const;
+const unsignedAllocationKeys = ['sizes', 'scriptIds', 'contextInfo', 'types', 'spaces', 'codeTypes', 'gc'] as const;
 type CompilationAllocationEventData = {
     isolate?: string;
     scriptId?: number;
@@ -1086,7 +1086,7 @@ function concatAllocationSegments(segments: AllocationSampleVectors[], diagnose:
     return {
         ids: concatSegments(segments, 'ids', Uint32Array, diagnose),
         sizes: concatSegments(segments, 'sizes', Uint32Array, diagnose),
-        scriptIds: concatSegments(segments, 'scriptIds', Int32Array, diagnose),
+        scriptIds: concatSegments(segments, 'scriptIds', Uint32Array, diagnose),
         scriptOffsets: concatSegments(segments, 'scriptOffsets', Int32Array, diagnose),
         contextInfo: concatSegments(segments, 'contextInfo', Uint32Array, diagnose),
         types: concatSegments(segments, 'types', Uint32Array, diagnose),

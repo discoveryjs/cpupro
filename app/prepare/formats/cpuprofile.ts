@@ -1,6 +1,6 @@
 import { getNumericArrayOrder } from './utils.js';
 import { ALLOCATION_INSTANCE_TYPES } from './memprofile-types.js';
-import { asInt32Array, isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
+import { isInt32Vector, isNumberVector, isUint32Vector } from '../misc/utils.js';
 import { type Diagnose, diagnoseToConsole } from '../diagnostics.js';
 import type {
     AllocationIdVector,
@@ -16,7 +16,7 @@ type SizeSample = {
     size: number;
     nodeId: number;
     ordinal: number;
-    scriptId?: number | string;
+    scriptId?: number;
     gc?: number;
     pos?: number;
     type?: number;
@@ -200,11 +200,11 @@ function extractCombinedAllocationData(
         _cpuproAllocationIds: rows.ids,
         _cpuproAllocationIdsOrder: idsOrder,
         _cpuproAllocationSizes: rows.sizes,
-        _cpuproAllocationScriptIds: isInt32Vector(rows.scriptIds)
+        _cpuproAllocationScriptIds: isUint32Vector(rows.scriptIds)
             ? rows.scriptIds
             : undefined,
         _cpuproAllocationLocations: isInt32Vector(rows.positions)
-            ? asInt32Array(rows.positions)
+            ? rows.positions
             : undefined,
         _cpuproAllocationGc: isUint32Vector(rows.gc)
             ? rows.gc
@@ -259,8 +259,7 @@ function unwrapSamples(profile: WrappedSamplesProfile, diagnose: Diagnose): V8Cp
     const scriptIdVector = sizeSampleVector(source, 'scriptId');
     // const { vector: spaceVector, names: spaceNames } = extractRemapVectorIfExists(source, 'space', ALLOCATION_SPACES);
     const gcVector = sizeSampleVector(source, 'gc');
-    const positions = sizeSampleVector(source, 'pos');
-    const locationVector = positions !== undefined ? asInt32Array(positions) : undefined;
+    const locationVector = sizeSampleVector(source, 'pos');
 
     // return {
     //     _cpuproAllocationMapping: allocationSampleIds,
