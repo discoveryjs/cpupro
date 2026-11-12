@@ -45,6 +45,10 @@ export class EventSignatures {
     readonly ids: Uint32Array;     // per event
     readonly events: Uint32Array;  // per signature: its first event
     readonly weights: Uint32Array; // per event: the line's value
+    // Classes of the line's events: each signature belongs to one class, so classes group signatures
+    readonly #classes: EventClasses;
+    // Per class: the weight of its events over the whole line; null when no population of the line has the classes
+    readonly #classTotals: Float64Array | null;
     readonly #columns: Map<ColumnValues, SignatureColumn>;
     readonly #signatureValues = new Map<ColumnValues, Uint32Array>();
     readonly #binRecords = new Map<string, { grid: BinRecordsGrid; records: BinRecords }>();
@@ -64,7 +68,13 @@ export class EventSignatures {
             .filter(column => !classes.values.has(column.values))
             .sort(bySize);
         const ids = new Uint32Array(classes.ids.length);
+        // Records of a base population sum every event of the line by its classes, so the class totals of a population
+        // grouped by the line's classes are the line's; a pass of their own would cost 40-60 ms over 34-50M events
+        const classBreakdown = line.breakdowns
+            .find(breakdown => breakdown.population.records.classes === classes);
 
+        this.#classes = classes;
+        this.#classTotals = classBreakdown?.population.classTotals ?? null;
         this.ids = ids;
         this.events = Uint32Array.from(combineColumns(classes.ids, ids, Array.from(classes.events), otherColumns));
         this.weights = line.values;
@@ -101,9 +111,23 @@ export class EventSignatures {
         return this.#totals;
     }
 
-    // Weight of the line's events by a column's values, from the weights of signatures; null when the values are
-    // not a column of the signatures
+    // Weight of the line's events by a column's values: values of the classes from the totals of classes when given,
+    // other columns from the weights of signatures; null when the values are neither
     totalsBy(values: ColumnValues, valueCount: number) {
+        const classTotals = this.#classTotals;
+
+        // Values of the classes are given by the first events of the classes, whose totals need no pass over events
+        if (classTotals !== null && this.#classes.values.has(values)) {
+            const classEvents = this.#classes.events;
+            const totals = new Float64Array(valueCount);
+
+            for (let i = 0; i < classEvents.length; i++) {
+                totals[values[classEvents[i]]] += classTotals[i];
+            }
+
+            return totals;
+        }
+
         const signatureValues = this.valuesOf(values);
 
         if (signatureValues === null) {

@@ -22,6 +22,7 @@ export class Population extends Observer {
     samplesCount: Uint32Array; // size of samples
     samplesTotal: Float64Array; // size of samples
     readonly records: PopulationRecords; // events by sample and class, read by the populations derived from it
+    readonly classTotals: Float64Array; // per event class: the sum of its event values
 
     constructor(
         samples: Uint32Array,
@@ -43,9 +44,10 @@ export class Population extends Observer {
         this.samplesCount = samplesCount.subarray(0, sampleCount);
         this.samplesTotal = samplesTotal.subarray(0, sampleCount);
         this.records = new PopulationRecords(samples, values, cumulative, this.cumulativeEnd, classes);
+        this.classTotals = new Float64Array(classes.events.length);
 
-        // PERF: Records already sum the events of every sample, a few events per record, so the metrics of samples
-        // are sums of all records rather than another pass over the events
+        // PERF: Records already sum the events of every sample and class, a few events per record, so the metrics
+        // of samples and the totals of classes are sums of all records rather than another pass over the events
         this.records.sum(
             [[0, this.records.partCount]],
             new Uint8Array(sampleCount).fill(1),
@@ -53,7 +55,7 @@ export class Population extends Observer {
             {
                 sampleTotals: samplesTotal,
                 sampleCounts: samplesCount,
-                classTotals: new Float64Array(classes.events.length),
+                classTotals: this.classTotals,
                 classCounts: new Uint32Array(classes.events.length)
             }
         );

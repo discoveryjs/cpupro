@@ -422,6 +422,38 @@ test('line totals by an attribute are the totals of its signatures', async () =>
     assert.equal(signatures.totalsBy(new Uint32Array(memline.values.length), 1), null);
 });
 
+test('line totals by attributes of the classes come from class totals without reading event weights', async () => {
+    const { memline } = await createSignaturesProfile();
+    const signatures = memline!.signatures!;
+    const classified = memline!.attributes.filter(attribute => memline!.eventClasses.values.has(attribute.values));
+    let reads = 0;
+
+    (signatures as { weights: Uint32Array }).weights = new Proxy(signatures.weights, {
+        get(target, property) {
+            if (typeof property === 'string' && /^\d+$/.test(property)) {
+                reads++;
+            }
+
+            return Reflect.get(target, property, target);
+        }
+    });
+
+    assert.ok(classified.length >= 2);
+
+    for (let i = 0; i < classified.length; i++) {
+        const { name, values, dict } = classified[i];
+        const expected = new Float64Array(dict.length);
+
+        for (let j = 0; j < values.length; j++) {
+            expected[values[j]] += memline!.values[j];
+        }
+
+        assert.deepEqual(signatures.totalsBy(values, dict.length), expected, name);
+    }
+
+    assert.equal(reads, 0);
+});
+
 // Classes are numbered by their first events whether their columns take one pass or several; an implied column
 // is classified without being combined
 test.each([
