@@ -226,6 +226,18 @@ test.each([
     assert.equal(signatures.cellRecords(Float64Array.from(cumulative), cumulativeEnd, windowEvents), null);
 });
 
+// Six events on an axis of 2000 cells of one unit: events start in cells 0, 0, 1, 1000, 1999 and 1999 (the last
+// one past the start of no further cell), so cells without events start where the next events begin
+test('cell records start at the first events starting in cells', () => {
+    const line = createAttributesLine([0, 0, 0, 0, 0, 0]);
+    const signatures = new EventSignatures(line);
+    const records = signatures.cellRecords(Float64Array.of(0, 0.5, 1, 1000, 1999.5, 1999.9), 2000, 3)!;
+    const { starts } = records;
+
+    assert.equal(starts.length, 2001);
+    assert.deepEqual([0, 1, 2, 1000, 1001, 1999, 2000].map(cell => starts[cell]), [0, 2, 3, 3, 4, 4, 6]);
+});
+
 test('mapped span records group events by signature, signature of the mapped event and bin', () => {
     const sourceLine = createAttributesLine([0, 0, 0, 0, 0]);
     const targetBins = [0, 0, 0, 1];

@@ -199,7 +199,7 @@ export class EventSignatures {
         let records = this.#targetRecords.get(mapping);
 
         if (records === undefined) {
-            records = new RangeRecords(this, targetStarts(mapping, targetCount));
+            records = new RangeRecords(this, stepStarts(mapping, targetCount, 1));
             this.#targetRecords.set(mapping, records);
         }
 
@@ -218,8 +218,9 @@ export class EventSignatures {
 
             if (cumulative.length > windowEvents && cumulativeEnd > 0) {
                 const level = Math.ceil(Math.log2(cumulative.length / windowEvents)) - 1;
+                const cellCount = WINDOW_BINS * 2 ** level;
 
-                records = new RangeRecords(this, cellStarts(cumulative, cumulativeEnd, WINDOW_BINS * 2 ** level));
+                records = new RangeRecords(this, stepStarts(cumulative, cellCount, cumulativeEnd / cellCount));
             }
 
             this.#cellRecords.set(cumulative, records);
@@ -269,30 +270,32 @@ export class RangeRecords {
     }
 }
 
-// Starts of the events of every target, for a nondecreasing mapping
-function targetStarts(mapping: Uint32Array, targetCount: number) {
-    const starts = new Uint32Array(targetCount + 1);
+// Starts of the events of every step of nondecreasing values of events: the first event whose value is at least
+// so many steps, plus the end of the events for the last step
+function stepStarts(values: Uint32Array | Float64Array, stepCount: number, step: number) {
+    const starts = new Uint32Array(stepCount + 1);
     let start = 0;
 
-    // PERF: Targets of a nondecreasing mapping follow each other closely, so the start of a target is searched
-    // from the start of the one before it: doubling steps find an end of the search, halving finds the start in it,
-    // reading a few entries near it rather than all of them
-    for (let i = 0; i <= targetCount; i++) {
+    // PERF: Steps of nondecreasing values follow each other closely, so the start of a step is searched from the start
+    // of the one before it: doubling steps find an end of the search, halving finds the start in it, reading a few
+    // values near it rather than all of them
+    for (let i = 0; i < stepCount; i++) {
+        const threshold = i * step;
         let end = start;
-        let step = 1;
+        let size = 1;
 
-        while (end < mapping.length && mapping[end] < i) {
+        while (end < values.length && values[end] < threshold) {
             start = end + 1;
-            end += step;
-            step *= 2;
+            end += size;
+            size *= 2;
         }
 
-        end = Math.min(end, mapping.length);
+        end = Math.min(end, values.length);
 
         while (start < end) {
             const middle = (start + end) >>> 1;
 
-            if (mapping[middle] < i) {
+            if (values[middle] < threshold) {
                 start = middle + 1;
             } else {
                 end = middle;
@@ -302,24 +305,7 @@ function targetStarts(mapping: Uint32Array, targetCount: number) {
         starts[i] = start;
     }
 
-    return starts;
-}
-
-// Starts of the events of every cell of a grid on a line's own axis: events starting in a cell
-function cellStarts(cumulative: Float64Array, cumulativeEnd: number, cellCount: number) {
-    const starts = new Uint32Array(cellCount + 1);
-    const step = cumulativeEnd / cellCount;
-    let cell = 0;
-
-    for (let i = 0; i < cumulative.length; i++) {
-        const eventCell = Math.min(cellCount - 1, Math.floor(cumulative[i] / step));
-
-        while (cell < eventCell) {
-            starts[++cell] = i;
-        }
-    }
-
-    starts.fill(cumulative.length, cell + 1);
+    starts[stepCount] = values.length;
 
     return starts;
 }
