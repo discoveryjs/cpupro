@@ -7,6 +7,7 @@ import { findView, findViews } from '../../test/helpers/view-config.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 import { processDisplayNames } from '../prepare/preprocessing/module-names.js';
 import type { ProfileLineType } from '../prepare/lines/types.js';
+import { sum } from '../../test/helpers/values.js';
 
 const pages = new Map();
 const definePage = (name: string, config: object[]) => {
@@ -70,13 +71,7 @@ async function openPage(name: string, type: ProfileLineType, kind: string, optio
 }
 
 function sumSelfValues(rows: { selfValue: number }[]) {
-    let sum = 0;
-
-    for (let i = 0; i < rows.length; i++) {
-        sum += rows[i].selfValue;
-    }
-
-    return sum;
+    return sum(rows.map(row => row.selfValue));
 }
 
 const scopes = [

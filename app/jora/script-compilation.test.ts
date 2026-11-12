@@ -4,6 +4,7 @@ import { processScriptCompilation } from '../prepare/preprocessing/script-compil
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
 import { createScriptFixture } from '../../test/fixtures/scripts.js';
 import { scriptSourceSummary } from './script-compilation.js';
+import { sum } from '../../test/helpers/values.js';
 
 const nestedFunctions = 'function outer() { function inner() {} return 1; }';
 
@@ -22,7 +23,7 @@ test('compilation states use exact source identities and exclusive byte contribu
     assert.deepEqual([...compilation.states], [3, 3, 1]);
     assert.equal(summary.functions, 2);
     assert.equal(summary.compiledBytes, script.source!.length - inner.selfSize);
-    assert.equal(summary.stateSizes!.reduce((sum, size) => sum + size, 0), summary.byteLength);
+    assert.equal(sum(summary.stateSizes!), summary.byteLength);
     assert.equal(summary.unmatched, 0);
 
     const optimized = processScriptCompilation([

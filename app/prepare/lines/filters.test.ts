@@ -9,6 +9,7 @@ import { noopWorkHandler } from '../misc/work.js';
 import type { CpuProLocation } from '../types.js';
 import { createTimeline } from './timeline.mjs';
 import { prepareLineFilters } from './filters.js';
+import { sum } from '../../../test/helpers/values.js';
 
 // Fixture allocation events weigh 16, 32, 48 and 64 bytes.
 // Events 0 and 2 are alive, event 1 is short-lived and event 3 long-lived; events 0 and 1 are in new space.
@@ -17,16 +18,6 @@ const allocationEvents = {
     allocationSpaces: [1, 1, 2, 2],
     allocationSpaceNames: { 1: 'new_space', 2: 'old_space' }
 };
-
-function sum(values: ArrayLike<number>) {
-    let total = 0;
-
-    for (let i = 0; i < values.length; i++) {
-        total += values[i];
-    }
-
-    return total;
-}
 
 test('a created timeline has no filters until they are prepared from its attribution', async () => {
     const { profile, dictionary } = await createProfileFixture({ cpuOnly: true });

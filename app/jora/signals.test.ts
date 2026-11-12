@@ -17,6 +17,7 @@ import {
     methods,
     sortPlacedEvents
 } from './signals.js';
+import { sum } from '../../test/helpers/values.js';
 
 type Interval = [start: number, end: number];
 
@@ -333,15 +334,15 @@ describe('measurements', () => {
 
         const coverage = query('samplesByCompilation()')(profile);
 
-        assert.equal(coverage.categories.reduce((sum, entry) => sum + entry.total, 0), 3);
-        assert.equal(coverage.categories.reduce((sum, entry) => sum + entry.outside, 0), 1);
+        assert.equal(sum(coverage.categories.map(entry => entry.total)), 3);
+        assert.equal(sum(coverage.categories.map(entry => entry.outside)), 1);
         assert.deepEqual(coverage.events.map(event => [event.name, event.count]), [
             [null, 1], ['Outer', 1], ['Inner', 1]
         ]);
         const script = coverage.categories.find(entry => entry.category?.name === 'script');
 
-        assert.equal(script.bins.reduce((sum, count) => sum + count, 0), 3);
-        assert.equal(script.outsideBins.reduce((sum, count) => sum + count, 0), 1);
+        assert.equal(sum(script.bins), 3);
+        assert.equal(sum(script.outsideBins), 1);
     });
 
     test('coverage is unavailable without channels or with crossing events', async () => {
@@ -367,7 +368,7 @@ describe('measurements', () => {
         });
 
         const coverage = query('samplesByCompilation("memline", 2.5)')(profile);
-        const total = field => coverage.categories.reduce((sum, entry) => sum + entry[field], 0);
+        const total = field => sum(coverage.categories.map(entry => entry[field]));
 
         assert.deepEqual(coverage.window, { start: 1, end: 3 });
         assert.equal(total('total'), 4);
@@ -383,7 +384,7 @@ describe('measurements', () => {
         for (let i = 0; i < coverage.events.length; i++) {
             const event = coverage.events[i];
 
-            assert.equal(event.counts.reduce((sum, count) => sum + count, 0), event.count);
+            assert.equal(sum(event.counts), event.count);
         }
         assert.deepEqual([...values], [0, 1, 0, 0]);
     });
@@ -416,7 +417,7 @@ describe('measurements', () => {
         const coverage = query('samplesByCompilation("memline")')(profile);
 
         assert.equal(coverage.window, null);
-        assert.equal(coverage.categories.reduce((sum, entry) => sum + entry.outside, 0), 4);
+        assert.equal(sum(coverage.categories.map(entry => entry.outside)), 4);
     });
 
     test('coverage uses model categories rather than frame kinds and does not require allocations', async () => {
@@ -438,7 +439,7 @@ describe('measurements', () => {
         assert.equal(script.covered, 2);
         assert.equal(script.outside, 1);
         assert.deepEqual(events.map(event => event.name), ['Later', 'Earlier']);
-        assert.equal(coverage.bins.reduce((sum, count) => sum + count, 0), 3);
+        assert.equal(sum(coverage.bins), 3);
         assert.equal(query('samplesByCompilation("memline")')(profile), null);
     });
 

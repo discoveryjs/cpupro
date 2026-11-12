@@ -2,16 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
 import type { ProfileLine } from '../lines/types.js';
-
-function sum(values: ArrayLike<number>) {
-    let total = 0;
-
-    for (let i = 0; i < values.length; i++) {
-        total += values[i];
-    }
-
-    return total;
-}
+import { sum } from '../../../test/helpers/values.js';
 
 function findBreakdown(line: ProfileLine, kind: string) {
     return line.breakdowns.find(breakdown => breakdown.kind === kind)!;

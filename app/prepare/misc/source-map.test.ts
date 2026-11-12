@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import { SourceMapConsumer, SourceMapGenerator } from 'source-map-js';
 import { SourceMapIndex } from './source-map.js';
 import type { SourceMap } from '../types.js';
+import { sequence } from '../../../test/helpers/values.js';
 
 function originalPositionFor(index: SourceMapIndex, line: number, column: number) {
     const originalPosition = index.findOriginalPosition(line, column);
@@ -133,9 +134,7 @@ test.each([
 });
 
 test('resolves positions on lines of many segments as source-map-js does', () => {
-    let seed = 1;
-    // high bits of the generator, its low bits repeat with a short period
-    const random = (max: number) => Math.floor((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 * max);
+    const random = sequence(1);
     const generator = new SourceMapGenerator({ file: 'bundle.js' });
 
     // Long lines with runs of segments at the same column, some of them without an original position

@@ -7,20 +7,12 @@ import type { PreparedAttributeFilter } from './attribute-filter.js';
 import type { RangeSet } from './coordinates.js';
 import { trackReads } from '../../../test/helpers/read-tracker.js';
 import { setEventPass } from '../../../test/helpers/event-pass.js';
+import { sequence } from '../../../test/helpers/values.js';
 import { createUint32Progression } from '../misc/utils.js';
 
 type EventValues = Uint8Array | Uint16Array | Uint32Array;
 type RecordRow = [part: number, sample: number, eventClass: number, weight: number, count: number];
 type Grouping = [Uint8Array | Uint32Array, number];
-
-// Deterministic pseudo-random sequence
-function sequence(seed: number) {
-    return (max: number) => {
-        seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
-
-        return (seed >>> 8) % max;
-    };
-}
 
 // Classes of events with equal values of every vector, numbered in the order of their first events
 function classify(vectors: EventValues[], eventCount: number): EventClasses & { ids: Uint32Array } {

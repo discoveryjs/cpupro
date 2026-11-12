@@ -4,6 +4,7 @@ import { Population, PopulationFiltered } from './population.js';
 import type { PreparedAttributeFilter } from './attribute-filter.js';
 import type { RangeSet } from './coordinates.js';
 import { trackReads } from '../../../test/helpers/read-tracker.js';
+import { sequence } from '../../../test/helpers/values.js';
 
 const UNRESTRICTED: RangeSet = [{ start: -Infinity, end: Infinity }];
 
@@ -111,15 +112,6 @@ function createRandomRanges(coordinates: number[], random: (max: number) => numb
     }
 
     return ranges;
-}
-
-// Deterministic pseudo-random sequence
-function sequence(seed: number) {
-    return (max: number) => {
-        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-
-        return seed % max;
-    };
 }
 
 // Samples 0, 1, 2 in turn; the viewport rejects every 4th event, the selection also rejects sample 0

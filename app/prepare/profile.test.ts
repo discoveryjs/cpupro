@@ -6,6 +6,7 @@ import { createWorkHandler, noopWorkHandler, type WorkIdentity } from './misc/wo
 import { createDiagnosticsCollector } from './diagnostics.js';
 import type { CpuProLocation, V8CpuProfile } from './types.js';
 import type { ProfileLineBreakdown } from './lines/types.js';
+import { sum } from '../../test/helpers/values.js';
 
 const dimensions = ['locations', 'callFrames', 'modules', 'packages', 'categories', 'owners'] as const;
 type NamedDimension = Exclude<typeof dimensions[number], 'locations'>;
@@ -78,16 +79,6 @@ function createNode(id: number, functionName: string, children?: number[]) {
             columnNumber: -1
         }
     };
-}
-
-function sum(values: ArrayLike<number>) {
-    let total = 0;
-
-    for (let i = 0; i < values.length; i++) {
-        total += values[i];
-    }
-
-    return total;
 }
 
 function isOriginalLocation(location: CpuProLocation) {

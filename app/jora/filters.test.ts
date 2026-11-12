@@ -4,6 +4,7 @@ import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 import { filterOptionTotals, filterOptions } from './filters.js';
 import type { ProfileLineBreakdown } from '../prepare/lines/types.js';
+import { sum } from '../../test/helpers/values.js';
 
 // Fixture allocation events weigh 16, 32, 48 and 64 bytes. Events 0 and 2 are alive, event 1 is short-lived and
 // event 3 long-lived, events 0 and 1 are in new space, and a CPU sample 0 mapping attributes every allocation of
@@ -42,16 +43,6 @@ function optionKeys(breakdown: ProfileLineBreakdown, filter: SetAttributeFilter)
 // Totals of the options of a filter by option key
 function optionTotals(breakdown: ProfileLineBreakdown, filter: SetAttributeFilter) {
     return Object.fromEntries(filterOptionTotals(breakdown, filter));
-}
-
-function sum(values: ArrayLike<number>) {
-    let total = 0;
-
-    for (let i = 0; i < values.length; i++) {
-        total += values[i];
-    }
-
-    return total;
 }
 
 test('options are the values present in the line, regardless of filters and viewport', async () => {
