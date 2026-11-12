@@ -1,41 +1,139 @@
 import { computeSourceURL, isAbsolute, normalize, relative } from 'source-map-js/lib/util.js';
 import type { SourceMap } from '../types.js';
 
-const base64Digits = new Int8Array(128).fill(-1);
+// Values of mappings characters: base64 digits, SEPARATOR for "," and ";", INVALID for the rest.
+// PERF: The table covers all UTF-16 code units, so a lookup takes no range check
+const SEPARATOR = -2;
+const INVALID = -1;
+const mappingsCharValues = new Int8Array(65536).fill(INVALID);
+
 for (let i = 0; i < 64; i++) {
-    base64Digits['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.charCodeAt(i)] = i;
+    mappingsCharValues['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.charCodeAt(i)] = i;
 }
 
-// Generated segments of a source map ordered by generated position, lines and columns are 0-based.
-// Segments of generated line L occupy [lineStarts[L], lineStarts[L + 1]).
-export class DecodedSourceMap {
+mappingsCharValues[44 /* , */] = SEPARATOR;
+mappingsCharValues[59 /* ; */] = SEPARATOR;
+
+// Fields of a segment, accumulated over the mappings, and the number of fields of the last decoded segment
+const GENERATED_COLUMN = 0;
+const SOURCE = 1;
+const ORIGINAL_LINE = 2;
+const ORIGINAL_COLUMN = 3;
+const FIELD_COUNT = 4;
+
+// A checkpoint is the state of decoding before a segment: its generated line and column, the column
+// of the previous segment of the line, its offset in the mappings, and the original position fields before it
+const CHECKPOINT_LINE = 0;
+const CHECKPOINT_COLUMN = 1;
+const CHECKPOINT_PREVIOUS_COLUMN = 2;
+const CHECKPOINT_OFFSET = 3;
+const CHECKPOINT_SOURCE = 4;
+const CHECKPOINT_ORIGINAL_LINE = 5;
+const CHECKPOINT_ORIGINAL_COLUMN = 6;
+const CHECKPOINT_SIZE = 7;
+
+// PERF: A lookup decodes segments from the nearest checkpoint, so a checkpoint per several segments
+// keeps lookups short while the index stays a fraction of the decoded segments
+const CHECKPOINT_SEGMENTS = 8;
+
+// Decodes the segment at an offset of the mappings into the fields, returns the offset after the segment
+function decodeSegment(mappings: string, offset: number, fields: Int32Array) {
+    const end = mappings.length;
+    let fieldCount = 0;
+    let digit = mappingsCharValues[mappings.charCodeAt(offset)];
+
+    // A segment is a sequence of base64 VLQ values up to a separator or the end of the mappings
+    while (digit >= 0) {
+        let value = digit & 31;
+        let shift = 5;
+
+        // A digit with the continuation bit is followed by more digits of the value
+        while (digit & 32) {
+            offset++;
+            digit = offset < end
+                ? mappingsCharValues[mappings.charCodeAt(offset)]
+                : INVALID;
+
+            if (digit < 0) {
+                throw new Error(`Invalid character in source map mappings at ${offset}`);
+            }
+
+            value |= (digit & 31) << shift;
+            shift += 5;
+        }
+
+        // names aren't used
+        if (fieldCount < FIELD_COUNT) {
+            fields[fieldCount] += value & 1
+                ? -(value >>> 1)
+                : value >>> 1;
+        }
+
+        fieldCount++;
+        offset++;
+        digit = offset < end
+            ? mappingsCharValues[mappings.charCodeAt(offset)]
+            : SEPARATOR;
+    }
+
+    if (digit === INVALID) {
+        throw new Error(`Invalid character in source map mappings at ${offset}`);
+    }
+
+    fields[FIELD_COUNT] = fieldCount;
+
+    return offset;
+}
+
+// Whether a segment comes before another one at the same generated column in the order of source-map-js:
+// segments with an original position first, by their source, original line and column
+function precedes(
+    source: number, // -1 when the segment has no original position
+    line: number,
+    column: number,
+    otherSource: number,
+    otherLine: number,
+    otherColumn: number
+) {
+    if (source === -1) {
+        return false;
+    }
+
+    if (otherSource === -1) {
+        return true;
+    }
+
+    if (source !== otherSource) {
+        return source < otherSource;
+    }
+
+    if (line !== otherLine) {
+        return line < otherLine;
+    }
+
+    return column < otherColumn;
+}
+
+// Looks up original positions of generated positions, lines and columns are 0-based. The deltas of segment fields
+// accumulate over the whole mappings, so finding a segment needs the decoding state before it: the mappings
+// are decoded once to keep the state at checkpoints only, a lookup decodes the few segments after a checkpoint.
+export class SourceMapIndex {
     sources: string[];
     sourcesContent: (string | null)[];
-    lineStarts: Uint32Array;
-    columns: Uint32Array;
-    sourceIndexes: Int32Array; // -1 when a segment has no original position
-    originalLines: Uint32Array;
-    originalColumns: Uint32Array;
+    // the original position of the last found segment
+    originalLine: number = 0;
+    originalColumn: number = 0;
+
+    #mappings: string;
+    #fields: Int32Array;
+    #checkpoints: Int32Array;
+    #checkpointCount: number;
+    #unsortedLines: Set<number> | null = null;
 
     constructor(sourceMap: SourceMap) {
-        const { mappings } = sourceMap;
-        const sourceRoot = sourceMap.sourceRoot ? normalize(sourceMap.sourceRoot) : null;
-        let lineCount = 1;
-        let segmentCount = 0;
-
-        for (let i = 0, segmentStarted = false; i < mappings.length; i++) {
-            const code = mappings.charCodeAt(i);
-
-            if (code === 59 /* ; */) {
-                lineCount++;
-                segmentStarted = false;
-            } else if (code === 44 /* , */) {
-                segmentStarted = false;
-            } else if (!segmentStarted) {
-                segmentCount++;
-                segmentStarted = true;
-            }
-        }
+        const sourceRoot = sourceMap.sourceRoot
+            ? normalize(sourceMap.sourceRoot)
+            : null;
 
         // Source URLs are resolved the same way as source-map-js does for a source map without its own URL
         this.sources = sourceMap.sources.map(source => {
@@ -49,175 +147,182 @@ export class DecodedSourceMap {
             );
         });
         this.sourcesContent = sourceMap.sourcesContent || [];
-        this.lineStarts = new Uint32Array(lineCount + 1);
-        this.columns = new Uint32Array(segmentCount);
-        this.sourceIndexes = new Int32Array(segmentCount);
-        this.originalLines = new Uint32Array(segmentCount);
-        this.originalColumns = new Uint32Array(segmentCount);
-
-        this.#decode(mappings);
+        this.#mappings = sourceMap.mappings;
+        this.#fields = new Int32Array(FIELD_COUNT + 1);
+        this.#checkpoints = this.#index();
+        this.#checkpointCount = this.#checkpoints.length / CHECKPOINT_SIZE;
     }
 
-    #decode(mappings: string) {
-        const { lineStarts, columns, sourceIndexes, originalLines, originalColumns } = this;
-        const fields = new Int32Array(5); // column, source, original line, original column, name
+    #index() {
+        const mappings = this.#mappings;
+        const fields = this.#fields;
+        // the number of checkpoints is known once the mappings are decoded
+        const checkpoints: number[] = [];
         let line = 0;
-        let segment = 0;
-        let unsortedLine = false;
+        let lineSegments = 0;
+        let segmentsAfterCheckpoint = 0;
 
         for (let i = 0; i < mappings.length;) {
             const code = mappings.charCodeAt(i);
 
-            if (code === 59 /* ; */ || code === 44 /* , */) {
-                if (code === 59) {
-                    if (unsortedLine) {
-                        this.#sortLineSegments(lineStarts[line], segment);
-                        unsortedLine = false;
-                    }
-
-                    lineStarts[++line] = segment;
-                    fields[0] = 0; // generated column is relative to the line start
-                }
-
+            if (code === 59 /* ; */) {
+                line++;
+                lineSegments = 0;
+                fields[GENERATED_COLUMN] = 0; // a generated column is relative to the previous segment of its line
                 i++;
                 continue;
             }
 
-            let fieldCount = 0;
-
-            while (i < mappings.length) {
-                const segmentCode = mappings.charCodeAt(i);
-
-                if (segmentCode === 59 || segmentCode === 44) {
-                    break;
-                }
-
-                let value = 0;
-                let shift = 0;
-                let digit = 0;
-
-                do {
-                    const digitCode = mappings.charCodeAt(i++);
-
-                    digit = digitCode < 128 ? base64Digits[digitCode] : -1;
-
-                    if (digit === -1) {
-                        throw new Error(`Invalid character in source map mappings at ${i - 1}`);
-                    }
-
-                    value |= (digit & 31) << shift;
-                    shift += 5;
-                } while (digit & 32);
-
-                if (fieldCount < 5) {
-                    fields[fieldCount] += value & 1 ? -(value >>> 1) : value >>> 1;
-                }
-
-                fieldCount++;
+            if (code === 44 /* , */) {
+                i++;
+                continue;
             }
 
-            columns[segment] = fields[0];
+            const offset = i;
+            const previousColumn = fields[GENERATED_COLUMN];
+            const source = fields[SOURCE];
+            const originalLine = fields[ORIGINAL_LINE];
+            const originalColumn = fields[ORIGINAL_COLUMN];
 
-            if (fieldCount >= 4) {
-                sourceIndexes[segment] = fields[1];
-                originalLines[segment] = fields[2];
-                originalColumns[segment] = fields[3];
-            } else {
-                // a segment without an original position, also covers malformed 2-3 fields segments
-                sourceIndexes[segment] = -1;
+            i = decodeSegment(mappings, i, fields);
+
+            // The spec doesn't require segments of a line to be sorted by generated column,
+            // a lookup scans an unsorted line whole
+            if (lineSegments > 0 && fields[GENERATED_COLUMN] < previousColumn) {
+                this.#unsortedLines ??= new Set();
+                this.#unsortedLines.add(line);
             }
 
-            if (segment > lineStarts[line] && this.#compareSegments(segment - 1, segment) > 0) {
-                unsortedLine = true;
+            // A line starts with a checkpoint, and a checkpoint doesn't come between segments at the same column,
+            // so the segments at the column of a lookup's result come after the checkpoint it starts with
+            if (lineSegments === 0 ||
+                (segmentsAfterCheckpoint >= CHECKPOINT_SEGMENTS && fields[GENERATED_COLUMN] > previousColumn)) {
+                checkpoints.push(
+                    line, // CHECKPOINT_LINE
+                    fields[GENERATED_COLUMN], // CHECKPOINT_COLUMN
+                    previousColumn, // CHECKPOINT_PREVIOUS_COLUMN
+                    offset, // CHECKPOINT_OFFSET
+                    source, // CHECKPOINT_SOURCE
+                    originalLine, // CHECKPOINT_ORIGINAL_LINE
+                    originalColumn // CHECKPOINT_ORIGINAL_COLUMN
+                );
+                segmentsAfterCheckpoint = 0;
             }
 
-            segment++;
+            lineSegments++;
+            segmentsAfterCheckpoint++;
         }
 
-        if (unsortedLine) {
-            this.#sortLineSegments(lineStarts[line], segment);
-        }
-
-        lineStarts.fill(segment, line + 1);
+        return new Int32Array(checkpoints);
     }
 
-    // Segments of a line are ordered as source-map-js orders them: by generated column, then segments with
-    // an original position first, by their source, original line and column. The spec doesn't require segments
-    // to be sorted, and a lookup takes the first of the segments at a column, so the order decides between them.
-    #compareSegments(a: number, b: number) {
-        const { columns, sourceIndexes, originalLines, originalColumns } = this;
-
-        if (columns[a] !== columns[b]) {
-            return columns[a] - columns[b];
-        }
-
-        if (sourceIndexes[a] !== sourceIndexes[b]) {
-            if (sourceIndexes[a] === -1) {
-                return 1;
-            }
-
-            if (sourceIndexes[b] === -1) {
-                return -1;
-            }
-
-            return sourceIndexes[a] - sourceIndexes[b];
-        }
-
-        if (originalLines[a] !== originalLines[b]) {
-            return originalLines[a] - originalLines[b];
-        }
-
-        return originalColumns[a] - originalColumns[b];
-    }
-
-    #sortLineSegments(start: number, end: number) {
-        const { columns, sourceIndexes, originalLines, originalColumns } = this;
-        const compareSegments = (a: number, b: number) => this.#compareSegments(a, b);
-        const order = Array.from({ length: end - start }, (_, index) => start + index)
-            .sort(compareSegments);
-        const lineColumns = columns.slice(start, end);
-        const lineSourceIndexes = sourceIndexes.slice(start, end);
-        const lineOriginalLines = originalLines.slice(start, end);
-        const lineOriginalColumns = originalColumns.slice(start, end);
-
-        for (let i = 0; i < order.length; i++) {
-            const from = order[i] - start;
-
-            columns[start + i] = lineColumns[from];
-            sourceIndexes[start + i] = lineSourceIndexes[from];
-            originalLines[start + i] = lineOriginalLines[from];
-            originalColumns[start + i] = lineOriginalColumns[from];
-        }
-    }
-
-    // Returns the segment covering a generated position, i.e. the first of the rightmost segments
-    // starting at or before the column on the same line, or -1 when there is no such segment
-    findSegment(line: number, column: number) {
-        const { lineStarts, columns } = this;
-
-        if (line < 0 || line >= lineStarts.length - 1) {
-            return -1;
-        }
-
-        let low = lineStarts[line];
-        let high = lineStarts[line + 1] - 1;
-        let segment = -1;
+    // The checkpoint to decode a line from for a lookup at a column: the last one at or before the column,
+    // or the first one of the line when the line is unsorted; -1 when the line has no segments at or before the column
+    #findCheckpoint(line: number, column: number, unsortedLine: boolean) {
+        const checkpoints = this.#checkpoints;
+        let low = 0;
+        let high = this.#checkpointCount - 1;
+        let checkpoint = -1;
 
         while (low <= high) {
             const mid = (low + high) >>> 1;
+            const midLine = checkpoints[mid * CHECKPOINT_SIZE + CHECKPOINT_LINE];
+            const midColumn = checkpoints[mid * CHECKPOINT_SIZE + CHECKPOINT_COLUMN];
 
-            if (columns[mid] <= column) {
-                segment = mid;
+            if (midLine < line || (midLine === line && !unsortedLine && midColumn <= column)) {
+                checkpoint = mid;
                 low = mid + 1;
             } else {
                 high = mid - 1;
             }
         }
 
-        while (segment > lineStarts[line] && columns[segment - 1] === columns[segment]) {
-            segment--;
+        if (unsortedLine) {
+            checkpoint++;
         }
 
-        return segment;
+        if (checkpoint === -1 ||
+            checkpoint === this.#checkpointCount ||
+            checkpoints[checkpoint * CHECKPOINT_SIZE + CHECKPOINT_LINE] !== line) {
+            return -1;
+        }
+
+        return checkpoint;
+    }
+
+    // Finds the segment covering a generated position, i.e. the first in the order of source-map-js of the segments
+    // at the rightmost column at or before the column on the same line. Returns the source index of the segment
+    // and sets the original position, or returns -1 when there is no such segment or it has no original position
+    findOriginalPosition(line: number, column: number) {
+        const unsortedLine = this.#unsortedLines !== null && this.#unsortedLines.has(line);
+        const checkpoint = this.#findCheckpoint(line, column, unsortedLine);
+
+        if (checkpoint === -1) {
+            return -1;
+        }
+
+        const mappings = this.#mappings;
+        const fields = this.#fields;
+        const checkpointIndex = checkpoint * CHECKPOINT_SIZE;
+        let segmentColumn = -1;
+        let segmentSource = -1;
+        let segmentLine = 0;
+        let segmentOriginalColumn = 0;
+
+        fields[GENERATED_COLUMN] = this.#checkpoints[checkpointIndex + CHECKPOINT_PREVIOUS_COLUMN];
+        fields[SOURCE] = this.#checkpoints[checkpointIndex + CHECKPOINT_SOURCE];
+        fields[ORIGINAL_LINE] = this.#checkpoints[checkpointIndex + CHECKPOINT_ORIGINAL_LINE];
+        fields[ORIGINAL_COLUMN] = this.#checkpoints[checkpointIndex + CHECKPOINT_ORIGINAL_COLUMN];
+
+        for (let i = this.#checkpoints[checkpointIndex + CHECKPOINT_OFFSET]; i < mappings.length;) {
+            const code = mappings.charCodeAt(i);
+
+            if (code === 59 /* ; */) {
+                break;
+            }
+
+            if (code === 44 /* , */) {
+                i++;
+                continue;
+            }
+
+            i = decodeSegment(mappings, i, fields);
+
+            const generatedColumn = fields[GENERATED_COLUMN];
+
+            if (generatedColumn > column) {
+                if (unsortedLine) {
+                    continue;
+                }
+
+                break;
+            }
+
+            // a segment of 4 or 5 fields has an original position
+            const source = fields[FIELD_COUNT] >= 4
+                ? fields[SOURCE]
+                : -1;
+            const originalLine = fields[ORIGINAL_LINE];
+            const originalColumn = fields[ORIGINAL_COLUMN];
+            const covers = generatedColumn === segmentColumn
+                ? precedes(source, originalLine, originalColumn, segmentSource, segmentLine, segmentOriginalColumn)
+                : generatedColumn > segmentColumn;
+
+            if (covers) {
+                segmentColumn = generatedColumn;
+                segmentSource = source;
+                segmentLine = originalLine;
+                segmentOriginalColumn = originalColumn;
+            }
+        }
+
+        if (segmentSource === -1 || segmentSource >= this.sources.length) {
+            return -1;
+        }
+
+        this.originalLine = segmentLine;
+        this.originalColumn = segmentOriginalColumn;
+
+        return segmentSource;
     }
 }

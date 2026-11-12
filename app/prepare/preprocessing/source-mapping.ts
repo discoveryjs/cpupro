@@ -2,12 +2,12 @@ import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import type { Ownership } from '../formats/types.js';
 import type { CpuProScript } from '../types.js';
-import { DecodedSourceMap } from '../misc/source-map.js';
+import { SourceMapIndex } from '../misc/source-map.js';
 import { getFunctionAtSourceLineColumn, prepareScriptSources } from '../misc/script-function-resolution.js';
 import { createScript } from './scripts.js';
 
 type ScriptSourceMap = {
-    decoded: DecodedSourceMap;
+    index: SourceMapIndex;
     originalScripts: (CpuProScript | null)[]; // by source index
 };
 
@@ -82,18 +82,17 @@ export class SourceMapping {
             const position = location === callFrame.noLocLocation
                 ? callFrame.location
                 : location;
-            const { decoded } = sourceMap;
-            const segment = decoded.findSegment(position.line, position.column);
-            const sourceIndex = segment !== -1 ? decoded.sourceIndexes[segment] : -1;
+            const { index } = sourceMap;
+            const sourceIndex = index.findOriginalPosition(position.line, position.column);
 
-            if (sourceIndex !== -1 && sourceIndex < decoded.sources.length) {
+            if (sourceIndex !== -1) {
                 const originalScript = this.#getOriginalScript(script, sourceMap, sourceIndex);
 
                 originalScripts.add(originalScript);
                 this.#pendingLocations.push(i);
                 this.#pendingScripts.push(originalScript);
-                this.#pendingLines.push(decoded.originalLines[segment]);
-                this.#pendingColumns.push(decoded.originalColumns[segment]);
+                this.#pendingLines.push(index.originalLine);
+                this.#pendingColumns.push(index.originalColumn);
             }
         }
 
@@ -197,11 +196,11 @@ export class SourceMapping {
             sourceMap = null;
 
             try {
-                const decoded = new DecodedSourceMap(script.sourceMap!);
+                const index = new SourceMapIndex(script.sourceMap!);
 
                 sourceMap = {
-                    decoded,
-                    originalScripts: new Array(decoded.sources.length).fill(null)
+                    index,
+                    originalScripts: new Array(index.sources.length).fill(null)
                 };
             } catch (error) {
                 this.#diagnose('error', 'Failed to decode a source map', {
@@ -221,8 +220,8 @@ export class SourceMapping {
         let script = sourceMap.originalScripts[sourceIndex];
 
         if (script === null) {
-            const url = sourceMap.decoded.sources[sourceIndex];
-            const source = sourceMap.decoded.sourcesContent[sourceIndex] ?? null;
+            const url = sourceMap.index.sources[sourceIndex];
+            const source = sourceMap.index.sourcesContent[sourceIndex] ?? null;
             let scriptsByUrl = this.#originalScriptsByUrl.get(url);
 
             if (scriptsByUrl === undefined) {

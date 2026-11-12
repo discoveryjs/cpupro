@@ -1,34 +1,33 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { SourceMapConsumer, SourceMapGenerator } from 'source-map-js';
-import { DecodedSourceMap } from './source-map.js';
+import { SourceMapIndex } from './source-map.js';
 import type { SourceMap } from '../types.js';
 
-function originalPositionFor(decoded: DecodedSourceMap, line: number, column: number) {
-    const segment = decoded.findSegment(line, column);
-    const sourceIndex = segment !== -1 ? decoded.sourceIndexes[segment] : -1;
+function originalPositionFor(index: SourceMapIndex, line: number, column: number) {
+    const sourceIndex = index.findOriginalPosition(line, column);
 
     if (sourceIndex === -1) {
         return { source: null, line: null, column: null };
     }
 
     return {
-        source: decoded.sources[sourceIndex],
-        line: decoded.originalLines[segment] + 1,
-        column: decoded.originalColumns[segment]
+        source: index.sources[sourceIndex],
+        line: index.originalLine + 1,
+        column: index.originalColumn
     };
 }
 
 // Positions of the generated lines and columns resolve as source-map-js resolves them
 function assertConsumerPositions(sourceMap: SourceMap, lineCount: number, columnCount: number) {
-    const decoded = new DecodedSourceMap(sourceMap);
+    const index = new SourceMapIndex(sourceMap);
     const consumer = new SourceMapConsumer(sourceMap as ConstructorParameters<typeof SourceMapConsumer>[0]);
 
     for (let i = 0; i < lineCount; i++) {
         for (let j = 0; j < columnCount; j++) {
             const expected = consumer.originalPositionFor({ line: i + 1, column: j });
 
-            assert.deepEqual(originalPositionFor(decoded, i, j), {
+            assert.deepEqual(originalPositionFor(index, i, j), {
                 source: expected.source,
                 line: expected.line,
                 column: expected.column
@@ -36,7 +35,7 @@ function assertConsumerPositions(sourceMap: SourceMap, lineCount: number, column
         }
     }
 
-    return decoded;
+    return index;
 }
 
 function createSourceMap(sourceRoot: string | undefined, sources: string[], mappings: string): SourceMap {
@@ -112,60 +111,71 @@ test.each([
     assertConsumerPositions(sourceMap, 42, 220);
 });
 
-// Segments are given as [generated column, source index, original line, original column]
 test.each([
     {
         name: 'the first line',
         // line 0: column 10 → a.js 0:0, column 4 → b.js 1:2; line 2: column 0 → b.js 1:3
-        mappings: 'UAAA,NCCE;;AAAC',
-        lineStarts: [0, 2, 2, 3],
-        segments: [[4, 1, 1, 2], [10, 0, 0, 0], [0, 1, 1, 3]]
+        mappings: 'UAAA,NCCE;;AAAC'
     },
     {
         name: 'a line between other lines',
         // line 0: columns 0 and 1 → a.js 0:0; line 1: column 10 → a.js 0:0, column 4 → b.js 1:2;
         // line 2: column 0 → b.js 1:2
-        mappings: 'AAAA,CAAA;UAAA,NCCE;AAAA',
-        lineStarts: [0, 2, 4, 5],
-        segments: [[0, 0, 0, 0], [1, 0, 0, 0], [4, 1, 1, 2], [10, 0, 0, 0], [0, 1, 1, 2]]
+        mappings: 'AAAA,CAAA;UAAA,NCCE;AAAA'
     },
     {
         name: 'the last line',
         // line 0: column 0 → a.js 0:0; line 1: column 10 → a.js 0:0, column 4 → b.js 1:2
-        mappings: 'AAAA;UAAA,NCCE',
-        lineStarts: [0, 1, 3],
-        segments: [[0, 0, 0, 0], [4, 1, 1, 2], [10, 0, 0, 0]]
+        mappings: 'AAAA;UAAA,NCCE'
     }
-])('sorts unsorted segments of $name by generated column', row => {
-    const { mappings, lineStarts, segments } = row;
-    const decoded = new DecodedSourceMap(createSourceMap(undefined, ['a.js', 'b.js'], mappings));
-    const describeSegment = (_: unknown, segment: number) => [
-        decoded.columns[segment],
-        decoded.sourceIndexes[segment],
-        decoded.originalLines[segment],
-        decoded.originalColumns[segment]
-    ];
+])('resolves positions on unsorted segments of $name as source-map-js does', row => {
+    assertConsumerPositions(createSourceMap(undefined, ['a.js', 'b.js'], row.mappings), 4, 12);
+});
 
-    assert.deepEqual([...decoded.lineStarts], lineStarts);
-    // Vectors hold a slot per segment
-    assert.equal(decoded.columns.length, segments.length);
-    assert.deepEqual(segments.map(describeSegment), segments);
+test('resolves positions on lines of many segments as source-map-js does', () => {
+    let seed = 1;
+    // high bits of the generator, its low bits repeat with a short period
+    const random = (max: number) => Math.floor((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 * max);
+    const generator = new SourceMapGenerator({ file: 'bundle.js' });
+
+    // Long lines with runs of segments at the same column, some of them without an original position
+    for (let i = 1; i <= 3; i++) {
+        for (let j = 0; j < 300; j += random(3)) {
+            const generated = { line: i, column: j };
+
+            if (random(8) === 0) {
+                generator.addMapping({ generated } as Parameters<typeof generator.addMapping>[0]);
+            } else {
+                generator.addMapping({
+                    generated,
+                    original: { line: 1 + random(20), column: random(40) },
+                    source: `file-${random(3)}.js`
+                } as Parameters<typeof generator.addMapping>[0]);
+            }
+        }
+    }
+
+    assertConsumerPositions(JSON.parse(generator.toString()), 4, 310);
 });
 
 test.each([
-    { line: 0, column: 3, segment: -1 },
-    { line: 0, column: 4, segment: 0 },
-    { line: 0, column: 9, segment: 0 },
-    { line: 0, column: 10, segment: 1 },
-    { line: 0, column: 100, segment: 1 },
-    { line: 1, column: 0, segment: -1 },
-    { line: 2, column: 5, segment: 3 },
-    { line: 3, column: 0, segment: -1 }
-])('line $line, column $column is in segment $segment, the first of the segments at the same column', row => {
-    // line 0: columns 4, 10 and 10 again; line 1 is empty; line 2: column 0
-    const decoded = new DecodedSourceMap(createSourceMap(undefined, ['a.js'], 'IAAA,MAAC,AAAC;;KAAC'));
+    { line: 0, column: 3, source: null },
+    { line: 0, column: 4, source: 'a.js', originalColumn: 0 },
+    { line: 0, column: 9, source: 'a.js', originalColumn: 0 },
+    { line: 0, column: 10, source: 'a.js', originalColumn: 1 },
+    { line: 0, column: 100, source: 'a.js', originalColumn: 1 },
+    { line: 1, column: 0, source: null },
+    { line: 2, column: 5, source: 'a.js', originalColumn: 3 },
+    { line: 3, column: 0, source: null }
+])('line $line, column $column resolves to the first of the segments at the rightmost column before it', row => {
+    // line 0: column 4 → a.js 0:0, column 10 → a.js 0:1, column 10 again → a.js 0:2; line 1 is empty;
+    // line 2: column 0 → a.js 0:3
+    const index = new SourceMapIndex(createSourceMap(undefined, ['a.js'], 'IAAA,MAAC,AAAC;;KAAC'));
+    const expected = row.source === null
+        ? { source: null, line: null, column: null }
+        : { source: row.source, line: 1, column: row.originalColumn };
 
-    assert.equal(decoded.findSegment(row.line, row.column), row.segment);
+    assert.deepEqual(originalPositionFor(index, row.line, row.column), expected);
 });
 
 test('sources resolve against the source root, missing contents are none', () => {
@@ -173,18 +183,21 @@ test('sources resolve against the source root, missing contents are none', () =>
         ...createSourceMap('webpack://app/', ['./a.js', 'b/../b.js'], 'AAAA'),
         sourcesContent: undefined
     } as SourceMap;
-    const decoded = new DecodedSourceMap(sourceMap);
+    const index = new SourceMapIndex(sourceMap);
 
-    assert.deepEqual(decoded.sources, ['webpack://app/a.js', 'webpack://app/b.js']);
-    assert.deepEqual(decoded.sourcesContent, []);
+    assert.deepEqual(index.sources, ['webpack://app/a.js', 'webpack://app/b.js']);
+    assert.deepEqual(index.sourcesContent, []);
 });
 
-const invalidMappings = ['AA!A', 'AA\u0080A'];
+test.each([
+    { mappings: 'AA!A', offset: 2 },
+    { mappings: 'AA\u0080A', offset: 2 },
+    // a value with the continuation bit ends with the mappings
+    { mappings: 'AAg', offset: 3 }
+])('invalid mappings $mappings are rejected at the position of the invalid character', row => {
+    const index = () => new SourceMapIndex(createSourceMap(undefined, ['a.js'], row.mappings));
 
-test.each(invalidMappings)('invalid mappings %s are rejected at the position of the invalid character', mappings => {
-    const decode = () => new DecodedSourceMap(createSourceMap(undefined, ['a.js'], mappings));
-
-    assert.throws(decode, /Invalid character in source map mappings at 2$/);
+    assert.throws(index, new RegExp(`Invalid character in source map mappings at ${row.offset}$`));
 });
 
 test('resolves segments at an equal generated column as source-map-js does', () => {
@@ -197,19 +210,19 @@ test('resolves segments at an equal generated column as source-map-js does', () 
         // line 2, column 4: a.js 1:2, no original position
         mappings: 'A,ACAA,ADAE;AAAC,AAAD;IACA,A'
     };
-    const decoded = assertConsumerPositions(sourceMap, 3, 6);
+    const index = assertConsumerPositions(sourceMap, 3, 6);
 
-    assert.deepEqual(originalPositionFor(decoded, 0, 0), {
+    assert.deepEqual(originalPositionFor(index, 0, 0), {
         source: 'a.js',
         line: 1,
         column: 2
     });
-    assert.deepEqual(originalPositionFor(decoded, 1, 0), {
+    assert.deepEqual(originalPositionFor(index, 1, 0), {
         source: 'a.js',
         line: 1,
         column: 2
     });
-    assert.deepEqual(originalPositionFor(decoded, 2, 4), {
+    assert.deepEqual(originalPositionFor(index, 2, 4), {
         source: 'a.js',
         line: 2,
         column: 2
