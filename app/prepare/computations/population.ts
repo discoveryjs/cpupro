@@ -174,7 +174,7 @@ export class PopulationFiltered extends Observer {
     #boundaryCuts: BoundaryCut[] = [];
     #hasMask = false;
     #acceptedEvents: EventAcceptance | null = null;
-    #records: PopulationRecords | null = null;
+    readonly #records: PopulationRecords; // the base's, read while event acceptance is constant within its classes
     #acceptance: RecordsAcceptance | null = null;
     // Sums of whole covered parts when metrics come from records
     #recordSums: RecordSums | null = null;
@@ -339,13 +339,6 @@ export class PopulationFiltered extends Observer {
         };
     }
 
-    // Replaces the records metrics are summed from: records of the base events by other classes, or null for
-    // the pass over events
-    setRecords(records: PopulationRecords | null) {
-        this.#records = records !== null && records.samples === this.population.samples ? records : null;
-        this.#metricsChanged();
-    }
-
     aggregateBy(groups: Uint8Array | Uint32Array, groupCount: number) {
         const acceptance = this.#recordsAcceptance();
 
@@ -502,25 +495,19 @@ export class PopulationFiltered extends Observer {
     #countCovered() {
         const { values } = this.population;
         const records = this.#records;
-        let intervals = this.#coverage;
+        const { parts, events } = records.cover(this.#coverage);
         let count = 0;
 
-        if (records !== null) {
-            const { parts, events } = records.cover(intervals);
+        for (let i = 0; i < parts.length; i++) {
+            const [start, end] = parts[i];
 
-            for (let i = 0; i < parts.length; i++) {
-                const [start, end] = parts[i];
-
-                for (let j = start; j < end; j++) {
-                    count += records.partCounts[j];
-                }
+            for (let j = start; j < end; j++) {
+                count += records.partCounts[j];
             }
-
-            intervals = events;
         }
 
-        for (let i = 0; i < intervals.length; i++) {
-            const [start, end] = intervals[i];
+        for (let i = 0; i < events.length; i++) {
+            const [start, end] = events[i];
 
             for (let j = start; j < end; j++) {
                 if (values[j] !== 0) {
@@ -670,11 +657,6 @@ export class PopulationFiltered extends Observer {
 
     #computeAcceptance(): RecordsAcceptance | null {
         const records = this.#records;
-
-        if (records === null) {
-            return null;
-        }
-
         const { ids, events } = records.classes;
         const sampleAccepts = new Uint8Array(this.samplesMask.length).fill(1);
         const classAccepts = new Uint8Array(events.length).fill(1);

@@ -111,7 +111,7 @@ Set/reset order must not affect compiled inputs or aggregates. Base vectors, sou
 
 ## Records
 
-A line groups the events of each Base by sample and event class into `PopulationRecords`: within parts of consecutive events, a record per sample and class with their summed values and nonzero counts. Event classes are the line's filter classes, events with equal values of every registered event filter. Parts are the bins of a 2000-bin grid on the Base's value axis, with bins over 65,536 events split, so ranges on the grid cover whole parts and an edge inside a part costs a bounded number of events. A record holds its sample and class directly: on lines of tens of millions of allocations a sample and class pair has about one record, so a level of keys between records and samples would compress nothing. `setRecords(records)` gives them to a derived population. While every event acceptance along the source chain is constant within an event class, a derived population, when its metrics are read after a change:
+A Base groups its events by sample and event class into `PopulationRecords` when it's constructed: within parts of consecutive events, a record per sample and class with their summed values and nonzero counts. Event classes are the line's (`line.eventClasses`), events with equal values of every registered event filter; a Base given no classes has a single one. Parts are the bins of a 2000-bin grid on the Base's value axis, with bins over 65,536 events split, so ranges on the grid cover whole parts and an edge inside a part costs a bounded number of events. A record holds its sample and class directly: on lines of tens of millions of allocations a sample and class pair has about one record, so a level of keys between records and samples would compress nothing. Derived populations read the records of their Base. While every event acceptance along the source chain is constant within an event class, a derived population, when its metrics are read after a change:
 
 - takes the acceptance of samples (masks along the source chain) and of event classes (event filters along the chain) and the whole parts and partial events of its coverage (`records.cover()`);
 - sums the records of whole parts into `samplesCount`, `samplesTotal` and the sink by that acceptance, and into accepted sums per event class, in one pass; adds events of partial parts and subtracts boundary cuts, so the integer sums equal the event pass;
@@ -119,7 +119,7 @@ A line groups the events of each Base by sample and event class into `Population
 - counts `rangeSamples` from per-part counts and partial events;
 - compiles `samples` and `values` only when a consumer reads them. Consumers of a few events (range and bin edges) use `eventReader()`, which derives destinations and values of single events without compiling all of them.
 
-A pass costs the records of covered parts: a filter change over the whole extent of a line of tens of millions of allocations is a pass over a few million records, a zoomed viewport only those of its parts. Other populations compile destinations and values and aggregate events.
+A pass costs the records of covered parts: a filter change over the whole extent of a line of tens of millions of allocations is a pass over a few million records, a zoomed viewport only those of its parts. A population with an event filter along its chain over values its classes don't classify compiles destinations and values and aggregates events (the event pass).
 
 ## Current Boundaries
 

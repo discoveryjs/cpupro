@@ -6,6 +6,7 @@ import type { EventClasses } from './population-filter.js';
 import type { PreparedAttributeFilter } from './attribute-filter.js';
 import type { RangeSet } from './coordinates.js';
 import { trackReads } from '../../../test/helpers/read-tracker.js';
+import { setEventPass } from '../../../test/helpers/event-pass.js';
 import { createUint32Progression } from '../misc/utils.js';
 
 type EventValues = Uint8Array | Uint16Array | Uint32Array;
@@ -118,8 +119,8 @@ function createFixture(scale = 1) {
         other[i] = random(2);
     }
 
-    const population = new Population(samples, values, 50);
     const classes = classify([lifespan, space], eventCount);
+    const population = new Population(samples, values, 50, undefined, classes);
 
     return {
         population,
@@ -127,7 +128,7 @@ function createFixture(scale = 1) {
         space,
         other,
         classes,
-        records: createRecords(population, classes)
+        records: population.records
     };
 }
 
@@ -144,13 +145,14 @@ function createRegularFixture() {
         space[i] = (i >> 3) & 1;
     }
 
-    const population = new Population(samples, new Uint32Array(eventCount).fill(1));
+    const classes = classify([lifespan, space], eventCount);
+    const population = new Population(samples, new Uint32Array(eventCount).fill(1), undefined, undefined, classes);
 
     return {
         population,
         lifespan,
         space,
-        records: createRecords(population, classify([lifespan, space], eventCount))
+        records: population.records
     };
 }
 
@@ -285,7 +287,7 @@ test('metrics from records equal event aggregation across blocks of records', ()
     const accepts = Uint8Array.from({ length: eventCount }, (_, sample) => sample % 3 === 0 ? 0 : 1);
     const filter: PreparedAttributeFilter = { key: 'sample', domain: 'sample', size: eventCount, accepts };
 
-    expected.setRecords(null);
+    setEventPass(expected);
     viewport.filter.set(filter);
     expected.filter.set(filter);
     const rangeSets: RangeSet[] = [
@@ -520,12 +522,7 @@ test.each([
         }
     ];
 
-    viewport.filter.setEventClasses(records.classes);
-    viewport.setRecords(records);
-    selection.setRecords(records);
-    // The expected populations aggregate events
-    expectedViewport.setRecords(null);
-    expectedSelection.setRecords(null);
+    setEventPass(expectedViewport);
 
     for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
@@ -550,9 +547,7 @@ test('metrics from records equal event aggregation for ranges with edges next to
         return cumulative[event];
     };
 
-    viewport.filter.setEventClasses(records.classes);
-    viewport.setRecords(records);
-    expected.setRecords(null);
+    setEventPass(expected);
 
     for (let i = 0; i < 60; i++) {
         const startPart = random(records.partCount);
@@ -566,55 +561,13 @@ test('metrics from records equal event aggregation for ranges with edges next to
     }
 });
 
-test('ignores records of other events and returns to the event pass without records', () => {
-    const { population, records } = createRegularFixture();
-    const shifted = Uint32Array.from(population.samples, sample => (sample + 1) % 7);
-    const otherRecords = new PopulationRecords(
-        shifted,
-        population.values,
-        population.cumulative,
-        population.cumulativeEnd,
-        records.classes
-    );
-    const viewport = new PopulationFiltered(population);
-    const expected = new PopulationFiltered(population);
-    const sampleFilter: PreparedAttributeFilter = {
-        key: 'sample',
-        domain: 'sample',
-        size: 7,
-        accepts: Uint8Array.of(1, 1, 1, 0, 1, 1, 1)
-    };
-    viewport.filter.set(sampleFilter);
-    expected.filter.set(sampleFilter);
-    expected.setRecords(null);
-
-    viewport.setRecords(otherRecords);
-    viewport.setRange(1005, 15_005);
-    expected.setRange(1005, 15_005);
-
-    assertEqualPopulations(viewport, expected, 'records of other events');
-
-    viewport.setRecords(records);
-
-    assertEqualPopulations(viewport, expected, 'own records');
-
-    viewport.setRecords(null);
-    viewport.setRange(2005, 12_005);
-    expected.setRange(2005, 12_005);
-
-    assertEqualPopulations(viewport, expected, 'without records');
-});
-
 test('a range change over records reads base values only at range edges and in the parts they cut', () => {
-    const { population, lifespan, space, records } = createRegularFixture();
+    const { population, lifespan, space } = createRegularFixture();
     const viewport = new PopulationFiltered(population);
     const expected = new PopulationFiltered(new Population(population.samples, population.values));
     // Two event filters are intersected per class
     const lifespanFilter = createEventFilter('lifespan', lifespan, Uint8Array.of(1, 0, 1));
     const spaceFilter = createEventFilter('space', space, Uint8Array.of(0, 1));
-    viewport.filter.setEventClasses(records.classes);
-    viewport.setRecords(records);
-    expected.setRecords(null);
     viewport.filter.batch(() => {
         viewport.filter.set(lifespanFilter);
         viewport.filter.set(spaceFilter);
@@ -641,19 +594,20 @@ test('a range change over records reads base values only at range edges and in t
 
 test('a base population sums groupings of event classes from its class sums without reading events', () => {
     const { population, lifespan, space, other, classes } = createFixture();
-    const classified = new Population(population.samples, population.values, 50, population.cumulative, classes);
-    const samples = trackReads(classified.samples);
-    const values = trackReads(classified.values);
+    // Events of a single class: groupings take a pass over the events
+    const expected = new Population(population.samples, population.values, 50, population.cumulative);
+    const samples = trackReads(population.samples);
+    const values = trackReads(population.values);
     const groupings: Grouping[] = [[lifespan, 3], [space, 5], [classes.ids, classes.events.length]];
-    classified.samples = samples.array;
-    classified.values = values.array;
+    population.samples = samples.array;
+    population.values = values.array;
 
     for (let i = 0; i < groupings.length; i++) {
         const [groups, count] = groupings[i];
 
         assert.deepEqual(
-            classified.aggregateBy(groups, count),
             population.aggregateBy(groups, count),
+            expected.aggregateBy(groups, count),
             `${count} groups`
         );
     }
@@ -661,13 +615,12 @@ test('a base population sums groupings of event classes from its class sums with
     assert.equal(samples.reads.length + values.reads.length, 0);
 
     // Other groupings take a pass over the events
-    assert.deepEqual(classified.aggregateBy(other, 2), population.aggregateBy(other, 2));
+    assert.deepEqual(population.aggregateBy(other, 2), expected.aggregateBy(other, 2));
 });
 
 test('single-event readers derive destinations and values from records without compiling all events', () => {
-    const { population, records } = createRegularFixture();
+    const { population } = createRegularFixture();
     const viewport = new PopulationFiltered(population);
-    viewport.setRecords(records);
     const samples = trackReads(population.samples);
     const values = trackReads(population.values);
     population.samples = samples.array;

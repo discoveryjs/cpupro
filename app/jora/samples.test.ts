@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import { Population, PopulationFiltered } from '../prepare/computations/population.js';
 import { methods } from './samples.js';
 import { createLineFixture } from '../../test/fixtures/profile.js';
+import { setEventPass } from '../../test/helpers/event-pass.js';
 
 test('a population event count includes zero-weight events within ranges and accepted by filters', () => {
     // Events at positions 0, 10, 10, 20, 20, 25 (ends at 25)
@@ -59,12 +60,15 @@ test.each([
         scopeBreakdown: breakdown
     };
 
-    // The window counts accepted events of a bin from its records and from the events without them
-    for (const records of [breakdown.population.records, null]) {
-        breakdown.populationWindow.setRecords(records);
+    const assertCounts = () => {
         assert.deepEqual(Array.from(methods.countSamples.call({ context }, row.count)), row.intersecting);
         assert.deepEqual(Array.from(methods.countSamplesDiscrete.call({ context }, row.count, undefined)), row.starts);
-    }
+    };
+
+    // The window counts accepted events of a bin from its records, and from its events in the event pass
+    assertCounts();
+    setEventPass(breakdown.populationWindow);
+    assertCounts();
 });
 
 test.each([
@@ -129,8 +133,7 @@ test.each([
         accepts: row.accepts && Uint8Array.from(row.accepts)
     });
 
-    for (const records of [null, window.population.records]) {
-        window.setRecords(records);
-        assert.deepEqual(Array.from(methods.countSamples.call({ context }, 1)), [row.expected]);
-    }
+    assert.deepEqual(Array.from(methods.countSamples.call({ context }, 1)), [row.expected]);
+    setEventPass(window);
+    assert.deepEqual(Array.from(methods.countSamples.call({ context }, 1)), [row.expected]);
 });
