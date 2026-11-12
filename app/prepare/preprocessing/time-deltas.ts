@@ -169,13 +169,16 @@ export function enumerateLongTimeDeltas(
     };
 }
 
-// Splits long time deltas into a sample of the allowed duration and a "(no samples)" sample after it; returns the new
-// index of every sample, then the new sample count, so relations to samples can follow them
+// Splits long time deltas into a sample of the allowed duration and a "(no samples)" sample after it. The last
+// allocation IDs of samples move with them as the samples do when their order is fixed; a "(no samples)" sample
+// records no allocation, so it takes the last allocation ID of the sample before it. Returns the last allocation IDs
+// of samples in the new order
 export function processLongTimeDeltas(
     longDeltas: LongTimeDeltas,
     timeDeltas: Uint32Array,
     samples: Uint32Array,
-    sampleScriptOffsets: Int32Array | null = null,
+    sampleScriptOffsets: Int32Array | null,
+    sampleAllocationIds: Uint32Array | null, // only the first samples may record one
     generatedNodes: GeneratedNodes
 ) {
     const {
@@ -186,9 +189,10 @@ export function processLongTimeDeltas(
 
     // the size of the original arrays before adding new samples for long time deltas
     const originalSize = timeDeltas.length - longTimeDeltasCount;
-    const sampleIndices = new Uint32Array(originalSize + 1);
-
-    sampleIndices[originalSize] = timeDeltas.length;
+    const recordedIds = sampleAllocationIds ?? new Uint32Array(0);
+    const recordedSamples = Math.min(recordedIds.length, originalSize);
+    const allocationIds = new Uint32Array(recordedSamples + longTimeDeltasCount);
+    let allocationIdsLength = 0;
 
     // create no-samples node
     const noSamplesNodeId = generatedNodes.addNode(
@@ -202,16 +206,25 @@ export function processLongTimeDeltas(
     for (let i = originalSize + longTimeDeltasCount - 1, j = originalSize - 1; i >= 0; i--, j--) {
         const delta = timeDeltas[j];
 
+        // the last sample recording an ID ends the IDs in the new order
+        if (j === recordedSamples - 1) {
+            allocationIdsLength = i + 1;
+        }
+
         if (delta > thresholdLongSampleDuration) {
             timeDeltas[i - 1] = allowedSampleDuration;
             timeDeltas[i] = delta - allowedSampleDuration;
             samples[i - 1] = samples[j];
             samples[i] = noSamplesNodeId;
-            sampleIndices[j] = i - 1;
 
             if (sampleScriptOffsets !== null) {
                 sampleScriptOffsets[i - 1] = sampleScriptOffsets[j];
                 sampleScriptOffsets[i] = -1;
+            }
+
+            if (j < recordedSamples) {
+                allocationIds[i - 1] = recordedIds[j];
+                allocationIds[i] = recordedIds[j];
             }
 
             // additional decrement since we write 2 elements
@@ -219,13 +232,18 @@ export function processLongTimeDeltas(
         } else {
             timeDeltas[i] = delta;
             samples[i] = samples[j];
-            sampleIndices[j] = i;
 
             if (sampleScriptOffsets !== null) {
                 sampleScriptOffsets[i] = sampleScriptOffsets[j];
             }
+
+            if (j < recordedSamples) {
+                allocationIds[i] = recordedIds[j];
+            }
         }
     }
 
-    return sampleIndices;
+    return sampleAllocationIds !== null
+        ? allocationIds.subarray(0, allocationIdsLength)
+        : null;
 }

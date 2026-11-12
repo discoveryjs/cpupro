@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { insertSamplesIntoAllocationMapping, mapAllocationsToSamples, mapLineRanges } from './line-mapping.js';
+import { hasAllocationsAfterSamples, mapAllocationsToSamples, mapLineRanges } from './line-mapping.js';
 
 test('maps time by sample timestamps and allocation ranges by overlapping occurrences', async () => {
     const { profile } = await createProfileFixture({ startTime: 100 });
@@ -67,18 +67,18 @@ test('allocations after the last sample map to the sample after the recorded one
     assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 1000 }]), [{ start: 0, end: 160 }]);
 });
 
-// A sample inserted after sample 1 takes its last allocation ID, so no allocation moves to it; sample 3 records
-// no ID, so allocation 13 maps to the sample after the recorded ones before and after the insertion
-test('allocations keep their samples when samples are inserted', () => {
-    const sampleAllocationIds = Uint32Array.of(10, 11, 12);
-    const allocationSamples = mapAllocationsToSamples([10, 11, 12, 13], sampleAllocationIds, 4);
-    const insertedAllocationIds = insertSamplesIntoAllocationMapping(
-        allocationSamples,
-        sampleAllocationIds,
-        Uint32Array.of(0, 1, 3, 4, 5)
-    );
+// Recorded IDs need not ascend with samples: the last allocation is after every sample only when its ID is after
+// all of them, which is when the mapping takes it to the sample after the recorded ones
+test.each([
+    { name: 'after every recorded ID', ids: [12, 21], recorded: [10, 20, 15], samples: 3, after: true },
+    { name: 'before a recorded ID out of order', ids: [12, 18], recorded: [10, 20, 15], samples: 3, after: false },
+    { name: 'with a sample recording no ID', ids: [12, 21], recorded: [10, 20], samples: 3, after: false },
+    { name: 'with no samples', ids: [12, 21], recorded: [], samples: 0, after: false }
+])('tells whether allocations were recorded after every sample: $name', row => {
+    const sampleAllocationIds = Uint32Array.from(row.recorded);
+    const allocationSamples = mapAllocationsToSamples(row.ids, sampleAllocationIds, row.samples);
+    const lastSample = allocationSamples[allocationSamples.length - 1];
 
-    assert.deepEqual([...allocationSamples], [0, 1, 3, 4]);
-    assert.deepEqual([...insertedAllocationIds], [10, 11, 11, 12]);
-    assert.deepEqual([...mapAllocationsToSamples([10, 11, 12, 13], insertedAllocationIds, 5)], [0, 1, 3, 4]);
+    assert.equal(hasAllocationsAfterSamples(row.ids, sampleAllocationIds, row.samples), row.after);
+    assert.equal(row.samples > 0 && lastSample === row.samples, row.after);
 });

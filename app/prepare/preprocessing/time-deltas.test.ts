@@ -51,16 +51,27 @@ test('keeps ordered input intact and tolerates a mapping shorter than samples', 
     assert.deepEqual(shortMapping, [3]);
 });
 
-// A long delta keeps the allowed duration and the rest goes to a "(no samples)" sample after it, so the samples
-// after it move by one
-test('gives the new index of every sample when long deltas are split', () => {
+// A long delta keeps the allowed duration and the rest goes to a "(no samples)" sample after it, which records no
+// allocation: it takes the last allocation ID of the sample before it. Samples after the recorded ones have no ID
+test.each([
+    { name: 'every sample', recorded: [5, 7, 9], expected: [5, 7, 7, 9] },
+    { name: 'the samples up to the long one', recorded: [5, 7], expected: [5, 7, 7] },
+    { name: 'the samples before the long one', recorded: [5], expected: [5] }
+])('moves the last allocation IDs with samples when long deltas are split, recorded by $name', row => {
     const timeDeltas = Uint32Array.of(10, 50, 10, 0);
     const samples = Uint32Array.of(1, 2, 3, 0);
     const generatedNodes = new GeneratedNodes(new Dictionary(), 4);
     const longDeltas = enumerateLongTimeDeltas(10, timeDeltas.subarray(0, 3))!;
-    const sampleIndices = processLongTimeDeltas(longDeltas, timeDeltas, samples, null, generatedNodes);
+    const sampleAllocationIds = processLongTimeDeltas(
+        longDeltas,
+        timeDeltas,
+        samples,
+        null,
+        Uint32Array.from(row.recorded),
+        generatedNodes
+    );
 
     assert.deepEqual([...timeDeltas], [10, 12, 38, 10]);
     assert.deepEqual([...samples], [1, 2, generatedNodes.noSamplesNodeId, 3]);
-    assert.deepEqual([...sampleIndices], [0, 1, 3, 4]);
+    assert.deepEqual([...sampleAllocationIds!], row.expected);
 });

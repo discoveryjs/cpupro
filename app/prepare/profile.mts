@@ -18,11 +18,7 @@ import { SourceMapping } from './preprocessing/source-mapping.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
 import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
-import {
-    createLineMapping,
-    insertSamplesIntoAllocationMapping,
-    mapAllocationsToSamples
-} from './computations/line-mapping.js';
+import { createLineMapping, hasAllocationsAfterSamples, mapAllocationsToSamples } from './computations/line-mapping.js';
 import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
@@ -347,19 +343,11 @@ async function createCallStackTimeline(
     // rather than to the last sample's stack, as long gaps without samples are samples of "(no samples)".
     // When the last samples have no recorded allocation ID, the allocations map to them
     const allocationIds = data._cpuproAllocationIds ?? null;
-    let allocationSamples: Uint32Array | null = null;
-    let afterProfileSample = false;
-
-    if (allocationIds !== null && sampleAllocationIds !== null) {
-        allocationSamples = await work('map allocations to CPU samples', () =>
-            mapAllocationsToSamples(allocationIds, sampleAllocationIds, dataSamples.length)
-        );
-
-        // A profile without samples has no sample after its end
-        if (allocationSamples.length > 0 && dataSamples.length > 0) {
-            afterProfileSample = allocationSamples[allocationSamples.length - 1] === dataSamples.length;
-        }
-    }
+    const afterProfileSample = (
+        allocationIds !== null &&
+        sampleAllocationIds !== null &&
+        hasAllocationsAfterSamples(allocationIds, sampleAllocationIds, dataSamples.length)
+    );
 
     // convert arrays into TypedArrays;
     // after this point these arrays will not change their length
@@ -406,32 +394,29 @@ async function createCallStackTimeline(
         }
     }
 
-    // The last allocation ID of every sample of the timeline, also of the samples inserted for long time deltas
-    let timelineAllocationIds = sampleAllocationIds;
-
-    // process long time deltas if needed
-    if (longDeltas !== null) {
-        const sampleIndices = await work('process long time deltas', () =>
+    // process long time deltas if needed; the last allocation IDs of samples follow the samples
+    const timelineAllocationIds = longDeltas !== null
+        ? await work('process long time deltas', () =>
             processLongTimeDeltas(
                 longDeltas,
                 timeDeltas,
                 samples,
                 sampleScriptOffsets,
+                sampleAllocationIds,
                 generatedNodes
             )
-        );
+        )
+        : sampleAllocationIds;
 
-        // The CPU sample of every allocation was found before "(no samples)" samples were inserted
-        if (allocationSamples !== null && sampleAllocationIds !== null) {
-            timelineAllocationIds = await work('insert samples into allocation mapping', () =>
-                insertSamplesIntoAllocationMapping(
-                    allocationSamples,
-                    sampleAllocationIds,
-                    sampleIndices
-                )
-            );
-        }
-    }
+    // The CPU sample of every allocation, among the samples of the timeline before the sample after the profile
+    const recordedSampleCount = afterProfileSample
+        ? samples.length - 1
+        : samples.length;
+    const allocationSamples = allocationIds !== null && timelineAllocationIds !== null
+        ? await work('map allocations to CPU samples', () =>
+            mapAllocationsToSamples(allocationIds, timelineAllocationIds, recordedSampleCount)
+        )
+        : null;
 
     // attach root GC node samples to previous call stack;
     // this operation produces new nodes

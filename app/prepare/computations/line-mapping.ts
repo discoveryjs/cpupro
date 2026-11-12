@@ -91,27 +91,27 @@ export function mapAllocationsToSamples(
     return allocationSamples;
 }
 
-// Moves the CPU sample of every allocation to the new index of the sample after samples are inserted among them:
-// `sampleIndices` gives the new index of every sample, then the new sample count. An inserted sample takes the last
-// allocation ID of the sample before it, so allocations keep their samples. Returns the last allocation ID of every
-// sample of the new order
-export function insertSamplesIntoAllocationMapping(
-    allocationSamples: Uint32Array,
+// Whether allocations were recorded after every sample: every sample records an ID and the last allocation's ID is
+// after all of them. Allocation IDs ascend, so the last allocation is after every sample another allocation passed,
+// and mapAllocationsToSamples() maps it to the sample after the recorded ones exactly then
+export function hasAllocationsAfterSamples(
+    allocationIds: AllocationIdVector,
     sampleAllocationIds: Uint32Array,
-    sampleIndices: Uint32Array
+    sampleCount: number
 ) {
-    const recordedSamples = Math.min(sampleAllocationIds.length, sampleIndices.length - 1);
-    const insertedAllocationIds = new Uint32Array(sampleIndices[recordedSamples]);
-
-    for (let i = 0; i < allocationSamples.length; i++) {
-        allocationSamples[i] = sampleIndices[allocationSamples[i]];
+    if (allocationIds.length === 0 || sampleCount === 0 || sampleAllocationIds.length < sampleCount) {
+        return false;
     }
 
-    for (let i = 0; i < recordedSamples; i++) {
-        insertedAllocationIds.fill(sampleAllocationIds[i], sampleIndices[i], sampleIndices[i + 1]);
+    const lastId = allocationIds[allocationIds.length - 1];
+
+    for (let i = 0; i < sampleCount; i++) {
+        if (sampleAllocationIds[i] >= lastId) {
+            return false;
+        }
     }
 
-    return insertedAllocationIds;
+    return true;
 }
 
 // Mappings between the memline and the timeline: the CPU sample of every allocation, and the last allocation ID
