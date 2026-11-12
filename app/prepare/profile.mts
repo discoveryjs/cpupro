@@ -154,8 +154,12 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         lines.push(timeline);
     }
 
-    // Original sources of the locations known so far are parsed while the memline is created
-    await work('prepare source maps', () => sourceMapping.prepareLocations());
+    // Original sources of the call stack locations are parsed while the memline is created
+    if (callStackSampledTreeSet !== null) {
+        await work('prepare source maps', () =>
+            sourceMapping.prepareLocations(callStackSampledTreeSet.source)
+        );
+    }
 
     // Create memline from allocation data if present
     const memline = await createMemline(
@@ -227,29 +231,24 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         });
     }
 
-    const originalLocations = await work('process source maps', () => sourceMapping.mapLocations());
-
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        // source mapped breakdowns are added to the breakdowns, they're not mapped again
+        const breakdownCount = line.breakdowns.length;
 
-        if (sourceMapping.hasSourceMaps) {
-            // source mapped breakdowns are added to the breakdowns, they're not mapped again
-            const breakdownCount = line.breakdowns.length;
+        for (let j = 0; j < breakdownCount; j++) {
+            const breakdown = line.breakdowns[j];
+            const sourceMappedBreakdown = await createSourceMappedBreakdown(
+                `${breakdown.kind}-sm`,
+                line,
+                breakdown,
+                dictionary,
+                sourceMapping,
+                work
+            );
 
-            for (let j = 0; j < breakdownCount; j++) {
-                const breakdown = line.breakdowns[j];
-                const sourceMappedBreakdown = await createSourceMappedBreakdown(
-                    `${breakdown.kind}-sm`,
-                    line,
-                    breakdown,
-                    dictionary,
-                    originalLocations,
-                    work
-                );
-
-                if (sourceMappedBreakdown !== null) {
-                    line.breakdowns.push(sourceMappedBreakdown);
-                }
+            if (sourceMappedBreakdown !== null) {
+                line.breakdowns.push(sourceMappedBreakdown);
             }
         }
 

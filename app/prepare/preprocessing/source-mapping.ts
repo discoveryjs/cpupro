@@ -2,9 +2,12 @@ import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import type { Ownership } from '../formats/types.js';
 import type { CpuProScript } from '../types.js';
+import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { SourceMapIndex } from '../misc/source-map.js';
 import { getFunctionAtSourceLineColumn, prepareScriptSources } from '../misc/script-function-resolution.js';
 import { createScript } from './scripts.js';
+
+const NOT_LOOKED_UP = -1;
 
 type ScriptSourceMap = {
     index: SourceMapIndex;
@@ -14,7 +17,7 @@ type ScriptSourceMap = {
 // Owns the original scripts of a session and the mapping of dictionary locations in source-mapped scripts
 // to locations in their original scripts. An original location belongs to the original function containing it,
 // regardless of the generated function, which may contain inlined or moved code of other original functions.
-// Dictionary locations are append-only, so the mapping is extended by the locations added since the previous call.
+// Only locations of the trees being mapped are mapped, as no other reader of the mapping exists.
 export class SourceMapping {
     #dictionary: Dictionary;
     #ownership: Ownership | null;
@@ -26,7 +29,6 @@ export class SourceMapping {
 
     // original positions of looked up locations to be resolved into original locations;
     // every lookup adds a batch of them, resolvable once parsing of its original scripts is done
-    #lookedUpLocationsCount: number = 0;
     #parsing: Promise<void>[]; // by batch
     #batchEnds: number[]; // by batch, end of the batch in pending locations
     #pendingLocations: number[];
@@ -34,8 +36,9 @@ export class SourceMapping {
     #pendingLines: number[];
     #pendingColumns: number[];
 
-    #originalLocations: Int32Array; // location index -> original location index, the same index when no original
-    #mappedLocationsCount: number = 0;
+    // location index -> original location index, the same index when there's no original location,
+    // NOT_LOOKED_UP for a location that no mapped tree has
+    #originalLocations: Int32Array;
 
     constructor(dictionary: Dictionary, ownership: Ownership | null = null, diagnose: Diagnose = dictionary.diagnose) {
         this.#dictionary = dictionary;
@@ -57,15 +60,31 @@ export class SourceMapping {
         return this.#sourceMaps.size > 0;
     }
 
-    // Looks up original positions of the locations added since the previous call and starts parsing
-    // of their original scripts, so the parsing can overlap with other work until mapLocations()
-    prepareLocations() {
+    // Looks up original positions of the locations of a tree that weren't looked up yet and starts parsing
+    // of their original scripts, so the parsing can overlap with other work until the tree is mapped
+    prepareLocations(source: SampledTreeSet['source']) {
         const { locations } = this.#dictionary;
+
+        if (source.dictionary !== locations) {
+            return;
+        }
+
+        const { nodes } = source;
         const originalScripts = new Set<CpuProScript>();
 
-        for (let i = this.#lookedUpLocationsCount; i < locations.length; i++) {
-            const location = locations[i];
+        this.#growOriginalLocations();
+
+        for (let i = 0; i < nodes.length; i++) {
+            const locationIndex = nodes[i];
+
+            if (this.#originalLocations[locationIndex] !== NOT_LOOKED_UP) {
+                continue;
+            }
+
+            const location = locations[locationIndex];
             const { script, callFrame } = location;
+
+            this.#originalLocations[locationIndex] = locationIndex;
 
             if (script === null || script.sourceMap === null) {
                 continue;
@@ -89,14 +108,12 @@ export class SourceMapping {
                 const originalScript = this.#getOriginalScript(script, sourceMap, sourceIndex);
 
                 originalScripts.add(originalScript);
-                this.#pendingLocations.push(i);
+                this.#pendingLocations.push(locationIndex);
                 this.#pendingScripts.push(originalScript);
                 this.#pendingLines.push(index.originalLine);
                 this.#pendingColumns.push(index.originalColumn);
             }
         }
-
-        this.#lookedUpLocationsCount = locations.length;
 
         // function ranges of original scripts are required to resolve call frames of original locations
         if (originalScripts.size > 0) {
@@ -105,12 +122,17 @@ export class SourceMapping {
         }
     }
 
-    // Returns a location index -> original location index map for all the dictionary locations
-    async mapLocations() {
+    // Returns a location index -> original location index map for the locations of a tree,
+    // null when the tree isn't a tree of locations
+    async mapLocations(source: SampledTreeSet['source']) {
         const dictionary = this.#dictionary;
         const { locations } = dictionary;
 
-        this.prepareLocations();
+        if (source.dictionary !== locations) {
+            return null;
+        }
+
+        this.prepareLocations(source);
 
         // registering happens here rather than on lookup, so the order of dictionary scripts and modules
         // doesn't depend on when the locations were looked up
@@ -132,7 +154,6 @@ export class SourceMapping {
         }
 
         const pendingLocations = this.#pendingLocations;
-        const resolvedLocations = new Int32Array(pendingLocations.length);
 
         // a batch is resolved while parsing of the following batches goes on
         for (let i = 0, j = 0; j < this.#batchEnds.length; j++) {
@@ -151,33 +172,22 @@ export class SourceMapping {
                     : dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
 
                 if (location.callFrame.noLocLocation === location) {
-                    resolvedLocations[i] = dictionary.resolveLocationIndex(callFrame);
+                    this.#originalLocations[pendingLocations[i]] = dictionary.resolveLocationIndex(callFrame);
                 } else if (location.callFrame.location === location) {
                     // the start of a generated function denotes the start of its original function
-                    resolvedLocations[i] = callFrame.location.id - 1;
+                    this.#originalLocations[pendingLocations[i]] = callFrame.location.id - 1;
                 } else {
-                    resolvedLocations[i] = dictionary.resolveLocationIndex(callFrame, script, -1, line, column);
+                    this.#originalLocations[pendingLocations[i]] = dictionary.resolveLocationIndex(
+                        callFrame,
+                        script,
+                        -1,
+                        line,
+                        column
+                    );
                 }
             }
         }
 
-        // original locations are added to the dictionary as well, they map to themselves
-        if (this.#originalLocations.length < locations.length) {
-            const newOriginalLocations = new Int32Array(Math.max(locations.length, 2 * this.#originalLocations.length));
-
-            newOriginalLocations.set(this.#originalLocations);
-            this.#originalLocations = newOriginalLocations;
-        }
-
-        for (let i = this.#mappedLocationsCount; i < locations.length; i++) {
-            this.#originalLocations[i] = i;
-        }
-
-        for (let i = 0; i < pendingLocations.length; i++) {
-            this.#originalLocations[pendingLocations[i]] = resolvedLocations[i];
-        }
-
-        this.#mappedLocationsCount = locations.length;
         this.#unregisteredScripts = [];
         this.#parsing = [];
         this.#batchEnds = [];
@@ -186,7 +196,22 @@ export class SourceMapping {
         this.#pendingLines = [];
         this.#pendingColumns = [];
 
+        // original locations are added to the dictionary
+        this.#growOriginalLocations();
+
         return this.#originalLocations.subarray(0, locations.length);
+    }
+
+    #growOriginalLocations() {
+        const locationCount = this.#dictionary.locations.length;
+
+        if (this.#originalLocations.length < locationCount) {
+            const originalLocations = new Int32Array(Math.max(locationCount, 2 * this.#originalLocations.length));
+
+            originalLocations.set(this.#originalLocations);
+            originalLocations.fill(NOT_LOOKED_UP, this.#originalLocations.length);
+            this.#originalLocations = originalLocations;
+        }
     }
 
     #getSourceMap(script: CpuProScript) {

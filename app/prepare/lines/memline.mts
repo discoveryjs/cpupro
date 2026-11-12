@@ -296,8 +296,10 @@ export async function createMemline(
     );
 
     // Original sources of the allocation locations are parsed while the rest of the profile is created
-    if (sourceMapping !== null) {
-        await work('prepare source maps', () => sourceMapping.prepareLocations());
+    if (sourceMapping !== null && vectorLocations !== null) {
+        await work('prepare source maps', () =>
+            sourceMapping.prepareLocations(vectorLocations)
+        );
     }
 
     const locationBreakdown = vectorLocations !== null

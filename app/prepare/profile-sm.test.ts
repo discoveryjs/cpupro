@@ -34,17 +34,20 @@ test('a source-mapped breakdown attributes generated functions to the original f
     compiled.sourceMap = JSON.parse(generator.toString());
 
     const line = profile.timeline!;
-    const originalLocations = await new SourceMapping(dictionary).mapLocations();
     const mapped = await createSourceMappedBreakdown(
         'call-stack-sm',
         line,
         line.breakdowns[0],
         dictionary,
-        originalLocations,
+        new SourceMapping(dictionary),
         noopWorkHandler
     );
-    const entries = mapped!.callFrames!.all.dict.entries.filter(item => item.entry.script?.originalFor === compiled);
-    const callFrames = entries.map(item => [item.entry.name, item.entry.start, item.entry.end, item.selfValue]);
+    const entries = mapped!.callFrames!.all.dict.entries.filter(item =>
+        item.entry.script?.originalFor === compiled
+    );
+    const callFrames = entries.map(item =>
+        [item.entry.name, item.entry.start, item.entry.end, item.selfValue]
+    );
 
     assert.deepEqual(callFrames, [
         ['first', source.indexOf('('), source.indexOf('\n'), 20],
@@ -69,13 +72,12 @@ test('a source-mapped breakdown shares the populations of its original and keeps
     const trees = await createSampledTreeSet(dictionary, source, noopWorkHandler);
     const original = await createLineBreakdown('extra', line, population, viewport, window, trees, noopWorkHandler);
     const kinds = line.breakdowns.map(breakdown => breakdown.kind);
-    const originalLocations = await sourceMapping.mapLocations();
     const mapped = await createSourceMappedBreakdown(
         'extra-sm',
         line,
         original,
         dictionary,
-        originalLocations,
+        sourceMapping,
         noopWorkHandler
     );
 

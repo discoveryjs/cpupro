@@ -53,8 +53,20 @@ function createFixture() {
     const generatedLocations = [20, 40, 60, 70].map(column =>
         dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, column)
     );
+    // a tree of the generated function and the locations in it
+    const tree = locationTree(dictionary, [generatedFunction.location.id - 1, ...generatedLocations]);
 
-    return { dictionary, generatedScript, generatedFunction, generatedLocations };
+    return { dictionary, generatedScript, generatedFunction, generatedLocations, tree };
+}
+
+// A tree of locations, as a breakdown has
+function locationTree(dictionary: Dictionary, locations: number[]) {
+    return {
+        dictionary: dictionary.locations,
+        parent: new Uint32Array(locations.length),
+        nodes: Uint32Array.from(locations),
+        sourceIdToNode: new Int32Array(0)
+    };
 }
 
 function describeOriginal(location: CpuProLocation) {
@@ -62,13 +74,13 @@ function describeOriginal(location: CpuProLocation) {
 }
 
 test('original locations belong to the original functions containing them', async () => {
-    const { dictionary, generatedScript, generatedFunction, generatedLocations } = createFixture();
+    const { dictionary, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
     const sourceMapping = new SourceMapping(dictionary, {
         api: 'test',
         areas: ['team-a'],
         files: { 'a.js': [0] }
     });
-    const originalLocations = await sourceMapping.mapLocations();
+    const originalLocations = (await sourceMapping.mapLocations(tree))!;
     const original = (index: number) => dictionary.locations[originalLocations[index]];
     const start = original(generatedFunction.location.id - 1);
     const [inner, helper, outer, noSource] = generatedLocations.map(original);
@@ -95,15 +107,14 @@ test('original locations belong to the original functions containing them', asyn
     assert.equal(noSource.script!.source, null);
     assert.equal(noSource.callFrame, dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(noSource.script!)]);
 
-    // original scripts and their locations map to themselves
-    assert.equal(originalLocations[start.id - 1], start.id - 1);
     assert.equal(dictionary.scripts.filter(script => script.originalFor === generatedScript).length, 3);
 });
 
 test('a location without a position belongs to the original function of its generated function start', async () => {
     const { dictionary, generatedFunction } = createFixture();
     const generatedNoPosition = dictionary.resolveLocation(generatedFunction);
-    const originalLocations = await new SourceMapping(dictionary).mapLocations();
+    const tree = locationTree(dictionary, [generatedFunction.location.id - 1, generatedNoPosition.id - 1]);
+    const originalLocations = (await new SourceMapping(dictionary).mapLocations(tree))!;
     const start = dictionary.locations[originalLocations[generatedFunction.location.id - 1]];
     const noPosition = dictionary.locations[originalLocations[generatedNoPosition.id - 1]];
 
@@ -111,33 +122,39 @@ test('a location without a position belongs to the original function of its gene
     assert.equal(noPosition.callFrame.name, 'outer');
 });
 
-test('maps only locations added since the previous call and reuses original scripts', async () => {
-    const { dictionary, generatedScript, generatedFunction } = createFixture();
+test('maps only locations of the mapped trees, each once, and reuses original scripts', async () => {
+    const { dictionary, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
     const sourceMapping = new SourceMapping(dictionary);
-    const first = await sourceMapping.mapLocations();
+    const first = [...(await sourceMapping.mapLocations(tree))!];
     const scriptsCount = dictionary.scripts.length;
     const added = dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, 25);
-    const second = await sourceMapping.mapLocations();
+    const unmapped = dictionary.resolveLocationIndex(generatedFunction);
+    const second = (await sourceMapping.mapLocations(locationTree(dictionary, [added, ...generatedLocations])))!;
     const original = dictionary.locations[second[added]];
+    const mapped = [generatedFunction.location.id - 1, ...generatedLocations];
+    const mappedOf = (originalLocations: ArrayLike<number>) => mapped.map(index => originalLocations[index]);
 
     assert.equal(second.length, dictionary.locations.length);
-    assert.deepEqual([...second.subarray(0, first.length)], [...first]);
+    assert.deepEqual(mappedOf(second), mappedOf(first));
     assert.equal(dictionary.scripts.length, scriptsCount);
     assert.deepEqual(describeOriginal(original), ['a.js', 1, 37, 'inner']);
+
+    // a location of no mapped tree isn't looked up
+    assert.equal(second[unmapped], -1);
 });
 
 test('original scripts looked up in advance are registered on mapping in the same order', async () => {
     const single = createFixture();
-    const singleLocations = await new SourceMapping(single.dictionary).mapLocations();
-    const { dictionary, generatedScript, generatedFunction, generatedLocations } = createFixture();
+    const singleLocations = (await new SourceMapping(single.dictionary).mapLocations(single.tree))!;
+    const { dictionary, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
     const sourceMapping = new SourceMapping(dictionary);
     const scriptsCount = dictionary.scripts.length;
 
-    sourceMapping.prepareLocations();
+    sourceMapping.prepareLocations(tree);
     assert.equal(dictionary.scripts.length, scriptsCount);
 
     const added = dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, 25);
-    const originalLocations = await sourceMapping.mapLocations();
+    const originalLocations = (await sourceMapping.mapLocations(locationTree(dictionary, [added])))!;
     const original = dictionary.locations[originalLocations[added]];
 
     const describeScript = (script: CpuProScript) => [script.id, script.url];
@@ -162,11 +179,20 @@ test('a dictionary without source maps maps locations to themselves', async () =
     const scriptsMap = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'plain.js', source: 'function f() {}' }]);
     const location = dictionary.resolveLocationIndex(null, scriptsMap.get(1)!, -1, 0, 9);
     const sourceMapping = new SourceMapping(dictionary);
-    const originalLocations = await sourceMapping.mapLocations();
+    const originalLocations = (await sourceMapping.mapLocations(locationTree(dictionary, [location, 0])))!;
 
     assert.equal(sourceMapping.hasSourceMaps, false);
     assert.equal(originalLocations[location], location);
-    assert.deepEqual([...originalLocations], dictionary.locations.map((_, index) => index));
+    assert.equal(originalLocations[0], 0);
+});
+
+test('a tree of call frames is not mapped', async () => {
+    const { dictionary } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
+    const tree = { ...locationTree(dictionary, [1]), dictionary: dictionary.callFrames };
+
+    assert.equal(await sourceMapping.mapLocations(tree), null);
+    assert.equal(sourceMapping.hasSourceMaps, false);
 });
 
 // Generated scripts with the source map, and locations of each script at the columns of line 0
@@ -187,7 +213,7 @@ function createScriptLocations(sourceMap: unknown, scriptCount: number, columns:
     };
     const locations = Array.from({ length: scriptCount }, locateColumns);
 
-    return { dictionary, locations };
+    return { dictionary, locations, tree: locationTree(dictionary, locations.flat()) };
 }
 
 test.each([
@@ -203,8 +229,8 @@ test.each([
         names: [],
         mappings
     };
-    const { dictionary, locations } = createScriptLocations(sourceMap, 1, [column]);
-    const originalLocations = await new SourceMapping(dictionary).mapLocations();
+    const { dictionary, locations, tree } = createScriptLocations(sourceMap, 1, [column]);
+    const originalLocations = (await new SourceMapping(dictionary).mapLocations(tree))!;
 
     assert.equal(originalLocations[locations[0][0]], locations[0][0]);
 });
@@ -217,8 +243,8 @@ test('a source listed twice gives one original script per generated script', asy
         names: [],
         mappings: 'AAAA,UCAA'
     };
-    const { dictionary, locations } = createScriptLocations(sourceMap, 2, [0, 10]);
-    const originalLocations = await new SourceMapping(dictionary).mapLocations();
+    const { dictionary, locations, tree } = createScriptLocations(sourceMap, 2, [0, 10]);
+    const originalLocations = (await new SourceMapping(dictionary).mapLocations(tree))!;
     const originalScript = (location: number) => dictionary.locations[originalLocations[location]].script;
     const originalScripts = locations.map(scriptLocations => scriptLocations.map(originalScript));
     const scriptsOfSource = dictionary.scripts.filter(script => script.url === 'a.js');
@@ -231,7 +257,7 @@ test('a source listed twice gives one original script per generated script', asy
 
 test('original scripts start parsing once per lookup, mapping waits for the parsing', async () => {
     let finishParsing = () => {};
-    const { dictionary } = createFixture();
+    const { dictionary, tree } = createFixture();
     const sourceMapping = new SourceMapping(dictionary);
     const parsing = new Promise<undefined>(resolve => finishParsing = () => resolve(undefined));
 
@@ -239,7 +265,7 @@ test('original scripts start parsing once per lookup, mapping waits for the pars
     prepareScriptSources.mockReturnValueOnce(parsing);
 
     let mapped = false;
-    const mapping = sourceMapping.mapLocations().then(() => mapped = true);
+    const mapping = sourceMapping.mapLocations(tree).then(() => mapped = true);
 
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(mapped, false);
@@ -250,24 +276,25 @@ test('original scripts start parsing once per lookup, mapping waits for the pars
     assert.deepEqual([...prepareScriptSources.mock.calls[0][0]].map(script => script.url), ['a.js', 'b.js', 'c.js']);
 
     // Without new locations there is nothing to parse
-    await sourceMapping.mapLocations();
+    await sourceMapping.mapLocations(tree);
     assert.equal(prepareScriptSources.mock.calls.length, 1);
 });
 
 test('mapping resolves locations of a lookup while original scripts of a later lookup are parsing', async () => {
     let finishParsing = () => {};
-    const { dictionary, generatedScript, generatedFunction } = createFixture();
+    const { dictionary, generatedScript, generatedFunction, tree } = createFixture();
     const sourceMapping = new SourceMapping(dictionary);
     const parsing = new Promise<undefined>(resolve => finishParsing = () => resolve(undefined));
     const callFrameNames = () => dictionary.callFrames.map(callFrame => callFrame.name);
 
-    sourceMapping.prepareLocations();
+    sourceMapping.prepareLocations(tree);
     const added = dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, 25);
+    const addedTree = locationTree(dictionary, [added]);
     prepareScriptSources.mockReturnValueOnce(parsing);
-    sourceMapping.prepareLocations();
+    sourceMapping.prepareLocations(addedTree);
 
     let mapped = false;
-    const mapping = sourceMapping.mapLocations();
+    const mapping = sourceMapping.mapLocations(addedTree);
     mapping.then(() => mapped = true);
 
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -275,7 +302,7 @@ test('mapping resolves locations of a lookup while original scripts of a later l
     assert.ok(callFrameNames().includes('helper'));
 
     finishParsing();
-    const originalLocations = await mapping;
+    const originalLocations = (await mapping)!;
 
     assert.deepEqual(describeOriginal(dictionary.locations[originalLocations[added]]), ['a.js', 1, 37, 'inner']);
 });

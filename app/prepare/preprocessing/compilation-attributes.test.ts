@@ -523,7 +523,6 @@ test.each([
     assert.equal('compilation' in profile, false);
     assert.equal(known.callFrame!.name, 'known');
     assert.equal(fresh.callFrame!.name, 'freshName');
-    assert.ok(profile.callFrames.some(frame => frame.script?.originalFor === fresh.callFrame!.script));
     assert.ok(completedBefore(stages, 'process source maps').includes('link compilation events'));
 });
 
