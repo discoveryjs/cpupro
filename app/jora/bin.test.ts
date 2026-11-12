@@ -1061,14 +1061,14 @@ test('mapped single-bin totals preserve wide sums with and without groups', asyn
     }
 });
 
-test('allocation mapping uses the axis viewport while retaining source totals', async () => {
+test('allocation mapping uses the axis viewport while retaining source values', async () => {
     const context = await createContext();
     const { source } = await createMappedSource(context.scopeLine);
     const [mapped] = methods.binLineToAxisLine.call({ context }, source, null, context.scopeLine, 10);
     const [own] = methods.binLineToAxisLine.call({ context }, context.scopeLine, null, context.scopeLine, 10);
 
     assert.deepEqual(Array.from(mapped.bins), [0, 0, 3, 4, 5, 0, 0, 0, 0, 0]);
-    assert.equal(mapped.total, 12);
+    assert.equal(mapped.value, 12);
     assert.deepEqual(Array.from(own.bins), [0, 0, 5, 10, 10, 0, 0, 0, 0, 0]);
     assert.equal(own.step, 10);
 });

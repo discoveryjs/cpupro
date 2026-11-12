@@ -1293,7 +1293,6 @@ export const methods = {
                 entry: entry ?? valuesLine.type,
                 color: attribute ? attributeEntryColor(entry!) : 'green',
                 value,
-                total: valuesLine.axisTotal,
                 totalBins: binSumVector,
                 step: valuesLine === axisLine
                     ? step
