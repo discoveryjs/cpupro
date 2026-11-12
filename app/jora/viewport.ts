@@ -1,6 +1,7 @@
 import { rangesEnvelope, type Range } from '../prepare/computations/coordinates.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
 import { lowerBound } from '../prepare/computations/misc.js';
+import { lineEventPositions } from '../prepare/computations/line-mapping.js';
 
 type ViewportLine = Pick<ProfileLine, 'kind' | 'range' | 'axisStart' | 'axisEnd' | 'viewport'>;
 type WindowLine = ViewportLine & Pick<ProfileLine, 'window'>;
@@ -80,8 +81,8 @@ export function subscribeLineZoom(line: Pick<ProfileLine, 'viewport' | 'zoom'>, 
 export function lineZoomMinLength(line: ZoomLine, profiles: readonly { timeline?: ViewportLine | null }[] = []) {
     const scope = lineViewport(line, profiles);
     const [range] = line.range.frame.rebase([scope]);
-    const { cumulative } = line.breakdowns[0].population;
-    const events = lowerBound(cumulative, range.end) - lowerBound(cumulative, range.start);
+    const { starts } = lineEventPositions(line);
+    const events = lowerBound(starts, range.end) - lowerBound(starts, range.start);
 
     return (scope.end - scope.start) * Math.min(1, ZOOM_MIN_EVENTS / events);
 }

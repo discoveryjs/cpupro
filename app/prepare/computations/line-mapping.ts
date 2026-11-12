@@ -3,6 +3,17 @@ import type { AllocationIdVector } from '../types.js';
 import { normalizeRanges, type RangeSet } from './coordinates.js';
 import { lowerBound } from './misc.js';
 
+// Positions of a line's events on its own axis: their starts and the end of the last one. Populations of a line
+// share them, so the first one gives them, until the structure of lines decides who owns the positions of events
+export function lineEventPositions(line: Pick<ProfileLine, 'breakdowns'>) {
+    const { cumulative, cumulativeEnd } = line.breakdowns[0].population;
+
+    return {
+        starts: cumulative,
+        end: cumulativeEnd
+    };
+}
+
 export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: RangeSet | null): RangeSet | null | undefined {
     const allocations = source.kind === 'memory' ? source : target;
     const time = source.kind === 'time' ? source : target;
@@ -16,10 +27,10 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
         return null;
     }
 
-    const allocationPopulation = allocations.breakdowns[0].population;
-    const timePopulation = time.breakdowns[0].population;
-    const allocationStarts = allocationPopulation.cumulative;
-    const timeStarts = timePopulation.cumulative;
+    const allocationPositions = lineEventPositions(allocations);
+    const timePositions = lineEventPositions(time);
+    const allocationStarts = allocationPositions.starts;
+    const timeStarts = timePositions.starts;
     const mapping = relation._mapping;
     const result: { start: number; end: number }[] = [];
 
@@ -31,10 +42,10 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
             if (first < last) {
                 result.push({
                     start: allocationStarts[first],
-                    end: allocationStarts[last] ?? allocationPopulation.cumulativeEnd
+                    end: allocationStarts[last] ?? allocationPositions.end
                 });
             }
-        } else if (end > 0 && start < allocationPopulation.cumulativeEnd) {
+        } else if (end > 0 && start < allocationPositions.end) {
             const first = Math.max(0, lowerBound(allocationStarts, start, true) - 1);
             // Allocations without a sample, after the CPU profile ended, have no time
             const last = Math.min(
@@ -45,7 +56,7 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
             if (first < last) {
                 result.push({
                     start: timeStarts[mapping[first]],
-                    end: timeStarts[mapping[last - 1] + 1] ?? timePopulation.cumulativeEnd
+                    end: timeStarts[mapping[last - 1] + 1] ?? timePositions.end
                 });
             }
         }

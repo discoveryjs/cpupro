@@ -28,11 +28,12 @@ export function scopeValueContent(name, content) {
     };
 }
 
-// Totals of an allocation attribute in the viewport populations of the scope line and the memline
+// Totals of an allocation attribute in the viewport populations of the scope line and the memline; the memline
+// population follows the scope breakdown, so changes of any of them are followed
 export function withViewportAttributeTotals(attributeName, content) {
     return withScopeValue('viewportTotals', `=[
         scopeBreakdown().populationViewport,
-        scopeProfile().memline.breakdowns[0].populationViewport
+        ...scopeProfile().memline.breakdowns.populationViewport
     ].[$]`, `
         $tracks: "${attributeName}".viewportAllocationAttribute();
         {

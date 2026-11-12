@@ -12,8 +12,26 @@ import { lowerBound } from '../prepare/computations/misc.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
 import type { BinRecords, EventSignatures, RangeRecords } from '../prepare/lines/event-signatures.js';
 
-function getCallStackPopulation(line: ProfileLine) {
-    return line.breakdowns.find(tree => tree.kind === 'call-stack')!.population;
+// The breakdown of a line whose populations a view of the scope breakdown reads: the scope breakdown on its own line,
+// otherwise the line's breakdown of the same kind (call stacks of the memline are of the timeline's trees), otherwise
+// the first one. A category filter accepts events by the categories of a breakdown's own attribution, so totals of
+// a line follow the scope breakdown rather than the order of breakdowns
+function lineBreakdown(line: ProfileLine, scopeBreakdown: ProfileLineBreakdown | null) {
+    if (scopeBreakdown === null) {
+        return line.breakdowns[0];
+    }
+
+    if (scopeBreakdown.line === line) {
+        return scopeBreakdown;
+    }
+
+    for (let i = 0; i < line.breakdowns.length; i++) {
+        if (line.breakdowns[i].kind === scopeBreakdown.kind) {
+            return line.breakdowns[i];
+        }
+    }
+
+    return line.breakdowns[0];
 }
 
 function attributeEntryColor(entry: ProfileLineAttribute['dict'][number]) {
@@ -33,8 +51,14 @@ export function lineAttributeTotals(line: ProfileLine, attribute: ProfileLineAtt
         return signatureTotals;
     }
 
-    // Values that are not a column of the signatures are aggregated over the line's events
-    return line.breakdowns[0].population.aggregateBy(values, dict.length).samplesTotal;
+    // Values that are not a column of the signatures are summed over the line's events
+    const totals = new Float64Array(dict.length);
+
+    for (let i = 0; i < values.length; i++) {
+        totals[values[i]] += line.values[i];
+    }
+
+    return totals;
 }
 
 function timestampBins(line: ProfileLine, viewport: Range | null, count: number, lastTime: number, origin = line.axisStart) {
@@ -1224,7 +1248,7 @@ export const methods = {
         }
 
         const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, this.context);
-        const populationBreakdown = scopeBreakdown?.line === valuesLine ? scopeBreakdown : valuesLine.breakdowns[0];
+        const populationBreakdown = lineBreakdown(valuesLine, scopeBreakdown);
         const lineMapping = valuesLine !== axisLine
             ? valuesLine.mappings[axisLine.type]
             : null;
@@ -1243,8 +1267,9 @@ export const methods = {
         const coversSource = skip >= 0 && skip + viewport.cumulativeEnd <= total;
 
         if (mappingToLine !== null) {
-            const { cumulative } = getCallStackPopulation(axisLine);
-            const axisViewport = (scopeBreakdown?.line === axisLine ? scopeBreakdown : axisLine.breakdowns[0])[scope];
+            const axisBreakdown = lineBreakdown(axisLine, scopeBreakdown);
+            const { cumulative } = axisBreakdown.population;
+            const axisViewport = axisBreakdown[scope];
             const coversAxis = skip >= 0 && skip + axisViewport.cumulativeEnd <= total;
             const targetBin = createTargetBinReader(axisViewport, cumulative, grid);
             // With a nondecreasing mapping, events with targets on the grid are one interval; one more

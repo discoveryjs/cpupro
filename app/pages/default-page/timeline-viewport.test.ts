@@ -542,6 +542,9 @@ test.each([
     const { profile, memline } = await createAllocationProfile('allocationType', ['small', 'large', 'unused']);
     const line = profile[lineType]!;
     const context = { ...pageContext(profile), scopeLine: line, scopeBreakdown: line.breakdowns[0] };
+    const memlineViewport = (kind: string) => memline.breakdowns
+        .find(breakdown => breakdown.kind === kind)!
+        .populationViewport;
 
     line.viewport.selection.setRanges(viewport);
     profile.timeline!.breakdowns[0].populationWindow.setRanges([]);
@@ -549,7 +552,12 @@ test.each([
 
     const { value } = lineMetricsValueContext(histAllocationTypes, null, { ...context, scopeViewport: { start: -100, end: 1000 } }, query).viewportTotals;
 
-    assert.deepEqual(propQuery(histAllocationTypes.metrics)(null, context), [line.breakdowns[0].populationViewport, memline.breakdowns[0].populationViewport]);
+    // Viewports of the memline follow its breakdowns: call stacks and locations, source-mapped ones share them
+    assert.deepEqual(propQuery(histAllocationTypes.metrics)(null, context), [
+        line.breakdowns[0].populationViewport,
+        memlineViewport('call-stack'),
+        memlineViewport('location')
+    ]);
     assert.deepEqual([value.tracks.map(track => track.value), value.total], [totals, total]);
 });
 

@@ -11,10 +11,11 @@ import { subtreeFromParent, nestedFromNodesSubtree } from '../prepare/computatio
 import type { Range } from '../prepare/computations/coordinates.js';
 import type { ProfileLine } from '../prepare/lines/types.js';
 import { createState, selectRange } from '../views/ruler-range.js';
-import { createLineFixture } from '../../test/fixtures/profile.js';
+import { createLineFixture, createProfileFixture } from '../../test/fixtures/profile.js';
 import { createLineMapping } from '../prepare/computations/line-mapping.js';
 import { EventSignatures } from '../prepare/lines/event-signatures.js';
 import { PopulationFiltered } from '../prepare/computations/population.js';
+import type { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 
 type HeapEvents = Parameters<typeof methods.binHeapTotal>[0];
 type FunctionCodes = Parameters<typeof methods.binScriptFunctionCodesTotal>[0];
@@ -1127,7 +1128,7 @@ test('allocation bins apply source and axis viewport participation, keeping Base
     assert.deepEqual([...context.scopeLine.values], [10, 10, 5]);
 });
 
-test('mapped bins take axis participation from the axis line scope breakdown, otherwise its first one', async () => {
+test('mapped bins take axis participation from the axis line scope breakdown, otherwise one of its kind', async () => {
     const context = await createContext();
     const axisBreakdown = context.scopeBreakdown;
     const { source } = await createMappedSource(context.scopeLine);
@@ -1145,6 +1146,52 @@ test('mapped bins take axis participation from the axis line scope breakdown, ot
     axisBreakdown.populationWindow.setRanges(null);
     assert.equal(value(), 12);
     other.destroy();
+});
+
+// Allocations of 16, 32, 48 and 64 bytes: with script categories excluded, call stacks reject them all, locations
+// accept the allocation of 64 bytes without a script. A breakdown's own attribution decides its category, and the scope
+// breakdown decides the population
+test.each([
+    {
+        name: 'call stacks of the memline',
+        scopeLine: 'memline',
+        kind: 'call-stack',
+        value: 0
+    },
+    {
+        name: 'locations of the memline',
+        scopeLine: 'memline',
+        kind: 'location',
+        value: 64
+    },
+    {
+        name: 'source-mapped locations of the memline',
+        scopeLine: 'memline',
+        kind: 'location-sm',
+        value: 64
+    },
+    {
+        name: 'call stacks of the timeline',
+        scopeLine: 'timeline',
+        kind: 'call-stack',
+        value: 0
+    }
+] as const)('allocations under a category filter follow the scope breakdown: $name', async row => {
+    const { profile } = await createProfileFixture();
+    const memline = profile.memline!;
+    const scopeLine = profile[row.scopeLine]!;
+    const context = {
+        scopeProfile: profile,
+        scopeLine,
+        scopeBreakdown: scopeLine.breakdowns.find(breakdown => breakdown.kind === row.kind)!,
+        data: { profiles: [profile] }
+    };
+
+    (memline.filters.get('category') as SetAttributeFilter).setSelection('exclude', ['script']);
+
+    const [track] = methods.binLineToAxisLine.call({ context }, memline, null, scopeLine, 1);
+
+    assert.equal(track.value, row.value);
 });
 
 test('the window of a source line, a range of its own axis, does not narrow its bins on another axis', async () => {
