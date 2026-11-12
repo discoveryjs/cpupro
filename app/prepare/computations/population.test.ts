@@ -39,6 +39,16 @@ describe('Population', () => {
         filtered.filter.remove('samples');
         assert.equal(population.cumulativeEnd, end);
     });
+
+    test('events of selected groups are those the groups count, in order', () => {
+        // Sample 2 is the sink, event 4 has a zero value
+        const samples = new Uint32Array([0, 2, 1, 2, 0, 1, 1, 0]);
+        const values = new Uint32Array([16, 12, 32, 48, 0, 8, 24, 4]);
+        const groups = Uint8Array.of(1, 1, 2, 0, 2, 2, 1, 0);
+        const population = new Population(samples, values, 2);
+
+        assert.deepEqual(population.groupEvents(groups, 3, [2, 1]), [Uint32Array.of(2, 5), Uint32Array.of(0, 6)]);
+    });
 });
 
 describe('PopulationFiltered', () => {
