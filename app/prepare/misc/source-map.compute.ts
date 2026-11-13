@@ -245,7 +245,7 @@ const mappingsJavaScriptApi = {
 
                     // The decisions of a segment take the fields before it, which the fields after the generated
                     // column still are. The spec doesn't require segments of a line to be sorted by generated column,
-                    // a lookup scans an unsorted line whole
+                    // lookups sort an unsorted line
                     if (lineSegments > 0 && column < generatedColumn) {
                         unsortedLines[unsortedLineCount++] = line;
                     }

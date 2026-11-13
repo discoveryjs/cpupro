@@ -129,9 +129,23 @@ test.each([
         name: 'the last line',
         // line 0: column 0 → a.js 0:0; line 1: column 10 → a.js 0:0, column 4 → b.js 1:2
         mappings: 'AAAA;UAAA,NCCE'
+    },
+    {
+        name: 'a line with segments at the same column',
+        // line 0: column 10 → b.js 0:0, column 4 → a.js 0:0, column 10 → a.js 0:0, which comes first at the column
+        mappings: 'UCAA,NDAA,MAAA'
     }
 ])('resolves positions on unsorted segments of $name as source-map-js does', row => {
     assertConsumerPositions(createSourceMap(undefined, ['a.js', 'b.js'], row.mappings), 4, 12);
+});
+
+test('resolves positions on a long unsorted line as source-map-js does', () => {
+    // a line of tens of thousands of segments, one of them 16 columns before the previous one's column; lookups
+    // over the columns of the line take seconds when each lookup decodes the whole line
+    const segmentCount = 30000;
+    const mappings = 'AAAA' + ',CAAC'.repeat(segmentCount / 2) + ',hBAAgB' + ',CAAC'.repeat(segmentCount / 2);
+
+    assertConsumerPositions(createSourceMap(undefined, ['a.js'], mappings), 2, segmentCount + 10);
 });
 
 test('resolves positions on lines of many segments as source-map-js does', () => {

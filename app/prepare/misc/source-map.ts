@@ -108,6 +108,15 @@ export type OriginalPosition = {
     column: number;
 };
 
+// The segments covering the columns of an unsorted line, by column ascending; a source of -1 for a segment
+// without an original position
+type SortedLine = {
+    columns: Int32Array;
+    sources: Int32Array;
+    lines: Int32Array;
+    originalColumns: Int32Array;
+};
+
 export class SourceMapIndex {
     sources: string[];
     sourcesContent: (string | null)[];
@@ -117,6 +126,7 @@ export class SourceMapIndex {
     #checkpoints: Int32Array;
     #lineCheckpoints: Uint32Array;
     #unsortedLines: Set<number> | null;
+    #sortedLines: Map<number, SortedLine>; // of the unsorted lines looked up
 
     constructor(sourceMap: SourceMap) {
         const sourceRoot = sourceMap.sourceRoot
@@ -143,11 +153,12 @@ export class SourceMapIndex {
         this.#checkpoints = index.checkpoints;
         this.#lineCheckpoints = index.lineCheckpoints;
         this.#unsortedLines = index.unsortedLines;
+        this.#sortedLines = new Map();
     }
 
-    // The checkpoint to decode a line from for a lookup at a column: the last one of the line at or before the column,
-    // or the first one of the line when the line is unsorted; -1 when the line has no segments at or before the column
-    #findCheckpoint(line: number, column: number, unsortedLine: boolean) {
+    // The checkpoint to decode a sorted line from for a lookup at a column: the last one of the line at or before
+    // the column; -1 when the line has no segments at or before the column
+    #findCheckpoint(line: number, column: number) {
         const checkpoints = this.#checkpoints;
         const lineCheckpoints = this.#lineCheckpoints;
 
@@ -160,10 +171,6 @@ export class SourceMapIndex {
 
         if (lineStart === lineEnd) {
             return -1;
-        }
-
-        if (unsortedLine) {
-            return lineStart;
         }
 
         let low = lineStart;
@@ -188,8 +195,20 @@ export class SourceMapIndex {
     // at the rightmost column at or before the column on the same line. Returns the original position of the segment,
     // or null when there is no such segment or it has no original position
     findOriginalPosition(line: number, column: number): OriginalPosition | null {
-        const unsortedLine = this.#unsortedLines !== null && this.#unsortedLines.has(line);
-        const checkpoint = this.#findCheckpoint(line, column, unsortedLine);
+        // PERF: A lookup on an unsorted line would decode the whole line, and a minified bundle is a single line
+        // of up to a million segments, so the line is sorted once, on its first lookup
+        if (this.#unsortedLines !== null && this.#unsortedLines.has(line)) {
+            let sortedLine = this.#sortedLines.get(line);
+
+            if (sortedLine === undefined) {
+                sortedLine = this.#sortLine(line);
+                this.#sortedLines.set(line, sortedLine);
+            }
+
+            return this.#findSortedLinePosition(sortedLine, column);
+        }
+
+        const checkpoint = this.#findCheckpoint(line, column);
 
         if (checkpoint === -1) {
             return null;
@@ -225,10 +244,6 @@ export class SourceMapIndex {
             const generatedColumn = fields[GENERATED_COLUMN];
 
             if (generatedColumn > column) {
-                if (unsortedLine) {
-                    continue;
-                }
-
                 break;
             }
 
@@ -258,6 +273,132 @@ export class SourceMapIndex {
             source: segmentSource,
             line: segmentLine,
             column: segmentOriginalColumn
+        };
+    }
+
+    // The segments covering the columns of an unsorted line: its segments decoded and ordered by column
+    #sortLine(line: number): SortedLine {
+        const mappings = this.#mappings;
+        const fields = this.#fields;
+        const checkpointIndex = this.#lineCheckpoints[line] * CHECKPOINT_SIZE;
+        const segmentColumns: number[] = [];
+        const segmentSources: number[] = [];
+        const segmentLines: number[] = [];
+        const segmentOriginalColumns: number[] = [];
+
+        fields[GENERATED_COLUMN] = 0;
+        fields[SOURCE] = this.#checkpoints[checkpointIndex + CHECKPOINT_SOURCE];
+        fields[ORIGINAL_LINE] = this.#checkpoints[checkpointIndex + CHECKPOINT_ORIGINAL_LINE];
+        fields[ORIGINAL_COLUMN] = this.#checkpoints[checkpointIndex + CHECKPOINT_ORIGINAL_COLUMN];
+
+        for (let i = this.#checkpoints[checkpointIndex + CHECKPOINT_OFFSET]; i < mappings.length;) {
+            const code = mappings.charCodeAt(i);
+
+            if (code === 59 /* ; */) {
+                break;
+            }
+
+            if (code === 44 /* , */) {
+                i++;
+                continue;
+            }
+
+            i = decodeSegment(mappings, i, fields);
+
+            // a segment of 4 or 5 fields has an original position
+            const source = fields[SEGMENT_FIELD_COUNT] >= 4
+                ? fields[SOURCE]
+                : -1;
+
+            segmentColumns.push(fields[GENERATED_COLUMN]);
+            segmentSources.push(source);
+            segmentLines.push(fields[ORIGINAL_LINE]);
+            segmentOriginalColumns.push(fields[ORIGINAL_COLUMN]);
+        }
+
+        // the segments by column; of the segments at a column, the one covering it is the first in the order
+        // of source-map-js
+        const segmentCount = segmentColumns.length;
+        const order = new Uint32Array(segmentCount);
+        const byColumn = (a: number, b: number) => segmentColumns[a] - segmentColumns[b];
+        const columns = new Int32Array(segmentCount);
+        const sources = new Int32Array(segmentCount);
+        const lines = new Int32Array(segmentCount);
+        const originalColumns = new Int32Array(segmentCount);
+        let columnCount = 0;
+
+        for (let i = 0; i < segmentCount; i++) {
+            order[i] = i;
+        }
+
+        order.sort(byColumn);
+
+        for (let i = 0; i < segmentCount; i++) {
+            const segment = order[i];
+            const column = segmentColumns[segment];
+            const source = segmentSources[segment];
+            const originalLine = segmentLines[segment];
+            const originalColumn = segmentOriginalColumns[segment];
+
+            if (columnCount === 0 || columns[columnCount - 1] !== column) {
+                columnCount++;
+            } else if (!precedes(
+                source,
+                originalLine,
+                originalColumn,
+                sources[columnCount - 1],
+                lines[columnCount - 1],
+                originalColumns[columnCount - 1]
+            )) {
+                continue;
+            }
+
+            columns[columnCount - 1] = column;
+            sources[columnCount - 1] = source;
+            lines[columnCount - 1] = originalLine;
+            originalColumns[columnCount - 1] = originalColumn;
+        }
+
+        return {
+            columns: columns.subarray(0, columnCount),
+            sources: sources.subarray(0, columnCount),
+            lines: lines.subarray(0, columnCount),
+            originalColumns: originalColumns.subarray(0, columnCount)
+        };
+    }
+
+    // The original position at the rightmost column at or before a column of a sorted line
+    #findSortedLinePosition(sortedLine: SortedLine, column: number): OriginalPosition | null {
+        const { columns } = sortedLine;
+        let low = 0;
+        let high = columns.length - 1;
+        let index = -1;
+
+        while (low <= high) {
+            const mid = (low + high) >>> 1;
+
+            if (columns[mid] <= column) {
+                index = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+
+        if (index === -1) {
+            return null;
+        }
+
+        const source = sortedLine.sources[index];
+
+        if (source === -1 || source >= this.sources.length) {
+            return null;
+        }
+
+        return {
+            source,
+            line: sortedLine.lines[index],
+            column: sortedLine.originalColumns[index]
         };
     }
 }
