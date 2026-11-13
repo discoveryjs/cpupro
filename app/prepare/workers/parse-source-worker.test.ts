@@ -16,7 +16,6 @@ import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 type Message = {
     scripts: ParseSourceWorkerScriptResult[];
     ranges: FunctionRangeColumns;
-    parents: Int32Array<ArrayBuffer>;
     starts: Uint32Array<ArrayBuffer>;
     indexes: Int32Array<ArrayBuffer>;
     lineStarts: Uint32Array;
@@ -41,7 +40,7 @@ function columnBuffers(message: Message) {
         }
     }
 
-    buffers.push(message.parents.buffer, message.starts.buffer, message.indexes.buffer, message.lineStarts.buffer);
+    buffers.push(message.starts.buffer, message.indexes.buffer, message.lineStarts.buffer);
 
     return buffers;
 }
@@ -104,8 +103,7 @@ test('posts ranges, their indexes and line starts of all scripts in columns of o
             parsed,
             ranges: readFunctionRanges(message.ranges, offset, rangeCount, message.types),
             starts: message.starts.subarray(indexOffset, indexOffset + indexCount),
-            indexes: message.indexes.subarray(indexOffset, indexOffset + indexCount),
-            parents: message.parents.subarray(offset, offset + rangeCount)
+            indexes: message.indexes.subarray(indexOffset, indexOffset + indexCount)
         };
 
         if (error !== undefined) {

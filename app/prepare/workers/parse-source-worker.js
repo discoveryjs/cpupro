@@ -53,7 +53,6 @@ function createColumns(scriptRanges, scriptLineStarts) {
     }
 
     const ranges = createFunctionRangeColumns(rangeCount);
-    const parents = new Int32Array(rangeCount);
     const starts = new Uint32Array(indexCount);
     const indexes = new Int32Array(indexCount);
     const lineStarts = new Uint32Array(lineCount);
@@ -63,7 +62,6 @@ function createColumns(scriptRanges, scriptLineStarts) {
         const functionRanges = scriptRanges[i];
 
         writeFunctionRanges(ranges, offset, functionRanges.ranges, types);
-        parents.set(functionRanges.parents, offset);
         starts.set(functionRanges.starts, indexOffset);
         indexes.set(functionRanges.indexes, indexOffset);
         lineStarts.set(scriptLineStarts[i], lineOffset);
@@ -74,7 +72,6 @@ function createColumns(scriptRanges, scriptLineStarts) {
 
     return {
         ranges,
-        parents,
         starts,
         indexes,
         lineStarts,
@@ -93,7 +90,7 @@ function columnBuffers(columns) {
         }
     }
 
-    buffers.push(columns.parents.buffer, columns.starts.buffer, columns.indexes.buffer, columns.lineStarts.buffer);
+    buffers.push(columns.starts.buffer, columns.indexes.buffer, columns.lineStarts.buffer);
 
     return buffers;
 }

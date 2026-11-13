@@ -10,7 +10,6 @@ import {
     type FunctionRange
 } from './parse-script-source-ranges.js';
 import {
-    findFunctionAtLineColumn,
     findFunctionAtPosition,
     getFunctionAtScriptOffset,
     getFunctionAtSourceLineColumn,
@@ -140,7 +139,14 @@ test('prefers a function starting at a shared boundary to the preceding function
 
     assert.equal(first.end, second.callFrameStart);
     assert.equal(findFunctionAtPosition(ranges, second.callFrameStart), second);
-    assert.equal(findFunctionAtLineColumn(ranges, second.callFrameStartLine, second.callFrameStartColumn), second);
+    assert.equal(
+        getFunctionEndFromScriptLineColumn(
+            createScriptFixture(source).script,
+            second.callFrameStartLine - 1,
+            second.callFrameStartColumn
+        ),
+        second.end
+    );
 });
 
 test.each([
@@ -159,7 +165,8 @@ test.each([
 ])('agrees with an inclusive runtime-range oracle for %s', source => {
     const ranges = parseScriptSourceRanges(source, 'fixture.js', true);
     const offsets = Array.from({ length: source.length + 2 }, (_, offset) => offset);
-    const functionsAtOffsets = getFunctionsAtScriptOffsets(createScriptFixture(source).script, offsets);
+    const { script } = createScriptFixture(source);
+    const functionsAtOffsets = getFunctionsAtScriptOffsets(script, offsets);
 
     for (let i = 0; i <= source.length + 1; i++) {
         const startsAt = (range: FunctionRange) => range.callFrameStart === i;
@@ -168,13 +175,22 @@ test.each([
         const expected =
             shortestRange(ranges.ranges, 'callFrameStart', startsAt) ??
             shortestRange(ranges.ranges, 'callFrameStart', contains);
-        const preceding = source.slice(0, i).split('\n');
-        const line = preceding.length;
-        const column = preceding[line - 1].length + Math.max(0, i - source.length);
 
         assert.equal(findFunctionAtPosition(ranges, i), expected, `offset ${i}`);
-        assert.equal(findFunctionAtLineColumn(ranges, line, column), expected, `line/column at ${i}`);
         assert.deepEqual(functionsAtOffsets[i], expected, `ascending offsets at ${i}`);
+
+        // V8 positions lie in the source
+        if (i <= source.length) {
+            const preceding = source.slice(0, i).split('\n');
+            const line = preceding.length - 1;
+            const column = preceding[line].length;
+
+            assert.equal(
+                getFunctionEndFromScriptLineColumn(script, line, column),
+                expected?.end ?? -1,
+                `function end by line/column at ${i}`
+            );
+        }
     }
 });
 

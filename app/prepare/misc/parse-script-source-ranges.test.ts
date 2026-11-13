@@ -62,9 +62,7 @@ test('source ranges include leading comments and declaration prefixes, runtime r
         callFrameStart: range.callFrameStart,
         callFrameStartLine: range.callFrameStartLine,
         callFrameStartColumn: range.callFrameStartColumn,
-        end: range.end,
-        endLine: range.endLine,
-        endColumn: range.endColumn
+        end: range.end
     });
 
     assert.deepEqual(ranges.map(coordinates), [
@@ -74,9 +72,7 @@ test('source ranges include leading comments and declaration prefixes, runtime r
             callFrameStart: 26,
             callFrameStartLine: 2,
             callFrameStartColumn: 14,
-            end: 68,
-            endLine: 4,
-            endColumn: 1
+            end: 68
         },
         {
             name: 'inner',
@@ -84,9 +80,7 @@ test('source ranges include leading comments and declaration prefixes, runtime r
             callFrameStart: 61,
             callFrameStartLine: 3,
             callFrameStartColumn: 30,
-            end: 66,
-            endLine: 3,
-            endColumn: 35
+            end: 66
         }
     ]);
 });

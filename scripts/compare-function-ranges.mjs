@@ -20,9 +20,7 @@ const FIELDS = [
     'end',
     'callFrameStart',
     'callFrameStartLine',
-    'callFrameStartColumn',
-    'endLine',
-    'endColumn'
+    'callFrameStartColumn'
 ];
 
 // Node strips types of the TypeScript modules, their imports name the modules with .js

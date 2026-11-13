@@ -160,47 +160,6 @@ function functionAtBoundary(functionRanges: FunctionRanges, rangeIndex: number, 
 //     return candidate;
 // }
 
-function comparePositions(lineA: number, columnA: number, lineB: number, columnB: number) {
-    return lineA !== lineB
-        ? lineA - lineB
-        : columnA - columnB;
-}
-
-// The innermost function containing a position, its start and end included;
-// positions are 1-based lines and 0-based columns
-export function findFunctionAtLineColumn(functionRanges: FunctionRanges, line: number, column: number) {
-    const { ranges, parents } = functionRanges;
-    let left = 0;
-    let right = ranges.length;
-
-    // the last range starting at or before the position
-    while (left < right) {
-        const middle = (left + right) >>> 1;
-        const range = ranges[middle];
-
-        if (comparePositions(range.callFrameStartLine, range.callFrameStartColumn, line, column) <= 0) {
-            left = middle + 1;
-        } else {
-            right = middle;
-        }
-    }
-
-    // ranges nest, so a range containing the position is the last range starting before it or one of its enclosing ranges
-    let index = left - 1;
-
-    while (index !== -1) {
-        const range = ranges[index];
-
-        if (comparePositions(range.endLine, range.endColumn, line, column) >= 0) {
-            return range;
-        }
-
-        index = parents[index];
-    }
-
-    return null;
-}
-
 export function getFunctionAtScriptOffset(script: CpuProScript | null, offset: number) {
     const functionRanges = getScriptFunctionRanges(script);
 
@@ -351,8 +310,8 @@ export function getFunctionEndFromScriptLineColumn(script: CpuProScript | null, 
     const functionRanges = getScriptFunctionRanges(script);
 
     if (functionRanges) {
-        // Function ranges have 1-based lines and 0-based columns, V8 positions are 0-based
-        const func = findFunctionAtLineColumn(functionRanges, line + 1, column);
+        // V8 positions are 0-based lines and columns of the start of a function
+        const func = findFunctionAtPosition(functionRanges, getScriptOffsetFromLineColumn(script, line, column));
         // const lines = script._lines ??= createLineBoundaries(script.source);
         // const pos = lines.getOffset(line + 1, column + 1);
         // // const alt = functionRanges.find(fr => fr.start <= pos && pos <= fr.end);
@@ -386,7 +345,6 @@ type ParseWorkerPayload = Array<{
 type ParseWorkerResult = {
     scripts: ParseSourceWorkerScriptResult[];
     ranges: FunctionRangeColumns;
-    parents: Int32Array<ArrayBuffer>;
     starts: Uint32Array<ArrayBuffer>;
     indexes: Int32Array<ArrayBuffer>;
     lineStarts: Uint32Array;
@@ -655,7 +613,6 @@ async function parseScriptBucket(scripts: CpuProScript[], diagnose: Diagnose) {
         const {
             scripts: scriptParsedResults,
             ranges: rangeColumns,
-            parents,
             starts,
             indexes,
             lineStarts,
@@ -673,8 +630,7 @@ async function parseScriptBucket(scripts: CpuProScript[], diagnose: Diagnose) {
                 parsed,
                 ranges: readFunctionRanges(rangeColumns, rangeOffset, rangeCount, types),
                 starts: starts.subarray(indexOffset, indexOffset + indexCount),
-                indexes: indexes.subarray(indexOffset, indexOffset + indexCount),
-                parents: parents.subarray(rangeOffset, rangeOffset + rangeCount)
+                indexes: indexes.subarray(indexOffset, indexOffset + indexCount)
             };
 
             if (error !== undefined) {

@@ -148,8 +148,6 @@ function createRange(node: Node, parent: Node | null, code: string, parenStarts:
         defaultConstructor: isClassWithoutConstructor(node),
         start: leadingComment !== undefined ? leadingComment.start : node.start,
         end: node.end,
-        endLine: node.loc.end.line,
-        endColumn: node.loc.end.column,
         callFrameStart,
         callFrameStartLine,
         callFrameStartColumn,

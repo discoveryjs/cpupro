@@ -7,7 +7,6 @@ export type FunctionRanges = {
     ranges: FunctionRange[];
     starts: Uint32Array<ArrayBuffer>;
     indexes: Int32Array<ArrayBuffer>;
-    parents: Int32Array<ArrayBuffer>; // per range: the nearest enclosing range, -1 for a top-level range
 };
 export type FunctionRange = {
     type: string;
@@ -18,8 +17,6 @@ export type FunctionRange = {
     callFrameStartColumn: number;
     start: number; // with the leading comments
     end: number;
-    endLine: number;
-    endColumn: number;
     selfSize: number;
 }
 // Function ranges of several scripts as columns, the ranges of a script follow the ranges of the previous one;
@@ -41,8 +38,6 @@ export function createFunctionRangeColumns(count: number): FunctionRangeColumns 
         defaultConstructor: new Uint8Array(count),
         start: new Uint32Array(count),
         end: new Uint32Array(count),
-        endLine: new Uint32Array(count),
-        endColumn: new Uint32Array(count),
         callFrameStart: new Uint32Array(count),
         callFrameStartLine: new Uint32Array(count),
         callFrameStartColumn: new Uint32Array(count),
@@ -71,8 +66,6 @@ export function writeFunctionRanges(
         columns.defaultConstructor[index] = range.defaultConstructor ? 1 : 0;
         columns.start[index] = range.start;
         columns.end[index] = range.end;
-        columns.endLine[index] = range.endLine;
-        columns.endColumn[index] = range.endColumn;
         columns.callFrameStart[index] = range.callFrameStart;
         columns.callFrameStartLine[index] = range.callFrameStartLine;
         columns.callFrameStartColumn[index] = range.callFrameStartColumn;
@@ -98,8 +91,6 @@ export function readFunctionRanges(
             defaultConstructor: columns.defaultConstructor[index] === 1,
             start: columns.start[index],
             end: columns.end[index],
-            endLine: columns.endLine[index],
-            endColumn: columns.endColumn[index],
             callFrameStart: columns.callFrameStart[index],
             callFrameStartLine: columns.callFrameStartLine[index],
             callFrameStartColumn: columns.callFrameStartColumn[index],
@@ -140,8 +131,7 @@ export function parseScriptSourceRanges(
         parsed: false,
         ranges: [],
         starts: new Uint32Array(),
-        indexes: new Int32Array(),
-        parents: new Int32Array()
+        indexes: new Int32Array()
     };
     let parsed: ParsedFunctionRanges;
 
@@ -166,22 +156,19 @@ export function parseScriptSourceRanges(
     return functionRanges;
 }
 
-// Ranges of parsed functions with lines (1-based) and columns (0-based) of their call frame starts and ends
+// Ranges of parsed functions with the line (1-based) and column (0-based) of their call frame starts
 function createFunctionRanges(parsed: ParsedFunctionRanges, lines: ReturnType<typeof createLineBoundaries>) {
     const ranges: FunctionRange[] = new Array(parsed.count);
 
     for (let i = 0; i < parsed.count; i++) {
         const callFrameStart = parsed.callFrameStart[i];
-        const end = parsed.end[i];
 
         ranges[i] = {
             type: functionRangeTypes[parsed.type[i]],
             name: parsed.name[i] ?? '',
             defaultConstructor: parsed.defaultConstructor[i],
             start: parsed.start[i],
-            end,
-            endLine: lines.getLine(end),
-            endColumn: lines.getColumn(end) - 1,
+            end: parsed.end[i],
             callFrameStart,
             callFrameStartLine: lines.getLine(callFrameStart),
             callFrameStartColumn: lines.getColumn(callFrameStart) - 1,
@@ -195,7 +182,6 @@ function createFunctionRanges(parsed: ParsedFunctionRanges, lines: ReturnType<ty
 function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
     const rangeStarts: number[] = [0];
     const rangeIndexes: number[] = [-1];
-    const parents = new Int32Array(ranges.length);
     const stack: number[] = [-1];
     let lastPos = 0;
 
@@ -229,8 +215,6 @@ function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
             rangeIndexes[rangeIndexes.length - 1] = i;
         }
 
-        // ranges ending before this one starts are popped, so the stack holds its enclosing ranges
-        parents[i] = stack[stack.length - 1];
         stack.push(i);
     }
 
@@ -251,7 +235,6 @@ function buildFunctionRangesIndex({ ranges }: FunctionRanges) {
 
     return {
         starts: new Uint32Array(rangeStarts),
-        indexes: new Int32Array(rangeIndexes),
-        parents
+        indexes: new Int32Array(rangeIndexes)
     };
 }
