@@ -190,7 +190,11 @@ function resolveCompilationCallFrame(
         return dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
     }
 
-    const candidate = dictionary.resolveLocationCallFrame(script, start, position.line, position.column);
+    // The function at the start gives the candidate frame, as the dictionary resolves a location by it; without
+    // a function there, the dictionary finds a frame by the location
+    const candidate = range !== null
+        ? dictionary.resolveFunctionRangeCallFrame(script, range)
+        : dictionary.resolveLocationCallFrame(script, start, position.line, position.column);
 
     if (matchCallFrameIdentity(candidate, identity)) {
         return candidate;
