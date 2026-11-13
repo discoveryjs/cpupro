@@ -1,4 +1,5 @@
 import type { CpuProCompilationRecord } from '../../app/prepare/types.js';
+import { indexCompilationStages, prepareCompilationSubjects } from '../../app/prepare/preprocessing/script-compilation.js';
 
 // A complete compilation record of script 7, without source position details, allocations or trace event provenance
 export function createCompilationRecord(fields: Partial<CpuProCompilationRecord> = {}): CpuProCompilationRecord {
@@ -21,4 +22,13 @@ export function createCompilationRecord(fields: Partial<CpuProCompilationRecord>
         stage: 0,
         ...fields
     };
+}
+
+// Subjects and stages of compilation records, as a session prepares the records of a thread; returns the subjects
+export function prepareCompilationRecords(records: CpuProCompilationRecord[]) {
+    const subjects = prepareCompilationSubjects(records);
+
+    indexCompilationStages(records);
+
+    return subjects;
 }

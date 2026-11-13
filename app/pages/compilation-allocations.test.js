@@ -3,14 +3,13 @@ import { test, vi } from 'vitest';
 import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
-import { createCompilationRecord } from '../../test/fixtures/compilation.js';
+import { createCompilationRecord, prepareCompilationRecords } from '../../test/fixtures/compilation.js';
 import { findBreakdown } from '../../test/fixtures/lines.js';
 import { findContent, findView, contentQuery, findColumn, propertyQuery } from '../../test/helpers/view-config.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
-import { completeCompilationSubjects, prepareCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
+import { completeCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
 import {
-    createMemlineAllocationOwnerAttribute,
-    createMemlineAllocationCompilationStageAttribute
+    createMemlineCompilationAttributes
 } from '../prepare/lines/memline-attributes.mjs';
 
 let page;
@@ -69,7 +68,7 @@ async function createCompilationProfile(createRecords, options = { noSourceMap: 
     const first = profile.callFrames.find(frame => frame.name === 'first');
     const second = profile.callFrames.find(frame => frame.name === 'second');
     const records = createRecords(first, second);
-    const subjects = prepareCompilationSubjects(records);
+    const subjects = prepareCompilationRecords(records);
 
     for (let i = 0; i < subjects.length; i++) {
         subjects[i].callFrame = recordFrames.get(subjects[i].records[0]) ?? null;
@@ -87,14 +86,13 @@ async function createCompilationProfile(createRecords, options = { noSourceMap: 
 
 // Allocations of IDs 1-4 of the memory line of the profile fixture are of 16, 32, 48 and 64 bytes
 function addCompilationAttributes(profile, records) {
-    profile.memline.attributes.push(
-        createMemlineAllocationOwnerAttribute(records, [1, 2, 3, 4]),
-        createMemlineAllocationCompilationStageAttribute(records, [1, 2, 3, 4])
-    );
+    profile.memline.attributes.push(...createMemlineCompilationAttributes(records, [1, 2, 3, 4]));
 }
 
 function addStageAttribute(profile, records) {
-    profile.memline.attributes.push(createMemlineAllocationCompilationStageAttribute(records, [1, 2, 3, 4]));
+    const [, stage] = createMemlineCompilationAttributes(records, [1, 2, 3, 4]);
+
+    profile.memline.attributes.push(stage);
 }
 
 function noAttributes() {}

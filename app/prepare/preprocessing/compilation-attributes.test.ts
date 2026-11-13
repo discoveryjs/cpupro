@@ -9,12 +9,10 @@ import { createWorkHandler, type WorkWrapperChain } from '../misc/work.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 import * as computations from '../computations/misc.js';
 import {
-    createMemlineAllocationOwnerAttribute,
-    createMemlineAllocationCompilationStageAttribute
+    createMemlineCompilationAttributes
 } from '../lines/memline-attributes.mjs';
 import { createCompilationRecords } from './compilation-events.js';
-import { prepareCompilationSubjects } from './script-compilation.js';
-import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
+import { createCompilationRecord, prepareCompilationRecords } from '../../../test/fixtures/compilation.js';
 
 // Records default to the fixture function `known` at 14..30 (line 0, column 14) of script 7
 function record(fields: Partial<CpuProCompilationRecord> = {}) {
@@ -131,9 +129,11 @@ function dictValues<T>(attribute: { values: ArrayLike<number>; dict: T[] }) {
 }
 
 function attributes(records: CpuProCompilationRecord[], ids: number[], order: 'consecutive' | null = null) {
+    const [owner, stage] = createMemlineCompilationAttributes(records, ids, order);
+
     return {
-        owner: createMemlineAllocationOwnerAttribute(records, ids, order)!,
-        stage: createMemlineAllocationCompilationStageAttribute(records, ids, order)!
+        owner: owner!,
+        stage: stage!
     };
 }
 
@@ -170,7 +170,7 @@ test('allocation rows map to innermost owner and stage with exclusive starts and
         for (const input of [records, records.slice().reverse()]) {
             const prepared = createCompilationRecords(input, []);
 
-            prepareCompilationSubjects(prepared);
+            prepareCompilationRecords(prepared);
 
             const { owner, stage } = attributes(prepared, ids);
 
@@ -181,10 +181,8 @@ test('allocation rows map to innermost owner and stage with exclusive starts and
         }
     }
 
-    assert.equal(createMemlineAllocationOwnerAttribute([], [1]), null);
-    assert.equal(createMemlineAllocationCompilationStageAttribute([], [1]), null);
-    assert.equal(createMemlineAllocationOwnerAttribute(records, null), null);
-    assert.equal(createMemlineAllocationCompilationStageAttribute(records, null), null);
+    assert.deepEqual(createMemlineCompilationAttributes([], [1]), []);
+    assert.deepEqual(createMemlineCompilationAttributes(records, null), []);
 });
 
 test('owners are the compilation subjects of records, by raw script and range, not resolved frames', () => {
@@ -196,7 +194,7 @@ test('owners are the compilation subjects of records, by raw script and range, n
         record({ start: 20, end: 40, allocationStart: 4, allocationEnd: 5 })
     ];
 
-    prepareCompilationSubjects(records);
+    prepareCompilationRecords(records);
 
     const { owner, stage } = attributes(records, [1, 2, 3, 4, 5, 6]);
     const range = (subject: CpuProCompilationSubject | null) => [subject!.scriptId, subject!.start, subject!.end];
@@ -228,6 +226,8 @@ test('owners are the compilation subjects of records, by raw script and range, n
             ids.push(i + 1);
         }
 
+        prepareCompilationRecords(many);
+
         const result = attributes(many, ids).stage;
 
         assert.ok(result.values instanceof IndexArray);
@@ -252,11 +252,13 @@ test('consecutive allocation ids are located by offset without scanning or searc
     });
     const search = vi.spyOn(computations, 'lowerBound');
 
+    prepareCompilationRecords(records);
+
     try {
         const { stage } = attributes(records, ids, 'consecutive');
 
-        // Only the first id is read, once per attribute
-        assert.equal(reads, 2);
+        // Only the first id is read
+        assert.equal(reads, 1);
         assert.equal(search.mock.calls.length, 0);
         assert.deepEqual(dictValues(stage).slice(0, 12), [
             'none',
@@ -377,6 +379,8 @@ test('empty allocation intervals do not trigger sorting of otherwise ordered sou
 
         assert.equal(sort.mock.calls.length, 0);
         assert.deepEqual(prepared, input);
+
+        prepareCompilationRecords(prepared);
 
         const { stage } = attributes(prepared, [11, 13, 19]);
 

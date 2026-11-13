@@ -425,78 +425,71 @@ export function createMemlineAllocationCodeTypeAttribute(
     };
 }
 
-// Allocations take the compilation subjects of the records they are allocated within as owners
-export function createMemlineAllocationOwnerAttribute(
+// Owners and compilation stages of allocations: an allocation takes the compilation subject and the stage of the record
+// it is allocated within. Records come by their allocation ranges, an enclosing one before those it encloses
+// (see compareCompilationRecords), so ranges of nested records overwrite the enclosing one and an allocation takes
+// the innermost record. A single pass over the records writes both attributes
+export function createMemlineCompilationAttributes(
     compilations: CpuProCompilationRecord[] | null,
     _cpuproAllocationIds: AllocationIdVector | null,
     _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
-): ProfileLineAllocationOwnerAttribute | null {
+): [ProfileLineAllocationOwnerAttribute, ProfileLineAllocationCompilationStageAttribute] | [] {
     if (!compilations?.length || !_cpuproAllocationIds) {
-        return null;
+        return [];
     }
 
-    const values = new Uint32Array(_cpuproAllocationIds.length);
-    const firstId = consecutiveFirstId(_cpuproAllocationIds, _cpuproAllocationIdsOrder);
-    // The subject of an index follows the absent owner; every subject has records, so the dictionary is dense
-    const dict: (CpuProCompilationSubject | null)[] = [null];
-
-    for (let i = 0; i < compilations.length; i++) {
-        const { subject } = compilations[i];
-
-        if (subject !== null) {
-            dict[subject.index + 1] = subject;
-        }
-    }
+    // Subjects and stages of indices follow the absent owner and stage; every subject and stage has records,
+    // so the dictionaries are dense
+    const ownerDict: (CpuProCompilationSubject | null)[] = [null];
+    const stageDict = ['none'];
 
     for (let i = 0; i < compilations.length; i++) {
         const record = compilations[i];
 
-        if (record.subject !== null) {
-            fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, record.subject.index + 1);
-        }
+        ownerDict[record.subject!.index + 1] = record.subject!;
+        stageDict[record.stage + 1] = record.name;
     }
 
-    return {
-        name: 'allocationOwner',
-        values,
-        dict
-    };
-}
+    const ids = _cpuproAllocationIds;
+    const firstId = consecutiveFirstId(ids, _cpuproAllocationIdsOrder);
+    const owners = new Uint32Array(ids.length);
+    const stages = createDictIndexVector(ids.length, stageDict.length);
 
-export function createMemlineAllocationCompilationStageAttribute(
-    compilations: CpuProCompilationRecord[] | null,
-    _cpuproAllocationIds: AllocationIdVector | null,
-    _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
-): ProfileLineAllocationCompilationStageAttribute | null {
-    if (!compilations?.length || !_cpuproAllocationIds) {
-        return null;
-    }
-
-    const dict = ['none'];
-    const stageByName = new Map<string, number>();
-
+    // Allocations from the start to the end of a record; when IDs are consecutive, the range of IDs gives the range
+    // of allocations without a search
     for (let i = 0; i < compilations.length; i++) {
         const record = compilations[i];
 
-        if (!stageByName.has(record.name)) {
-            stageByName.set(record.name, dict.push(record.name) - 1);
+        if (record.allocationStart === null ||
+            record.allocationEnd === null ||
+            record.allocationEnd <= record.allocationStart
+        ) {
+            continue;
         }
+
+        const start = firstId !== undefined
+            ? Math.min(Math.max(record.allocationStart - firstId + 1, 0), ids.length)
+            : lowerBound(ids, record.allocationStart, true);
+        const end = firstId !== undefined
+            ? Math.min(Math.max(record.allocationEnd - firstId + 1, 0), ids.length)
+            : lowerBound(ids, record.allocationEnd, true);
+
+        owners.fill(record.subject!.index + 1, start, end);
+        stages.fill(record.stage + 1, start, end);
     }
 
-    const values = createDictIndexVector(_cpuproAllocationIds.length, dict.length);
-    const firstId = consecutiveFirstId(_cpuproAllocationIds, _cpuproAllocationIdsOrder);
-
-    for (let i = 0; i < compilations.length; i++) {
-        const record = compilations[i];
-
-        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, stageByName.get(record.name)!);
-    }
-
-    return {
-        name: 'allocationCompilationStage',
-        values,
-        dict
-    };
+    return [
+        {
+            name: 'allocationOwner',
+            values: owners,
+            dict: ownerDict
+        },
+        {
+            name: 'allocationCompilationStage',
+            values: stages,
+            dict: stageDict
+        }
+    ];
 }
 
 // The first allocation ID when IDs are consecutive, so a range of IDs is a range of allocations
@@ -507,30 +500,4 @@ function consecutiveFirstId(
     return order === 'consecutive'
         ? ids[0]
         : undefined;
-}
-
-// Allocations from the start to the end of a compilation record take its value; when IDs are consecutive, the range
-// of IDs gives the range of allocations without a search
-function fillCompilationAllocationRange(
-    values: Uint8Array | Uint32Array,
-    ids: AllocationIdVector,
-    firstId: number | undefined,
-    record: CpuProCompilationRecord,
-    value: number
-) {
-    if (record.allocationStart === null ||
-        record.allocationEnd === null ||
-        record.allocationEnd <= record.allocationStart
-    ) {
-        return;
-    }
-
-    const start = firstId !== undefined
-        ? Math.min(Math.max(record.allocationStart - firstId + 1, 0), ids.length)
-        : lowerBound(ids, record.allocationStart, true);
-    const end = firstId !== undefined
-        ? Math.min(Math.max(record.allocationEnd - firstId + 1, 0), ids.length)
-        : lowerBound(ids, record.allocationEnd, true);
-
-    values.fill(value, start, end);
 }

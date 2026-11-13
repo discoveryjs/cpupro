@@ -20,8 +20,7 @@ import {
     createMemlineAllocationCodeTypeAttribute,
     createMemlineAllocationSpaceAttribute,
     createMemlineAllocationTypeAttribute,
-    createMemlineAllocationOwnerAttribute,
-    createMemlineAllocationCompilationStageAttribute,
+    createMemlineCompilationAttributes,
     createMemlineGcAttributes
 } from './memline-attributes.mjs';
 
@@ -183,12 +182,7 @@ export async function createMemline(
             data._cpuproAllocationCodeTypeNames || null,
             data._cpuproAllocationContextInfo || null
         ),
-        createMemlineAllocationOwnerAttribute(
-            compilations,
-            _cpuproAllocationIds || null,
-            data._cpuproAllocationIdsOrder || null
-        ),
-        createMemlineAllocationCompilationStageAttribute(
+        ...createMemlineCompilationAttributes(
             compilations,
             _cpuproAllocationIds || null,
             data._cpuproAllocationIdsOrder || null
