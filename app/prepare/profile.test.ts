@@ -270,12 +270,15 @@ describe('profile breakdowns', () => {
         const stack = findBreakdown(line, 'call-stack');
         const locations = findBreakdown(line, 'location');
         const metrics = stack.callFrames!.all.nodes;
-        const cpuSamples = profile.timeline!.breakdowns[0].population.samples;
-        const allocationSamples = line.mappings.timeline._mapping;
+        const timeline = profile.timeline!.breakdowns[0];
+        const cpuSamples = timeline.population.samples;
         const cpuSampleOf = (sample: number) => cpuSamples[sample];
+        const nodeOf = (sample: number) => stack.callFrames!.sampleToNode[sample];
+        const cpuNodeOf = (sample: number) => timeline.callFrames!.sampleToNode[cpuSamples[sample]];
 
-        assert.deepEqual([...stack.population.samples], row.expected);
-        assert.deepEqual([...stack.population.samples], Array.from(allocationSamples, cpuSampleOf));
+        // Allocations are samples of their CPU samples, in the nodes of the CPU samples' call stacks
+        assert.deepEqual(Array.from(stack.population.samples, cpuSampleOf), row.expected);
+        assert.deepEqual(Array.from(stack.population.samples, nodeOf), Array.from(stack.population.samples, cpuNodeOf));
         assert.equal(stack.population.values, line.values);
         assert.equal(stack.population.values, locations.population.values);
         assert.deepEqual([...stack.population.values], [16, 32, 48, 64]);
@@ -441,10 +444,15 @@ describe('profile breakdowns', () => {
         }
     });
 
-    test('CPU and allocation call stacks share one attribution source', async () => {
+    test('CPU and allocation call stacks share the trees of one attribution', async () => {
         const { profile } = await createProfileFixture();
         const allocationStack = findBreakdown(profile.memline!, 'call-stack');
+        const cpuStack = profile.timeline!.breakdowns[0];
 
-        assert.equal(profile.timeline!.breakdowns[0].source, allocationStack.source);
+        assert.equal(allocationStack.callFrames!.tree, cpuStack.callFrames!.tree);
+        assert.equal(allocationStack.modules!.tree, cpuStack.modules!.tree);
+        assert.equal(allocationStack.packages!.tree, cpuStack.packages!.tree);
+        assert.equal(allocationStack.categories!.tree, cpuStack.categories!.tree);
+        assert.equal(allocationStack.source.nodes, cpuStack.source.nodes);
     });
 });

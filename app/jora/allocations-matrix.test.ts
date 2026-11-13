@@ -9,11 +9,12 @@ import type {
     ProfileLineAllocationCompilationStageAttribute
 } from '../prepare/lines/types.js';
 import type { PopulationFiltered } from '../prepare/computations/population.js';
+import type { Profile } from '../prepare/profile.mjs';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 
 // The fixture's allocation events weigh 16, 32, 48 and 64 bytes and take 0–16, 16–48, 48–96 and 96–160 bytes of
-// the line; its call-stack population has 2 samples
+// the line; samples of its call-stack population are CPU samples of 2 call stacks
 
 // Objects of 16 and 48 bytes are alive, of 32 bytes short-lived; the array of 64 bytes is alive; no strings
 function addAllocationKinds(line: ProfileLine) {
@@ -67,11 +68,16 @@ function createOwners(): ProfileLineAllocationOwnerAttribute {
     };
 }
 
-function rejectSamples(population: PopulationFiltered, rejected: number[]) {
-    const accepts = new Uint8Array(population.samplesMask.length).fill(1);
+// Rejects the samples of a call-stack population whose CPU samples are of the rejected call stacks
+function rejectStacks(profile: Profile, population: PopulationFiltered, rejected: number[]) {
+    const cpuSamples = profile.timeline!.breakdowns[0].population.samples;
+    const rejectedStacks = new Set(rejected);
+    const accepts = new Uint8Array(population.samplesMask.length);
 
-    for (let i = 0; i < rejected.length; i++) {
-        accepts[rejected[i]] = 0;
+    for (let i = 0; i < accepts.length; i++) {
+        if (!rejectedStacks.has(cpuSamples[i])) {
+            accepts[i] = 1;
+        }
     }
 
     population.filter.set({
@@ -145,10 +151,10 @@ test.each([
         rejected: [0, 1],
         sums: []
     }
-])('events of rejected samples are not counted: $name', async row => {
-    const { population, matrix } = await createNodesMatrix(row.mapping);
+])('events of samples of rejected call stacks are not counted: $name', async row => {
+    const { profile, population, matrix } = await createNodesMatrix(row.mapping);
 
-    rejectSamples(population, row.rejected);
+    rejectStacks(profile, population, row.rejected);
 
     assert.deepEqual(matrix().map(entry => entry.total.sum), row.sums);
 });
@@ -295,12 +301,12 @@ test.each([
     assert.equal(totals[1].entry, owners.dict[1]);
 });
 
-test('attribute sample totals are zero when every sample is rejected', async () => {
+test('attribute sample totals are zero when every call stack is rejected', async () => {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const population = profile.memline!.breakdowns[0].populationFiltered;
     const totals = () => methods.attributeSampleTotals(createOwners(), population);
 
-    rejectSamples(population, [0, 1]);
+    rejectStacks(profile, population, [0, 1]);
 
     assert.deepEqual(totals().map(entry => [entry.count, entry.size]), [[0, 0], [0, 0], [0, 0]]);
 });

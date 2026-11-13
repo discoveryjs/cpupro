@@ -121,3 +121,38 @@ export function createSampledTrees(
 
     return sampledTrees;
 }
+
+// The tree set of samples of another set's source, a source id per sample: the trees and the dictionary are shared,
+// the source and the maps of samples to tree nodes take the nodes of the samples' source ids
+export function sampledTreeSetOfSourceIds(treeSet: SampledTreeSet, sampleSourceIds: Uint32Array): SampledTreeSet {
+    const { source, sampledTrees, dictionary } = treeSet;
+    const sourceIdToNode = new Int32Array(sampleSourceIds.length);
+    const samplesTrees: SampledCpuProCallTree[] = [];
+
+    for (let i = 0; i < sampleSourceIds.length; i++) {
+        sourceIdToNode[i] = source.sourceIdToNode[sampleSourceIds[i]];
+    }
+
+    for (let i = 0; i < sampledTrees.length; i++) {
+        const { tree, sampleToNode } = sampledTrees[i];
+        const samplesToNode = new Uint32Array(sampleSourceIds.length);
+
+        for (let j = 0; j < sampleSourceIds.length; j++) {
+            samplesToNode[j] = sampleToNode[sampleSourceIds[j]];
+        }
+
+        samplesTrees.push({
+            tree,
+            sampleToNode: samplesToNode
+        } as SampledCpuProCallTree);
+    }
+
+    return {
+        source: {
+            ...source,
+            sourceIdToNode
+        },
+        sampledTrees: samplesTrees,
+        dictionary
+    };
+}

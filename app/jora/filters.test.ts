@@ -144,13 +144,13 @@ test.each(lineTypes)('category totals partition the viewport population of every
 });
 
 test('category totals continue past samples without a value in the viewport', async () => {
-    // Events 0 and 3 (16 and 64 bytes) belong to sample 0, events 1 and 2 (32 and 48 bytes) to sample 1
+    // Events 0 and 3 (16 and 64 bytes) belong to CPU samples 0 and 2, events 1 and 2 (32 and 48 bytes) to CPU sample 1
     const { breakdown, filter } = await createBreakdown('call-stack', { mapping: [1, 3, 4] });
 
     breakdown.line.viewport.setRange(16, 96);
     const totals = filterOptionTotals(breakdown, filter('category'));
 
-    assert.deepEqual([...breakdown.populationViewport.samplesTotal], [0, 80]);
+    assert.deepEqual([...breakdown.populationViewport.samplesTotal], [0, 80, 0]);
     assert.equal(sum([...totals.values()]), 80);
 });
 

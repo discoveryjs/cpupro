@@ -1,5 +1,5 @@
 import type { WorkHandler } from '../misc/work.js';
-import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
+import { sampledTreeSetOfSourceIds, type SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { createLineBreakdown } from './breakdown.js';
 import { Population, PopulationFiltered } from '../computations/population.js';
 import { ProfileLine } from './types.js';
@@ -14,19 +14,15 @@ export async function createMemlineCpuSamplesBreakdown(
     cpuSampledTreeSet: SampledTreeSet,
     work: WorkHandler
 ) {
-    // An allocation is attributed to the call stack of its CPU sample: the node of the sample in the CPU population
-    const allocationNodes = new Uint32Array(allocationSamples.length);
-    const sampleNodes = cpuPopulation.samples;
-
-    for (let i = 0; i < allocationSamples.length; i++) {
-        allocationNodes[i] = sampleNodes[allocationSamples[i]];
-    }
-
-    // PERF: Nodes are indices of the CPU tree source, so their count needs no scan over the allocations
+    // An allocation is attributed to the call stack of its CPU sample: allocations are samples of the CPU samples,
+    // whose source ids give the tree set of the CPU population a source of CPU samples
+    // PERF: The CPU samples of allocations are the mapping of the memline to the timeline, so the population takes them
+    // rather than a vector of the nodes of allocations, a pass over the allocations
+    const treeSet = sampledTreeSetOfSourceIds(cpuSampledTreeSet, cpuPopulation.samples);
     const population = new Population(
-        allocationNodes,
+        allocationSamples,
         allocationSizes,
-        cpuSampledTreeSet.source.sourceIdToNode.length,
+        cpuPopulation.samples.length,
         cumulative,
         line.eventClasses
     );
@@ -40,7 +36,7 @@ export async function createMemlineCpuSamplesBreakdown(
         populationFiltered,
         populationViewport,
         populationWindow,
-        cpuSampledTreeSet,
+        treeSet,
         work
     );
 }
