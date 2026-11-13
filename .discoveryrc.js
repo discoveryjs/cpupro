@@ -109,6 +109,7 @@ module.exports = {
             './views/bins-histogram.js',
             './views/sampled-count-total.css',
             './views/sampled-count-total.js',
+            './views/scope.js',
             './views/source/common.css',
             './views/source/call-frame-source-point.js',
             './views/source/call-frame-source.css',
