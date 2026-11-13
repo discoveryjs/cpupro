@@ -40,6 +40,7 @@ test('a source-mapped breakdown attributes generated functions to the original f
         line.breakdowns[0],
         dictionary,
         new SourceMapping(dictionary),
+        new Map(),
         noopWorkHandler
     );
     const entries = mapped!.callFrames!.all.dict.entries.filter(item =>
@@ -78,6 +79,7 @@ test('a source-mapped breakdown shares the populations of its original and keeps
         original,
         dictionary,
         sourceMapping,
+        new Map(),
         noopWorkHandler
     );
 

@@ -22,8 +22,14 @@ export type SampledCpuProCallTree =
     | SampledTree<CpuProCategory>
     | SampledTree<CpuProOwner>;
 
+// A source of samples of another source: the source id of every sample in the other source
+export type SampledTreeSourceOrigin = {
+    source: SampledTreeSet['source'];
+    sourceIds: Uint32Array;
+};
+
 export type SampledTreeSet = {
-    source: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>;
+    source: (TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>) & { origin?: SampledTreeSourceOrigin };
     sampledTrees: SampledCpuProCallTree[];
     dictionary: Dictionary | Usage;
 };
@@ -150,7 +156,11 @@ export function sampledTreeSetOfSourceIds(treeSet: SampledTreeSet, sampleSourceI
     return {
         source: {
             ...source,
-            sourceIdToNode
+            sourceIdToNode,
+            origin: {
+                source,
+                sourceIds: sampleSourceIds
+            }
         },
         sampledTrees: samplesTrees,
         dictionary

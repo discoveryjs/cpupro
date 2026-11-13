@@ -19,7 +19,7 @@ import { processCallFrameCodes } from './preprocessing/call-frame-codes.js';
 import { resolveCompilationCallFrames } from './preprocessing/compilation-events.js';
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
-import { createSampledTreeSet } from './computations/sampled-tree-set.js';
+import { createSampledTreeSet, type SampledTreeSet } from './computations/sampled-tree-set.js';
 import { ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
 import { SourceMapping } from './preprocessing/source-mapping.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
@@ -235,6 +235,10 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         });
     }
 
+    // Source mapped tree sets by the source they map. A source of samples of another source is of a later line: the
+    // memline is created from the population of the timeline, so the timeline's breakdowns are mapped first
+    const mappedTreeSets = new Map<SampledTreeSet['source'], SampledTreeSet>();
+
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         // source mapped breakdowns are added to the breakdowns, they're not mapped again
@@ -248,6 +252,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
                 breakdown,
                 dictionary,
                 sourceMapping,
+                mappedTreeSets,
                 work
             );
 

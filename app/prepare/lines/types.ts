@@ -3,7 +3,7 @@ import type { FilterSet } from '../computations/filter-set.js';
 import type { RangeView } from '../computations/range.js';
 import type { EventSignatures } from './event-signatures.js';
 import type { EventClasses } from '../computations/population-filter.js';
-import type { TreeSource } from '../computations/build-trees';
+import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { DictionaryMetrics, TreeMetrics } from '../computations/metrics';
 import { TreeValueBounds } from '../computations/tree-node-bounds';
 import { Population, PopulationFiltered } from '../computations/population';
@@ -36,7 +36,7 @@ export type LineTreeDimension<T extends CpuProNode> = {
 export type ProfileLineBreakdown = {
     kind: string;
     line: ProfileLine;
-    source: TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>;
+    source: SampledTreeSet['source'];
     population: Population;
     populationViewport: PopulationFiltered;
     // Histogram data: the filters of populationViewport over the line's window
