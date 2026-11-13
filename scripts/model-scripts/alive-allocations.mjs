@@ -53,7 +53,7 @@ export default async function aliveAllocations(model, { options }) {
         space: lineAttribute("allocationSpace"),
         stage: lineAttribute("allocationCompilationStage")
     }`, line, model.getContext());
-    const liveness = line.filters.get('allocationLiveness');
+    const liveness = line.filters.get('allocationLifespan');
     const stage = line.filters.get('allocationCompilationStage');
 
     if (!liveness || !attributes.type || !attributes.space) {
