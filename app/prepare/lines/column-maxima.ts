@@ -2,7 +2,6 @@ import type { ProfileLine, ProfileLineAttribute } from './types.js';
 import type { PopulationFiltered } from '../computations/population.js';
 import type { Range } from '../computations/coordinates.js';
 import type { EventSignatures, RangeRecords } from './event-signatures.js';
-import { findCumulativeBoundary } from '../computations/population.js';
 import { lowerBound } from '../computations/misc.js';
 import { lineWindowExtent } from './range.js';
 
@@ -536,8 +535,8 @@ function addEventParts(
     for (let i = 0; i < ranges.length && walking > 0; i++) {
         const rangeStart = ranges[i].start;
         const rangeEnd = ranges[i].end;
-        const rangeFirst = Math.max(0, findCumulativeBoundary(cumulative, rangeStart, true) - 1);
-        const rangeLast = findCumulativeBoundary(cumulative, rangeEnd, false);
+        const rangeFirst = Math.max(0, lowerBound(cumulative, rangeStart, true) - 1);
+        const rangeLast = lowerBound(cumulative, rangeEnd);
 
         for (let j = rangeFirst; j < rangeLast && walking > 0; j++) {
             const group = groups !== null
@@ -593,8 +592,8 @@ function addCellColumns(
     for (let i = 0; i < ranges.length; i++) {
         const rangeStart = ranges[i].start;
         const rangeEnd = ranges[i].end;
-        const rangeFirst = Math.max(0, findCumulativeBoundary(cumulative, rangeStart, true) - 1);
-        const rangeLast = findCumulativeBoundary(cumulative, rangeEnd, false);
+        const rangeFirst = Math.max(0, lowerBound(cumulative, rangeStart, true) - 1);
+        const rangeLast = lowerBound(cumulative, rangeEnd);
         let cell = lowerBound(starts, rangeFirst, true) - 1;
 
         for (let j = rangeFirst; j < rangeLast; cell++) {

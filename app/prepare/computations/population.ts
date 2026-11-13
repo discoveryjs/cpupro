@@ -1,4 +1,4 @@
-import { Observer, exposeGetters } from './misc.js';
+import { Observer, exposeGetters, lowerBound } from './misc.js';
 import {
     createPopulationBuffer,
     populationApiOf,
@@ -789,8 +789,8 @@ function computeCoverage(ranges: RangeSet | null, cumulative: Float64Array, valu
 
     for (let i = 0; i < ranges.length; i++) {
         const { start, end } = ranges[i];
-        const first = Math.max(0, findCumulativeBoundary(cumulative, start, true) - 1);
-        const last = findCumulativeBoundary(cumulative, end, false) - 1;
+        const first = Math.max(0, lowerBound(cumulative, start, true) - 1);
+        const last = lowerBound(cumulative, end) - 1;
         const previous = coverage[coverage.length - 1];
 
         if (previous !== undefined && first < previous[1]) {
@@ -934,24 +934,6 @@ export function computeCumulativeEnd(values: Uint32Array, cumulative: Float64Arr
     return values.length > 0
         ? cumulative[values.length - 1] + values[values.length - 1]
         : 0;
-}
-
-export function findCumulativeBoundary(cumulative: Float64Array, value: number, afterEqual: boolean) {
-    let left = 0;
-    let right = cumulative.length;
-
-    while (left < right) {
-        const middle = left + ((right - left) >>> 1);
-        const coordinate = cumulative[middle];
-
-        if (coordinate < value || (afterEqual && coordinate === value)) {
-            left = middle + 1;
-        } else {
-            right = middle;
-        }
-    }
-
-    return left;
 }
 
 function findMaxId(samples: Uint32Array) {

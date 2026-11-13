@@ -7,7 +7,7 @@ import { sampleRange } from './samples.js';
 import { getProfileOrScopeProfile, resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange, lineViewport, rangeBins, timestampExtent } from './viewport.js';
 import { isRange, type Range } from '../prepare/computations/coordinates.js';
-import { findCumulativeBoundary, PopulationFiltered, type EventReader, type Population } from '../prepare/computations/population.js';
+import { PopulationFiltered, type EventReader, type Population } from '../prepare/computations/population.js';
 import { lowerBound } from '../prepare/computations/misc.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
 import { getLineColumnMaxima, type LineColumnMaxima } from '../prepare/lines/column-maxima.js';
@@ -369,7 +369,7 @@ function binPopulation(
         for (let index = first + 1; index < last; index++) {
             // IMPORTANT: Round the search down: cumulative coordinates are integers, bin remainders need not be.
             const boundary = Math.floor(cumulative[index] + (step - binValue));
-            const stop = Math.min(last, Math.max(index, findCumulativeBoundary(cumulative, boundary, false) - 1));
+            const stop = Math.min(last, Math.max(index, lowerBound(cumulative, boundary) - 1));
 
             if (grouping === null) {
                 binValue = binPopulationBin(eventSamples!, values, eventValues!, sinkId, tracks, groups, index, stop, binIndex, binValue);

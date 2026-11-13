@@ -2,7 +2,8 @@ import { ProfileLine, ProfileLineType, ProfileLineAttribute, type LineTreeDimens
 import type { CpuProNode } from '../prepare/types.js';
 import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange } from './viewport.js';
-import { findCumulativeBoundary, type Population, type PopulationFiltered } from '../prepare/computations/population.js';
+import type { Population, PopulationFiltered } from '../prepare/computations/population.js';
+import { lowerBound } from '../prepare/computations/misc.js';
 
 export function sampleRange(cumulative: Float64Array, total: number, skip: number, sourceTotal: number) {
     const start = Math.max(0, -skip);
@@ -18,8 +19,8 @@ export function sampleRange(cumulative: Float64Array, total: number, skip: numbe
         };
     }
 
-    const first = Math.max(0, findCumulativeBoundary(cumulative, start, true) - 1);
-    const last = findCumulativeBoundary(cumulative, end, false) - 1;
+    const first = Math.max(0, lowerBound(cumulative, start, true) - 1);
+    const last = lowerBound(cumulative, end) - 1;
     const lastEnd = last + 1 < cumulative.length ? cumulative[last + 1] : sourceTotal;
 
     return {
