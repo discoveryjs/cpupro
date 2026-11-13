@@ -27,8 +27,10 @@ discovery.view.define('bins-histogram', function(el, config, data, context) {
         setViewport(viewport) {
             options.viewport = viewport;
 
-            // Until the canvas is sized its first draw is pending anyway
-            if (scheduledDraw === null && dpr !== undefined) {
+            // Until the canvas is sized its first draw is pending anyway, a skipped one is drawn when shown
+            if (skipped) {
+                stale = true;
+            } else if (scheduledDraw === null && dpr !== undefined) {
                 scheduledDraw = requestAnimationFrame(draw);
             }
         }
@@ -41,6 +43,8 @@ discovery.view.define('bins-histogram', function(el, config, data, context) {
         draw();
     });
     let scheduledDraw = null;
+    let skipped = false;
+    let stale = false;
     let cleanup = null;
     let color;
     let dpr;
@@ -56,6 +60,18 @@ discovery.view.define('bins-histogram', function(el, config, data, context) {
     }
 
     canvasEl.style.height = height + 'px';
+
+    // A histogram out of view skips its contents (content-visibility), so it's neither painted nor drawn: on a page of
+    // hundreds of rows every frame would layerize their canvases and draw them
+    el.style.containIntrinsicHeight = `auto ${height}px`;
+    el.addEventListener('contentvisibilityautostatechange', event => {
+        skipped = event.skipped;
+
+        if (!skipped && stale && dpr !== undefined) {
+            stale = false;
+            draw();
+        }
+    });
     destroyEl.onConnect = () => {
         resizeObserver.observe(canvasEl);
         cleanup = config.onInit?.(api, data, context);

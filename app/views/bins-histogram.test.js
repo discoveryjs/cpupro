@@ -406,11 +406,15 @@ function renderHistogram(config, data, options = {}) {
     let render;
     let lifecycle;
     let resize;
+    const listeners = new Map();
     const el = {
         style: new Map(),
         children: [],
         append(...children) {
             this.children.push(...children);
+        },
+        addEventListener(type, listener) {
+            listeners.set(type, listener);
         }
     };
     el.style.setProperty = el.style.set;
@@ -508,7 +512,9 @@ function renderHistogram(config, data, options = {}) {
         },
         connect: () => lifecycleElement.connectedCallback(),
         disconnect: () => lifecycleElement.disconnectedCallback(),
-        resize: width => resize([{ contentRect: { width } }])
+        resize: width => resize([{ contentRect: { width } }]),
+        // Out of view the element skips its contents (content-visibility: auto)
+        skip: skipped => listeners.get('contentvisibilityautostatechange')({ skipped })
     };
 }
 
@@ -639,6 +645,30 @@ test('onInit receives an API to follow a changing viewport with one draw per fra
     assert.equal(histogram.frames.size, 0);
     assert.deepEqual(calls.slice(1), ['cleanup']);
     assert.equal(histogram.drawn.length, 3);
+});
+
+test('a histogram out of view draws only when shown again, with the latest viewport', () => {
+    let api;
+    const onInit = value => {
+        api = value;
+    };
+    const histogram = renderHistogram({ bins: [1], onInit }, null);
+
+    histogram.connect();
+    histogram.resize(10);
+    histogram.skip(true);
+    api.setViewport({ start: 1, end: 2 });
+    api.setViewport({ start: 2, end: 3 });
+    assert.equal(histogram.frames.size, 0);
+    assert.equal(histogram.drawn.length, 1);
+
+    histogram.skip(false);
+    histogram.skip(true);
+    histogram.skip(false);
+    assert.deepEqual(histogram.drawn.map(draw => draw.viewport).slice(1), [{ start: 2, end: 3 }]);
+
+    api.setViewport({ start: 3, end: 4 });
+    assert.equal(histogram.frames.size, 1);
 });
 
 test('bins per column match the columns drawn on a canvas of the same CSS width and pixel ratio', () => {

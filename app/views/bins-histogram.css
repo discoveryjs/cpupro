@@ -1,5 +1,6 @@
 .view-bins-histogram {
     position: relative;
+    content-visibility: auto;
     border-bottom: 1px solid #0004;
     margin: 1px 0;
 }
