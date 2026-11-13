@@ -59,8 +59,6 @@ test('source ranges include leading comments and declaration prefixes, runtime r
     const coordinates = (range: FunctionRange) => ({
         name: range.name,
         start: range.start,
-        startLine: range.startLine,
-        startColumn: range.startColumn,
         callFrameStart: range.callFrameStart,
         callFrameStartLine: range.callFrameStartLine,
         callFrameStartColumn: range.callFrameStartColumn,
@@ -73,8 +71,6 @@ test('source ranges include leading comments and declaration prefixes, runtime r
         {
             name: 'outer',
             start: 0,
-            startLine: 1,
-            startColumn: 0,
             callFrameStart: 26,
             callFrameStartLine: 2,
             callFrameStartColumn: 14,
@@ -85,8 +81,6 @@ test('source ranges include leading comments and declaration prefixes, runtime r
         {
             name: 'inner',
             start: 35,
-            startLine: 3,
-            startColumn: 4,
             callFrameStart: 61,
             callFrameStartLine: 3,
             callFrameStartColumn: 30,
@@ -125,6 +119,21 @@ test.each([
     }
 ])('starts a runtime range at the V8 call frame start: $source', row => {
     const { ranges } = parseScriptSourceRanges(row.source, 'fixture.js', true);
+
+    assert.deepEqual(ranges.map(range => [range.type, range.callFrameStart]), row.starts);
+});
+
+test.each([
+    {
+        source: 'function declared<T extends (value: T) => void>(value: T) {}',
+        starts: [['FunctionDeclaration', 47]]
+    },
+    {
+        source: 'class Example { method<T = (value: T) => void>(value: T) {} }',
+        starts: [['ClassDeclaration', 0], ['ClassMethod', 46]]
+    }
+])('starts a runtime range at the parameters after type parameters: $source', row => {
+    const { ranges } = parseScriptSourceRanges(row.source, 'fixture.ts', true);
 
     assert.deepEqual(ranges.map(range => [range.type, range.callFrameStart]), row.starts);
 });
@@ -196,6 +205,29 @@ test.each([
         names: ['']
     }
 ])('names a function after $origin', row => {
+    const { ranges } = parseScriptSourceRanges(row.source, 'fixture.js', true);
+
+    assert.deepEqual(ranges.map(range => range.name), row.names);
+});
+
+// V8 names a function neither after an operand of an operator, nor a computed key, nor a superclass
+test.each([
+    {
+        origin: 'an operand',
+        source: 'const timer = setTimer || function(callback) {};',
+        names: ['']
+    },
+    {
+        origin: 'a computed key',
+        source: 'const object = { [key]: () => 1, [key]() {} };',
+        names: ['', '']
+    },
+    {
+        origin: 'a superclass',
+        source: 'class Example extends (() => Base) {}',
+        names: ['Example', '']
+    }
+])('does not name a function after $origin', row => {
     const { ranges } = parseScriptSourceRanges(row.source, 'fixture.js', true);
 
     assert.deepEqual(ranges.map(range => range.name), row.names);

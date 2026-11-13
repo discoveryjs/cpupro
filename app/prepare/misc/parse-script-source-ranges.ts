@@ -1,4 +1,5 @@
-import { parse } from '@babel/parser';
+import { computeLineStarts, createLineBoundaries } from './line-boundaries.js';
+import { functionRangeTypes, parseFunctionRanges, type ParsedFunctionRanges } from './parse-function-ranges.js';
 
 export type FunctionRanges = {
     parsed: boolean;
@@ -15,9 +16,7 @@ export type FunctionRange = {
     callFrameStart: number;
     callFrameStartLine: number;
     callFrameStartColumn: number;
-    start: number;
-    startLine: number;
-    startColumn: number;
+    start: number; // with the leading comments
     end: number;
     endLine: number;
     endColumn: number;
@@ -32,34 +31,8 @@ export type FunctionRangeColumns = {
     name: string[];
     defaultConstructor: Uint8Array<ArrayBuffer>;
 };
-type ASTNode = {
-    type: string;
-    start: number;
-    end: number;
-    loc: {
-        start: { line: number; column: number; };
-        end: { line: number; column: number; };
-    };
-} & {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
-};
-
 const JSX_REGEX = /\.[mc]?[tj]sx($|[\?\#\|])/;
 const TS_REGEX = /\.[mc]?ts($|[\?\#\|])/;
-
-const functionRangeTypes = [
-    'FunctionDeclaration',
-    'FunctionExpression',
-    'ArrowFunctionExpression',
-    'ClassDeclaration',
-    'ClassExpression',
-    'ClassMethod',
-    'ClassPrivateMethod',
-    'ObjectMethod',
-    'TSDeclareFunction',
-    'TSEnumDeclaration'
-];
 
 export function createFunctionRangeColumns(count: number): FunctionRangeColumns {
     return {
@@ -68,8 +41,6 @@ export function createFunctionRangeColumns(count: number): FunctionRangeColumns 
         defaultConstructor: new Uint8Array(count),
         start: new Uint32Array(count),
         end: new Uint32Array(count),
-        startLine: new Uint32Array(count),
-        startColumn: new Uint32Array(count),
         endLine: new Uint32Array(count),
         endColumn: new Uint32Array(count),
         callFrameStart: new Uint32Array(count),
@@ -100,8 +71,6 @@ export function writeFunctionRanges(
         columns.defaultConstructor[index] = range.defaultConstructor ? 1 : 0;
         columns.start[index] = range.start;
         columns.end[index] = range.end;
-        columns.startLine[index] = range.startLine;
-        columns.startColumn[index] = range.startColumn;
         columns.endLine[index] = range.endLine;
         columns.endColumn[index] = range.endColumn;
         columns.callFrameStart[index] = range.callFrameStart;
@@ -122,15 +91,13 @@ export function readFunctionRanges(
     for (let i = 0; i < count; i++) {
         const index = offset + i;
 
-        // the property order of collectFunctionRangesFromAST() keeps a single shape for all ranges
+        // the property order of createFunctionRanges() keeps a single shape for all ranges
         ranges[i] = {
             type: types[columns.type[index]],
             name: columns.name[index],
             defaultConstructor: columns.defaultConstructor[index] === 1,
             start: columns.start[index],
             end: columns.end[index],
-            startLine: columns.startLine[index],
-            startColumn: columns.startColumn[index],
             endLine: columns.endLine[index],
             endColumn: columns.endColumn[index],
             callFrameStart: columns.callFrameStart[index],
@@ -156,16 +123,19 @@ function computeSelfSize(functionRanges: FunctionRanges): void {
     }
 }
 
+// The script's line starts are given when they're computed anyway, e.g. in a parse worker
 export function parseScriptSourceRanges(
     code: string,
     url?: string | null,
-    fromWorker?: boolean
+    fromWorker?: boolean,
+    lineStarts: Uint32Array = computeLineStarts(code)
 ): FunctionRanges {
     if (!fromWorker) {
         console.warn('parseScriptSourceRanges should be called from a worker thread for performance reasons', { url, code });
     }
 
-    let ast: ASTNode | null = null;
+    const jsx = JSX_REGEX.test(url || '');
+    const typescript = jsx || TS_REGEX.test(url || '');
     const functionRanges: FunctionRanges = {
         parsed: false,
         ranges: [],
@@ -173,24 +143,16 @@ export function parseScriptSourceRanges(
         indexes: new Int32Array(),
         parents: new Int32Array()
     };
+    let parsed: ParsedFunctionRanges;
 
     try {
-        ast = parse(code, {
-            sourceType: 'unambiguous',
-            plugins: JSX_REGEX.test(url || '')
-                ? ['typescript', 'jsx', 'decorators']
-                : TS_REGEX.test(url || '')
-                    ? ['typescript', 'decorators']
-                    : []
-            // ranges: true,
-            // errorRecovery: true
-        }) as ASTNode;
-    } catch (e) {
-        functionRanges.error = e.message;
+        parsed = parseFunctionRanges(code, typescript, jsx);
+    } catch (error) {
+        functionRanges.error = (error as Error).message;
         return functionRanges;
     }
 
-    functionRanges.ranges = collectFunctionRangesFromAST(ast, code)
+    functionRanges.ranges = createFunctionRanges(parsed, createLineBoundaries(code, lineStarts))
         .sort((a, b) => a.callFrameStart - b.callFrameStart || b.end - a.end);
 
     // build index for faster search
@@ -204,167 +166,30 @@ export function parseScriptSourceRanges(
     return functionRanges;
 }
 
-function collectFunctionRangesFromAST(ast: ASTNode, code: string): FunctionRange[] {
-    const ranges: FunctionRange[] = [];
+// Ranges of parsed functions with lines (1-based) and columns (0-based) of their call frame starts and ends
+function createFunctionRanges(parsed: ParsedFunctionRanges, lines: ReturnType<typeof createLineBoundaries>) {
+    const ranges: FunctionRange[] = new Array(parsed.count);
 
-    walk(ast);
+    for (let i = 0; i < parsed.count; i++) {
+        const callFrameStart = parsed.callFrameStart[i];
+        const end = parsed.end[i];
+
+        ranges[i] = {
+            type: functionRangeTypes[parsed.type[i]],
+            name: parsed.name[i] ?? '',
+            defaultConstructor: parsed.defaultConstructor[i],
+            start: parsed.start[i],
+            end,
+            endLine: lines.getLine(end),
+            endColumn: lines.getColumn(end) - 1,
+            callFrameStart,
+            callFrameStartLine: lines.getLine(callFrameStart),
+            callFrameStartColumn: lines.getColumn(callFrameStart) - 1,
+            selfSize: 0
+        };
+    }
 
     return ranges;
-
-    function walk(node: ASTNode, parent: ASTNode | null = null) {
-        if (!node || typeof node !== 'object') {
-            return;
-        }
-
-        if (isFunctionNode(node)) {
-            const nodeStart = node.start || 0;
-            const callFrameStart = findCallFrameStart(node, code, nodeStart);
-            let callFrameStartLine = node.loc.start.line;
-            let callFrameStartColumn = node.loc.start.column;
-            let nodeStartWithComments = nodeStart;
-            let locStart = node.loc.start;
-            let hasDefaultConstructor = false;
-
-            if (callFrameStart > nodeStart) {
-                for (let offset = nodeStart; offset < callFrameStart; offset++) {
-                    const char = code.charCodeAt(offset);
-
-                    if (char === 10 || char === 13 || char === 0x2028 || char === 0x2029) {
-                        callFrameStartLine++;
-                        callFrameStartColumn = 0;
-
-                        if (char === 13 && code.charCodeAt(offset + 1) === 10) {
-                            offset++;
-                        }
-                    } else {
-                        callFrameStartColumn++;
-                    }
-                }
-            }
-
-            if (node.leadingComments && node.leadingComments.length > 0) {
-                nodeStartWithComments = node.leadingComments[0].start;
-                locStart = node.leadingComments[0].loc.start;
-            }
-
-            if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') {
-                hasDefaultConstructor = !node.body.body.some((member: ASTNode) => member.kind === 'constructor');
-            }
-
-            ranges.push({
-                type: node.type,
-                name: getFunctionName(node, parent),
-                defaultConstructor: hasDefaultConstructor,
-                start: nodeStartWithComments,
-                end: node.end,
-                // slice: code.slice(nodeStartWithComments, node.end),
-                startLine: locStart.line,
-                startColumn: locStart.column,
-                endLine: node.loc.end.line,
-                endColumn: node.loc.end.column,
-                callFrameStart,
-                callFrameStartLine,
-                callFrameStartColumn,
-                selfSize: 0
-            });
-        }
-
-        // simple recursive walk
-        for (const key of Object.keys(node)) {
-            const v = node[key];
-
-            // only objects can be nodes or arrays of nodes; testing primitives for a type property
-            // goes through their prototypes and is a significant part of the walk
-            if (v === null || typeof v !== 'object') {
-                continue;
-            }
-
-            if (Array.isArray(v)) {
-                for (let i = 0; i < v.length; i++) {
-                    walk(v[i], node);
-                }
-            } else if (typeof v.type === 'string') {
-                walk(v, node);
-            }
-        }
-    }
-}
-
-function isFunctionNode(n: ASTNode | null): n is ASTNode {
-    if (!n || typeof n.type !== 'string') {
-        return false;
-    }
-
-    return functionRangeTypes.includes(n.type);
-}
-
-function findCallFrameStart(node: ASTNode, code: string, fallbackStart: number): number {
-    let callFrameStart = -1;
-
-    if (node.type === 'FunctionDeclaration' ||
-        node.type === 'FunctionExpression'
-    ) {
-        callFrameStart = code.indexOf('(', node.start);
-    } else if (
-        node.type === 'ClassMethod' ||
-        node.type === 'ClassPrivateMethod' ||
-        node.type === 'ObjectMethod'
-    ) {
-        callFrameStart = code.indexOf('(', node.key.end);
-    }
-
-    return callFrameStart !== -1 ? callFrameStart : fallbackStart;
-}
-
-// V8 names a function after a private class member with its hash, e.g. `#method`
-function getKeyName(key: ASTNode | null | undefined): string | null {
-    if (!key) {
-        return null;
-    }
-
-    if (key.type === 'PrivateName') {
-        return '#' + key.id.name;
-    }
-
-    if (typeof key.name === 'string') {
-        return key.name;
-    }
-
-    if (typeof key.value === 'string') {
-        return key.value;
-    }
-
-    return null;
-}
-
-function getFunctionName(node: ASTNode, parent: ASTNode | null): string {
-    if (node.id && typeof node.id.name === 'string') {
-        return node.id.name;
-    }
-
-    const keyName = getKeyName(node.key);
-
-    if (keyName !== null) {
-        return keyName;
-    }
-
-    if (parent) {
-        if (parent.id && typeof parent.id.name === 'string') {
-            return parent.id.name;
-        }
-
-        const parentKeyName = getKeyName(parent.key);
-
-        if (parentKeyName !== null) {
-            return parentKeyName;
-        }
-
-        if (parent.left && typeof parent.left.name === 'string') {
-            return parent.left.name;
-        }
-    }
-
-    return '';
 }
 
 function buildFunctionRangesIndex({ ranges }: FunctionRanges) {

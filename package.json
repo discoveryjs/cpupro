@@ -55,6 +55,7 @@
         "v8-profiler-next": "~1.5.1"
     },
     "devDependencies": {
+        "@babel/helper-validator-identifier": "^7.28.5",
         "@babel/parser": "^7.28.5",
         "@discoveryjs/cli": "^2.15.0",
         "@discoveryjs/discovery": "1.0.0-beta.98",

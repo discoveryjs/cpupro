@@ -86,7 +86,7 @@ test('posts ranges, their indexes and line starts of all scripts in columns of o
     assert.deepEqual(message.scripts.map(script => script.rangeCount), [2, 0, 0, 0]);
 
     // only the columns are transferred, no buffers per script
-    assert.equal(transfer.length, 12 + 4);
+    assert.equal(transfer.length, buffers.length);
 
     for (let i = 0; i < buffers.length; i++) {
         assert.equal(transfer[i], buffers[i]);

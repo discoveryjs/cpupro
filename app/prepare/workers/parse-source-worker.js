@@ -9,13 +9,13 @@ onmessage = async function(event) {
     const scriptLineStarts = [];
 
     for (const { id, url, source } of scripts) {
-        const functionRanges = parseScriptSourceRanges(source, url, true);
+        // the main thread looks up offsets of lines and columns in the sources it gets parsed
+        const lineStarts = computeLineStarts(source);
+        const functionRanges = parseScriptSourceRanges(source, url, true, lineStarts);
         const parsedRanges = functionRanges.parsed
             ? functionRanges.ranges
             : null;
         const sourceMetrics = computeScriptSourceMetrics(source, parsedRanges);
-        // the main thread looks up offsets of lines and columns in the sources it gets parsed
-        const lineStarts = computeLineStarts(source);
 
         result.push({
             id,
