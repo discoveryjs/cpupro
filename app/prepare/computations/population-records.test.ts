@@ -15,7 +15,7 @@ type RecordRow = [part: number, sample: number, eventClass: number, weight: numb
 type Grouping = [Uint8Array | Uint32Array, number];
 
 // Classes of events with equal values of every vector, numbered in the order of their first events
-function classify(vectors: EventValues[], eventCount: number): EventClasses & { ids: Uint32Array } {
+function classify(vectors: EventValues[], eventCount: number): EventClasses & { keys: Uint32Array } {
     const ids = new Uint32Array(eventCount);
     const classIds = new Map<string, number>();
     const events: number[] = [];
@@ -32,7 +32,7 @@ function classify(vectors: EventValues[], eventCount: number): EventClasses & { 
         ids[i] = id;
     }
 
-    return { ids, events: Uint32Array.from(events), values: new Set(vectors) };
+    return { keys: ids, keyClasses: Uint32Array.from(events, (_, i) => i), events: Uint32Array.from(events), values: new Set(vectors) };
 }
 
 function createRecords(population: Population, classes = classify([], population.values.length)) {
@@ -317,7 +317,7 @@ test('records sum values and nonzero counts of a part per sample and class', () 
     const values = Uint32Array.of(1, 0, 1, 1, 1, 1, 1, 2, 15_992);
     const population = new Population(samples, values);
 
-    const records = createRecords(population, { ids: classIds, events: Uint32Array.of(0, 2), values: new Set() });
+    const records = createRecords(population, { keys: classIds, keyClasses: Uint8Array.of(0, 1), events: Uint32Array.of(0, 2), values: new Set() });
 
     assert.deepEqual([...records.partEvents], [0, 8, 9]);
     assert.deepEqual(recordsOf(records), [
@@ -356,7 +356,7 @@ test('finds records of a part among slots that keep records of earlier parts', (
 
     const population = new Population(samples, values);
 
-    const records = createRecords(population, { ids: classIds, events: Uint32Array.of(0, 600), values: new Set() });
+    const records = createRecords(population, { keys: classIds, keyClasses: Uint8Array.of(0, 1), events: Uint32Array.of(0, 600), values: new Set() });
     const result = recordsOf(records);
 
     assert.deepEqual([...records.partEvents.subarray(0, 3)], [0, 516, 517]);
@@ -396,7 +396,7 @@ test.each([
     const groupings: Grouping[] = [
         [lifespan, 3],
         [space, 5],
-        [classes.ids, 15]
+        [classes.keys, 15]
     ];
     const lifespanFilter = createEventFilter('lifespan', lifespan, Uint8Array.of(1, 0, 1));
     const spaceFilter = createEventFilter('space', space, Uint8Array.of(1, 1, 0, 1, 0));
@@ -599,7 +599,7 @@ test('a base population sums groupings of event classes from its class sums with
     const expected = new Population(population.samples, population.values, 50, population.cumulative);
     const samples = trackReads(population.samples);
     const values = trackReads(population.values);
-    const groupings: Grouping[] = [[lifespan, 3], [space, 5], [classes.ids, classes.events.length]];
+    const groupings: Grouping[] = [[lifespan, 3], [space, 5], [classes.keys, classes.events.length]];
     population.samples = samples.array;
     population.values = values.array;
 

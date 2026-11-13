@@ -180,26 +180,31 @@ type BinGrid = {
     skip: number;
 };
 
+// Entries of the events of no attribute: the one track
+const SINGLE_TRACK = Uint8Array.of(0);
+
 // Aggregation of whole events by their signatures: records of the grid's spans, and acceptance and
 // group (track or tree node) of every signature for the aggregated population
 type SignatureGrouping = {
     signatures: EventSignatures;
     records: BinRecords;
     accepted: Uint8Array;
-    groups: Uint32Array;
+    groups: Uint8Array | Uint32Array;
     span: number;
     // Records of the cells of a fine grid on the line's own axis, for spans of whole cells
     cells: () => RangeRecords | null;
 };
 
-// Groups by the values of an attribute or a breakdown, or one group of all events when no values are given
+// Groups by the values of a breakdown, by the entries of an attribute's values keyed by the signatures, or one group
+// of all events when no values are given
 function createSignatureGrouping(
     line: ProfileLine,
     groupValues: Uint8Array | Uint32Array | null,
     viewport: PopulationFiltered,
     key: string,
     grid: BinGrid,
-    axisViewport: PopulationFiltered | null = null
+    axisViewport: PopulationFiltered | null = null,
+    groupEntries: Uint8Array | Uint32Array | null = null // per code of the values of an attribute: its entry
 ): SignatureGrouping | null {
     const { signatures } = line;
 
@@ -207,9 +212,11 @@ function createSignatureGrouping(
         return null;
     }
 
-    const groups = groupValues !== null
-        ? signatures.valuesOf(groupValues)
-        : new Uint32Array(signatures.count);
+    const groups = groupValues === null
+        ? new Uint32Array(signatures.count)
+        : groupEntries === null
+            ? signatures.valuesOf(groupValues)
+            : attributeGroups(signatures, groupValues, groupEntries);
     const accepted = signatures.acceptance(viewport);
 
     return groups !== null && accepted !== null
@@ -227,6 +234,28 @@ function createSignatureGrouping(
             cells: () => signatures.cellRecords(viewport.cumulative, viewport.cumulativeEnd)
         }
         : null;
+}
+
+// The entries of the signatures of events for an attribute's values: its entries for values the signatures key,
+// the entries of the codes of the signatures for values they keep, none for other values
+function attributeGroups(signatures: EventSignatures, values: Uint8Array | Uint32Array, entries: Uint8Array | Uint32Array) {
+    if (values === signatures.ids) {
+        return entries;
+    }
+
+    const codes = signatures.valuesOf(values);
+
+    if (codes === null) {
+        return null;
+    }
+
+    const groups = new Uint32Array(codes.length);
+
+    for (let i = 0; i < codes.length; i++) {
+        groups[i] = entries[codes[i]];
+    }
+
+    return groups;
 }
 
 // Adds the accepted records of the next span to a bin; the first aggregation over the grid records
@@ -279,6 +308,7 @@ function binPopulationBin(
     sinkId: number,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
+    entries: Uint8Array | Uint32Array,
     first: number,
     last: number,
     binIndex: number,
@@ -288,7 +318,7 @@ function binPopulationBin(
         const value = values[index];
 
         if (samples[index] !== sinkId && acceptedValues[index] > 0) {
-            const groupIndex = groups ? groups[index] : 0;
+            const groupIndex = entries[groups ? groups[index] : 0];
             const track = tracks[groupIndex];
 
             track.value += value;
@@ -308,6 +338,7 @@ function binPopulation(
     viewport: PopulationFiltered,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
+    entries: Uint8Array | Uint32Array,
     { total, step, skip }: BinGrid,
     grouping: SignatureGrouping | null = null
 ) {
@@ -325,7 +356,7 @@ function binPopulation(
             return;
         }
 
-        const groupIndex = groups ? groups[index] : 0;
+        const groupIndex = entries[groups ? groups[index] : 0];
         const track = tracks[groupIndex];
         const offset = cumulative[index] + skip + startCut;
         let binIndex = Math.floor(offset / step);
@@ -373,7 +404,19 @@ function binPopulation(
             const stop = Math.min(last, Math.max(index, lowerBound(cumulative, boundary) - 1));
 
             if (grouping === null) {
-                binValue = binPopulationBin(eventSamples!, values, eventValues!, sinkId, tracks, groups, index, stop, binIndex, binValue);
+                binValue = binPopulationBin(
+                    eventSamples!,
+                    values,
+                    eventValues!,
+                    sinkId,
+                    tracks,
+                    groups,
+                    entries,
+                    index,
+                    stop,
+                    binIndex,
+                    binValue
+                );
             } else {
                 addSpanRecords(grouping, tracks, index, stop, binIndex);
                 // Equals the per-event sum: within a bin every partial sum stays below the step and is a multiple
@@ -387,7 +430,7 @@ function binPopulation(
                 break;
             }
 
-            const groupIndex = groups ? groups[index] : 0;
+            const groupIndex = entries[groups ? groups[index] : 0];
             const track = tracks[groupIndex];
             const accept = accepts(index);
             let value = values[index];
@@ -464,6 +507,7 @@ function binMappedEvents(
     viewport: PopulationFiltered,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
+    entries: Uint8Array | Uint32Array,
     mapping: Uint32Array,
     targetBin: (target: number) => number,
     first: number,
@@ -483,7 +527,7 @@ function binMappedEvents(
         }
 
         if (binIndex !== -1 && samples[index] !== sinkId) {
-            const groupIndex = groups ? groups[index] : 0;
+            const groupIndex = entries[groups ? groups[index] : 0];
             const track = tracks[groupIndex];
             const value = acceptedValues[index];
 
@@ -518,7 +562,15 @@ function createMappedSignatureGrouping(
     const axisSignatures = axisLine.signatures;
     const axisAccepted = axisSignatures?.acceptance(axisViewport) ?? null;
     const grouping = axisAccepted !== null
-        ? createSignatureGrouping(line, attribute?.keys ?? null, viewport, `mapped:${axisLine.type}:${count}`, grid, axisViewport)
+        ? createSignatureGrouping(
+            line,
+            attribute?.keys ?? null,
+            viewport,
+            `mapped:${axisLine.type}:${count}`,
+            grid,
+            axisViewport,
+            attribute?.entries ?? null
+        )
         : null;
 
     return grouping !== null && axisSignatures !== null && axisAccepted !== null
@@ -577,6 +629,7 @@ function binMappedPopulation(
     viewport: PopulationFiltered,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
+    entries: Uint8Array | Uint32Array,
     mapping: Uint32Array,
     targetBin: (target: number) => number,
     // Events whose targets can be on the grid; other events of the source ranges have no bin
@@ -590,7 +643,7 @@ function binMappedPopulation(
         const spanLast = Math.max(spanFirst, Math.min(last, gridEvents[1]));
 
         if (grouping === null) {
-            binMappedEvents(viewport, tracks, groups, mapping, targetBin, spanFirst, spanLast);
+            binMappedEvents(viewport, tracks, groups, entries, mapping, targetBin, spanFirst, spanLast);
         } else {
             addMappedSpanRecords(grouping, tracks, mapping, spanFirst, spanLast);
         }
@@ -611,9 +664,9 @@ function binMappedPopulation(
             first = index + 1;
 
             if (target !== -1) {
-                const groupIndex = groups !== null
+                const groupIndex = entries[groups !== null
                     ? groups[index]
-                    : 0;
+                    : 0];
                 const track = tracks[groupIndex];
 
                 track.bins[target] += covered;
@@ -645,13 +698,14 @@ function sumMappedValuesByGroup(
     mapping: Uint32Array,
     acceptedTargets: Uint8Array,
     totals: Float64Array,
-    groups: Uint8Array | Uint32Array
+    groups: Uint8Array | Uint32Array,
+    entries: Uint8Array | Uint32Array
 ) {
     const { samples, values, sinkId } = viewport;
 
     for (let i = 0; i < values.length; i++) {
         if (samples[i] !== sinkId && acceptedTargets[mapping[i]]) {
-            const groupIndex = groups[i];
+            const groupIndex = entries[groups[i]];
 
             totals[groupIndex] += values[i];
         }
@@ -675,6 +729,7 @@ function binMappedTotals(
     viewport: PopulationFiltered,
     tracks: BinTrack[],
     groups: Uint8Array | Uint32Array | null,
+    entries: Uint8Array | Uint32Array,
     mapping: Uint32Array,
     axisCount: number,
     targetBin: (target: number) => number
@@ -690,10 +745,9 @@ function binMappedTotals(
     if (groups === null) {
         totals[0] = sumMappedValues(viewport, mapping, acceptedTargets);
     } else {
-        sumMappedValuesByGroup(viewport, mapping, acceptedTargets, totals, groups);
+        sumMappedValuesByGroup(viewport, mapping, acceptedTargets, totals, groups, entries);
     }
 
-    // Tracks of groups may be shared, as by the codes of the values of an attribute's entry
     for (let index = 0; index < tracks.length; index++) {
         tracks[index].value += totals[index];
         tracks[index].bins[0] += totals[index];
@@ -1205,10 +1259,8 @@ export const methods = {
         const tracks = attribute
             ? attribute.dict.map(() => ({ bins: new Uint32Array(n), value: 0 }))
             : [{ bins: binSumVector, value: 0 }];
-        // Values of events and signatures are codes, which take the tracks of their entries
-        const codeTracks = attribute
-            ? Array.from(attribute.entries, entry => tracks[entry])
-            : tracks;
+        // Values of events are codes, which take the tracks of their entries, as do signatures
+        const entries = attribute?.entries ?? SINGLE_TRACK;
         const coversSource = skip >= 0 && skip + viewport.cumulativeEnd <= total;
 
         if (mappingToLine !== null) {
@@ -1229,14 +1281,30 @@ export const methods = {
 
             // Signature records already sum events; the totals shortcut is for event scans
             if (grouping !== null) {
-                binMappedPopulation(viewport, codeTracks, attributeValues, mappingToLine, targetBin, gridEvents, grouping);
+                binMappedPopulation(viewport, tracks, attributeValues, entries, mappingToLine, targetBin, gridEvents, grouping);
             } else if (n === 1 && sourceRanges === null && coversAxis) {
-                binMappedTotals(viewport, codeTracks, attributeValues, mappingToLine, axisViewport.samples.length, targetBin);
+                binMappedTotals(
+                    viewport,
+                    tracks,
+                    attributeValues,
+                    entries,
+                    mappingToLine,
+                    axisViewport.samples.length,
+                    targetBin
+                );
             } else {
-                binMappedPopulation(viewport, codeTracks, attributeValues, mappingToLine, targetBin, gridEvents);
+                binMappedPopulation(viewport, tracks, attributeValues, entries, mappingToLine, targetBin, gridEvents);
             }
         } else {
-            const grouping = createSignatureGrouping(valuesLine, attribute?.keys ?? null, viewport, `own:${n}`, grid);
+            const grouping = createSignatureGrouping(
+                valuesLine,
+                attribute?.keys ?? null,
+                viewport,
+                `own:${n}`,
+                grid,
+                null,
+                attribute?.entries ?? null
+            );
 
             if (grouping === null && n === 1 && attribute && sourceRanges === null && coversSource) {
                 const { samplesTotal } = aggregateAttribute(viewport, attribute);
@@ -1246,7 +1314,7 @@ export const methods = {
                     tracks[index].bins[0] = samplesTotal[index];
                 }
             } else {
-                binPopulation(viewport, codeTracks, attributeValues, grid, grouping);
+                binPopulation(viewport, tracks, attributeValues, entries, grid, grouping);
             }
         }
 

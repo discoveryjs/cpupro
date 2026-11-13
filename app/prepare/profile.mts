@@ -30,7 +30,7 @@ import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { prepareLineFilters } from './lines/filters.js';
-import { EventSignatures } from './lines/event-signatures.js';
+import { EventSignatures, keyLineBySignatures } from './lines/event-signatures.js';
 import { prepareLineRange } from './lines/range.js';
 import { noopWorkHandler, WorkHandler } from './misc/work.js';
 
@@ -269,6 +269,9 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
         line.signatures = await work(`compute ${line.type} event signatures`, () =>
             new EventSignatures(line)
+        );
+        await work(`key ${line.type} events by signatures`, () =>
+            keyLineBySignatures(line)
         );
     }
 

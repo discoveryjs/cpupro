@@ -11,23 +11,63 @@ export type EventAcceptance = {
     values: Uint8Array | Uint16Array | Uint32Array;
     accepts: Acceptance;
 };
-// Classes of events that every filter over the listed value vectors accepts or rejects together:
-// a class per event and the first event of every class
+// Classes of events that every filter over the listed value vectors accepts or rejects together: a key per event,
+// the class of every key and the first event of every class. Events are keyed by their classes until a line keys
+// them by finer keys (signatures), as it keys the values of its attributes; `ids` give the class of every event,
+// materialized when read for queries and views over events (see defineEventClassIds)
 export type EventClasses = {
-    ids: Uint8Array | Uint16Array | Uint32Array;
+    keys: Uint8Array | Uint16Array | Uint32Array;
+    keyClasses: Uint8Array | Uint16Array | Uint32Array;
     events: Uint32Array;
-    values: ReadonlySet<Uint8Array | Uint16Array | Uint32Array>;
+    values: Set<Uint8Array | Uint16Array | Uint32Array>;
+    readonly ids: Uint16Array | Uint32Array; // per event: its class
 };
 
 // Events without filters over their values are of one class
 export function singleEventClass(eventCount: number): EventClasses {
-    return {
-        ids: new Uint8Array(eventCount),
+    return defineEventClassIds({
+        keys: new Uint8Array(eventCount),
+        keyClasses: new Uint8Array(1),
         events: eventCount > 0
             ? Uint32Array.of(0)
             : new Uint32Array(0),
         values: new Set()
-    };
+    });
+}
+
+// Classes of events per event, the classes of their keys, for queries and views over events: materialized when read
+// and released once no reader holds them; keys a line takes later give them again
+export function defineEventClassIds(classes: Omit<EventClasses, 'ids'>) {
+    let keys: EventClasses['keys'] | null = null;
+    let ids: WeakRef<Uint16Array | Uint32Array> | null = null;
+
+    Object.defineProperty(classes, 'ids', {
+        enumerable: true,
+        get() {
+            let vector = keys === classes.keys
+                ? ids?.deref()
+                : undefined;
+
+            if (vector === undefined) {
+                const { keyClasses } = classes;
+
+                keys = classes.keys;
+                vector = classes.events.length <= 0x10000
+                    ? new Uint16Array(keys.length)
+                    : new Uint32Array(keys.length);
+
+                for (let i = 0; i < keys.length; i++) {
+                    vector[i] = keyClasses[keys[i]];
+                }
+
+                ids = new WeakRef(vector);
+            }
+
+            return vector;
+        }
+    });
+
+    return classes as EventClasses;
 }
 
 type ApplyFilters = (updateMask: (mask: Uint32Array) => void, acceptedEvents: EventAcceptance | null) => void;
@@ -209,15 +249,20 @@ export class PopulationFilter extends Observer {
             this.#removedEvent = false;
             this.apply(mask => {
                 for (let sampleId = 0; sampleId < mask.length; sampleId++) {
-                    let bits = mask[sampleId] & ~removedBits;
+                    mask[sampleId] &= ~removedBits;
+                }
 
-                    for (const { filter, bit } of dirtySamples) {
-                        const value = filter.values ? filter.values[sampleId] : sampleId;
+                // PERF: A filter's bit is set over all samples at once, its values and acceptance read once
+                for (const { filter, bit } of dirtySamples) {
+                    const { values, accepts } = filter;
 
-                        bits = filter.accepts !== null && filter.accepts[value] === 0 ? bits | bit : bits & ~bit;
+                    for (let sampleId = 0; sampleId < mask.length; sampleId++) {
+                        const value = values ? values[sampleId] : sampleId;
+
+                        mask[sampleId] = accepts !== null && accepts[value] === 0
+                            ? mask[sampleId] | bit
+                            : mask[sampleId] & ~bit;
                     }
-
-                    mask[sampleId] = bits;
                 }
             }, intersectEventAcceptance(eventFilters, this.#eventClasses));
         }
@@ -234,15 +279,21 @@ function intersectEventAcceptance(filters: EventAcceptance[], classes: EventClas
     }
 
     if (classes !== null && filters.every(filter => classes.values.has(filter.values))) {
-        const accepts = new Uint8Array(classes.events.length).fill(1);
+        const { events, keyClasses } = classes;
+        const classAccepts = new Uint8Array(events.length).fill(1);
+        const accepts = new Uint8Array(keyClasses.length);
 
         for (const { values, accepts: filterAccepts } of filters) {
-            for (let eventClass = 0; eventClass < accepts.length; eventClass++) {
-                accepts[eventClass] &= filterAccepts[values[classes.events[eventClass]]];
+            for (let eventClass = 0; eventClass < classAccepts.length; eventClass++) {
+                classAccepts[eventClass] &= filterAccepts[values[events[eventClass]]];
             }
         }
 
-        return { values: classes.ids, accepts };
+        for (let key = 0; key < accepts.length; key++) {
+            accepts[key] = classAccepts[keyClasses[key]];
+        }
+
+        return { values: classes.keys, accepts };
     }
 
     const flags = new Uint8Array(filters[0].values.length).fill(1);

@@ -572,12 +572,18 @@ function addEventParts(
     const lastEvent = cumulative.length - 1;
     // PERF: Events read the folds of their codes, which share the folds of their entries, rather than the entry
     // of their code per event
-    const codeFolds = entries !== null
-        ? Array.from(entries, entry => folds[entry])
+    const walkFolds = entries !== null
+        ? codeFolds(entries, folds)
         : folds.slice();
-    const walked = Uint8Array.from(codeFolds, codeFold => codeFold !== null ? 1 : 0);
+    const walked = new Uint8Array(walkFolds.length);
     const events = new Uint32Array(EVENT_CHUNK);
     let walking = 0;
+
+    for (let i = 0; i < walkFolds.length; i++) {
+        if (walkFolds[i] !== null) {
+            walked[i] = 1;
+        }
+    }
 
     for (let i = 0; i < folds.length; i++) {
         if (folds[i] !== null) {
@@ -613,7 +619,7 @@ function addEventParts(
                 const group = groups !== null
                     ? groups[j]
                     : 0;
-                const groupFolds = codeFolds[group];
+                const groupFolds = walkFolds[group];
 
                 // PERF: An event ends where the next one starts, so its value isn't read
                 let partStart = cumulative[j];
@@ -636,7 +642,7 @@ function addEventParts(
                     groupFolds.addPart(partStart, partEnd);
 
                     if (groupFolds.topMaximum >= bound) {
-                        leaveWalk(folds, codeFolds, walked, entries !== null ? entries[group] : group);
+                        leaveWalk(folds, walkFolds, walked, entries !== null ? entries[group] : group);
                         walking--;
                     }
                 }
@@ -647,12 +653,12 @@ function addEventParts(
 
 // Folds of an entry leave a walk with every code of the entry
 // PERF: A function of its own: with its loop in the walk of events, the walk runs about 15% slower in Chrome
-function leaveWalk(folds: (ColumnFolds | null)[], codeFolds: (ColumnFolds | null)[], walked: Uint8Array, entry: number) {
+function leaveWalk(folds: (ColumnFolds | null)[], walkFolds: (ColumnFolds | null)[], walked: Uint8Array, entry: number) {
     const entryFolds = folds[entry];
 
-    for (let code = 0; code < codeFolds.length; code++) {
-        if (codeFolds[code] === entryFolds) {
-            codeFolds[code] = null;
+    for (let code = 0; code < walkFolds.length; code++) {
+        if (walkFolds[code] === entryFolds) {
+            walkFolds[code] = null;
             walked[code] = 0;
         }
     }
@@ -849,10 +855,23 @@ function attributeWalk(
         folds,
         walked,
         values: attribute.keys,
-        codeFolds: Array.from(attribute.entries, entry => folds[entry]),
+        codeFolds: codeFolds(attribute.entries, folds),
         signatureGroups,
         sums: new Float64Array(folds.length)
     };
+}
+
+// The folds of codes by their entries
+// PERF: A loop, as Array.from with a function takes about half a millisecond for the entries of tens of thousands
+// of signatures
+function codeFolds(entries: ArrayLike<number>, folds: (ColumnFolds | null)[]) {
+    const result: (ColumnFolds | null)[] = new Array(entries.length);
+
+    for (let i = 0; i < entries.length; i++) {
+        result[i] = folds[entries[i]];
+    }
+
+    return result;
 }
 
 // Entries of the values of an attribute per signature of the line's events, null when signatures don't keep the values

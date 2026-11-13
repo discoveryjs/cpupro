@@ -498,6 +498,22 @@ describe('measurements', () => {
         assert.equal(query('eventNesting()')({}), null);
     });
 
+    // Stages of the memline come from compilation records and are keyed by the signatures of allocations like every
+    // attribute, so stages are read by their dictionary indices rather than by the keys of allocations
+    test('allocationStageMismatches() reads the stages of a line keyed by signatures', async () => {
+        const subject = { index: 0 } as CpuProCompilationRecord['subject'];
+        const records = [
+            createCompilationRecord({ name: 'Outer', tm: 0, duration: 100, allocationStart: 0, allocationEnd: 3, subject, stage: 0 }),
+            createCompilationRecord({ name: 'Inner', tm: 10, duration: 10, allocationStart: 1, allocationEnd: 2, subject, stage: 1 })
+        ];
+        const { profile } = await createProfileFixture({ compilations: records });
+
+        profile.thread = createThread(records) as typeof profile.thread;
+
+        assert.notEqual(profile.memline!.signatures, null);
+        assert.equal(query('allocationStageMismatches()')(profile, { primaryProfile: null }), 0);
+    });
+
     describe('allocationStageMismatches()', () => {
         // the fixture has 4 allocations
         const nested = [

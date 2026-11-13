@@ -617,7 +617,7 @@ export class PopulationFiltered extends Observer {
 
     #computeAcceptance(): RecordsAcceptance | null {
         const records = this.#records;
-        const { ids, events } = records.classes;
+        const { keys, keyClasses, events } = records.classes;
         const sampleAccepts = new Uint8Array(this.samplesMask.length).fill(1);
         const classAccepts = new Uint8Array(events.length).fill(1);
         // eslint-disable-next-line @typescript-eslint/no-this-alias -- a cursor over the chain of sources from this one
@@ -654,7 +654,7 @@ export class PopulationFiltered extends Observer {
             records,
             sampleAccepts,
             classAccepts,
-            accepts: index => (sampleAccepts[samples[index]] & classAccepts[ids[index]]) === 1
+            accepts: index => (sampleAccepts[samples[index]] & classAccepts[keyClasses[keys[index]]]) === 1
         };
     }
 

@@ -253,7 +253,8 @@ test('intersects event filters per class when the classes keep their values toge
     const lifespan = Uint8Array.of(0, 1, 1, 0, 2, 0);
     const space = Uint32Array.of(3, 3, 1, 1, 3, 3);
     const classes: EventClasses = {
-        ids: Uint8Array.of(0, 1, 2, 3, 4, 0),
+        keys: Uint8Array.of(0, 1, 2, 3, 4, 0),
+        keyClasses: Uint8Array.of(0, 1, 2, 3, 4),
         events: Uint32Array.of(0, 1, 2, 3, 4),
         values: new Set([lifespan, space])
     };
@@ -276,7 +277,7 @@ test('intersects event filters per class when the classes keep their values toge
         });
     });
 
-    assert.equal(applications[0]!.values, classes.ids);
+    assert.equal(applications[0]!.values, classes.keys);
     assert.deepEqual([...applications[0]!.accepts], [1, 0, 0, 0, 1]);
 
     // Values the classes don't keep together are intersected per event
@@ -288,8 +289,41 @@ test('intersects event filters per class when the classes keep their values toge
         accepts: Uint8Array.of(1, 0)
     });
 
-    assert.notEqual(applications[1]!.values, classes.ids);
+    assert.notEqual(applications[1]!.values, classes.keys);
     assert.deepEqual(eventFlags(applications[1]), [1, 0, 0, 0, 0, 1]);
+});
+
+test('intersects event filters per class for events keyed finer than their classes', () => {
+    const { executor, applications } = createExecutor(1, 6);
+    // Every event has its own key, events 0 and 5 make one class; filters read the keys
+    const keys = Uint8Array.of(0, 1, 2, 3, 4, 5);
+    const classes: EventClasses = {
+        keys: keys,
+        keyClasses: Uint8Array.of(0, 1, 2, 3, 4, 0),
+        events: Uint32Array.of(0, 1, 2, 3, 4),
+        values: new Set([keys])
+    };
+
+    executor.setEventClasses(classes);
+    executor.batch(() => {
+        executor.set({
+            key: 'lifespan',
+            domain: 'event',
+            size: 6,
+            values: keys,
+            accepts: Uint8Array.of(1, 0, 1, 1, 0, 1)
+        });
+        executor.set({
+            key: 'space',
+            domain: 'event',
+            size: 6,
+            values: keys,
+            accepts: Uint8Array.of(1, 1, 0, 1, 1, 1)
+        });
+    });
+
+    assert.equal(applications[0]!.values, keys);
+    assert.deepEqual([...applications[0]!.accepts], [1, 0, 0, 1, 0, 1]);
 });
 
 // Values of two event attributes of 4 events; every event makes its own class of them
@@ -304,7 +338,8 @@ test.each([
     {
         name: 'per class',
         classes: {
-            ids: Uint8Array.of(0, 1, 2, 3),
+            keys: Uint8Array.of(0, 1, 2, 3),
+            keyClasses: Uint8Array.of(0, 1, 2, 3),
             events: Uint32Array.of(0, 1, 2, 3),
             values: new Set([lifespanValues, spaceValues])
         }

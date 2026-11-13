@@ -17,8 +17,8 @@ test('allocation attributes give the lifespans and spaces of the fixture allocat
     const line = profile.memline!;
     const lifespan = line.attributes.find(entry => entry.name === 'allocationLifespan')! as LifespanAttribute;
     const space = line.attributes.find(entry => entry.name === 'allocationSpace')! as SpaceAttribute;
-    const lifespanName = (value: number) => lifespan.dict[value];
-    const spaceCode = (value: number) => space.dict[value].code;
+    const lifespanName = (code: number) => lifespan.dict[lifespan.entries[code]];
+    const spaceCode = (code: number) => space.dict[space.entries[code]].code;
 
     assert.deepEqual([...line.values], [16, 32, 48, 64]);
     assert.deepEqual(Array.from(lifespan.keys, lifespanName), ['alive', 'short-lived', 'alive', 'long-lived']);

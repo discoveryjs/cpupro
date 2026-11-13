@@ -1,5 +1,5 @@
 import type { PopulationFiltered } from '../computations/population.js';
-import type { EventClasses } from '../computations/population-filter.js';
+import { defineEventClassIds, type EventClasses } from '../computations/population-filter.js';
 import type { PreparedAttributeFilter } from '../computations/attribute-filter.js';
 import { equalRanges, type RangeSet } from '../computations/coordinates.js';
 import { lowerBound, stepStarts } from '../computations/misc.js';
@@ -69,8 +69,8 @@ export class EventSignatures {
             .filter(column => !classes.values.has(column.values))
             .sort(bySize);
         const { ids, events } = combineColumns(
-            classes.ids,
-            new Uint32Array(classes.ids.length),
+            classes.keys,
+            new Uint32Array(classes.keys.length),
             Array.from(classes.events),
             otherColumns
         );
@@ -93,6 +93,30 @@ export class EventSignatures {
     // Value of every signature for an attribute or a breakdown's sample-to-category-node mapping
     valuesOf(values: ColumnValues) {
         return this.#signatureValues.get(values) ?? null;
+    }
+
+    // Columns keyed by the signatures of events (see keyLineBySignatures) leave the signatures, which keep the ids
+    // of signatures as a column of their own: the value of a signature is itself
+    keyColumns(keyed: ColumnValues[]) {
+        for (let i = 0; i < keyed.length; i++) {
+            this.#columns.delete(keyed[i]);
+            this.#signatureValues.delete(keyed[i]);
+        }
+
+        if (!this.#columns.has(this.ids)) {
+            const values = new Uint32Array(this.count);
+
+            for (let i = 0; i < values.length; i++) {
+                values[i] = i;
+            }
+
+            this.#columns.set(this.ids, {
+                values: this.ids,
+                samples: null,
+                size: this.count
+            });
+            this.#signatureValues.set(this.ids, values);
+        }
     }
 
     // Acceptance of every signature by a population of the line, or null when the population may accept
@@ -209,6 +233,57 @@ export class EventSignatures {
 
         return column !== undefined && column.samples === samples;
     }
+}
+
+// The signatures key the values of the attributes they keep and the classes of the line's events: an attribute takes
+// the ids of the signatures of events as its values and the entries of their codes as its entries, a signature takes
+// the class of its events, so the line keeps one vector of keys of events for all of them
+export function keyLineBySignatures(line: ProfileLine) {
+    const { signatures, eventClasses } = line;
+
+    if (signatures === null) {
+        return;
+    }
+
+    const { ids, events } = signatures;
+    const keyed: ColumnValues[] = [];
+    const keyClasses = new Uint32Array(events.length);
+
+    for (let i = 0; i < line.attributes.length; i++) {
+        const attribute = line.attributes[i];
+        const codes = signatures.valuesOf(attribute.keys);
+
+        if (codes === null || attribute.keys === ids) {
+            continue;
+        }
+
+        const entries = new Uint32Array(codes.length);
+
+        for (let j = 0; j < codes.length; j++) {
+            entries[j] = attribute.entries[codes[j]];
+        }
+
+        if (!keyed.includes(attribute.keys)) {
+            keyed.push(attribute.keys);
+        }
+
+        attribute.keys = ids;
+        attribute.entries = entries;
+    }
+
+    for (let i = 0; i < keyClasses.length; i++) {
+        keyClasses[i] = eventClasses.keyClasses[eventClasses.keys[events[i]]];
+    }
+
+    for (let i = 0; i < keyed.length; i++) {
+        if (eventClasses.values.delete(keyed[i])) {
+            eventClasses.values.add(ids);
+        }
+    }
+
+    eventClasses.keys = ids;
+    eventClasses.keyClasses = keyClasses;
+    signatures.keyColumns(keyed);
 }
 
 /**
@@ -480,17 +555,23 @@ export function createEventClasses(eventCount: number, attributes: ProfileLineAt
     const noColumns = eventCount > 0 ? [0] : [];
     // PERF: Classes rarely outgrow 16 bits, then their event-sized vector takes half the memory
     const { ids, events } = combineColumns(null, new Uint16Array(eventCount), noColumns, columns);
+    const keyClasses = new Uint32Array(events.length);
     const values = new Set<ColumnValues>();
+
+    for (let i = 0; i < keyClasses.length; i++) {
+        keyClasses[i] = i;
+    }
 
     for (let i = 0; i < columns.length; i++) {
         values.add(columns[i].values);
     }
 
-    return {
-        ids,
+    return defineEventClassIds({
+        keys: ids,
+        keyClasses,
         events: Uint32Array.from(events),
         values
-    };
+    });
 }
 
 // Columns of the values of attributes, given per event: a column per vector of values, which attributes may share

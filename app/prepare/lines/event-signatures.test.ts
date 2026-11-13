@@ -145,28 +145,35 @@ test('attribute rows give totals over the whole line, regardless of viewport and
     }
 });
 
-test('event classes of a line group events with equal values of every registered event filter', async () => {
+test('event classes of a line group events with equal entries of every attribute of a registered event filter', async () => {
     const { memline } = await createSignaturesProfile();
-    const { ids, events, values } = memline!.eventClasses;
-    const filterValues = [...new Set(memline!.breakdowns.flatMap(({ populationViewport }) => populationViewport.filter.filters
-        .filter(filter => filter.domain === 'event' && filter.values !== undefined)
-        .map(filter => filter.values!)))];
+    const { keys: ids, keyClasses, events, values } = memline!.eventClasses;
+    const filters = memline!.breakdowns.flatMap(({ populationViewport }) => populationViewport.filter.filters
+        .filter(filter => filter.domain === 'event' && filter.values !== undefined));
+    const attributes = memline!.attributes.filter(attribute => filters.some(filter => filter.key === attribute.name));
+    const entry = (attribute: ProfileLine['attributes'][number], event: number) => attribute.entries[attribute.keys[event]];
 
-    assert.ok(filterValues.length >= 2);
-    assert.deepEqual(new Set(filterValues), values);
+    // Events are keyed by their signatures, which the filters read
+    assert.equal(ids, memline!.signatures!.ids);
+    // Queries read the class of every event, materialized from the keys
+    assert.deepEqual(memline!.eventClasses.ids, Uint16Array.from(ids, key => keyClasses[key]));
+    assert.deepEqual(values, new Set([ids]));
+    assert.deepEqual(new Set(filters.map(filter => filter.values)), values);
+    assert.ok(attributes.length >= 2);
+    assert.ok(attributes.every(attribute => attribute.keys === ids));
     assert.ok(events.length > 1);
 
     for (let event = 0; event < ids.length; event++) {
-        const first = events[ids[event]];
+        const first = events[keyClasses[ids[event]]];
 
         assert.ok(first <= event);
-        for (const column of filterValues) {
-            assert.equal(column[event], column[first]);
+        for (const attribute of attributes) {
+            assert.equal(entry(attribute, event), entry(attribute, first));
         }
     }
 
     for (let eventClass = 1; eventClass < events.length; eventClass++) {
-        assert.ok(filterValues.some(column => column[events[eventClass]] !== column[events[0]]));
+        assert.ok(attributes.some(attribute => entry(attribute, events[eventClass]) !== entry(attribute, events[0])));
     }
 });
 
@@ -490,7 +497,7 @@ test.each([
 
     const classes = createEventClasses(row.columns[0].length, attributes);
 
-    assert.deepEqual([...classes.ids], row.ids);
+    assert.deepEqual([...classes.keys], row.ids);
     assert.deepEqual([...classes.events], row.events);
     assert.deepEqual([...classes.values], row.columns.map((_, index) => attributes[index].keys));
 });
@@ -507,8 +514,8 @@ test('event classes outgrowing 16 bits keep their ids in 32 bits', () => {
     const high = Uint32Array.from({ length: eventCount }, (_, i) => Math.floor(i / 300));
     const classes = createEventClasses(eventCount, [attribute(low, 300), attribute(high, 234)]);
 
-    assert.ok(classes.ids instanceof Uint32Array);
-    assert.deepEqual(classes.ids, createUint32Progression(eventCount));
+    assert.ok(classes.keys instanceof Uint32Array);
+    assert.deepEqual(classes.keys, createUint32Progression(eventCount));
     assert.deepEqual(classes.events, createUint32Progression(eventCount));
 });
 

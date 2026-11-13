@@ -45,7 +45,8 @@ export class PopulationRecords {
         readonly classes: EventClasses
     ) {
         const partEvents = splitParts(cumulative, cumulativeEnd);
-        const records = groupParts(samples, values, classes.ids, classes.events.length, partEvents);
+        // Events are keyed by their classes while populations group them
+        const records = groupParts(samples, values, classes.keys, classes.events.length, partEvents);
 
         this.partEvents = partEvents;
         this.partRecords = records.partRecords;
@@ -192,7 +193,7 @@ export class PopulationRecords {
     classifies(values: EventValues) {
         const { classes } = this;
 
-        return values === classes.ids || classes.values.has(values);
+        return values === classes.keys || classes.values.has(values);
     }
 
     // Value of every event class for event values that the event classes classify

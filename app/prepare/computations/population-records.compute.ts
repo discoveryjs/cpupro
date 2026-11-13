@@ -9,7 +9,7 @@ import {
 import type { EventClasses } from './population-filter.js';
 import recordsWasm from './population-records.compute.wasm';
 
-type ClassIds = EventClasses['ids'];
+type ClassIds = EventClasses['keys'];
 
 // A buffer for parts of up to a number of events: the staged events of a part, the tables finding records (slots of
 // a hash table at most half occupied, records by class within runs of one sample) and the records of the part, at most

@@ -3,7 +3,7 @@ import { Dictionary } from '../../app/prepare/dictionary.js';
 import { ProfileScriptsMap } from '../../app/prepare/preprocessing/scripts.js';
 import { SourceMapping } from '../../app/prepare/preprocessing/source-mapping.js';
 import { createProfile, type Profile } from '../../app/prepare/profile.mjs';
-import type { CpuProSession, CpuProThread, V8CpuProfile } from '../../app/prepare/types.js';
+import type { CpuProCompilationRecord, CpuProSession, CpuProThread, V8CpuProfile } from '../../app/prepare/types.js';
 import { noopWorkHandler } from '../../app/prepare/misc/work.js';
 import { Population, PopulationFiltered } from '../../app/prepare/computations/population.js';
 import { RangeSelection, RangeView } from '../../app/prepare/computations/range.js';
@@ -18,6 +18,7 @@ import { processDisplayNames } from '../../app/prepare/preprocessing/module-name
 export type ProfileFixtureOptions = {
     startTime?: number;
     noSourceMap?: boolean;
+    compilations?: CpuProCompilationRecord[];
     fallback?: boolean;
     cpuOnly?: boolean;
     locationsOnly?: boolean;
@@ -77,7 +78,12 @@ export async function createProfileFixture(options: ProfileFixtureOptions = {}) 
         }
     }
 
-    const profile = await createProfile(data, { dictionary, sourceMapping, work: noopWorkHandler });
+    const profile = await createProfile(data, {
+        dictionary,
+        sourceMapping,
+        compilations: options.compilations ?? null,
+        work: noopWorkHandler
+    });
 
     // Modules are named once per session, after its profiles are created
     processPaths(dictionary.packages, dictionary.modules);

@@ -86,7 +86,7 @@ export type ProfileLineAllocationSpaceAttribute = {
 };
 export type ProfileLineAllocationCodeTypeAttribute = {
     name: 'allocationCodeType';
-    keys: Uint8Array;
+    keys: Uint8Array | Uint32Array;
     entries: Uint8Array | Uint32Array;
     dict: string[];
 };

@@ -22,11 +22,20 @@ export function createAttributeFilter(attribute: ProfileLineAttribute, eventCoun
         settings: new SetAttributeFilter(attribute.name, filter.label, options),
         domain: 'event',
         size: eventCount,
-        values: attribute.keys,
+        // A line keys the values of its attributes by signatures once it has them
+        get values() {
+            return attribute.keys;
+        },
         compile(settings) {
-            const enabled = options.map(option => settings.isEnabled(option.key));
+            const enabled = options.map(option => settings.isEnabled(option.key) ? 1 : 0);
+            const { entries } = attribute;
+            const accepts = new Uint8Array(entries.length);
 
-            return Uint8Array.from(attribute.entries, entry => enabled[entry] ? 1 : 0);
+            for (let i = 0; i < entries.length; i++) {
+                accepts[i] = enabled[entries[i]];
+            }
+
+            return accepts;
         }
     };
 }

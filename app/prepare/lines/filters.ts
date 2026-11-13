@@ -35,7 +35,9 @@ export function prepareLineFilters(line: ProfileLine) {
             filters.add(candidate);
         }
 
-        computations.push({ ...computation, targets });
+        // Results read the values of their computation, which a filter of an attribute reads from the attribute as
+        // a line keys them by signatures (see createAttributeFilter)
+        computations.push(Object.assign(computation, { targets }));
     };
 
     filters.batch(() => {
@@ -65,10 +67,18 @@ export function prepareLineFilters(line: ProfileLine) {
 
     const update = () => {
         for (const computation of computations) {
-            const { settings, domain, size, values } = computation;
+            const { settings, domain, size } = computation;
 
             if (computation.revision !== settings.revision) {
-                computation.result = { key: settings.key, domain, size, values, accepts: settings.active ? computation.compile(settings) : null };
+                computation.result = {
+                    key: settings.key,
+                    domain,
+                    size,
+                    get values() {
+                        return computation.values;
+                    },
+                    accepts: settings.active ? computation.compile(settings) : null
+                };
                 computation.revision = settings.revision;
             }
         }
