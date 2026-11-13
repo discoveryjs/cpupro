@@ -206,9 +206,6 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             }
         });
 
-        // trigger call frame resolution for all locations
-        dict.locations.forEach(location => location.callFrame);
-
         // apply object marker
         await runSessionTask('mark objects', () => {
             dict.locations.forEach(markers['call-frame-position']);
