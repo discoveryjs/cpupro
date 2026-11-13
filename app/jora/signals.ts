@@ -32,7 +32,6 @@ type OpenStageEvent = {
 };
 
 const NO_STAGE = 'none';
-const nestingCache = new WeakMap<CpuProCompilationRecord[], EventNesting>();
 const stageMismatchCache = new WeakMap<Profile, number | null>();
 
 function isPlaced(record: CpuProCompilationRecord): record is PlacedRecord {
@@ -231,14 +230,41 @@ export type EventNesting = {
     rangeViolations: number;
 };
 
-export function measureEventNesting(compilations: CpuProCompilationRecord[]): EventNesting {
-    const nesting = analyzeEventNesting(sortPlacedEvents(compilations).filter(isTimed));
+type TimeOrder = {
+    placed: PlacedRecord[];
+    timed: TimedRecord[];
+    nesting: EventNesting;
+};
 
-    return {
-        partialOverlaps: nesting.partialOverlaps,
-        nestedWithAllocations: nesting.nestedWithAllocations,
-        rangeViolations: nesting.rangeViolationsCount
-    };
+// Compilation events of a thread in time order and the nesting of the timed ones: the signals over the events read
+// them for every check, so the events of a thread are ordered and analysed once
+const timeOrders = new WeakMap<CpuProCompilationRecord[], TimeOrder>();
+
+function timeOrderOf(compilations: CpuProCompilationRecord[]) {
+    let timeOrder = timeOrders.get(compilations);
+
+    if (timeOrder === undefined) {
+        const placed = sortPlacedEvents(compilations);
+        const timed = placed.filter(isTimed);
+        const nesting = analyzeEventNesting(timed);
+
+        timeOrder = {
+            placed,
+            timed,
+            nesting: {
+                partialOverlaps: nesting.partialOverlaps,
+                nestedWithAllocations: nesting.nestedWithAllocations,
+                rangeViolations: nesting.rangeViolationsCount
+            }
+        };
+        timeOrders.set(compilations, timeOrder);
+    }
+
+    return timeOrder;
+}
+
+export function measureEventNesting(compilations: CpuProCompilationRecord[]): EventNesting {
+    return timeOrderOf(compilations).nesting;
 }
 
 // Allocations whose stage differs from the innermost event by time nesting;
@@ -260,7 +286,7 @@ export function measureStageMismatches(profile: SignalsProfile): number | null {
         return null;
     }
 
-    return countStageMismatchesByNesting(sortPlacedEvents(compilations), stage);
+    return countStageMismatchesByNesting(timeOrderOf(compilations).placed, stage);
 }
 
 function samplePopulation(line: ProfileLine) {
@@ -363,9 +389,9 @@ export function allocationSampleWindow(profile: SignalsProfile) {
 }
 
 function cpuSampleEvents(line: ProfileLine, compilations: CpuProCompilationRecord[]): SampleEvents | null {
-    const timed = sortPlacedEvents(compilations).filter(isTimed);
+    const { timed, nesting } = timeOrderOf(compilations);
 
-    if (compilations.length === 0 || analyzeEventNesting(timed).partialOverlaps > 0) {
+    if (compilations.length === 0 || nesting.partialOverlaps > 0) {
         return null;
     }
 
@@ -505,18 +531,9 @@ export const methods: Record<string, Method> = {
             : null;
     },
     eventNesting(events: unknown) {
-        if (!Array.isArray(events)) {
-            return null;
-        }
-
-        let nesting = nestingCache.get(events);
-
-        if (nesting === undefined) {
-            nesting = measureEventNesting(events);
-            nestingCache.set(events, nesting);
-        }
-
-        return nesting;
+        return Array.isArray(events)
+            ? measureEventNesting(events)
+            : null;
     },
     // The number of neighbours going backwards in a vector of numbers
     inversions(vector: unknown) {

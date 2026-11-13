@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'vitest';
+import { describe, test, vi } from 'vitest';
 import jora from 'jora';
 import type {
     CpuProCompilationRecord,
@@ -189,6 +189,27 @@ describe('measurements', () => {
         assert.deepEqual(countsByCategory(distribution.categories), expected);
         assert.deepEqual(countsByCategory(coverage.categories), expected);
         assert.deepEqual(coverage.events.map(event => [event.name, event.count]), [[null, 0], ['Compile', 5]]);
+    });
+
+    test('signals of a thread order its events in time once, for samples of every bin count and event nesting', async () => {
+        const { profile } = await createProfileFixture();
+        const sort = vi.spyOn(Array.prototype, 'sort');
+
+        profile.thread = createThread([createEvent('Outer', [0, 100]), createEvent('Inner', [10, 25])]);
+
+        try {
+            const coverages = [query('samplesByCompilation()')(profile), query('samplesByCompilation("timeline", 3)')(profile)];
+            const nesting = query('eventNesting()')(profile.thread.compilations);
+
+            assert.equal(sort.mock.calls.filter(call => call.length === 1).length, 1);
+            assert.deepEqual(coverages.map(coverage => coverage.events.map(event => event.name)), [
+                [null, 'Outer', 'Inner'],
+                [null, 'Outer', 'Inner']
+            ]);
+            assert.equal(nesting.partialOverlaps, 0);
+        } finally {
+            sort.mockRestore();
+        }
     });
 
     test.each([
