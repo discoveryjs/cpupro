@@ -262,11 +262,11 @@ export type CpuProThread = {
     userTimings: UniformTraceEvent[]; // subset of user defined events, e.g. cat="blink.user_timing" in Chromium traces
 }
 
-// A script of a thread by its id and url in the input, linked to the script of a profile having the id;
-// the rest of the input record (source, source map) belongs to the input and the model's script
-export type CpuProThreadScript = {
+// A script of a thread with the fields of its input record but the source map, which source mapping takes
+// from the input, linked to the script of a profile having its id
+export type CpuProThreadScript = Omit<V8CpuProfileScript, 'id' | 'source' | 'sourceMap'> & {
     id: number | string;
-    url: string;
+    source: string | null;
     script: CpuProScript | null;
     compilation: ScriptCompilation | null;
 };

@@ -58,6 +58,10 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         thread.scripts = scripts.map(script => ({
             id: script.id,
             url: script.url,
+            source: script.source,
+            sourceMapUrl: script.sourceMapUrl,
+            lineOffset: script.lineOffset,
+            columnOffset: script.columnOffset,
             script: null,
             compilation: null
         }));

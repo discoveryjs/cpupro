@@ -324,6 +324,10 @@ export function linkThreadScripts(thread: CpuProThread, scripts: ProfileScriptsM
             thread.scripts.push({
                 id,
                 url: script.url,
+                source: script.source,
+                sourceMapUrl: script.sourceMapUrl,
+                lineOffset: script.lineOffset,
+                columnOffset: script.columnOffset,
                 script,
                 compilation: compilations.get(id) ?? null
             });
