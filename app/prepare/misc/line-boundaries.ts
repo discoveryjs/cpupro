@@ -1,14 +1,17 @@
-// Offsets of the starts of the lines of a document; \n, \r and \r\n end a line
+// Offsets of the starts of the lines of a document; \n, \r, \r\n, \u2028 and \u2029 end a line, as V8 counts lines
 export function computeLineStarts(document: string) {
     // the number of lines is known once the document is searched; the first line starts at 0
     const lineStarts = [0];
-    // PERF: Line ends are found by indexOf() rather than a regular expression. The next \n and the next \r
-    // are kept until a line start passes them, so a document is searched for each of them once
+    // PERF: Line ends are found by indexOf() rather than a regular expression. The next of each line terminator
+    // is kept until a line start passes it, so a document is searched for each of them once; a search of \u2028
+    // or \u2029 in a one-byte string ends at once
     let nextLineFeed = nextIndexOf(document, '\n', 0);
     let nextCarriageReturn = nextIndexOf(document, '\r', 0);
+    let nextLineSeparator = nextIndexOf(document, '\u2028', 0);
+    let nextParagraphSeparator = nextIndexOf(document, '\u2029', 0);
 
     while (true) {
-        const lineEnd = Math.min(nextLineFeed, nextCarriageReturn);
+        const lineEnd = Math.min(nextLineFeed, nextCarriageReturn, nextLineSeparator, nextParagraphSeparator);
 
         if (lineEnd === document.length) {
             break;
@@ -27,6 +30,14 @@ export function computeLineStarts(document: string) {
 
         if (nextCarriageReturn < lineStart) {
             nextCarriageReturn = nextIndexOf(document, '\r', lineStart);
+        }
+
+        if (nextLineSeparator < lineStart) {
+            nextLineSeparator = nextIndexOf(document, '\u2028', lineStart);
+        }
+
+        if (nextParagraphSeparator < lineStart) {
+            nextParagraphSeparator = nextIndexOf(document, '\u2029', lineStart);
         }
     }
 
@@ -183,8 +194,12 @@ export function createLineBoundaries(
         const lineIndex = getLineIndex(offset, lines);
         let lineEnd = getLineEnd(offset, lines);
 
-        // Exclude newline characters (\n, \r, or \r\n)
+        // Exclude line terminators (\n, \r, \r\n, \u2028 or \u2029)
         const lineStart = lineStarts[lineIndex];
+
+        if (lineEnd > lineStart && (document[lineEnd - 1] === '\u2028' || document[lineEnd - 1] === '\u2029')) {
+            lineEnd--;
+        }
 
         if (lineEnd > lineStart && document[lineEnd - 1] === '\n') {
             lineEnd--;

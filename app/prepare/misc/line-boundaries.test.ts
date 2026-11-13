@@ -52,6 +52,11 @@ test.each([
         starts: [0, 2, 3]
     },
     {
+        title: 'with \\u2028 and \\u2029, as V8 counts lines',
+        document: 'a\u2028b\u2029c',
+        starts: [0, 2, 4]
+    },
+    {
         title: 'with mixed line breaks and empty lines',
         document: '\r\n\n\ra\r\r\nb',
         starts: [0, 2, 3, 4, 6, 8]
