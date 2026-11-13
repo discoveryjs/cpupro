@@ -1,6 +1,7 @@
 import { allocTimespan, typeColor } from '../const.js';
 import { lowerBound } from '../computations/misc.js';
-import { CONTEXT_KIND_BUILTIN, CONTEXT_KIND_VM_STATE, contextInfoKind } from '../preprocessing/locations.js';
+import { asUint32Array } from '../misc/utils.js';
+import { allocationCodeTypes, allocationDictIndices } from './memline-attributes.compute.js';
 import type {
     AllocationSpaceDictEntry,
     GcEpochDictEntry,
@@ -31,19 +32,6 @@ function createDictIndexVector(length: number, dictLength: number): Uint8Array |
     return dictLength <= 256
         ? new Uint8Array(length)
         : new Uint32Array(length);
-}
-
-// Dictionary indices of codes through a table indexed by the codes. Codes repeat a few values with frequent changes,
-// so a table read per event costs less than a map lookup per change of the value
-function dictIndices(codes: ArrayLike<number>, table: Uint32Array, dictLength: number) {
-    const values = createDictIndexVector(codes.length, dictLength);
-
-    // PERF: A code beyond the table reads undefined, which a typed array stores as index 0, instead of a clamp per code
-    for (let i = 0; i < codes.length; i++) {
-        values[i] = table[codes[i]];
-    }
-
-    return values;
 }
 
 // Codes of a dictionary of names in ascending order
@@ -78,7 +66,11 @@ export function createMemlineAllocationTypeAttribute(
     const names = _cpuproAllocationTypeNames || {};
     const codes = namedCodes(names);
     const dict = codes.map(code => names[code].replace(/_TYPE$/, ''));
-    const values = dictIndices(_cpuproAllocationTypes, namedCodesTable(codes), dict.length);
+    const values = allocationDictIndices(
+        asUint32Array(_cpuproAllocationTypes),
+        namedCodesTable(codes),
+        createDictIndexVector(_cpuproAllocationTypes.length, dict.length)
+    );
 
     return {
         name: 'allocationType',
@@ -98,7 +90,11 @@ export function createMemlineAllocationSpaceAttribute(
     const names = _cpuproAllocationSpaceNames || {};
     const codes = namedCodes(names);
     const dict: AllocationSpaceDictEntry[] = codes.map(code => spaceDictEntry(names[code]));
-    const values = dictIndices(_cpuproAllocationSpaces, namedCodesTable(codes), dict.length);
+    const values = allocationDictIndices(
+        asUint32Array(_cpuproAllocationSpaces),
+        namedCodesTable(codes),
+        createDictIndexVector(_cpuproAllocationSpaces.length, dict.length)
+    );
 
     return {
         name: 'allocationSpace',
@@ -400,10 +396,10 @@ export function createMemlineAllocationCodeTypeAttribute(
     }
 
     const contextInfo = _cpuproAllocationContextInfo;
-    // Code types are indices of their names, which a byte keeps
-    const values = new Uint8Array(_cpuproAllocationCodeType);
     const dict = Object.values(_cpuproAllocationCodeTypeNames || {})
         .map(name => normCodeTypeNames[name] || name);
+    // Code types are indices of their names, which a byte keeps
+    let values: Uint8Array;
 
     // Allocations of builtins and of VM states other than JS take their own code types, a VM state taking precedence
     // over a builtin it runs under (see contextInfoKind)
@@ -411,15 +407,14 @@ export function createMemlineAllocationCodeTypeAttribute(
         const builtinType = dict.push('Builtin') - 1;
         const otherType = dict.push('Other') - 1;
 
-        for (let i = 0; i < values.length; i++) {
-            const kind = contextInfoKind(contextInfo[i]);
-
-            if (kind === CONTEXT_KIND_VM_STATE) {
-                values[i] = otherType;
-            } else if (kind === CONTEXT_KIND_BUILTIN) {
-                values[i] = builtinType;
-            }
-        }
+        values = allocationCodeTypes(
+            asUint32Array(_cpuproAllocationCodeType),
+            asUint32Array(contextInfo),
+            builtinType,
+            otherType
+        );
+    } else {
+        values = new Uint8Array(_cpuproAllocationCodeType);
     }
 
     return {

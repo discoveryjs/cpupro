@@ -99,6 +99,41 @@ test.each([
     assert.deepEqual(attribute!.dict, row.dict);
 });
 
+test('code types of allocations take the types of their contexts for context info of any magnitude', () => {
+    // JS code for the first 2^16 allocations, then builtins and builtins under the VM state OTHER of growing ids,
+    // up to ids far beyond the builtins of V8
+    const contexts = [
+        [0x10, 3],
+        [0x15, 4],
+        [0xfff0, 3],
+        [0xfff5, 4],
+        [0x80000000, 3],
+        [0x80000005, 4]
+    ];
+    const count = 0x10000 + 1000;
+    const codeTypes = new Uint32Array(count);
+    const contextInfo = new Uint32Array(count);
+    const expected = new Uint8Array(count);
+
+    for (let i = 0; i < count; i++) {
+        codeTypes[i] = i % 3;
+
+        if (i < 0x10000) {
+            expected[i] = i % 3;
+        } else {
+            [contextInfo[i], expected[i]] = contexts[i % contexts.length];
+        }
+    }
+
+    const attribute = createMemlineAllocationCodeTypeAttribute(
+        codeTypes,
+        { 0: 'ignition', 1: 'turbofan', 2: 'baseline' },
+        contextInfo
+    );
+
+    assert.deepEqual(attribute!.values, expected);
+});
+
 test('classes of allocations keep one lifespan implied by GC epochs from lists of traces', async () => {
     // GC values of one collection number with different lifespans, and allocations of no list (alive)
     const line = await createAllocationMemline({
