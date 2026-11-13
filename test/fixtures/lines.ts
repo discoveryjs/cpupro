@@ -11,6 +11,11 @@ export const allocationAttributes: ProfileFixtureOptions = {
     allocationSpaceNames: { 1: 'new_space', 2: 'old_space' }
 };
 
+// Entries of attribute values that are the indices of their dictionary entries
+export function dictEntries(dict: unknown[]) {
+    return Uint32Array.from(dict, (_, index) => index);
+}
+
 // The breakdown of a line by its kind
 export function findBreakdown(line: ProfileLine, kind: string) {
     const breakdown = line.breakdowns.find(entry => entry.kind === kind);

@@ -1,5 +1,5 @@
 import type { Profile } from '../prepare/profile.mjs';
-import type { ProfileLine, ProfileLineType, ProfileLineBreakdown, ProfileLineAllocationCompilationStageAttribute } from '../prepare/lines/types.js';
+import type { ProfileLine, ProfileLineType, ProfileLineBreakdown, ProfileLineAttribute } from '../prepare/lines/types.js';
 import type { CpuProCompilationRecord, CpuProThread } from '../prepare/types.js';
 import { getProfileOrScopeProfile } from './profile.js';
 
@@ -136,6 +136,9 @@ export function analyzeEventNesting(events: TimedRecord[]) {
     };
 }
 
+// Stages of allocations are read by the dictionary indices of events (values)
+type CompilationStageAttribute = Extract<ProfileLineAttribute, { name: 'allocationCompilationStage' }>;
+
 function countStageMismatches(
     values: ArrayLike<number>,
     from: number,
@@ -175,7 +178,7 @@ class StageScanner {
 // An instant or unfinished event is a leaf: it owns its range but never a parent.
 function countStageMismatchesByNesting(
     placedEvents: PlacedRecord[],
-    stage: ProfileLineAllocationCompilationStageAttribute
+    stage: CompilationStageAttribute
 ) {
     const stageIndexes = new Map(stage.dict.map((name, index) => [name, index]));
     const noStage = stageIndexes.get(NO_STAGE) ?? 0;
@@ -273,7 +276,7 @@ export function measureStageMismatches(profile: SignalsProfile): number | null {
     const { timeline, memline, thread } = profile;
     const compilations = thread?.compilations ?? [];
     const stage = memline?.attributes.find(
-        (attribute): attribute is ProfileLineAllocationCompilationStageAttribute =>
+        (attribute): attribute is CompilationStageAttribute =>
             attribute.name === 'allocationCompilationStage'
     );
     const mapping = timeline?.mappings.memline?._mapping;

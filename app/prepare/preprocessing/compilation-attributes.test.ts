@@ -124,8 +124,8 @@ function sourceFixture(cpuOnly = false) {
 }
 
 // Dictionary entries of the attribute values
-function dictValues<T>(attribute: { values: ArrayLike<number>; dict: T[] }) {
-    return Array.from(attribute.values, index => attribute.dict[index]);
+function dictValues<T>(attribute: { keys: ArrayLike<number>; dict: T[] }) {
+    return Array.from(attribute.keys, index => attribute.dict[index]);
 }
 
 function attributes(records: CpuProCompilationRecord[], ids: number[], order: 'consecutive' | null = null) {
@@ -206,9 +206,9 @@ test('owners are the compilation subjects of records, by raw script and range, n
         [null, null, 30],
         [7, 20, 40]
     ]);
-    assert.deepEqual([...owner.values], [1, 1, 2, 3, 4, 0]);
+    assert.deepEqual([...owner.keys], [1, 1, 2, 3, 4, 0]);
     assert.deepEqual(stage.dict, ['none', 'Compile', 'Finalize']);
-    assert.deepEqual([...stage.values], [1, 2, 1, 1, 1, 0]);
+    assert.deepEqual([...stage.keys], [1, 2, 1, 1, 1, 0]);
 
     // 255 stages and 'none' fit byte indices, one more stage does not
     const sizes = [
@@ -230,8 +230,8 @@ test('owners are the compilation subjects of records, by raw script and range, n
 
         const result = attributes(many, ids).stage;
 
-        assert.ok(result.values instanceof IndexArray);
-        assert.equal(result.values[count - 1], count);
+        assert.ok(result.keys instanceof IndexArray);
+        assert.equal(result.keys[count - 1], count);
     }
 });
 
@@ -427,7 +427,7 @@ test('one thread supplies source intervals to independent allocation captures', 
 
     assert.equal(records, profiles[1].thread.compilations);
     assert.deepEqual(first.owner.dict, second.owner.dict);
-    assert.notEqual(first.owner.values, second.owner.values);
+    assert.notEqual(first.owner.keys, second.owner.keys);
     assert.deepEqual(dictValues(first.stage), ['Compile', 'Inner', 'Compile', 'none']);
     assert.deepEqual(dictValues(second.stage), ['none', 'Inner', 'Compile']);
     assert.deepEqual(firstIds, [11, 13, 16, 21]);

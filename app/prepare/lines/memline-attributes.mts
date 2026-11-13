@@ -2,6 +2,7 @@ import { allocTimespan, typeColor } from '../const.js';
 import { lowerBound } from '../computations/misc.js';
 import { asUint32Array } from '../misc/utils.js';
 import { allocationCodeTypes, allocationDictIndices } from './memline-attributes.compute.js';
+import type { Population, PopulationFiltered } from '../computations/population.js';
 import type {
     AllocationSpaceDictEntry,
     GcEpochDictEntry,
@@ -11,7 +12,9 @@ import type {
     ProfileLineAllocationSpaceAttribute,
     ProfileLineAllocationTypeAttribute,
     ProfileLineAllocationOwnerAttribute,
-    ProfileLineAllocationCompilationStageAttribute
+    ProfileLineAllocationCompilationStageAttribute,
+    ProfileLineAttribute,
+    ProfileLineAttributeKeys
 } from './types.js';
 import type {
     AllocationCodeTypeVector,
@@ -32,6 +35,17 @@ function createDictIndexVector(length: number, dictLength: number): Uint8Array |
     return dictLength <= 256
         ? new Uint8Array(length)
         : new Uint32Array(length);
+}
+
+// Entries of values that are the indices of their dictionary entries
+function dictEntries(dictLength: number) {
+    const entries = createDictIndexVector(dictLength, dictLength);
+
+    for (let i = 0; i < dictLength; i++) {
+        entries[i] = i;
+    }
+
+    return entries;
 }
 
 // Codes of a dictionary of names in ascending order
@@ -74,7 +88,8 @@ export function createMemlineAllocationTypeAttribute(
 
     return {
         name: 'allocationType',
-        values,
+        keys: values,
+        entries: dictEntries(dict.length),
         dict
     };
 }
@@ -98,7 +113,8 @@ export function createMemlineAllocationSpaceAttribute(
 
     return {
         name: 'allocationSpace',
-        values,
+        keys: values,
+        entries: dictEntries(dict.length),
         dict
     };
 }
@@ -115,34 +131,12 @@ function spaceDictEntry(code: string): AllocationSpaceDictEntry {
     };
 }
 
-export function createMemlineAllocationLifespanAttribute(
-    _cpuproAllocationGc: AllocationGcVector | null
-): ProfileLineAllocationLifespanAttribute | null {
-    if (!_cpuproAllocationGc) {
-        return null;
-    }
-
-    // Lifespans are the low bits of GC values, which a byte keeps
-    const values = new Uint8Array(_cpuproAllocationGc);
-
-    for (let i = 0; i < values.length; i++) {
-        values[i] &= 3;
-    }
-
-    return lifespanAttribute(values);
-}
-
 // A GC value is the number of the collection a dead allocation died in, then the lifespan bits; 0 is an allocation
 // alive at the end of the recording. Collection numbers of a recording are a narrow range wherever it starts in
 // a process, so the table takes their range after an entry for 0
-export function createMemlineGcEpochAttribute(
-    _cpuproAllocationGc: AllocationGcVector | null
-): ProfileLineAllocationGcEpochAttribute | null {
-    if (!_cpuproAllocationGc) {
-        return null;
-    }
-
-    const gc = _cpuproAllocationGc;
+function gcAttributesFromValues(
+    gc: AllocationGcVector
+): [ProfileLineAllocationLifespanAttribute, ProfileLineAllocationGcEpochAttribute] {
     const dict: GcEpochDictEntry[] = [];
     // Entry 0 is for 0, entries from 1 are for collections from the smallest one, so the offset is the value before it
     let offset = 0xffffffff;
@@ -183,7 +177,12 @@ export function createMemlineGcEpochAttribute(
         values[i] = epochIndices[Math.max(gc[i] - offset, 0)];
     }
 
-    return gcEpochAttribute(values, dict);
+    const epochAttribute = gcEpochAttribute(values, dict);
+
+    return [
+        lifespanAttribute(epochAttribute, epochs, entries),
+        epochAttribute
+    ];
 }
 
 // GC values present in a table of values from the one after the offset, in ascending order
@@ -211,16 +210,14 @@ export function createMemlineGcAttributes(
         return gcAttributesFromIds(_cpuproAllocationGcIds, _cpuproAllocationIds, _cpuproAllocationIdsOrder);
     }
 
-    return [
-        createMemlineAllocationLifespanAttribute(_cpuproAllocationGc),
-        createMemlineGcEpochAttribute(_cpuproAllocationGc)
-    ];
+    return _cpuproAllocationGc !== null
+        ? gcAttributesFromValues(_cpuproAllocationGc)
+        : [];
 }
 
 // Lifespan and GC epoch attributes from the marking of allocations by collections, as traces give it: lists
 // of allocation IDs by GC value, a list per collection, each ID in one list only; allocations of no list are alive.
-// The values are known from the lists, so the dictionary comes before the attributes, and a single pass over
-// the lists writes both attributes
+// The values are known from the lists, so the dictionary comes before the attribute values
 function gcAttributesFromIds(
     gcIds: AllocationIdsByGc[],
     ids: AllocationIdVector,
@@ -243,7 +240,6 @@ function gcAttributesFromIds(
     }
 
     const entries = addGcEpochEntries(dict, epochs);
-    const lifespans = new Uint8Array(ids.length);
     const values = createDictIndexVector(ids.length, dict.length);
     const firstId = consecutiveFirstId(ids, idsOrder);
 
@@ -254,13 +250,15 @@ function gcAttributesFromIds(
             const gc = parseInt(keys[j]);
             const entry = entries[lowerBound(epochs, gc)];
 
-            fillAllocationGc(lifespans, values, ids, firstId, gcIds[i][keys[j]], gc & 3, entry);
+            fillAllocationGc(values, ids, firstId, gcIds[i][keys[j]], entry);
         }
     }
 
+    const epochAttribute = gcEpochAttribute(values, dict);
+
     return [
-        lifespanAttribute(lifespans),
-        gcEpochAttribute(values, dict)
+        lifespanAttribute(epochAttribute, epochs, entries),
+        epochAttribute
     ];
 }
 
@@ -279,38 +277,44 @@ function listedEpochs(gcIds: AllocationIdsByGc[]) {
     return [...gcValues].sort((a, b) => a - b);
 }
 
-// Allocations of the IDs of a list take the lifespan and the epoch entry of its GC value; when IDs are consecutive,
-// an ID gives its allocation without a search
+// Allocations of the IDs of a list take the epoch entry of its GC value; when IDs are consecutive, an ID gives its
+// allocation without a search
 function fillAllocationGc(
-    lifespans: Uint8Array,
     values: Uint8Array | Uint32Array,
     ids: AllocationIdVector,
     firstId: number | undefined,
     listIds: Uint32Array,
-    lifespan: number,
     entry: number
 ) {
     if (firstId !== undefined) {
         for (let i = 0; i < listIds.length; i++) {
-            const index = listIds[i] - firstId;
-
-            lifespans[index] = lifespan;
-            values[index] = entry;
+            values[listIds[i] - firstId] = entry;
         }
     } else {
         for (let i = 0; i < listIds.length; i++) {
-            const index = lowerBound(ids, listIds[i]);
-
-            lifespans[index] = lifespan;
-            values[index] = entry;
+            values[lowerBound(ids, listIds[i])] = entry;
         }
     }
 }
 
-function lifespanAttribute(values: Uint8Array): ProfileLineAllocationLifespanAttribute {
+// Lifespans are the low bits of GC values, so allocations of a GC epoch have one lifespan: lifespans are the values
+// of GC epochs with entries of their low bits
+function lifespanAttribute(
+    epochs: ProfileLineAllocationGcEpochAttribute,
+    gcValues: number[], // GC values of collections in ascending order
+    gcEntries: Uint32Array // per GC value: its epoch entry
+): ProfileLineAllocationLifespanAttribute {
+    // Allocations of no collection (0) and epochs missed between collections are alive
+    const entries = new Uint8Array(epochs.dict.length);
+
+    for (let i = 0; i < gcValues.length; i++) {
+        entries[gcEntries[i]] = gcValues[i] & 3;
+    }
+
     return {
         name: 'allocationLifespan',
-        values,
+        keys: epochs.keys,
+        entries,
         dict: [...allocTimespan]
     };
 }
@@ -321,7 +325,8 @@ function gcEpochAttribute(
 ): ProfileLineAllocationGcEpochAttribute {
     return {
         name: 'allocationGcEpoch',
-        values,
+        keys: values,
+        entries: dictEntries(dict.length),
         dict
     };
 }
@@ -419,7 +424,8 @@ export function createMemlineAllocationCodeTypeAttribute(
 
     return {
         name: 'allocationCodeType',
-        values,
+        keys: values,
+        entries: dictEntries(dict.length),
         dict
     };
 }
@@ -480,12 +486,14 @@ export function createMemlineCompilationAttributes(
     return [
         {
             name: 'allocationOwner',
-            values: owners,
+            keys: owners,
+            entries: dictEntries(ownerDict.length),
             dict: ownerDict
         },
         {
             name: 'allocationCompilationStage',
-            values: stages,
+            keys: stages,
+            entries: dictEntries(stageDict.length),
             dict: stageDict
         }
     ];
@@ -499,4 +507,56 @@ function consecutiveFirstId(
     return order === 'consecutive'
         ? ids[0]
         : undefined;
+}
+
+// Counts and totals of the dictionary entries of an attribute in a population: the sums of the codes of its values
+// add to their entries
+export function aggregateAttribute(population: Population | PopulationFiltered, attribute: ProfileLineAttribute) {
+    const { entries, dict } = attribute;
+    const codes = population.aggregateBy(attribute.keys, entries.length);
+    const samplesCount = new Uint32Array(dict.length);
+    const samplesTotal = new Float64Array(dict.length);
+
+    for (let i = 0; i < entries.length; i++) {
+        samplesCount[entries[i]] += codes.samplesCount[i];
+        samplesTotal[entries[i]] += codes.samplesTotal[i];
+    }
+
+    return {
+        samplesCount,
+        samplesTotal
+    };
+}
+
+// Values of an attribute per event, the dictionary indices of the entries of its keys, for queries and views over
+// events: materialized when read and released once no reader holds them; keys a line takes later give them again
+export function defineAttributeValues(attribute: ProfileLineAttributeKeys) {
+    let keys: ProfileLineAttributeKeys['keys'] | null = null;
+    let values: WeakRef<Uint8Array | Uint32Array> | null = null;
+
+    Object.defineProperty(attribute, 'values', {
+        enumerable: true,
+        get() {
+            let vector = keys === attribute.keys
+                ? values?.deref()
+                : undefined;
+
+            if (vector === undefined) {
+                const { entries } = attribute;
+
+                keys = attribute.keys;
+                vector = createDictIndexVector(keys.length, attribute.dict.length);
+
+                for (let i = 0; i < keys.length; i++) {
+                    vector[i] = entries[keys[i]];
+                }
+
+                values = new WeakRef(vector);
+            }
+
+            return vector;
+        }
+    });
+
+    return attribute as ProfileLineAttribute;
 }

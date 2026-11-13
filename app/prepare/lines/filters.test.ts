@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
-import { allocationAttributes, findBreakdown } from '../../../test/fixtures/lines.js';
+import { allocationAttributes, dictEntries, findBreakdown } from '../../../test/fixtures/lines.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { SetAttributeFilter } from '../computations/attribute-filter.js';
 import { PopulationFiltered } from '../computations/population.js';
@@ -102,17 +102,20 @@ test('every attribute but identity-like ones gets a filter with an option per di
     const attributes = [
         {
             name: 'allocationType' as const,
-            values: Uint32Array.of(0, 1, 1, 0),
+            keys: Uint32Array.of(0, 1, 1, 0),
+            entries: dictEntries(['STRING', 'FIXED_ARRAY']),
             dict: ['STRING', 'FIXED_ARRAY']
         },
         {
             name: 'allocationCodeType' as const,
-            values: Uint8Array.of(0, 0, 1, 2),
+            keys: Uint8Array.of(0, 0, 1, 2),
+            entries: dictEntries(['Ignition', 'Turbofan', 'Builtin']),
             dict: ['Ignition', 'Turbofan', 'Builtin']
         },
         {
             name: 'allocationOwner' as const,
-            values: Uint32Array.of(0, 1, 2, 3),
+            keys: Uint32Array.of(0, 1, 2, 3),
+            entries: dictEntries([null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 10 }, { scriptId: 2, start: 0 }]),
             dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 10 }, { scriptId: 2, start: 0 }]
         }
     ];
@@ -152,7 +155,8 @@ test.each([
     const { profile } = await createProfileFixture();
     const stages = {
         name: 'allocationCompilationStage' as const,
-        values: Uint8Array.from(row.values),
+        keys: Uint8Array.from(row.values),
+        entries: dictEntries(['none', 'Compile', 'Finalize']),
         dict: ['none', 'Compile', 'Finalize']
     };
     const line = { ...profile.memline!, filters: new FilterSet(), attributes: [stages] };

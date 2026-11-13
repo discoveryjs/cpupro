@@ -18,6 +18,7 @@ import { categoriesFractionBars } from './categories-fraction-bar.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
 import { findView, findViews, lineMetricsValueContext } from '../../../test/helpers/view-config.js';
 import * as lineWindow from '../../views/misc/line-window.js';
+import { dictEntries } from '../../../test/fixtures/lines.js';
 
 const detailRenders: [unknown, unknown, unknown, object][] = [];
 const { timeline, section } = evaluateModule(new URL('../default.js', import.meta.url), {
@@ -57,7 +58,7 @@ async function createAllocationProfile(name: string, dict: unknown[]) {
     const { profile } = await createProfileFixture();
     const memline = profile.memline!;
 
-    memline.attributes = [{ name, values: new Uint8Array([0, 1, 0, 1]), dict }] as typeof memline.attributes;
+    memline.attributes = [{ name, keys: new Uint8Array([0, 1, 0, 1]), entries: dictEntries(dict), dict }] as typeof memline.attributes;
 
     return { profile, memline, timeline: profile.timeline! };
 }

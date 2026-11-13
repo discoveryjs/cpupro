@@ -1,5 +1,6 @@
 import { SetAttributeFilter, type AttributeFilterSettings } from '../prepare/computations/attribute-filter.js';
 import type { ProfileLineAttribute, ProfileLineBreakdown } from '../prepare/lines/types.js';
+import { aggregateAttribute } from '../prepare/lines/memline-attributes.mjs';
 
 // Totals of the options of a filter: categories from per-sample totals, attribute values from totals by value
 function aggregateFilterOptions(
@@ -50,7 +51,7 @@ function aggregateFilterOptions(
 export function filterOptionTotals(breakdown: ProfileLineBreakdown, filter: SetAttributeFilter) {
     const { populationViewport } = breakdown;
     const attributeTotals = (attribute: ProfileLineAttribute) =>
-        populationViewport.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+        aggregateAttribute(populationViewport, attribute).samplesTotal;
 
     return aggregateFilterOptions(
         breakdown,
@@ -64,7 +65,7 @@ export function filterOptionTotals(breakdown: ProfileLineBreakdown, filter: SetA
 export function filterOptions(breakdown: ProfileLineBreakdown, filter: SetAttributeFilter) {
     const { population } = breakdown;
     const attributeTotals = (attribute: ProfileLineAttribute) =>
-        population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+        aggregateAttribute(population, attribute).samplesTotal;
     const totals = aggregateFilterOptions(
         breakdown,
         filter,

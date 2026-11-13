@@ -12,6 +12,7 @@ import { lowerBound } from '../prepare/computations/misc.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
 import { getLineColumnMaxima, type LineColumnMaxima } from '../prepare/lines/column-maxima.js';
 import type { BinRecords, EventSignatures, RangeRecords } from '../prepare/lines/event-signatures.js';
+import { aggregateAttribute } from '../prepare/lines/memline-attributes.mjs';
 
 // The breakdown of a line whose populations a view of the scope breakdown reads: the scope breakdown on its own line,
 // otherwise the line's breakdown of the same kind (call stacks of the memline are of the timeline's trees), otherwise
@@ -517,7 +518,7 @@ function createMappedSignatureGrouping(
     const axisSignatures = axisLine.signatures;
     const axisAccepted = axisSignatures?.acceptance(axisViewport) ?? null;
     const grouping = axisAccepted !== null
-        ? createSignatureGrouping(line, attribute?.values ?? null, viewport, `mapped:${axisLine.type}:${count}`, grid, axisViewport)
+        ? createSignatureGrouping(line, attribute?.keys ?? null, viewport, `mapped:${axisLine.type}:${count}`, grid, axisViewport)
         : null;
 
     return grouping !== null && axisSignatures !== null && axisAccepted !== null
@@ -692,9 +693,10 @@ function binMappedTotals(
         sumMappedValuesByGroup(viewport, mapping, acceptedTargets, totals, groups);
     }
 
+    // Tracks of groups may be shared, as by the codes of the values of an attribute's entry
     for (let index = 0; index < tracks.length; index++) {
-        tracks[index].value = totals[index];
-        tracks[index].bins[0] = totals[index];
+        tracks[index].value += totals[index];
+        tracks[index].bins[0] += totals[index];
     }
 }
 
@@ -968,7 +970,7 @@ export const methods = {
             return [];
         }
 
-        const totals = breakdown.population.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+        const totals = aggregateAttribute(breakdown.population, attribute).samplesTotal;
 
         return attribute.dict.map((entry, index) => ({
             index,
@@ -1199,10 +1201,14 @@ export const methods = {
         const grid = binningRange(axisLine, resolveScopeViewport(null, this.context), n);
         const { total, step, skip } = grid;
         const binSumVector = new Uint32Array(n);
-        const attributeValues = attribute?.values || null;
+        const attributeValues = attribute?.keys || null;
         const tracks = attribute
             ? attribute.dict.map(() => ({ bins: new Uint32Array(n), value: 0 }))
             : [{ bins: binSumVector, value: 0 }];
+        // Values of events and signatures are codes, which take the tracks of their entries
+        const codeTracks = attribute
+            ? Array.from(attribute.entries, entry => tracks[entry])
+            : tracks;
         const coversSource = skip >= 0 && skip + viewport.cumulativeEnd <= total;
 
         if (mappingToLine !== null) {
@@ -1223,24 +1229,24 @@ export const methods = {
 
             // Signature records already sum events; the totals shortcut is for event scans
             if (grouping !== null) {
-                binMappedPopulation(viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents, grouping);
+                binMappedPopulation(viewport, codeTracks, attributeValues, mappingToLine, targetBin, gridEvents, grouping);
             } else if (n === 1 && sourceRanges === null && coversAxis) {
-                binMappedTotals(viewport, tracks, attributeValues, mappingToLine, axisViewport.samples.length, targetBin);
+                binMappedTotals(viewport, codeTracks, attributeValues, mappingToLine, axisViewport.samples.length, targetBin);
             } else {
-                binMappedPopulation(viewport, tracks, attributeValues, mappingToLine, targetBin, gridEvents);
+                binMappedPopulation(viewport, codeTracks, attributeValues, mappingToLine, targetBin, gridEvents);
             }
         } else {
-            const grouping = createSignatureGrouping(valuesLine, attribute?.values ?? null, viewport, `own:${n}`, grid);
+            const grouping = createSignatureGrouping(valuesLine, attribute?.keys ?? null, viewport, `own:${n}`, grid);
 
             if (grouping === null && n === 1 && attribute && sourceRanges === null && coversSource) {
-                const { samplesTotal } = viewport.aggregateBy(attribute.values, attribute.dict.length);
+                const { samplesTotal } = aggregateAttribute(viewport, attribute);
 
                 for (let index = 0; index < tracks.length; index++) {
                     tracks[index].value = samplesTotal[index];
                     tracks[index].bins[0] = samplesTotal[index];
                 }
             } else {
-                binPopulation(viewport, tracks, attributeValues, grid, grouping);
+                binPopulation(viewport, codeTracks, attributeValues, grid, grouping);
             }
         }
 

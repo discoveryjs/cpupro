@@ -9,8 +9,9 @@ import type {
 } from '../prepare/types.js';
 import { createProfileFixture, createLineFixture } from '../../test/fixtures/profile.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
-import { findBreakdown } from '../../test/fixtures/lines.js';
+import { dictEntries, findBreakdown } from '../../test/fixtures/lines.js';
 import { createProfile } from '../prepare/profile.mjs';
+import { defineAttributeValues } from '../prepare/lines/memline-attributes.mjs';
 import {
     analyzeEventNesting,
     countInversions,
@@ -383,11 +384,12 @@ describe('measurements', () => {
         const { profile } = await createProfileFixture({ mapping: [1, 2, 3] });
         const values = Uint8Array.from([0, 1, 0, 0]);
 
-        profile.memline!.attributes.push({
+        profile.memline!.attributes.push(defineAttributeValues({
             name: 'allocationCompilationStage',
-            values,
+            keys: values,
+            entries: dictEntries(['none', 'Stage']),
             dict: ['none', 'Stage']
-        });
+        }));
 
         const coverage = query('samplesByCompilation("memline", 2.5)')(profile);
         const total = field => sum(coverage.categories.map(entry => entry[field]));
@@ -414,11 +416,12 @@ describe('measurements', () => {
     test('the CPU window includes the allocation at its start and excludes the one at its end', async () => {
         const { profile } = await createProfileFixture({ mapping: [1, 2, 3] });
 
-        profile.memline!.attributes.push({
+        profile.memline!.attributes.push(defineAttributeValues({
             name: 'allocationCompilationStage',
-            values: Uint8Array.from([0, 0, 0, 0]),
+            keys: Uint8Array.from([0, 0, 0, 0]),
+            entries: dictEntries(['none']),
             dict: ['none']
-        });
+        }));
         const coverage = query('samplesByCompilation("memline")')(profile);
         const script = coverage.categories.find(entry => entry.category?.name === 'script');
         const unknown = coverage.categories.find(entry => entry.category?.name === 'unknown');
@@ -431,11 +434,12 @@ describe('measurements', () => {
     test('allocation boundaries remain unknown when mapped IDs exceed population', async () => {
         const { profile } = await createProfileFixture({ mapping: [1, 3, 9] });
 
-        profile.memline!.attributes.push({
+        profile.memline!.attributes.push(defineAttributeValues({
             name: 'allocationCompilationStage',
-            values: Uint8Array.from([0, 0, 0, 0]),
+            keys: Uint8Array.from([0, 0, 0, 0]),
+            entries: dictEntries(['none']),
             dict: ['none']
-        });
+        }));
         const coverage = query('samplesByCompilation("memline")')(profile);
 
         assert.equal(coverage.window, null);
@@ -506,11 +510,12 @@ describe('measurements', () => {
             const thread = createThread(events);
 
             profile.thread = thread as typeof profile.thread;
-            profile.memline!.attributes.push({
+            profile.memline!.attributes.push(defineAttributeValues({
                 name: 'allocationCompilationStage',
-                values: Uint8Array.from(stageByAllocation),
+                keys: Uint8Array.from(stageByAllocation),
+                entries: dictEntries(['none', 'Outer', 'Inner', 'Instant']),
                 dict: ['none', 'Outer', 'Inner', 'Instant']
-            });
+            }));
 
             return query('allocationStageMismatches()')(profile, { primaryProfile: null });
         }

@@ -4,7 +4,7 @@ import jora from 'jora';
 import { methods } from '../jora/index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { createCompilationRecord, prepareCompilationRecords } from '../../test/fixtures/compilation.js';
-import { findBreakdown } from '../../test/fixtures/lines.js';
+import { dictEntries, findBreakdown } from '../../test/fixtures/lines.js';
 import { findContent, findView, contentQuery, findColumn, propertyQuery } from '../../test/helpers/view-config.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { completeCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
@@ -224,12 +224,14 @@ test('different compiled functions resolved to one frame stay separate rows and 
     line.attributes.push(
         {
             name: 'allocationType',
-            values: new Uint32Array(4),
+            keys: new Uint32Array(4),
+            entries: dictEntries(['BYTECODE_ARRAY']),
             dict: ['BYTECODE_ARRAY']
         },
         {
             name: 'allocationLifespan',
-            values: new Uint8Array(4),
+            keys: new Uint8Array(4),
+            entries: dictEntries(['alive']),
             dict: ['alive']
         }
     );

@@ -12,6 +12,7 @@ import { createUint32Progression } from '../misc/utils.js';
 import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
+import { dictEntries } from '../../../test/fixtures/lines.js';
 
 // Deterministic pseudo-random sequence
 function sequence(seed: number) {
@@ -87,7 +88,7 @@ test('signatures group allocations by equal attribute, category and filter value
     const { memline, timeline } = await createSignaturesProfile();
     const signatures = memline!.signatures!;
     const columns = [
-        ...memline!.attributes.map(attribute => (event: number) => attribute.values[event]),
+        ...memline!.attributes.map(attribute => (event: number) => attribute.keys[event]),
         ...memline!.breakdowns.map(({ categories, population }) => (event: number) => categories!.sampleToNode[population.samples[event]])
     ];
 
@@ -106,10 +107,10 @@ test('signatures group allocations by equal attribute, category and filter value
     }
 
     for (const attribute of memline!.attributes) {
-        const values = signatures.valuesOf(attribute.values)!;
+        const values = signatures.valuesOf(attribute.keys)!;
 
         for (let signature = 0; signature < signatures.count; signature++) {
-            assert.equal(values[signature], attribute.values[signatures.events[signature]]);
+            assert.equal(values[signature], attribute.keys[signatures.events[signature]]);
         }
     }
 
@@ -131,12 +132,12 @@ test('attribute rows give totals over the whole line, regardless of viewport and
     profile.timeline!.viewport.selection.setRange(500, 1500);
     (line.filters.get('allocationSpace') as SetAttributeFilter).setSelection('include', ['old_space']);
 
-    for (const { name, values, dict } of line.attributes) {
+    for (const { name, keys: values, entries, dict } of line.attributes) {
         const rows = methods.allocationAttributeRows.call({ context }, name);
         const expected = new Float64Array(dict.length);
 
         for (let i = 0; i < values.length; i++) {
-            expected[values[i]] += line.values[i];
+            expected[entries[values[i]]] += line.values[i];
         }
 
         assert.deepEqual(rows.map(row => row.value), Array.from(expected), name);
@@ -177,8 +178,9 @@ function createAttributesLine(...columns: ArrayLike<number>[]) {
         values: new Uint32Array(columns[0].length),
         attributes: columns.map((values, index) => ({
             name: names[index],
-            values: Uint32Array.from(values),
+            keys: Uint32Array.from(values),
             // Values index the dictionary
+            entries: dictEntries(new Array(Array.from(values).reduce((max, value) => Math.max(max, value), -1) + 1)),
             dict: new Array(Array.from(values).reduce((max, value) => Math.max(max, value), -1) + 1)
         })),
         eventClasses: singleEventClass(columns[0].length),
@@ -439,61 +441,71 @@ test('acceptance of signatures is kept until the destinations of events change',
     );
 });
 
-// Classes are numbered by their first events whether their columns take one pass or several; an implied column
-// is classified without being combined
+// Classes are numbered by their first events whether their columns take one pass or several; attributes sharing
+// the values of events (lifespans of GC epochs) take one column
 test.each([
     {
         name: 'one column',
-        combined: [[2, 0, 2, 1]],
-        implied: [],
+        columns: [[2, 0, 2, 1]],
+        shared: false,
         ids: [0, 1, 0, 2],
         events: [0, 1, 3]
     },
     {
         name: 'three columns of one pass',
-        combined: [[0, 0, 1, 1, 0], [1, 1, 0, 0, 1], [0, 1, 0, 1, 0]],
-        implied: [],
+        columns: [[0, 0, 1, 1, 0], [1, 1, 0, 0, 1], [0, 1, 0, 1, 0]],
+        shared: false,
         ids: [0, 1, 2, 3, 0],
         events: [0, 1, 2, 3]
     },
     {
         name: 'four columns of two passes',
-        combined: [[0, 0, 1, 1, 0, 0], [1, 1, 0, 0, 1, 1], [0, 1, 0, 1, 0, 1], [2, 0, 2, 2, 1, 0]],
-        implied: [],
+        columns: [[0, 0, 1, 1, 0, 0], [1, 1, 0, 0, 1, 1], [0, 1, 0, 1, 0, 1], [2, 0, 2, 2, 1, 0]],
+        shared: false,
         ids: [0, 1, 2, 3, 4, 1],
         events: [0, 1, 2, 3, 4]
     },
     {
-        name: 'an implied column',
-        combined: [[3, 1, 3, 2]],
-        implied: [[1, 0, 1, 0]],
+        name: 'attributes sharing values',
+        columns: [[3, 1, 3, 2]],
+        shared: true,
         ids: [0, 1, 0, 2],
         events: [0, 1, 3]
     }
 ])('event classes of $name', row => {
-    const attribute = (values: number[]) => ({
-        values: Uint8Array.from(values),
+    const attributes = row.columns.map(values => ({
+        keys: Uint8Array.from(values),
+        entries: dictEntries(new Array(Math.max(...values) + 1)),
         dict: new Array(Math.max(...values) + 1)
-    }) as unknown as ProfileLineAttribute;
-    const combined = row.combined.map(attribute);
-    const implied = row.implied.map(attribute);
-    const classes = createEventClasses(row.combined[0].length, combined, implied);
+    }) as unknown as ProfileLineAttribute);
+
+    // An attribute of the values of the first one with two entries
+    if (row.shared) {
+        attributes.push({
+            keys: attributes[0].keys,
+            entries: Uint8Array.of(0, 1, 0, 1),
+            dict: new Array(2)
+        } as unknown as ProfileLineAttribute);
+    }
+
+    const classes = createEventClasses(row.columns[0].length, attributes);
 
     assert.deepEqual([...classes.ids], row.ids);
     assert.deepEqual([...classes.events], row.events);
-    assert.deepEqual([...classes.values], [...combined, ...implied].map(column => column.values));
+    assert.deepEqual([...classes.values], row.columns.map((_, index) => attributes[index].keys));
 });
 
 // Classes are 16-bit ids until they outgrow them in a later chunk of events, then every id is widened
 test('event classes outgrowing 16 bits keep their ids in 32 bits', () => {
     const eventCount = 70_000;
     const attribute = (values: Uint32Array, size: number) => ({
-        values,
+        keys: values,
+        entries: dictEntries(new Array(size)),
         dict: new Array(size)
     }) as unknown as ProfileLineAttribute;
     const low = Uint32Array.from({ length: eventCount }, (_, i) => i % 300);
     const high = Uint32Array.from({ length: eventCount }, (_, i) => Math.floor(i / 300));
-    const classes = createEventClasses(eventCount, [attribute(low, 300), attribute(high, 234)], []);
+    const classes = createEventClasses(eventCount, [attribute(low, 300), attribute(high, 234)]);
 
     assert.ok(classes.ids instanceof Uint32Array);
     assert.deepEqual(classes.ids, createUint32Progression(eventCount));

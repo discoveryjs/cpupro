@@ -270,7 +270,7 @@ class OwnColumns {
 
     addAttribute(attribute: ProfileLineAttribute, shown: Uint8Array) {
         const signatureGroups = this.#cells !== null
-            ? this.line.signatures!.valuesOf(attribute.values)
+            ? signatureEntries(this.line.signatures!, attribute)
             : null;
 
         this.#attributes.push(attribute);
@@ -306,7 +306,7 @@ class OwnColumns {
         if (Number.isNaN(levelMaxima.total)) {
             const folds = this.#walkFolds(level);
 
-            addEventParts([folds], null, this.viewport, this.#ranges, this.#accepted, this.#ids, Infinity);
+            addEventParts([folds], null, null, this.viewport, this.#ranges, this.#accepted, this.#ids, Infinity);
             folds.finish();
             this.#totalLongest = Math.max(this.#totalLongest, folds.longest);
 
@@ -390,7 +390,8 @@ class OwnColumns {
 
         addEventParts(
             walked,
-            this.#attributes[index].values,
+            this.#attributes[index].keys,
+            this.#attributes[index].entries,
             this.viewport,
             this.#walkRanges(index, folds),
             this.#accepted,
@@ -458,7 +459,7 @@ class OwnColumns {
 
                 const walk = attributeWalk(i, this.#attributes[i], folds, signatureGroups);
 
-                if (walk.walked.length > 0) {
+                if (walk !== null) {
                     walks.push(walk);
                 }
             }
@@ -553,6 +554,7 @@ function heldRanges(held: Uint8Array, duration: number, origin: number, ranges: 
 function addEventParts(
     folds: (ColumnFolds | null)[],
     groups: ArrayLike<number> | null,
+    entries: ArrayLike<number> | null, // per code of groups: the index of its folds
     viewport: PopulationFiltered,
     ranges: readonly Range[],
     accepted: Uint8Array | null,
@@ -568,13 +570,17 @@ function addEventParts(
     // PERF: Signatures of events aren't read when all of them are accepted
     const acceptsAll = accepted !== null && accepted.indexOf(0) === -1;
     const lastEvent = cumulative.length - 1;
-    const walked = new Uint8Array(folds.length);
+    // PERF: Events read the folds of their codes, which share the folds of their entries, rather than the entry
+    // of their code per event
+    const codeFolds = entries !== null
+        ? Array.from(entries, entry => folds[entry])
+        : folds.slice();
+    const walked = Uint8Array.from(codeFolds, codeFold => codeFold !== null ? 1 : 0);
     const events = new Uint32Array(EVENT_CHUNK);
     let walking = 0;
 
     for (let i = 0; i < folds.length; i++) {
         if (folds[i] !== null) {
-            walked[i] = 1;
             walking++;
         }
     }
@@ -607,7 +613,7 @@ function addEventParts(
                 const group = groups !== null
                     ? groups[j]
                     : 0;
-                const groupFolds = folds[group];
+                const groupFolds = codeFolds[group];
 
                 // PERF: An event ends where the next one starts, so its value isn't read
                 let partStart = cumulative[j];
@@ -630,14 +636,28 @@ function addEventParts(
                     groupFolds.addPart(partStart, partEnd);
 
                     if (groupFolds.topMaximum >= bound) {
-                        folds[group] = null;
-                        walked[group] = 0;
+                        leaveWalk(folds, codeFolds, walked, entries !== null ? entries[group] : group);
                         walking--;
                     }
                 }
             }
         }
     }
+}
+
+// Folds of an entry leave a walk with every code of the entry
+// PERF: A function of its own: with its loop in the walk of events, the walk runs about 15% slower in Chrome
+function leaveWalk(folds: (ColumnFolds | null)[], codeFolds: (ColumnFolds | null)[], walked: Uint8Array, entry: number) {
+    const entryFolds = folds[entry];
+
+    for (let code = 0; code < codeFolds.length; code++) {
+        if (codeFolds[code] === entryFolds) {
+            codeFolds[code] = null;
+            walked[code] = 0;
+        }
+    }
+
+    folds[entry] = null;
 }
 
 // Cells of events within a range and a column add the accepted records of their signatures to the folds of their
@@ -695,7 +715,7 @@ function addCellColumns(
                 // leaves the column, and its part in the range beyond the column adds to the columns it covers
                 if (accepted[ids[last]] === 1 && fullEnd > keptEnd) {
                     for (let k = 0; k < walks.length; k++) {
-                        const lastFolds = walks[k].folds[walks[k].values[last]];
+                        const lastFolds = walks[k].codeFolds[walks[k].values[last]];
 
                         lastFolds?.add(column, keptEnd - fullEnd);
 
@@ -729,7 +749,7 @@ function addCellColumns(
                     }
 
                     for (let k = 0; k < walks.length; k++) {
-                        walks[k].folds[walks[k].values[j]]?.addPart(partStart, partEnd);
+                        walks[k].codeFolds[walks[k].values[j]]?.addPart(partStart, partEnd);
                     }
 
                     total?.addPart(partStart, partEnd);
@@ -793,23 +813,25 @@ function addRecords(
 }
 
 // A walk of the values of an attribute (by its index): their folds (none for values not walked) and groups, the values
-// of the events and of their signatures (null when signatures don't keep them), and the sums of the records of
-// a segment per value
+// of the events with the folds of their codes, the values of their signatures (null when signatures don't keep them),
+// and the sums of the records of a segment per value
 type AttributeWalk = {
     index: number;
     folds: (ColumnFolds | null)[];
     walked: number[];
     values: ArrayLike<number>;
+    codeFolds: (ColumnFolds | null)[]; // per code of the values: the folds of its entry
     signatureGroups: Uint32Array | null;
     sums: Float64Array;
 };
 
+// A walk of an attribute's values with folds, null when none has them
 function attributeWalk(
     index: number,
     attribute: ProfileLineAttribute,
     folds: (ColumnFolds | null)[],
     signatureGroups: Uint32Array | null
-): AttributeWalk {
+): AttributeWalk | null {
     const walked: number[] = [];
 
     for (let i = 0; i < folds.length; i++) {
@@ -818,14 +840,37 @@ function attributeWalk(
         }
     }
 
+    if (walked.length === 0) {
+        return null;
+    }
+
     return {
         index,
         folds,
         walked,
-        values: attribute.values,
+        values: attribute.keys,
+        codeFolds: Array.from(attribute.entries, entry => folds[entry]),
         signatureGroups,
         sums: new Float64Array(folds.length)
     };
+}
+
+// Entries of the values of an attribute per signature of the line's events, null when signatures don't keep the values
+function signatureEntries(signatures: EventSignatures, attribute: ProfileLineAttribute) {
+    const codes = signatures.valuesOf(attribute.keys);
+
+    if (codes === null) {
+        return null;
+    }
+
+    const { entries } = attribute;
+    const signatureGroups = new Uint32Array(codes.length);
+
+    for (let i = 0; i < codes.length; i++) {
+        signatureGroups[i] = entries[codes[i]];
+    }
+
+    return signatureGroups;
 }
 
 // The highest columns of a line's events mapped onto another line's axis in order (a nondecreasing mapping): events
@@ -835,8 +880,9 @@ function attributeWalk(
 class MappedColumns {
     readonly floorLevel: number;
     readonly attributes: ProfileLineAttribute[] = [];
-    // Per attribute: values whose rows are shown
+    // Per attribute: values whose rows are shown, and the groups of signatures (none when signatures don't keep them)
     readonly #shown: Uint8Array[] = [];
+    readonly #signatureGroups: (Uint32Array | null)[] = [];
     readonly #levels = new Map<number, LevelMaxima>();
 
     constructor(
@@ -854,6 +900,9 @@ class MappedColumns {
     addAttribute(attribute: ProfileLineAttribute, shown: Uint8Array) {
         this.attributes.push(attribute);
         this.#shown.push(shown);
+        this.#signatureGroups.push(this.line.signatures !== null
+            ? signatureEntries(this.line.signatures, attribute)
+            : null);
     }
 
     total(level: number) {
@@ -868,11 +917,8 @@ class MappedColumns {
     #level(requestedLevel: number) {
         const walks = this.#walks();
 
-        // The total takes the records of the first attribute when no value is to be walked
-        if (this.#levels.size === 0) {
-            this.#walk(walks.length > 0 ? walks : [this.#walkOf(0)], true);
-        } else if (walks.length > 0) {
-            this.#walk(walks, false);
+        if (this.#levels.size === 0 || walks.length > 0) {
+            this.#walk(walks, this.#levels.size === 0);
         }
 
         return this.#levels.get(Math.min(Math.max(requestedLevel, this.floorLevel), this.topLevel))!;
@@ -885,7 +931,7 @@ class MappedColumns {
         for (let i = 0; i < this.attributes.length; i++) {
             const walk = this.#walkOf(i);
 
-            if (walk.walked.length > 0) {
+            if (walk !== null) {
                 walks.push(walk);
             }
         }
@@ -894,8 +940,8 @@ class MappedColumns {
     }
 
     // The walk of an attribute (by its index): the folds of the levels from the floor up of its values shown and
-    // with no levels taken yet
-    #walkOf(index: number): AttributeWalk {
+    // with no levels taken yet, null when there are none
+    #walkOf(index: number) {
         const attribute = this.attributes[index];
         const shown = this.#shown[index];
         const tracks = this.#levels.get(this.floorLevel)?.tracks[index];
@@ -908,7 +954,7 @@ class MappedColumns {
                 : null);
         }
 
-        return attributeWalk(index, attribute, folds, this.line.signatures?.valuesOf(attribute.values) ?? null);
+        return attributeWalk(index, attribute, folds, this.#signatureGroups[index]);
     }
 
     // Walks the levels from the floor up of the values of the walks, and of the total when asked
@@ -970,7 +1016,7 @@ function addMappedColumns(
     const keptBySignatures = (walk: AttributeWalk) => walk.signatureGroups !== null;
     const targetColumn = createTargetColumns(axisViewport, duration, columns.origin);
     // Signature records of whole targets sum their events, unless signatures don't tell their acceptance or groups;
-    // the total takes their weight with the first attribute
+    // the total takes their weight
     const records = signatures !== null && accepted !== null && walks.every(keptBySignatures)
         ? signatures.targetRecords(mapping, axisViewport.population.values.length)
         : null;
@@ -981,7 +1027,7 @@ function addMappedColumns(
             total?.add(column, weight);
 
             for (let i = 0; i < walks.length; i++) {
-                walks[i].folds[walks[i].values[event]]?.add(column, weight);
+                walks[i].codeFolds[walks[i].values[event]]?.add(column, weight);
             }
         }
     };

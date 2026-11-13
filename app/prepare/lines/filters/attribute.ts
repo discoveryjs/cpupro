@@ -7,12 +7,12 @@ type AttributeFilterOptions = {
     options: FilterOption[];
 };
 
-// A filter over the values of a line attribute: option `i` is the dictionary entry `i`, so the acceptance table
-// is indexed by attribute values
+// A filter over the values of a line attribute: option `i` is the dictionary entry `i`, and the acceptance table
+// is indexed by attribute values, a value taking the option of its entry
 export function createAttributeFilter(attribute: ProfileLineAttribute, eventCount: number): FilterComputation | null {
     const filter = attributeFilterOptions(attribute);
 
-    if (filter === null || attribute.values.length !== eventCount || attribute.dict.length === 0) {
+    if (filter === null || attribute.keys.length !== eventCount || attribute.dict.length === 0) {
         return null;
     }
 
@@ -22,9 +22,11 @@ export function createAttributeFilter(attribute: ProfileLineAttribute, eventCoun
         settings: new SetAttributeFilter(attribute.name, filter.label, options),
         domain: 'event',
         size: eventCount,
-        values: attribute.values,
+        values: attribute.keys,
         compile(settings) {
-            return Uint8Array.from(options, option => settings.isEnabled(option.key) ? 1 : 0);
+            const enabled = options.map(option => settings.isEnabled(option.key));
+
+            return Uint8Array.from(attribute.entries, entry => enabled[entry] ? 1 : 0);
         }
     };
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { methods } from './index.mjs';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
-import { findBreakdown } from '../../test/fixtures/lines.js';
+import { dictEntries, findBreakdown } from '../../test/fixtures/lines.js';
 import type {
     ProfileLine,
     ProfileLineAllocationOwnerAttribute,
@@ -21,12 +21,14 @@ function addAllocationKinds(line: ProfileLine) {
     line.attributes.push(
         {
             name: 'allocationType',
-            values: Uint32Array.from([0, 0, 0, 1]),
+            keys: Uint32Array.from([0, 0, 0, 1]),
+            entries: dictEntries(['object', 'array', 'string']),
             dict: ['object', 'array', 'string']
         },
         {
             name: 'allocationLifespan',
-            values: Uint8Array.from([0, 1, 0, 0]),
+            keys: Uint8Array.from([0, 1, 0, 0]),
+            entries: dictEntries(['alive', 'short-lived']),
             dict: ['alive', 'short-lived']
         }
     );
@@ -64,7 +66,8 @@ function createOwners(): ProfileLineAllocationOwnerAttribute {
     return {
         name: 'allocationOwner',
         dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }],
-        values: new Uint32Array([1, 2, 1, 0])
+        entries: dictEntries([null, null, null]),
+        keys: new Uint32Array([1, 2, 1, 0])
     };
 }
 
@@ -197,7 +200,8 @@ async function createOwnerMatrix() {
     const stages: ProfileLineAllocationCompilationStageAttribute = {
         name: 'allocationCompilationStage',
         dict: ['none', 'Stage1', 'Stage2'],
-        values: new Uint8Array([1, 1, 2, 0])
+        entries: dictEntries(['none', 'Stage1', 'Stage2']),
+        keys: new Uint8Array([1, 1, 2, 0])
     };
 
     addAllocationKinds(line);

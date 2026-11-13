@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createProfileFixture } from '../../test/fixtures/profile.js';
-import { allocationAttributes, findBreakdown } from '../../test/fixtures/lines.js';
+import { allocationAttributes, dictEntries, findBreakdown } from '../../test/fixtures/lines.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 import { filterOptionTotals, filterOptions } from './filters.js';
 import type { ProfileLineBreakdown } from '../prepare/lines/types.js';
@@ -28,7 +28,8 @@ function addCompilationStages(breakdown: ProfileLineBreakdown, values: number[],
 
     breakdown.line.attributes.push({
         name: 'allocationCompilationStage',
-        values: Uint8Array.from(values),
+        keys: Uint8Array.from(values),
+        entries: dictEntries(stages),
         dict: stages
     });
 

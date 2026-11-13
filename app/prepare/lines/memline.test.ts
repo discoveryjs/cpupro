@@ -4,11 +4,17 @@ import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { createMemline } from './memline.mjs';
 import {
     createMemlineAllocationCodeTypeAttribute,
-    createMemlineAllocationLifespanAttribute,
     createMemlineAllocationTypeAttribute,
-    createMemlineGcEpochAttribute
+    createMemlineGcAttributes
 } from './memline-attributes.mjs';
+import { createAttributeFilter } from './filters/attribute.js';
+import type { ProfileLineAttribute } from './types.js';
 import type { V8CpuProfile } from '../types.js';
+
+// Dictionary indices of the values of an attribute, taken through the entries of their codes
+function entryValues(attribute: ProfileLineAttribute) {
+    return Array.from(attribute.keys, code => attribute.entries[code]);
+}
 
 // A memline of allocation data of a profile without CPU samples
 async function createAllocationMemline(allocations: Partial<V8CpuProfile>) {
@@ -64,9 +70,12 @@ test('maps allocation attribute codes to dictionary indices of 1 byte without ch
     const attribute = (name: string) => line!.attributes.find(entry => entry.name === name)!;
 
     assert.equal(line!.values.buffer, sizes.buffer);
-    assert.deepEqual(attribute('allocationType').values, new Uint8Array([0, 0, 1]));
-    assert.deepEqual(attribute('allocationSpace').values, new Uint8Array([0, 1, 0]));
-    assert.deepEqual(attribute('allocationGcEpoch').values, new Uint8Array([0, 1, 2]));
+    assert.deepEqual(attribute('allocationType').keys, new Uint8Array([0, 0, 1]));
+    assert.deepEqual(attribute('allocationSpace').keys, new Uint8Array([0, 1, 0]));
+    assert.deepEqual(attribute('allocationGcEpoch').keys, new Uint8Array([0, 1, 2]));
+    assert.equal(attribute('allocationLifespan').keys, attribute('allocationGcEpoch').keys);
+    assert.deepEqual(entryValues(attribute('allocationLifespan')), [2, 0, 1]);
+    // Queries read the dictionary indices of events, materialized from the keys
     assert.deepEqual(attribute('allocationLifespan').values, new Uint8Array([2, 0, 1]));
     assert.deepEqual([...types], [7, 7, 9]);
     assert.deepEqual([...spaces], [2, 4, 2]);
@@ -95,7 +104,7 @@ test.each([
         row.contextInfo
     );
 
-    assert.deepEqual(attribute!.values, Uint8Array.from(row.values));
+    assert.deepEqual(attribute!.keys, Uint8Array.from(row.values));
     assert.deepEqual(attribute!.dict, row.dict);
 });
 
@@ -131,7 +140,7 @@ test('code types of allocations take the types of their contexts for context inf
         contextInfo
     );
 
-    assert.deepEqual(attribute!.values, expected);
+    assert.deepEqual(attribute!.keys, expected);
 });
 
 test('classes of allocations keep one lifespan implied by GC epochs from lists of traces', async () => {
@@ -151,10 +160,11 @@ test('classes of allocations keep one lifespan implied by GC epochs from lists o
         ]
     });
     const { ids, events, values } = line!.eventClasses;
-    const lifespans = line!.attributes.find(attribute => attribute.name === 'allocationLifespan')!.values;
+    const lifespan = line!.attributes.find(attribute => attribute.name === 'allocationLifespan')!;
+    const lifespans = entryValues(lifespan);
 
-    assert.ok(values.has(lifespans));
-    assert.deepEqual([...lifespans], [1, 2, 0, 1, 1, 0]);
+    assert.ok(values.has(lifespan.keys));
+    assert.deepEqual(lifespans, [1, 2, 0, 1, 1, 0]);
     assert.deepEqual([...ids].map(id => lifespans[events[id]]), [...lifespans]);
     assert.equal(events.length, 4);
 });
@@ -168,7 +178,7 @@ test('maps attribute codes to 4-byte indices when a dictionary exceeds 256 entri
 
     const attribute = createMemlineAllocationTypeAttribute(new Uint32Array([0, 299]), typeNames)!;
 
-    assert.deepEqual(attribute.values, new Uint32Array([0, 299]));
+    assert.deepEqual(attribute.keys, new Uint32Array([0, 299]));
 });
 
 test.each([
@@ -185,7 +195,7 @@ test.each([
 ])('maps type codes $name to dictionary index 0', row => {
     const attribute = createMemlineAllocationTypeAttribute(new Uint32Array([10, 1000]), row.names)!;
 
-    assert.deepEqual([...attribute.values], row.values);
+    assert.deepEqual([...attribute.keys], row.values);
 });
 
 // A GC value is the collection number << 2 | lifespan, 0 is an allocation of no collection
@@ -203,19 +213,32 @@ test.each([
         dict: [['minor', 2345678], ['major', 2345679]]
     }
 ])('maps GC values of large collection numbers $name to dictionary indices', row => {
-    const epochs = createMemlineGcEpochAttribute(Uint32Array.from(row.gc))!;
+    const [, epochs] = createMemlineGcAttributes(Uint32Array.from(row.gc), null, null, null);
 
-    assert.deepEqual([...epochs.values], row.values);
+    assert.ok(epochs !== undefined);
+
+    assert.deepEqual([...epochs.keys], row.values);
     assert.deepEqual(epochs.dict.map(entry => [entry.type, entry.epoch]), row.dict);
 });
 
 test('decodes unsigned GC values without losing the high bit', () => {
     const gc = new Uint32Array([0x80000001]);
-    const lifespan = createMemlineAllocationLifespanAttribute(gc)!;
-    const epochs = createMemlineGcEpochAttribute(gc)!;
+    const [lifespan, epochs] = createMemlineGcAttributes(gc, null, null, null);
 
-    assert.deepEqual([...lifespan.values], [1]);
-    assert.deepEqual([...epochs.values], [0]);
+    assert.ok(lifespan !== undefined && epochs !== undefined);
+    assert.deepEqual(entryValues(lifespan), [1]);
+    assert.deepEqual([...epochs.keys], [0]);
     assert.equal(epochs.dict[0].epoch, 0x20000000);
     assert.equal(epochs.dict[0].type, 'minor');
+});
+
+test('a lifespan filter accepts the GC epochs of the lifespans it takes', () => {
+    // Allocations of no collection, of minor collections 1 and 3 and of a major collection 2
+    const [lifespan] = createMemlineGcAttributes(Uint32Array.of(0, 1 << 2 | 1, 2 << 2 | 2, 3 << 2 | 1), null, null, null);
+    const filter = createAttributeFilter(lifespan!, 4)!;
+
+    filter.settings.setSelection('include', ['short-lived']);
+
+    assert.deepEqual([...lifespan!.keys], [0, 1, 2, 3]);
+    assert.deepEqual([...filter.compile(filter.settings)], [0, 1, 0, 1]);
 });

@@ -62,40 +62,51 @@ export type ProfileLineBreakdown = {
 
 export type ProfileLineAllocationTypeAttribute = {
     name: 'allocationType';
-    values: Uint8Array | Uint32Array;
+    keys: Uint8Array | Uint32Array;
+    entries: Uint8Array | Uint32Array;
     dict: string[];
 };
 export type ProfileLineAllocationGcEpochAttribute = {
     name: 'allocationGcEpoch';
-    values: Uint8Array | Uint32Array;
+    keys: Uint8Array | Uint32Array;
+    entries: Uint8Array | Uint32Array;
     dict: GcEpochDictEntry[];
 };
 export type ProfileLineAllocationLifespanAttribute = {
     name: 'allocationLifespan';
-    values: Uint8Array;
+    keys: Uint8Array | Uint32Array;
+    entries: Uint8Array | Uint32Array;
     dict: string[];
 };
 export type ProfileLineAllocationSpaceAttribute = {
     name: 'allocationSpace';
-    values: Uint8Array | Uint32Array;
+    keys: Uint8Array | Uint32Array;
+    entries: Uint8Array | Uint32Array;
     dict: AllocationSpaceDictEntry[];
 };
 export type ProfileLineAllocationCodeTypeAttribute = {
     name: 'allocationCodeType';
-    values: Uint8Array;
+    keys: Uint8Array;
+    entries: Uint8Array | Uint32Array;
     dict: string[];
 };
 export type ProfileLineAllocationOwnerAttribute = {
     name: 'allocationOwner';
-    values: Uint32Array;
+    keys: Uint32Array;
+    entries: Uint8Array | Uint32Array;
     dict: (CpuProCompilationSubject | null)[]; // the compilation subjects after the absent owner
 };
 export type ProfileLineAllocationCompilationStageAttribute = {
     name: 'allocationCompilationStage';
-    values: Uint8Array | Uint32Array;
+    keys: Uint8Array | Uint32Array;
+    entries: Uint8Array | Uint32Array;
     dict: string[];
 };
-export type ProfileLineAttribute =
+// Keys of an attribute per event are codes of its values, and entries give the dictionary entry of every key, so
+// attributes take the keys of events of another attribute through their own entries (lifespans are kinds of GC
+// epochs). A line attribute's `values` are the dictionary indices of its events, materialized when read for queries
+// and views over events (see defineAttributeValues)
+export type ProfileLineAttributeKeys =
     | ProfileLineAllocationTypeAttribute
     | ProfileLineAllocationGcEpochAttribute
     | ProfileLineAllocationLifespanAttribute
@@ -103,6 +114,9 @@ export type ProfileLineAttribute =
     | ProfileLineAllocationCodeTypeAttribute
     | ProfileLineAllocationOwnerAttribute
     | ProfileLineAllocationCompilationStageAttribute;
+export type ProfileLineAttribute = ProfileLineAttributeKeys & {
+    readonly values: Uint8Array | Uint32Array; // per event: the dictionary index of its value
+};
 
 export type Axis = {
     start: number;

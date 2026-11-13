@@ -21,7 +21,8 @@ import {
     createMemlineAllocationSpaceAttribute,
     createMemlineAllocationTypeAttribute,
     createMemlineCompilationAttributes,
-    createMemlineGcAttributes
+    createMemlineGcAttributes,
+    defineAttributeValues
 } from './memline-attributes.mjs';
 
 export type CreateMemlineOptions = {
@@ -187,25 +188,13 @@ export async function createMemline(
             _cpuproAllocationIds || null,
             data._cpuproAllocationIdsOrder || null
         )
-    ].filter(attr => attr !== null));
+    ].filter(attr => attr !== null).map(defineAttributeValues));
 
-    // Populations of the memline share the classes of allocations with equal values of every event filter.
-    // A lifespan is the low bits of a GC value and an entry of GC epochs is a whole GC value, whether attributes come
-    // from a vector of GC values or from lists of traces, so the GC epoch of an allocation gives its lifespan:
-    // lifespans split no class of GC epochs and take no pass of their own
+    // Populations of the memline share the classes of allocations with equal values of every event filter
     const hasEventFilter = (attribute: ProfileLineAttribute) =>
         createAttributeFilter(attribute, allocationSizes.length) !== null;
-    const filteredAttributes = attributes.filter(hasEventFilter);
-    const hasGcEpoch = filteredAttributes.some(attribute => attribute.name === 'allocationGcEpoch');
-    const isImplied = (attribute: ProfileLineAttribute) =>
-        hasGcEpoch && attribute.name === 'allocationLifespan';
-    const isCombined = (attribute: ProfileLineAttribute) => !isImplied(attribute);
     const eventClasses = await work('compute memline event classes', () =>
-        createEventClasses(
-            allocationSizes.length,
-            filteredAttributes.filter(isCombined),
-            filteredAttributes.filter(isImplied)
-        )
+        createEventClasses(allocationSizes.length, attributes.filter(hasEventFilter))
     );
 
     const range = new RangeSelection({ name: 'cumulative-allocated-bytes', unit: 'bytes' })

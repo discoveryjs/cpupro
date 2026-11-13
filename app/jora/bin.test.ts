@@ -16,6 +16,7 @@ import { createLineMapping } from '../prepare/computations/line-mapping.js';
 import { EventSignatures } from '../prepare/lines/event-signatures.js';
 import { PopulationFiltered } from '../prepare/computations/population.js';
 import type { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
+import { dictEntries } from '../../test/fixtures/lines.js';
 
 type HeapEvents = Parameters<typeof methods.binHeapTotal>[0];
 type FunctionCodes = Parameters<typeof methods.binScriptFunctionCodesTotal>[0];
@@ -840,7 +841,8 @@ test.each([
     });
     const attribute = {
         name: 'allocationType' as const,
-        values: new Uint32Array([0, 1, 1, 2]),
+        keys: new Uint32Array([0, 1, 1, 2]),
+        entries: dictEntries(['first', 'second', 'third']),
         dict: ['first', 'second', 'third']
     };
     const context = {
@@ -1014,7 +1016,7 @@ test.each([
     });
 
     for (const values of [Uint8Array.from(types), types]) {
-        const attribute = { name: 'allocationType' as const, values, dict: ['a', 'b', 'c'] };
+        const attribute = { name: 'allocationType' as const, keys: values, entries: dictEntries(['a', 'b', 'c']), dict: ['a', 'b', 'c'] };
         const rows = methods.binLineToAxisLine.call({ context }, line, attribute, line, row.count);
 
         assert.deepEqual(rows.map(entry => [...entry.bins]), row.tracks);
@@ -1036,7 +1038,8 @@ test('mapped single-bin totals preserve wide sums with and without groups', asyn
     );
     const attribute = {
         name: 'allocationType' as const,
-        values: new Uint8Array([0, 0]),
+        keys: new Uint8Array([0, 0]),
+        entries: dictEntries(['all']),
         dict: ['all']
     };
     const axisFilter = {
@@ -1375,7 +1378,8 @@ test('mapped records of whole targets equal event binning across source range cu
     const types = Uint32Array.from(targets, () => random(3));
     const attribute = {
         name: 'allocationType' as const,
-        values: types,
+        keys: types,
+        entries: dictEntries(['a', 'b', 'c']),
         dict: ['a', 'b', 'c']
     };
     const start = axis.range.frame.resolveValue(0);
@@ -1491,17 +1495,20 @@ test('allocation attribute rows take dictionary order, entry colors and whole-li
     line.attributes = [
         {
             name: 'allocationType',
-            values: Uint32Array.of(0, 1, 1, 0),
+            keys: Uint32Array.of(0, 1, 1, 0),
+            entries: dictEntries(['array', 'string']),
             dict: ['array', 'string']
         },
         {
             name: 'allocationSpace',
-            values: Uint32Array.of(1, 1, 0, 1),
+            keys: Uint32Array.of(1, 1, 0, 1),
+            entries: dictEntries(spaces),
             dict: spaces
         },
         {
             name: 'allocationOwner',
-            values: Uint32Array.of(0, 1, 1, 1),
+            keys: Uint32Array.of(0, 1, 1, 1),
+            entries: dictEntries([null, owner]),
             dict: [null, owner]
         }
     ];
@@ -1527,7 +1534,7 @@ test.each([
     const timeline = await createContext();
     const memline = await createContext({ type: 'memline' });
 
-    memline.scopeLine.attributes = [{ name: 'allocationType', values: new Uint32Array(3), dict: ['array'] }];
+    memline.scopeLine.attributes = [{ name: 'allocationType', keys: new Uint32Array(3), entries: dictEntries(['array']), dict: ['array'] }];
     assert.deepEqual(methods[method].call({ context: timeline }, 'allocationType'), []);
     assert.deepEqual(methods[method].call({ context: memline }, 'allocationSpace'), []);
 });
@@ -1535,7 +1542,7 @@ test.each([
 test('allocationAttributeRows gives no rows for a memline without populations', async () => {
     const context = await createContext({ type: 'memline' });
 
-    context.scopeLine.attributes = [{ name: 'allocationType', values: new Uint32Array(3), dict: ['array'] }];
+    context.scopeLine.attributes = [{ name: 'allocationType', keys: new Uint32Array(3), entries: dictEntries(['array']), dict: ['array'] }];
     context.scopeLine.breakdowns = [];
     assert.deepEqual(methods.allocationAttributeRows.call({ context }, 'allocationType'), []);
 });
@@ -1552,7 +1559,7 @@ test.each([
         values: new Uint32Array([3, 4])
     });
 
-    memline.attributes = [{ name: 'allocationType', values: new Uint32Array(2), dict: ['array'] }];
+    memline.attributes = [{ name: 'allocationType', keys: new Uint32Array(2), entries: dictEntries(['array']), dict: ['array'] }];
     Object.assign(context.scopeProfile, { memline });
 
     assert.deepEqual(methods[row.method].call({ context }, 'allocationType'), row.expected);
@@ -1576,7 +1583,8 @@ test('column maximums of an attribute are of the line viewport at a column durat
 
     line.attributes = [{
         name: 'allocationType',
-        values: Uint32Array.of(0, 1, 1, 0),
+        keys: Uint32Array.of(0, 1, 1, 0),
+        entries: dictEntries(['array', 'string']),
         dict: ['array', 'string']
     }];
 
@@ -1928,7 +1936,8 @@ test.each([1, 10])('aggregations over a recorded grid read events only at its ed
     const types = Uint32Array.from({ length }, (_, i) => i % 3);
     const attribute = {
         name: 'allocationType' as const,
-        values: types,
+        keys: types,
+        entries: dictEntries(['a', 'b', 'c']),
         dict: ['a', 'b', 'c']
     };
     const ownContext = {
@@ -2061,7 +2070,7 @@ test.skipIf(!process.env.CPUPRO_BIN_BENCH)('measures viewport binning on seven m
         scopeViewport: context.scopeViewport
     };
     const dict = Array.from({ length: 16 }, (_, i) => String(i));
-    const attribute = { name: 'allocationType', values: base.samples, dict } as const;
+    const attribute = { name: 'allocationType', keys: base.samples, entries: dictEntries(dict), dict } as const;
     const mask = new Uint8Array(16).fill(1);
     const categories = ownBreakdown.categories!.all.nodes;
     const ranges = Array.from({ length: 32 }, (_, i) => ({ start: i * 200_000 + 1000, end: i * 200_000 + 2000 }));
@@ -2090,7 +2099,7 @@ test.skipIf(!process.env.CPUPRO_BIN_BENCH)('measures viewport binning on seven m
             viewport.setRanges(ranges);
         }
 
-        const totals = viewport.aggregateBy(attribute.values, attribute.dict.length).samplesTotal;
+        const totals = viewport.aggregateBy(attribute.keys, attribute.dict.length).samplesTotal;
 
         assert.deepEqual(Array.from(totals), own(1).map(row => row.value));
 
@@ -2098,7 +2107,7 @@ test.skipIf(!process.env.CPUPRO_BIN_BENCH)('measures viewport binning on seven m
             ['mapped', () => methods.binLineToAxisLine.call({ context }, source, attribute, axis, 500)],
             ['own', () => own(500)],
             ['own-summary', () => own(1)],
-            ['totals', () => viewport.aggregateBy(attribute.values, attribute.dict.length)],
+            ['totals', () => viewport.aggregateBy(attribute.keys, attribute.dict.length)],
             ['categories', () => methods.binTreeSamples.call({ context: ownContext }, categories, 500)],
             ['categories-legacy', legacyCategories],
             ['samples', () => methods.binCallsFromMask.call({ context: ownContext }, mask, 500)],

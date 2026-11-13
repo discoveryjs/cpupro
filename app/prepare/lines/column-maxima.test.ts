@@ -10,6 +10,7 @@ import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
 import type { Range } from '../computations/coordinates.js';
+import { dictEntries } from '../../../test/fixtures/lines.js';
 
 type Expected = [total: number, tracks: number[]];
 
@@ -22,7 +23,8 @@ async function createRunsLine() {
     });
     const attribute = {
         name: 'allocationSpace',
-        values: Uint8Array.of(0, 1, 0, 1, 1, 0, 1),
+        keys: Uint8Array.of(0, 1, 0, 1, 1, 0, 1),
+        entries: dictEntries(['x', 'y']),
         dict: ['x', 'y']
     } as unknown as ProfileLineAttribute;
 
@@ -245,6 +247,36 @@ test('columns from a start off their origin by the rounding of coordinates are r
     assert.equal(createHierarchy.mock.calls.length, 1);
 });
 
+// Allocations read one by one on another line's axis take the rows of the entries of their codes
+test('values of an attribute take the rows of the entries of their codes on the timeline', async () => {
+    const { memline, timeline } = await createMappedProfile() as ProfileWithLines;
+    const read = () => readMaxima(
+        getLineColumnMaxima(
+            memline,
+            memline.breakdowns[0].populationViewport,
+            timeline,
+            timeline.breakdowns[0].populationViewport
+        ),
+        memline.attributes[0],
+        20,
+        10
+    );
+
+    memline.signatures = null;
+
+    const expected = read();
+    const space = memline.attributes[0];
+
+    // Two codes per entry, alternating between allocations
+    memline.attributes = [{
+        ...space,
+        keys: Uint8Array.from(space.keys, (value, index) => value * 2 + index % 2),
+        entries: Uint8Array.from({ length: space.dict.length * 2 }, (_, code) => code >> 1)
+    }];
+
+    assert.deepEqual(read(), expected);
+});
+
 test('filtered allocations leave gaps between the runs of their own axis', async () => {
     const { memline } = await createMappedProfile() as ProfileWithLines;
     const viewport = memline.breakdowns[0].populationViewport;
@@ -264,7 +296,8 @@ test('a later run of a value adds to the column it is in, not to the column of t
     });
     const attribute = {
         name: 'allocationSpace',
-        values: Uint8Array.of(1, 0, 1, 0, 1),
+        keys: Uint8Array.of(1, 0, 1, 0, 1),
+        entries: dictEntries(['x', 'y']),
         dict: ['x', 'y']
     } as unknown as ProfileLineAttribute;
     const viewport = breakdown.populationViewport;
@@ -412,7 +445,8 @@ test.each([
     const { maxima, attribute } = await row.create();
     const later = {
         name: 'allocationLifespan',
-        values: new Uint8Array(7),
+        keys: new Uint8Array(7),
+        entries: dictEntries(['all']),
         dict: ['all']
     } as unknown as ProfileLineAttribute;
 
@@ -478,7 +512,8 @@ async function createCellAllocationsLine(allocations: number[][], dict: string[]
 
     line.attributes = [{
         name: 'allocationType',
-        values: types,
+        keys: types,
+        entries: dictEntries(dict),
         dict
     }] as unknown as ProfileLineAttribute[];
     line.signatures = new EventSignatures(line);
@@ -528,8 +563,8 @@ test.each([
         prepare: (line: ProfileLine) => line.breakdowns[0].populationViewport.filter.set({
             key: 'test',
             domain: 'event',
-            size: line.attributes[0].values.length,
-            values: line.attributes[0].values,
+            size: line.attributes[0].keys.length,
+            values: line.attributes[0].keys,
             accepts: Uint8Array.of(1, 1, 0)
         }),
         duration: 1024,
@@ -624,6 +659,44 @@ test.each([
     }
 });
 
+// Codes of values of an attribute other than its dictionary indices (as GC epochs of lifespans) reach the rows of their
+// entries in columns of cells and in walks below them
+test('values of an attribute take the rows of the entries of their codes', async () => {
+    const { line, attribute, viewport } = await createCellsLine();
+    const read = (duration: number, start: number) => readMaxima(
+        getLineColumnMaxima(line, viewport, line, viewport),
+        line.attributes[0],
+        duration,
+        start
+    );
+    // Columns of cells and below them over the line, then over a range cutting the first allocation of a cell
+    const reads = () => {
+        const own = [read(1024, 0), read(256, 0)];
+
+        line.viewport.setRange(10240.5, 30000.25);
+        viewport.setRanges([{ start: 10240.5, end: 30000.25 }]);
+
+        const ranged = [read(16384, 10240.5), read(8192, 10240.5)];
+
+        line.viewport.resetRange();
+        viewport.setRanges(null);
+
+        return [...own, ...ranged];
+    };
+    const expected = reads();
+
+    // Two codes per entry, alternating between events
+    line.attributes = [{
+        ...attribute,
+        keys: Uint8Array.from(attribute.keys, (value, index) => value * 2 + index % 2),
+        entries: Uint8Array.from({ length: attribute.dict.length * 2 }, (_, code) => code >> 1)
+    }];
+    line.signatures = new EventSignatures(line);
+    line.signatures.cellRecords(viewport.population.cumulative, viewport.population.cumulativeEnd, line.values.length - 1);
+
+    assert.deepEqual(reads(), expected);
+});
+
 // Allocations of a byte, x and y one after another, so y holds half of any column longer than a byte
 async function createAlternatingLine() {
     const { line, breakdown } = await createLineFixture({
@@ -632,7 +705,8 @@ async function createAlternatingLine() {
     });
     const attribute = {
         name: 'allocationSpace',
-        values: Uint8Array.from({ length: 256 }, (_, index) => index % 2),
+        keys: Uint8Array.from({ length: 256 }, (_, index) => index % 2),
+        entries: dictEntries(['x', 'y']),
         dict: ['x', 'y']
     } as unknown as ProfileLineAttribute;
 
@@ -655,7 +729,8 @@ test('a walk of a value over many events adds the events of its columns listed a
     const isY = (index: number) => index % 4 === 0 || (index >= 8184 && index < 8200);
     const attribute = {
         name: 'allocationSpace',
-        values: Uint8Array.from({ length: 12000 }, (_, index) => isY(index) ? 1 : 0),
+        keys: Uint8Array.from({ length: 12000 }, (_, index) => isY(index) ? 1 : 0),
+        entries: dictEntries(['x', 'y']),
         dict: ['x', 'y']
     } as unknown as ProfileLineAttribute;
     const viewport = breakdown.populationViewport;
@@ -751,7 +826,8 @@ test('an attribute signatures don\'t keep has the highest columns of its runs on
     const { line, attribute, viewport } = await createCellsLine();
     const owner = {
         name: 'allocationOwner',
-        values: new Uint32Array(attribute.values.length),
+        keys: new Uint32Array(attribute.keys.length),
+        entries: dictEntries(['one']),
         dict: ['one']
     } as unknown as ProfileLineAttribute;
     const maxima = getLineColumnMaxima(line, viewport, line, viewport);
@@ -762,7 +838,8 @@ test('an attribute signatures don\'t keep has the highest columns of its runs on
     // Values without cells are walked over the whole ranges
     const allocator = {
         name: 'allocationAllocator',
-        values: Uint32Array.from(attribute.values, value => value === 0 ? 0 : value + 1),
+        keys: Uint32Array.from(attribute.keys, value => value === 0 ? 0 : value + 1),
+        entries: dictEntries(['x', 'none', 'y', 'z']),
         dict: ['x', 'none', 'y', 'z']
     } as unknown as ProfileLineAttribute;
 

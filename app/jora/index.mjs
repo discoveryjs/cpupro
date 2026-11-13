@@ -26,6 +26,18 @@ const abbr = {
     Unknown: '??'
 };
 
+// Keys of the events of an attribute accepted by a test of its dictionary entries
+function attributeKeysMask(attribute, test) {
+    const entriesMask = makeDictMask({ dictionary: attribute.dict }, test);
+    const mask = new Uint8Array(attribute.entries.length);
+
+    for (let i = 0; i < mask.length; i++) {
+        mask[i] = entriesMask[attribute.entries[i]];
+    }
+
+    return mask;
+}
+
 function shortNum(current, units, base = 1000) {
     const sign = current < 0 ? '-' : '';
     let unitIdx = 0;
@@ -177,12 +189,15 @@ export const methods = {
             return [];
         }
 
+        // Keys of events give their dictionary entries through the entries of attributes
         const {
-            values: valueLifespans,
+            keys: lifespanCodes,
+            entries: lifespanEntries,
             dict: valueLifespansDict
         } = allocationLifespanAttribute;
         const {
-            values: valueTypes,
+            keys: typeCodes,
+            entries: typeEntries,
             dict: valueTypesDict
         } = allocationTypeAttribute;
         const { samples, values, sinkId, boundaryCuts } = sampleTimings;
@@ -192,9 +207,9 @@ export const methods = {
         const sums = new Uint32Array(timespanCount * typeCount);
         const mins = new Uint32Array(timespanCount * typeCount);
         const maxs = new Uint32Array(timespanCount * typeCount);
-        const sampleIds = source.dict ? source.values : samples;
+        const sampleIds = source.dict ? source.keys : samples;
         const samplesMask = source.dict
-            ? makeDictMask({ dictionary: source.dict }, test)
+            ? attributeKeysMask(source, test)
             : makeSamplesMask(source, test, 1);
         const result = [];
 
@@ -209,7 +224,7 @@ export const methods = {
                     const value = values[eventIndex];
 
                     if (value !== 0) {
-                        const index = valueTypes[eventIndex] * timespanCount + valueLifespans[eventIndex];
+                        const index = typeEntries[typeCodes[eventIndex]] * timespanCount + lifespanEntries[lifespanCodes[eventIndex]];
 
                         counts[index]++;
                         sums[index] += value;
@@ -223,7 +238,7 @@ export const methods = {
                 const value = values[end] - cut.value;
 
                 if (value !== 0 && samples[end] !== sinkId && samplesMask[sampleIds[end]] !== 0) {
-                    const index = valueTypes[end] * timespanCount + valueLifespans[end];
+                    const index = typeEntries[typeCodes[end]] * timespanCount + lifespanEntries[lifespanCodes[end]];
 
                     counts[index]++;
                     sums[index] += value;

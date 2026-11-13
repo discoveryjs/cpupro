@@ -21,8 +21,8 @@ test('allocation attributes give the lifespans and spaces of the fixture allocat
     const spaceCode = (value: number) => space.dict[value].code;
 
     assert.deepEqual([...line.values], [16, 32, 48, 64]);
-    assert.deepEqual(Array.from(lifespan.values, lifespanName), ['alive', 'short-lived', 'alive', 'long-lived']);
-    assert.deepEqual(Array.from(space.values, spaceCode), ['new_space', 'new_space', 'old_space', 'old_space']);
+    assert.deepEqual(Array.from(lifespan.keys, lifespanName), ['alive', 'short-lived', 'alive', 'long-lived']);
+    assert.deepEqual(Array.from(space.keys, spaceCode), ['new_space', 'new_space', 'old_space', 'old_space']);
 });
 
 test('a breakdown is found by its kind, a missing kind throws', async () => {

@@ -474,11 +474,7 @@ function equalGrids(left: BinRecordsGrid, right: BinRecordsGrid) {
 // Classes of events with equal values of every attribute with an event filter. Columns are combined one, two or
 // three at a time, a column of fewer values first keeps tables smaller. Implied attributes are functions of the
 // combined ones: they split no class, so they are classified without being combined
-export function createEventClasses(
-    eventCount: number,
-    attributes: ProfileLineAttribute[],
-    impliedAttributes: ProfileLineAttribute[]
-): EventClasses {
+export function createEventClasses(eventCount: number, attributes: ProfileLineAttribute[]): EventClasses {
     const columns = attributeColumns(attributes).sort(bySize);
     // Events have one combination of no columns
     const noColumns = eventCount > 0 ? [0] : [];
@@ -490,10 +486,6 @@ export function createEventClasses(
         values.add(columns[i].values);
     }
 
-    for (let i = 0; i < impliedAttributes.length; i++) {
-        values.add(impliedAttributes[i].values);
-    }
-
     return {
         ids,
         events: Uint32Array.from(events),
@@ -501,19 +493,20 @@ export function createEventClasses(
     };
 }
 
-// Columns of the values of attributes, given per event
+// Columns of the values of attributes, given per event: a column per vector of values, which attributes may share
+// through their entries (lifespans take the values of GC epochs), sized by the codes of the values
 function attributeColumns(attributes: ProfileLineAttribute[]) {
-    const columns: SignatureColumn[] = [];
+    const columns = new Map<ColumnValues, SignatureColumn>();
 
     for (let i = 0; i < attributes.length; i++) {
-        columns.push({
-            values: attributes[i].values,
+        columns.set(attributes[i].keys, {
+            values: attributes[i].keys,
             samples: null,
-            size: attributes[i].dict.length
+            size: attributes[i].entries.length
         });
     }
 
-    return columns;
+    return [...columns.values()];
 }
 
 function bySize(left: SignatureColumn, right: SignatureColumn) {

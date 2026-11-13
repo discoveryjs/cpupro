@@ -4,6 +4,7 @@ import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScope
 import { binningRange } from './viewport.js';
 import type { Population, PopulationFiltered } from '../prepare/computations/population.js';
 import { lowerBound } from '../prepare/computations/misc.js';
+import { aggregateAttribute } from '../prepare/lines/memline-attributes.mjs';
 
 export function sampleRange(cumulative: Float64Array, total: number, skip: number, sourceTotal: number) {
     const start = Math.max(0, -skip);
@@ -71,8 +72,8 @@ function countSamples(n: number, viewport: PopulationFiltered, total: number, co
 
 export const methods = {
     attributeSampleTotals(attribute: ProfileLineAttribute, population: Population | PopulationFiltered) {
-        const { values, dict } = attribute;
-        const { samplesCount, samplesTotal } = population.aggregateBy(values, dict.length);
+        const { dict } = attribute;
+        const { samplesCount, samplesTotal } = aggregateAttribute(population, attribute);
 
         return dict.map((entry, index) => ({ entry, count: samplesCount[index], size: samplesTotal[index] }));
     },
