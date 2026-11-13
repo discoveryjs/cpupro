@@ -49,9 +49,15 @@ export async function createSampledTreeSet(
             ? usage.locations!
             : usage.callFrames
         : treeSource.dictionary;
-    const treeSetNodes = usage
-        ? treeSource.nodes.map(dictIndex => usage.mapToUsage[dictIndex])
-        : treeSource.nodes;
+    let treeSetNodes = treeSource.nodes;
+
+    if (usage !== null) {
+        treeSetNodes = new Uint32Array(treeSource.nodes.length);
+
+        for (let i = 0; i < treeSetNodes.length; i++) {
+            treeSetNodes[i] = usage.mapToUsage[treeSource.nodes[i]];
+        }
+    }
 
     const treeSetSource = createTreeSourceFromParent<CpuProLocation | CpuProCallFrame>(
         treeSource.parent,
@@ -109,7 +115,12 @@ export function createSampledTrees(
 
             if (sourceTreeSampleToNode !== undefined) {
                 const treeSampleToNode = tree.sourceIdToNode;
-                const sampleToNode = sourceTreeSampleToNode.map(id => treeSampleToNode[id]);
+                const sampleToNode = new Uint32Array(sourceTreeSampleToNode.length);
+
+                // PERF: An indexed loop rather than TypedArray#map with a callback, for every sample of every tree
+                for (let i = 0; i < sampleToNode.length; i++) {
+                    sampleToNode[i] = treeSampleToNode[sourceTreeSampleToNode[i]];
+                }
 
                 foundNewTree = true;
                 sampleToNodeBySourceTree.set(tree, sampleToNode);

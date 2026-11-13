@@ -171,35 +171,12 @@ export function computeDictionaryMetrics<T>(
     );
 }
 
-function createMapsFromTree<T>(sampledTree: SampledTree<T>) {
-    const { tree, sampleToNode } = sampledTree;
-    const { nodes, nested } = tree;
-    const totalNodes = new Uint32Array(nodes.length);
-    const totalNodeToDict = new Uint32Array(nodes.length);
-    let k = 0;
-
-    for (let i = 0; i < nodes.length; i++) {
-        if (nested[i] === 0) {
-            totalNodeToDict[k] = nodes[i];
-            totalNodes[k] = i;
-            k++;
-        }
-    }
-
-    return {
-        tree,
-        sampleToNode,
-        sampleIdToDict: sampleToNode.map(id => nodes[id]),
-        totalNodes: totalNodes.slice(0, k),
-        totalNodeToDict: totalNodeToDict.slice(0, k)
-    };
-}
-
 export function createSampleBreakdownBuffer<T>(
     trees: SampledTree<T>[],
     samplesMapSize: number
 ) {
-    const maps = trees.map(createMapsFromTree);
+    // Nodes of a tree that are not nested in a node of the same dictionary entry give the totals of the entries
+    const totalNodesCounts = new Uint32Array(trees.length);
 
     // Buffer sizes: Uint32 counts and maps; Float64 sums of values, placed first to keep their 8-byte alignment
     let valuesSize =
@@ -209,7 +186,19 @@ export function createSampleBreakdownBuffer<T>(
         // samplesCount
         samplesMapSize;
 
-    for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
+    for (let i = 0; i < trees.length; i++) {
+        const { tree, sampleToNode } = trees[i];
+        const { nested } = tree;
+        let totalNodesCount = 0;
+
+        for (let j = 0; j < nested.length; j++) {
+            if (nested[j] === 0) {
+                totalNodesCount++;
+            }
+        }
+
+        totalNodesCounts[i] = totalNodesCount;
+
         // tree metrics: selfValues, nestedValues
         valuesSize += 2 * tree.nodes.length;
         countsSize +=
@@ -223,9 +212,10 @@ export function createSampleBreakdownBuffer<T>(
         // dict metrics: selfValues, totalValues
         valuesSize += 2 * tree.dictionary.length;
         countsSize +=
-            sampleIdToDict.length +
-            totalNodes.length +
-            totalNodeToDict.length +
+            // sample-to-dict map
+            sampleToNode.length +
+            // total nodes and their dictionary entries
+            2 * totalNodesCount +
             // samplesCount
             tree.dictionary.length;
     }
@@ -243,7 +233,12 @@ export function createSampleBreakdownBuffer<T>(
         dimensions: []
     };
 
-    for (const { tree, sampleToNode, sampleIdToDict, totalNodes, totalNodeToDict } of maps) {
+    // PERF: The maps to dictionary entries are filled by indexed loops into the vectors the layout gives them, rather
+    // than made by TypedArray#map with a callback and copied, for hundreds of thousands of samples and nodes of every
+    // tree of a breakdown
+    for (let i = 0; i < trees.length; i++) {
+        const { tree, sampleToNode } = trees[i];
+        const { nodes, nested } = tree;
         const treeMap: BufferTreeMetricsMap<T> = {
             // input
             sourceSamplesCount: bufferMap.samplesCount,
@@ -257,6 +252,23 @@ export function createSampleBreakdownBuffer<T>(
             selfValues: allocValues(tree.nodes.length),
             nestedValues: allocValues(tree.nodes.length)
         };
+        const sampleIdToDict = alloc(sampleToNode.length);
+        const totalNodes = alloc(totalNodesCounts[i]);
+        const totalNodeToDict = alloc(totalNodesCounts[i]);
+        let k = 0;
+
+        for (let j = 0; j < sampleToNode.length; j++) {
+            sampleIdToDict[j] = nodes[sampleToNode[j]];
+        }
+
+        for (let j = 0; j < nodes.length; j++) {
+            if (nested[j] === 0) {
+                totalNodes[k] = j;
+                totalNodeToDict[k] = nodes[j];
+                k++;
+            }
+        }
+
         const dictMap: BufferDictionaryMetricsMap<T> = {
             // input
             sourceSamplesCount: bufferMap.samplesCount,
@@ -265,9 +277,9 @@ export function createSampleBreakdownBuffer<T>(
             dictionary: tree.dictionary,
             nodeSelfValues: treeMap.selfValues,     // input from treeMap layer
             nodeNestedValues: treeMap.nestedValues, // input from treeMap layer
-            sampleIdToDict: adopt(sampleIdToDict),
-            totalNodes: adopt(totalNodes),
-            totalNodeToDict: adopt(totalNodeToDict),
+            sampleIdToDict,
+            totalNodes,
+            totalNodeToDict,
             // output
             samplesCount: alloc(tree.dictionary.length),
             selfValues: allocValues(tree.dictionary.length),
