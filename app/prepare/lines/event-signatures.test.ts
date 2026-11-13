@@ -8,6 +8,7 @@ import { methods } from '../../jora/bin.js';
 import { lineWindow } from '../../jora/viewport.js';
 import { BinRecords, EventSignatures, createEventClasses } from './event-signatures.js';
 import { singleEventClass } from '../computations/population-filter.js';
+import { createUint32Progression } from '../misc/utils.js';
 import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
@@ -456,6 +457,13 @@ test.each([
         events: [0, 1, 2, 3]
     },
     {
+        name: 'four columns of two passes',
+        combined: [[0, 0, 1, 1, 0, 0], [1, 1, 0, 0, 1, 1], [0, 1, 0, 1, 0, 1], [2, 0, 2, 2, 1, 0]],
+        implied: [],
+        ids: [0, 1, 2, 3, 4, 1],
+        events: [0, 1, 2, 3, 4]
+    },
+    {
         name: 'an implied column',
         combined: [[3, 1, 3, 2]],
         implied: [[1, 0, 1, 0]],
@@ -474,6 +482,22 @@ test.each([
     assert.deepEqual([...classes.ids], row.ids);
     assert.deepEqual([...classes.events], row.events);
     assert.deepEqual([...classes.values], [...combined, ...implied].map(column => column.values));
+});
+
+// Classes are 16-bit ids until they outgrow them in a later chunk of events, then every id is widened
+test('event classes outgrowing 16 bits keep their ids in 32 bits', () => {
+    const eventCount = 70_000;
+    const attribute = (values: Uint32Array, size: number) => ({
+        values,
+        dict: new Array(size)
+    }) as unknown as ProfileLineAttribute;
+    const low = Uint32Array.from({ length: eventCount }, (_, i) => i % 300);
+    const high = Uint32Array.from({ length: eventCount }, (_, i) => Math.floor(i / 300));
+    const classes = createEventClasses(eventCount, [attribute(low, 300), attribute(high, 234)], []);
+
+    assert.ok(classes.ids instanceof Uint32Array);
+    assert.deepEqual(classes.ids, createUint32Progression(eventCount));
+    assert.deepEqual(classes.events, createUint32Progression(eventCount));
 });
 
 // Targets of a nondecreasing mapping: targets without events start where the next events begin, targets past
