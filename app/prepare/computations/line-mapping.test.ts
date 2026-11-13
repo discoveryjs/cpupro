@@ -67,6 +67,14 @@ test('allocations after the last sample map to the sample after the recorded one
     assert.deepEqual(mapLineRanges(time, allocations, [{ start: 0, end: 1000 }]), [{ start: 0, end: 160 }]);
 });
 
+// Only the first IDs are of samples: an allocation after the last of them maps to the sample after the recorded ones
+// even when an ID past the samples is after it
+test('allocations map to samples by the IDs of samples only', () => {
+    const allocationSamples = mapAllocationsToSamples([10, 11, 12, 13, 20], Uint32Array.of(10, 11, 12, 15), 3);
+
+    assert.deepEqual([...allocationSamples], [0, 1, 2, 3, 3]);
+});
+
 // Recorded IDs need not ascend with samples: the last allocation is after every sample only when its ID is after
 // all of them, which is when the mapping takes it to the sample after the recorded ones
 test.each([

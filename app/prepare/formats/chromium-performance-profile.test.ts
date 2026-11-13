@@ -1067,6 +1067,14 @@ test.each([
         diagnostics: []
     },
     {
+        title: 'a later chunk listing an earlier collection',
+        order: 'consecutive',
+        ids: [10, 11, 12, 13],
+        gcIds: [{ 9: [13] }, { 5: [10, 11] }],
+        gc: [5, 5, 0, 9],
+        diagnostics: []
+    },
+    {
         title: 'collections without allocations of their own',
         order: 'consecutive',
         ids: [10, 11, 12, 13],

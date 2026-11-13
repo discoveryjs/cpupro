@@ -80,6 +80,21 @@ test('adopts typed numeric vectors without copies', () => {
     assert.equal(profile._cpuproAllocationLocations, input.allocationSamples.positions);
 });
 
+// Early V8 profiles give a call tree as a head with nested children rather than as a list of nodes
+test('extracts the nodes of a call tree given as a head', () => {
+    const [root, fn] = cpuProfile().nodes;
+    const leaf = { ...fn, children: [] };
+    const profile = extractProfile(cpuProfile({
+        nodes: undefined,
+        head: {
+            ...root,
+            children: [leaf]
+        }
+    }));
+
+    assert.deepEqual(profile.nodes, [root, leaf]);
+});
+
 // A combined profile wraps CPU samples into `cpuProfile`
 test.each([
     { allocationSamples: undefined },
@@ -214,6 +229,13 @@ test.each([
         columns: undefined
     },
     {
+        name: 'of no nodes and samples',
+        fields: { nodes: [], samples: [], timeDeltas: [] },
+        traceIds: {},
+        lines: undefined,
+        columns: undefined
+    },
+    {
         name: 'with lines and columns of no vectors',
         fields: { lines: '3,4', columns: { 0: 5, 1: 6 } },
         traceIds: {},
@@ -229,21 +251,46 @@ test.each([
 });
 
 // Samples of sizes are a format of early allocation experiments, no longer current, and samples without time deltas
-// have no time: neither is a CPU profile, so both are rejected rather than failing while the profile is created
+// have no time: neither is a CPU profile, so both are rejected rather than failing while the profile is created; as is
+// data of nodes, samples or time deltas of other values
 test.each([
     {
         name: 'of size samples',
-        fields: {
+        input: cpuProfile({
             samples: [{ nodeId: 2, size: 32, ordinal: 1 }],
             timeDeltas: undefined
-        }
+        })
     },
     {
         name: 'of no samples without time deltas',
-        fields: {
+        input: cpuProfile({
             samples: [],
             timeDeltas: undefined
-        }
+        })
+    },
+    {
+        name: 'of a node of no call frame',
+        input: cpuProfile({ nodes: [cpuProfile().nodes[0], { id: 2 }] })
+    },
+    {
+        name: 'of a call frame with a fractional script ID',
+        input: cpuProfile({
+            nodes: [
+                cpuProfile().nodes[0],
+                {
+                    id: 2,
+                    callFrame: { ...fnCallFrame, scriptId: 1.5 }
+                }
+            ]
+        })
+    },
+    {
+        name: 'of a fractional time delta',
+        input: cpuProfile({ timeDeltas: [10, 10.5] })
+    },
+    {
+        name: 'of no object',
+        input: 42
     }
 ])('rejects a profile $name as an unknown format', row => {
     const reasons: string[] = [];
@@ -251,6 +298,6 @@ test.each([
         reasons.push(reason);
     };
 
-    assert.throws(() => extractAndValidate(cpuProfile(row.fields), rejectData), /Unknown format/);
+    assert.throws(() => extractAndValidate(row.input, rejectData), /Unknown format/);
     assert.deepEqual(reasons, ['Unknown format']);
 });

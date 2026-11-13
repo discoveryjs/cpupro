@@ -51,27 +51,53 @@ test('keeps ordered input intact and tolerates a mapping shorter than samples', 
     assert.deepEqual(shortMapping, [3]);
 });
 
-// A long delta keeps the allowed duration and the rest goes to a "(no samples)" sample after it, which records no
-// allocation: it takes the last allocation ID of the sample before it. Samples after the recorded ones have no ID
+// A long delta keeps the allowed duration and the rest goes to a "(no samples)" sample after it, which has no script
+// offset and records no allocation: it takes the last allocation ID of the sample before it. Samples after the
+// recorded ones have no ID, IDs after the samples are of no sample
 test.each([
     { name: 'every sample', recorded: [5, 7, 9], expected: [5, 7, 7, 9] },
+    { name: 'more IDs than samples', recorded: [5, 7, 9, 11], expected: [5, 7, 7, 9] },
     { name: 'the samples up to the long one', recorded: [5, 7], expected: [5, 7, 7] },
     { name: 'the samples before the long one', recorded: [5], expected: [5] }
-])('moves the last allocation IDs with samples when long deltas are split, recorded by $name', row => {
+])('moves script offsets and the last allocation IDs with samples split at long deltas, recorded by $name', row => {
     const timeDeltas = Uint32Array.of(10, 50, 10, 0);
     const samples = Uint32Array.of(1, 2, 3, 0);
+    const sampleScriptOffsets = Int32Array.of(11, 22, 33, 0);
     const generatedNodes = new GeneratedNodes(new Dictionary(), 4);
     const longDeltas = enumerateLongTimeDeltas(10, timeDeltas.subarray(0, 3))!;
     const sampleAllocationIds = processLongTimeDeltas(
         longDeltas,
         timeDeltas,
         samples,
-        null,
+        sampleScriptOffsets,
         Uint32Array.from(row.recorded),
         generatedNodes
     );
 
     assert.deepEqual([...timeDeltas], [10, 12, 38, 10]);
     assert.deepEqual([...samples], [1, 2, generatedNodes.noSamplesNodeId, 3]);
+    assert.deepEqual([...sampleScriptOffsets], [11, 22, -1, 33]);
     assert.deepEqual([...sampleAllocationIds!], row.expected);
+});
+
+test('moves script offsets with samples when several long deltas are split, with no allocation IDs recorded', () => {
+    const timeDeltas = Uint32Array.of(10, 50, 10, 50, 0, 0);
+    const samples = Uint32Array.of(1, 2, 3, 4, 0, 0);
+    const sampleScriptOffsets = Int32Array.of(11, 22, 33, 44, 0, 0);
+    const generatedNodes = new GeneratedNodes(new Dictionary(), 5);
+    const longDeltas = enumerateLongTimeDeltas(10, timeDeltas.subarray(0, 4))!;
+    const sampleAllocationIds = processLongTimeDeltas(
+        longDeltas,
+        timeDeltas,
+        samples,
+        sampleScriptOffsets,
+        null,
+        generatedNodes
+    );
+    const noSamples = generatedNodes.noSamplesNodeId;
+
+    assert.deepEqual([...timeDeltas], [10, 12, 38, 10, 12, 38]);
+    assert.deepEqual([...samples], [1, 2, noSamples, 3, 4, noSamples]);
+    assert.deepEqual([...sampleScriptOffsets], [11, 22, -1, 33, 44, -1]);
+    assert.equal(sampleAllocationIds, null);
 });
