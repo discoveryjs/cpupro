@@ -1,4 +1,6 @@
 import type { CpuProCallFrame } from '../prepare/types.js';
+import { createLineBoundaries } from '../prepare/misc/line-boundaries.js';
+import { getScriptLineColumnFromOffset } from '../prepare/misc/script-function-resolution.js';
 import jsBeautify from 'js-beautify/js/src/javascript/index.js';
 
 function performJSBeautify(source: string, options): string {
@@ -74,11 +76,9 @@ export const methods = {
                 | source is $sourceDefined)
     `,
 
+    // The line and the column (0-based) of an offset of a source, as V8 counts lines of a script;
+    // an offset of a call frame is taken no further than the end of the call frame
     offsetToLineColumn(offset: number, source: string | CpuProCallFrame, callFrame?: CpuProCallFrame) {
-        let lastIndex = 0;
-        let line = 0;
-        let column = 0;
-
         if (source && typeof source !== 'string' && !callFrame &&
             typeof source.script?.source === 'string' &&
             Number.isFinite(source.start) &&
@@ -92,36 +92,24 @@ export const methods = {
             return null;
         }
 
-        if (offset < 0) {
-            offset = 0;
-        } else if (offset > source.length) {
-            offset = source.length;
+        offset = Math.max(0, Math.min(offset, source.length));
+
+        if (callFrame && callFrame.start >= 0 && callFrame.end >= callFrame.start && offset > callFrame.end) {
+            offset = callFrame.end;
         }
 
-        if (callFrame && Number.isFinite(callFrame.start) && callFrame.start >= 0) {
-            lastIndex = callFrame.start;
-            line = callFrame.line;
-            column = callFrame.column;
-
-            if (callFrame.end >= callFrame.start && offset > callFrame.end) {
-                offset = callFrame.end;
-            }
+        // the line starts of a script are kept with the script, a source of its own has them for the call only
+        if (callFrame?.script?.source === source) {
+            return getScriptLineColumnFromOffset(callFrame.script, offset);
         }
 
-        const nlRx = /\r\n?|\n/g;
-        nlRx.lastIndex = lastIndex;
-        while (nlRx.exec(source) !== null) {
-            if (nlRx.lastIndex > offset) {
-                column += offset - lastIndex;
-                break;
-            }
+        const lines = createLineBoundaries(source);
+        const line = lines.lineOf(offset);
 
-            lastIndex = nlRx.lastIndex;
-            line++;
-            column = 0;
-        }
-
-        return { line, column };
+        return {
+            line,
+            column: lines.columnOf(offset, line)
+        };
     },
 
     jsBeautify: performJSBeautify,
