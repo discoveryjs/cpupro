@@ -2,31 +2,7 @@ import { Observer, exposeGetters } from './misc.js';
 import { CpuProNode } from '../types.js';
 import { CallTree, AncestorSubsetCallTree } from './call-tree.js';
 import { Population, PopulationFiltered } from './population.js';
-import {
-    computeDictionaryMetrics,
-    computeTreeMetrics,
-    createSampleBreakdownBuffer,
-    metricsApiOf,
-    metricsJavaScriptApi,
-    type BufferDimensionMap,
-    type MetricsApi,
-    type MetricsBufferMap
-} from './metrics.compute.js';
-
-function computeAll<T extends CpuProNode>(
-    api: MetricsApi,
-    bufferMap: MetricsBufferMap<T>,
-    population: Population | PopulationFiltered,
-    clear = true
-) {
-    bufferMap.samplesCount.set(population.samplesCount);
-    bufferMap.samplesTotal.set(population.samplesTotal);
-
-    for (const { treeMap: tree, dictMap: dict } of bufferMap.dimensions) {
-        computeTreeMetrics(api, tree, clear);
-        computeDictionaryMetrics(api, dict, clear);
-    }
-}
+import { computeMetrics, createSampleBreakdownMaps, type DimensionMaps } from './metrics.compute.js';
 
 export type DictDimension<T extends CpuProNode> = {
     all: DictionaryMetrics<T>;
@@ -166,7 +142,7 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
 
         this.population = population;
         this.subscribe = this.population.subscribe.bind(this.population);
-        this.recompute(false);
+        this.recompute();
     }
 
     get excludedMetrics() {
@@ -181,17 +157,16 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
         };
     }
 
-    recompute(clear = true) {
-        computeTreeMetrics(metricsJavaScriptApi, {
+    recompute() {
+        const treeMap = {
             tree: this.tree,
-            sourceSamplesCount: this.population.samplesCount,
-            sourceSamplesTotal: this.population.samplesTotal,
             sampleToNode: this.sampleToNode,
-            parent: this.tree.parent,
             samplesCount: this.samplesCount,
             selfValues: this.selfValues,
             nestedValues: this.nestedValues
-        }, clear);
+        };
+
+        computeMetrics(this.population.samplesCount, this.population.samplesTotal, treeMap, null);
     }
 }
 
@@ -379,7 +354,7 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
 }
 
 function createDimension<T extends CpuProNode>(
-    dimensionMaps: BufferDimensionMap<T>,
+    dimensionMaps: DimensionMaps<T>,
     refresh: () => void
 ): { dict: DictDimension<T>; tree: TreeDimension<T> } {
     const { treeMap, dictMap } = dimensionMaps;
@@ -428,15 +403,14 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
     population: PopulationFiltered,
     trees: [...T]
 ) {
-    const bufferMap = createSampleBreakdownBuffer(trees, population.samplesTotal.length);
-    const { dimensions } = bufferMap;
-    const computeApi = metricsApiOf(bufferMap);
+    const dimensions = createSampleBreakdownMaps(trees);
 
-    computeAll(computeApi, bufferMap, population, false);
+    for (let i = 0; i < dimensions.length; i++) {
+        computeMetrics(population.samplesCount, population.samplesTotal, dimensions[i].treeMap, dimensions[i].dictMap);
+    }
 
     // Filtered metrics follow population changes when they are read: a line computes its breakdowns over
     // shared populations, while views read the metrics of the displayed breakdown only
-    let samplesStale = false;
     const staleDimensions = new Uint8Array(dimensions.length);
     const refreshDimension = (index: number) => {
         if (staleDimensions[index] === 0) {
@@ -445,16 +419,9 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
 
         staleDimensions[index] = 0;
 
-        if (samplesStale) {
-            samplesStale = false;
-            bufferMap.samplesCount.set(population.samplesCount);
-            bufferMap.samplesTotal.set(population.samplesTotal);
-        }
-
         const { treeMap, dictMap } = dimensions[index];
 
-        computeTreeMetrics(computeApi, treeMap, true);
-        computeDictionaryMetrics(computeApi, dictMap, true);
+        computeMetrics(population.samplesCount, population.samplesTotal, treeMap, dictMap);
     };
 
     // Build dimensions with dict/tree separation
@@ -463,7 +430,6 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
     );
 
     const recomputeMetrics = () => {
-        samplesStale = true;
         staleDimensions.fill(1);
 
         for (let i = 0; i < dimensionsWithStructure.length; i++) {

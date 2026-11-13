@@ -1,25 +1,63 @@
-import { createComputeBuffer, wasmBacked, type WasmExports } from './compute-wasm.js';
+import { createComputeScratch, wasmBacked, type WasmExports } from './compute-wasm.js';
 import populationWasm from './population.compute.wasm';
 
-// Event-sized vectors of the event pass and per-sample aggregates, the sink included
-export function createPopulationBuffer(eventCount: number, sampleCount: number) {
-    const aggregateSize = sampleCount + 1;
+// PERF: Events are staged in chunks, so the scratch buffer stays small for any number of events
+const PASS_CHUNK_SIZE = 1 << 16;
 
-    return createComputeBuffer({
+const layoutScratch = createComputeScratch();
+
+// The event pass (population.compute.wat) over destinations and values of events: events of nonzero values add their
+// counts and values to their samples or the sink, samplesCount and samplesTotal of the samples and the sink
+export function accumulateSampleMetrics(
+    samples: Uint32Array,
+    values: Uint32Array,
+    samplesCount: Uint32Array,
+    samplesTotal: Float64Array
+) {
+    const chunkSize = Math.min(values.length, PASS_CHUNK_SIZE);
+    const buffer = layoutPassBuffer(samplesTotal.length, chunkSize);
+    const api = populationApiOf(buffer);
+
+    buffer.samplesTotal.set(samplesTotal);
+    buffer.samplesCount.set(samplesCount);
+    api.integerTotals(buffer);
+
+    for (let start = 0; start < values.length; start += chunkSize) {
+        const end = Math.min(values.length, start + chunkSize);
+
+        buffer.values.set(values.subarray(start, end));
+        buffer.samples.set(samples.subarray(start, end));
+        api.accumulateSampleMetrics(buffer, end - start);
+    }
+
+    api.floatTotals(buffer);
+    samplesTotal.set(buffer.samplesTotal);
+    samplesCount.set(buffer.samplesCount);
+}
+
+// Per-sample aggregates, the sink included, and a chunk of events
+function layoutPassBuffer(aggregateSize: number, chunkSize: number) {
+    return layoutScratch({
         samplesTotal: [Float64Array, aggregateSize],
-        values: [Uint32Array, eventCount],
-        samples: [Uint32Array, eventCount],
-        samplesCount: [Uint32Array, aggregateSize]
+        samplesCount: [Uint32Array, aggregateSize],
+        values: [Uint32Array, chunkSize],
+        samples: [Uint32Array, chunkSize]
     });
 }
 
-export type PopulationBuffer = ReturnType<typeof createPopulationBuffer>;
-export type PopulationApi = typeof populationJavaScriptApi;
+type PopulationBuffer = ReturnType<typeof layoutPassBuffer>;
+type PopulationApi = {
+    integerTotals(buffer: PopulationBuffer): void;
+    floatTotals(buffer: PopulationBuffer): void;
+    accumulateSampleMetrics(buffer: PopulationBuffer, size: number): void;
+};
 
-// The event pass (population.compute.wat): events of nonzero values add their counts and values to their samples
-// or the sink
-const populationJavaScriptApi = {
-    accumulateSampleMetrics(buffer: PopulationBuffer) {
+// Passes of population.compute.wat over the pass buffer; the twin sums totals as floats, exact for sums of
+// integers below 2^53, so its totals need no conversions
+const populationJavaScriptApi: PopulationApi = {
+    integerTotals() {},
+    floatTotals() {},
+    accumulateSampleMetrics(buffer, size) {
         const {
             values,
             samples,
@@ -27,7 +65,7 @@ const populationJavaScriptApi = {
             samplesTotal
         } = buffer;
 
-        for (let i = values.length - 1; i >= 0; i--) {
+        for (let i = size - 1; i >= 0; i--) {
             const value = values[i];
 
             if (value !== 0) {
@@ -37,18 +75,25 @@ const populationJavaScriptApi = {
         }
     }
 };
-export const populationApiOf = wasmBacked(populationWasm, populationJavaScriptApi, bindPopulationWasm);
+const populationApiOf = wasmBacked(populationWasm, populationJavaScriptApi, bindPopulationWasm);
 
-function bindPopulationWasm(wasm: WasmExports<'accumulateSampleMetrics'>): PopulationApi {
+function bindPopulationWasm(
+    wasm: WasmExports<'integerTotals' | 'floatTotals' | 'accumulateSampleMetrics'>
+): PopulationApi {
     return {
-        accumulateSampleMetrics(buffer) {
+        integerTotals(buffer) {
+            wasm.integerTotals(buffer.samplesTotal.byteOffset, buffer.samplesTotal.length);
+        },
+        floatTotals(buffer) {
+            wasm.floatTotals(buffer.samplesTotal.byteOffset, buffer.samplesTotal.length);
+        },
+        accumulateSampleMetrics(buffer, size) {
             wasm.accumulateSampleMetrics(
-                buffer.values.length,
+                size,
                 buffer.values.byteOffset,
                 buffer.samples.byteOffset,
                 buffer.samplesCount.byteOffset,
-                buffer.samplesTotal.byteOffset,
-                buffer.samplesTotal.length
+                buffer.samplesTotal.byteOffset
             );
         }
     };

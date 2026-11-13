@@ -1,10 +1,5 @@
 import { Observer, exposeGetters, lowerBound } from './misc.js';
-import {
-    createPopulationBuffer,
-    populationApiOf,
-    type PopulationApi,
-    type PopulationBuffer
-} from './population.compute.js';
+import { accumulateSampleMetrics } from './population.compute.js';
 import { PopulationFilter, singleEventClass, type EventAcceptance, type EventClasses } from './population-filter.js';
 import { PopulationRecords, type RecordSums } from './population-records.js';
 import { normalizeRanges, intersectRanges, equalRanges, type RangeSet } from './coordinates.js';
@@ -152,9 +147,9 @@ export class PopulationFiltered extends Observer {
     #acceptance: RecordsAcceptance | null = null;
     // Sums of whole covered parts when metrics come from records
     #recordSums: RecordSums | null = null;
-    // Event-sized compute workspace; allocated when destinations or values are compiled
-    #buffer: PopulationBuffer | null = null;
-    #api: PopulationApi | null = null;
+    // Destinations and values of events, allocated when compiled
+    #samples: Uint32Array | null = null;
+    #values: Uint32Array | null = null;
     #counts: Uint32Array;        // size of samples plus the sink
     #totals: Float64Array;       // size of samples plus the sink
     #samplesCount: Uint32Array;  // size of samples
@@ -260,34 +255,26 @@ export class PopulationFiltered extends Observer {
         return this.#boundaryCuts;
     }
 
-    // Event-sized compute workspace: destinations, values and per-sample aggregates of the event pass
-    get buffer(): PopulationBuffer {
-        if (this.#buffer === null) {
-            this.#buffer = createPopulationBuffer(this.population.values.length, this.samplesMask.length);
-            this.#api = populationApiOf(this.#buffer);
-        }
-
-        return this.#buffer;
-    }
-
     // Destinations of events: the sample ID, or sinkId when rejected
     get samples(): Uint32Array {
         if (this.#samplesStale) {
             this.#samplesStale = false;
-            this.#compileSamples();
+            this.#samples ??= new Uint32Array(this.population.values.length);
+            this.#compileSamples(this.#samples);
         }
 
-        return this.buffer.samples;
+        return this.#samples!;
     }
 
     // Values of covered events; edge events keep whole values
     get values(): Uint32Array {
         if (this.#valuesStale) {
             this.#valuesStale = false;
-            this.#compileValues();
+            this.#values ??= new Uint32Array(this.population.values.length);
+            this.#compileValues(this.#values);
         }
 
-        return this.buffer.values;
+        return this.#values!;
     }
 
     // Readers of single events for consumers that read a few events (range and bin edges); with records they
@@ -530,26 +517,25 @@ export class PopulationFiltered extends Observer {
 
     // Per-sample metrics by the event pass over compiled destinations and values
     #computeMetrics() {
-        const { samples, values, buffer } = this;
+        const { samples, values } = this;
+        const counts = this.#counts;
+        const totals = this.#totals;
         const cuts = this.#boundaryCuts;
 
-        buffer.samplesCount.fill(0);
-        buffer.samplesTotal.fill(0);
-        this.#api!.accumulateSampleMetrics(buffer);
+        counts.fill(0);
+        totals.fill(0);
+        accumulateSampleMetrics(samples, values, counts, totals);
 
         for (let i = 0; i < cuts.length; i++) {
             const { index, value } = cuts[i];
             const sampleId = samples[index];
 
-            buffer.samplesTotal[sampleId] -= value;
+            totals[sampleId] -= value;
 
             if (value === values[index]) {
-                buffer.samplesCount[sampleId]--;
+                counts[sampleId]--;
             }
         }
-
-        this.#counts.set(buffer.samplesCount);
-        this.#totals.set(buffer.samplesTotal);
     }
 
     // Per-sample metrics from the records of whole covered parts and the events of partially covered ones; the
@@ -672,9 +658,8 @@ export class PopulationFiltered extends Observer {
         };
     }
 
-    #compileSamples() {
+    #compileSamples(samples: Uint32Array) {
         const sourceSamples = this.source.samples;
-        const samples = this.buffer.samples;
 
         // Without own masks and event acceptance every event keeps the source destination
         if (!this.#hasMask) {
@@ -696,9 +681,8 @@ export class PopulationFiltered extends Observer {
     }
 
     // Values of covered events; edge events keep whole values and metrics subtract their boundary cuts
-    #compileValues() {
+    #compileValues(values: Uint32Array) {
         const baseValues = this.population.values;
-        const values = this.buffer.values;
         const coverage = this.#coverage;
         let clearedEnd = 0;
 

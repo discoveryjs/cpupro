@@ -5,7 +5,9 @@ import { USE_WASM } from '../const.js';
 // Computations backed by WASM. An owner X keeps its low-level computations apart: X.compute.wat is the module
 // (compiled by scripts/wat-compile.mjs), X.compute.ts lays out the compute buffer, holds the JavaScript twin
 // of the module's exports and binds the exports to the vectors of the buffer by their byte offsets, and gives X
-// an api over the buffer, the module's when the buffer's memory is WASM memory and the twin's otherwise
+// an api over the buffer, the module's when the buffer's memory is WASM memory and the twin's otherwise.
+// A browser keeps only about a hundred WASM memories alive at once, so data of the model never lives in a compute
+// buffer: a buffer lives for a pass, and owners computing again over the model's data use a scratch buffer
 
 export type ComputeMemory = WebAssembly.Memory | Uint8Array;
 export type ComputeVector = Uint8Array | Uint16Array | Uint32Array | Int32Array | Float64Array;
@@ -31,6 +33,31 @@ export function createComputeMemory(byteSize: number): ComputeMemory {
 // A buffer of vectors in one memory, a vector starts at a multiple of its element size. The memory keeps room
 // after the last vector for a read of 4 bytes at any element (see elementMask)
 export function createComputeBuffer<L extends BufferLayout>(layout: L) {
+    const offsets = layoutOffsets(layout);
+
+    return viewBuffer(createComputeMemory(offsets[offsets.length - 1] + 3), layout, offsets);
+}
+
+// A compute memory of an owner that lays out the buffer of each pass from its start, so the vectors of a buffer
+// stay valid until the next one is laid out; a buffer that doesn't fit takes a larger memory, the previous one
+// is left to be collected. The owner's passes over the model's data stage it into the buffer and copy results out
+export function createComputeScratch() {
+    let memory: ComputeMemory | null = null;
+
+    return function layoutScratch<L extends BufferLayout>(layout: L) {
+        const offsets = layoutOffsets(layout);
+        const byteSize = offsets[offsets.length - 1] + 3;
+
+        if (memory === null || memory.buffer.byteLength < byteSize) {
+            memory = createComputeMemory(byteSize);
+        }
+
+        return viewBuffer(memory, layout, offsets);
+    };
+}
+
+// Byte offsets of the vectors of a layout, then the end of the last one
+function layoutOffsets(layout: BufferLayout) {
     const names = Object.keys(layout);
     const offsets: number[] = [];
     let byteSize = 0;
@@ -43,7 +70,13 @@ export function createComputeBuffer<L extends BufferLayout>(layout: L) {
         byteSize = offset + Type.BYTES_PER_ELEMENT * length;
     }
 
-    const memory = createComputeMemory(byteSize + 3);
+    offsets.push(byteSize);
+
+    return offsets;
+}
+
+function viewBuffer<L extends BufferLayout>(memory: ComputeMemory, layout: L, offsets: number[]) {
+    const names = Object.keys(layout);
     const buffer: Record<string, ComputeMemory | ComputeVector> = { memory };
 
     for (let i = 0; i < names.length; i++) {
@@ -63,12 +96,14 @@ export function elementMask(vector: Uint8Array | Uint16Array | Uint32Array) {
 }
 
 // The api of a computation over a compute buffer: the module's exports bound by bindWasm over WASM memory,
-// the JavaScript twin over bytes. The module is compiled once, on the first WASM memory
+// the JavaScript twin over bytes. The module is compiled once, on the first WASM memory, and instantiated once
+// per memory
 export function wasmBacked<Api, Name extends string>(
     source: string, // the module in base64, as bundled
     javaScriptApi: Api,
     bindWasm: (wasm: WasmExports<Name>) => Api
 ) {
+    const apis = new WeakMap<WebAssembly.Memory, Api>();
     let module: WebAssembly.Module | null = null;
 
     return function apiOf(buffer: { memory: ComputeMemory }): Api {
@@ -78,12 +113,19 @@ export function wasmBacked<Api, Name extends string>(
             return javaScriptApi;
         }
 
-        if (module === null) {
-            module = new WebAssembly.Module(base64.decodeBytes(source));
+        let api = apis.get(memory);
+
+        if (api === undefined) {
+            if (module === null) {
+                module = new WebAssembly.Module(base64.decodeBytes(source));
+            }
+
+            const instance = new WebAssembly.Instance(module, { imports: { memory } });
+
+            api = bindWasm(instance.exports as WasmExports<Name>);
+            apis.set(memory, api);
         }
 
-        const instance = new WebAssembly.Instance(module, { imports: { memory } });
-
-        return bindWasm(instance.exports as WasmExports<Name>);
+        return api;
     };
 }

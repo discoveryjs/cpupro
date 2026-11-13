@@ -320,9 +320,9 @@ test('gives every derived population own buffers and stable vectors over the bas
     const samples = nested.samples;
     const values = nested.values;
     const buffers = new Set([
-        viewport.buffer.memory!.buffer,
-        selection.buffer.memory!.buffer,
-        nested.buffer.memory!.buffer
+        viewport.samples.buffer,
+        selection.samples.buffer,
+        nested.samples.buffer
     ]);
 
     viewport.setRange(50, 150);

@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { afterEach, test, vi } from 'vitest';
 import { createLineFixture, createProfileFixture } from '../../../test/fixtures/profile.js';
 import { findBreakdown } from '../../../test/fixtures/lines.js';
 import { sum } from '../../../test/helpers/values.js';
+import { createSampleBreakdown } from './metrics.js';
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 test('filtered metrics of every breakdown of a population follow its changes when they are read', async () => {
     const { profile } = await createProfileFixture();
@@ -107,4 +112,37 @@ test('cumulative values, totals and tree metrics stay exact beyond 2^32', async 
     const aggregated = populationFiltered.aggregateBy(Uint8Array.of(0, 0, 1, 1), 2);
 
     assert.deepEqual(aggregated.samplesTotal, Float64Array.of(0xffffffff - 10, 0xffffffff + 5));
+});
+
+// A browser keeps about a hundred WASM memories alive at once, while a trace has a breakdown or more per profile
+test('metrics of any number of breakdowns are computed through one WASM memory', async () => {
+    const { profile } = await createProfileFixture();
+    const breakdown = findBreakdown(profile.memline!, 'call-stack');
+    const population = breakdown.populationFiltered;
+    const { nodes } = breakdown.callFrames!.filtered;
+    const sampledTree = {
+        tree: nodes.tree,
+        sampleToNode: nodes.sampleToNode
+    };
+    const memories = vi.spyOn(WebAssembly, 'Memory');
+    const accepts = new Uint8Array(population.samplesMask.length).fill(1);
+    const breakdowns = [];
+
+    for (let i = 0; i < 200; i++) {
+        breakdowns.push(createSampleBreakdown(population, [sampledTree]));
+    }
+
+    accepts[0] = 0;
+    population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: accepts.length,
+        accepts
+    });
+
+    for (let i = 0; i < breakdowns.length; i++) {
+        assert.equal(sum(breakdowns[i].dimensions[0].tree.filtered.selfValues), sum(population.samplesTotal));
+    }
+
+    assert.ok(memories.mock.calls.length <= 1);
 });

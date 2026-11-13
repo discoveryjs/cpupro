@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
-import { describe, inject, test } from 'vitest';
+import { afterEach, describe, test, vi } from 'vitest';
 import { Population, PopulationFiltered } from './population.js';
 import { trackReads } from '../../../test/helpers/read-tracker.js';
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 describe('Population', () => {
     test('aggregates values and nonzero event counts by sample ID', () => {
@@ -407,17 +411,33 @@ describe('PopulationFiltered', () => {
     test.each(cases)('copies initial aggregates into independent buffers: $name', row => {
         const population = new Population(Uint32Array.from(row.samples), Uint32Array.from(row.values));
         const filtered = new PopulationFiltered(population);
-        assert.equal(filtered.buffer.memory instanceof WebAssembly.Memory, inject('useWasm'));
         assert.equal(filtered.cumulative, population.cumulative);
         for (const key of ['samples', 'values', 'samplesCount', 'samplesTotal'] as const) {
             assert.deepEqual(filtered[key], population[key]);
             assert.notEqual(filtered[key].buffer, population[key].buffer);
         }
-        for (const key of ['samples', 'values'] as const) {
-            assert.equal(filtered[key].buffer, filtered.buffer.memory!.buffer);
-        }
         const originalTotals = population.samplesTotal.slice();
         filtered.samplesTotal[0] = 42;
         assert.deepEqual(population.samplesTotal, originalTotals);
     });
+});
+
+// A browser keeps about a hundred WASM memories alive at once, while a trace has several populations per profile
+test('event passes of any number of populations run through one WASM memory', () => {
+    const population = new Population(Uint32Array.of(0, 1, 0, 2), Uint32Array.of(10, 20, 30, 40));
+    const memories = vi.spyOn(WebAssembly, 'Memory');
+
+    for (let i = 0; i < 200; i++) {
+        const filtered = new PopulationFiltered(population);
+
+        filtered.filter.set({
+            key: 'event',
+            domain: 'event',
+            size: population.values.length,
+            accepts: Uint8Array.of(1, 0, 1, 1)
+        });
+        assert.deepEqual([...filtered.samplesTotal], [40, 0, 40]);
+    }
+
+    assert.ok(memories.mock.calls.length <= 1);
 });

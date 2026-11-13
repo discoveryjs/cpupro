@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, inject, test, vi } from 'vitest';
 import createWabt from 'wabt';
-import { createComputeBuffer, wasmBacked, type WasmExports } from './compute-wasm.js';
+import { createComputeBuffer, createComputeScratch, wasmBacked, type WasmExports } from './compute-wasm.js';
 
 // A module storing a value at a byte offset of its memory, and its twin over a vector
 const storeWat = `
@@ -88,4 +88,17 @@ test('gives the JavaScript twin over bytes without compiling the module', () => 
 
     assert.equal(apiOf({ memory: new Uint8Array(8) }), storeJavaScriptApi);
     assert.equal(compile.mock.calls.length, 0);
+});
+
+test('lays out the buffers of a scratch in one memory while they fit, a larger buffer takes a larger memory', () => {
+    const layoutScratch = createComputeScratch();
+    const first = layoutScratch({ counts: [Uint32Array, 1000] });
+    const smaller = layoutScratch({ totals: [Float64Array, 10], counts: [Uint32Array, 100] });
+    const larger = layoutScratch({ counts: [Uint32Array, 100_000] });
+
+    assert.equal(smaller.memory, first.memory);
+    assert.equal(smaller.totals.byteOffset, 0);
+    assert.notEqual(larger.memory, first.memory);
+    assert.equal(larger.counts.length, 100_000);
+    assert.equal(larger.memory instanceof WebAssembly.Memory, inject('useWasm'));
 });
