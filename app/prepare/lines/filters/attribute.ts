@@ -97,9 +97,5 @@ function attributeFilterOptions(attribute: ProfileLineAttribute): AttributeFilte
                     label: name
                 }))
             };
-
-        // Identity-like: an owner per compiled function, too many values to choose from
-        case 'allocationOwner':
-            return null;
     }
 }

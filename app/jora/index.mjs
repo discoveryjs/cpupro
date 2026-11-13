@@ -63,6 +63,20 @@ export const assertions = {
     ...filterAssertions,
     original: 'script.originalFor'
 };
+// Event ranges of the runs of the owners a mask selects (by their subjects)
+function ownerRuns(owners, mask) {
+    const { starts, ends, subjects } = owners;
+    const ranges = [];
+
+    for (let i = 0; i < starts.length; i++) {
+        if (mask[subjects[i]] !== 0) {
+            ranges.push([starts[i], ends[i]]);
+        }
+    }
+
+    return ranges;
+}
+
 export const methods = {
     ...binMethods,
     ...callTreeMethods,
@@ -207,47 +221,71 @@ export const methods = {
         const sums = new Uint32Array(timespanCount * typeCount);
         const mins = new Uint32Array(timespanCount * typeCount);
         const maxs = new Uint32Array(timespanCount * typeCount);
-        const sampleIds = source.dict ? source.keys : samples;
-        const samplesMask = source.dict
-            ? attributeKeysMask(source, test)
-            : makeSamplesMask(source, test, 1);
+        // Owners of allocations select their runs, values of a dictionary and samples select events
+        const ownerMask = source.subjects
+            ? makeDictMask({ dictionary: source.dict }, test)
+            : null;
+        const sampleIds = ownerMask !== null
+            ? null
+            : source.dict ? source.keys : samples;
+        const samplesMask = ownerMask !== null
+            ? null
+            : source.dict
+                ? attributeKeysMask(source, test)
+                : makeSamplesMask(source, test, 1);
+        const ranges = ownerMask !== null
+            ? ownerRuns(source, ownerMask)
+            : [[0, values.length]];
         const result = [];
+        let cutIndex = 0;
 
-        let start = 0;
+        for (let i = 0; i < ranges.length; i++) {
+            const rangeEnd = ranges[i][1];
+            let start = ranges[i][0];
 
-        for (let cutIndex = 0; cutIndex <= boundaryCuts.length; cutIndex++) {
-            const cut = boundaryCuts[cutIndex];
-            const end = cut ? cut.index : values.length;
+            while (cutIndex < boundaryCuts.length && boundaryCuts[cutIndex].index < start) {
+                cutIndex++;
+            }
 
-            for (let eventIndex = start; eventIndex < end; eventIndex++) {
-                if (samples[eventIndex] !== sinkId && samplesMask[sampleIds[eventIndex]] !== 0) {
-                    const value = values[eventIndex];
+            while (start < rangeEnd) {
+                const cut = cutIndex < boundaryCuts.length && boundaryCuts[cutIndex].index < rangeEnd
+                    ? boundaryCuts[cutIndex]
+                    : null;
+                const end = cut ? cut.index : rangeEnd;
 
-                    if (value !== 0) {
-                        const index = typeEntries[typeCodes[eventIndex]] * timespanCount + lifespanEntries[lifespanCodes[eventIndex]];
+                for (let eventIndex = start; eventIndex < end; eventIndex++) {
+                    if (samples[eventIndex] !== sinkId && (sampleIds === null || samplesMask[sampleIds[eventIndex]] !== 0)) {
+                        const value = values[eventIndex];
+
+                        if (value !== 0) {
+                            const index = typeEntries[typeCodes[eventIndex]] * timespanCount + lifespanEntries[lifespanCodes[eventIndex]];
+
+                            counts[index]++;
+                            sums[index] += value;
+                            mins[index] = mins[index] ? Math.min(mins[index], value) : value;
+                            maxs[index] = Math.max(maxs[index], value);
+                        }
+                    }
+                }
+
+                if (cut) {
+                    const value = values[end] - cut.value;
+
+                    if (value !== 0 && samples[end] !== sinkId && (sampleIds === null || samplesMask[sampleIds[end]] !== 0)) {
+                        const index = typeEntries[typeCodes[end]] * timespanCount + lifespanEntries[lifespanCodes[end]];
 
                         counts[index]++;
                         sums[index] += value;
                         mins[index] = mins[index] ? Math.min(mins[index], value) : value;
                         maxs[index] = Math.max(maxs[index], value);
                     }
+
+                    cutIndex++;
+                    start = end + 1;
+                } else {
+                    start = end;
                 }
             }
-
-            if (cut) {
-                const value = values[end] - cut.value;
-
-                if (value !== 0 && samples[end] !== sinkId && samplesMask[sampleIds[end]] !== 0) {
-                    const index = typeEntries[typeCodes[end]] * timespanCount + lifespanEntries[lifespanCodes[end]];
-
-                    counts[index]++;
-                    sums[index] += value;
-                    mins[index] = mins[index] ? Math.min(mins[index], value) : value;
-                    maxs[index] = Math.max(maxs[index], value);
-                }
-            }
-
-            start = end + 1;
         }
 
         for (let i = 0; i < valueTypesDict.length; i++) {

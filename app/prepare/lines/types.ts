@@ -90,11 +90,15 @@ export type ProfileLineAllocationCodeTypeAttribute = {
     entries: Uint8Array | Uint32Array;
     dict: string[];
 };
-export type ProfileLineAllocationOwnerAttribute = {
-    name: 'allocationOwner';
-    keys: Uint32Array;
-    entries: Uint8Array | Uint32Array;
-    dict: (CpuProCompilationSubject | null)[]; // the compilation subjects after the absent owner
+// Owners of allocations: runs of consecutive allocations of one compilation subject, the innermost compilation over
+// them; allocations out of the runs have no owner. Owners are few of a memline's allocations, so they're no attribute
+// with a value per allocation
+export type CompilationOwners = {
+    starts: Uint32Array;   // per run: its first allocation
+    ends: Uint32Array;     // per run: the allocation after its last one
+    subjects: Uint32Array; // per run: the index of its subject in the dictionary
+    dict: CpuProCompilationSubject[];
+    readonly values: Int32Array; // per allocation: the index of its subject, -1 out of runs, materialized when read
 };
 export type ProfileLineAllocationCompilationStageAttribute = {
     name: 'allocationCompilationStage';
@@ -112,7 +116,6 @@ export type ProfileLineAttributeKeys =
     | ProfileLineAllocationLifespanAttribute
     | ProfileLineAllocationSpaceAttribute
     | ProfileLineAllocationCodeTypeAttribute
-    | ProfileLineAllocationOwnerAttribute
     | ProfileLineAllocationCompilationStageAttribute;
 export type ProfileLineAttribute = ProfileLineAttributeKeys & {
     readonly values: Uint8Array | Uint32Array; // per event: the dictionary index of its value
@@ -201,6 +204,7 @@ export type TimelineLine = ProfileLine & {
 export type ProfileMemline = ProfileLine & {
     type: 'memline';
     kind: 'memory';
+    compilationOwners: CompilationOwners | null;
 };
 
 export type GcEpochDictEntry = {

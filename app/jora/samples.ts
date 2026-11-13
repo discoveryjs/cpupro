@@ -1,4 +1,4 @@
-import { ProfileLine, ProfileLineType, ProfileLineAttribute, type LineTreeDimension } from '../prepare/lines/types.js';
+import { ProfileLine, ProfileLineType, type CompilationOwners, type LineTreeDimension, type ProfileLineAttribute } from '../prepare/lines/types.js';
 import type { CpuProNode } from '../prepare/types.js';
 import { resolveScopeProfileLine, resolveScopeProfileLineBreakdown, resolveScopeViewport } from './profile.js';
 import { binningRange } from './viewport.js';
@@ -71,9 +71,17 @@ function countSamples(n: number, viewport: PopulationFiltered, total: number, co
 }
 
 export const methods = {
+    // Counts and totals of the dictionary entries of an attribute in a population
     attributeSampleTotals(attribute: ProfileLineAttribute, population: Population | PopulationFiltered) {
         const { dict } = attribute;
         const { samplesCount, samplesTotal } = aggregateAttribute(population, attribute);
+
+        return dict.map((entry, index) => ({ entry, count: samplesCount[index], size: samplesTotal[index] }));
+    },
+    // Counts and totals of the allocations of every compilation subject in a population, by the runs of its owners
+    compilationOwnerTotals(owners: CompilationOwners, population: Population | PopulationFiltered) {
+        const { starts, ends, subjects, dict } = owners;
+        const { samplesCount, samplesTotal } = population.aggregateIntervals(starts, ends, subjects, dict.length);
 
         return dict.map((entry, index) => ({ entry, count: samplesCount[index], size: samplesTotal[index] }));
     },

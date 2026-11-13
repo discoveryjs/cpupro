@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { Population, PopulationFiltered } from '../prepare/computations/population.js';
 import { methods } from './samples.js';
-import { createLineFixture } from '../../test/fixtures/profile.js';
-import { scopeContext } from '../../test/fixtures/lines.js';
+import { createLineFixture, createProfileFixture } from '../../test/fixtures/profile.js';
+import { allocationAttributes, scopeContext } from '../../test/fixtures/lines.js';
 import { setEventPass } from '../../test/helpers/event-pass.js';
 
 test('a population event count includes zero-weight events within ranges and accepted by filters', () => {
@@ -127,4 +127,18 @@ test.each([
     assert.deepEqual(Array.from(methods.countSamples.call({ context }, 1)), [row.expected]);
     setEventPass(window);
     assert.deepEqual(Array.from(methods.countSamples.call({ context }, 1)), [row.expected]);
+});
+
+// Allocations of 16, 32, 48 and 64 bytes: 0 and 2 alive, 1 short-lived, 3 long-lived
+test('attribute totals are of the dictionary entries of the attribute in a population', async () => {
+    const { profile } = await createProfileFixture(allocationAttributes);
+    const line = profile.memline!;
+    const lifespan = line.attributes.find(attribute => attribute.name === 'allocationLifespan')!;
+    const totals = methods.attributeSampleTotals(lifespan, line.breakdowns[0].population);
+
+    assert.deepEqual(totals.filter(entry => entry.count > 0), [
+        { entry: 'alive', count: 2, size: 64 },
+        { entry: 'short-lived', count: 1, size: 32 },
+        { entry: 'long-lived', count: 1, size: 64 }
+    ]);
 });

@@ -97,7 +97,7 @@ test.each([
     assert.deepEqual(profile.memline!.filters.filters.map(filter => filter.key), ['category']);
 });
 
-test('every attribute but identity-like ones gets a filter with an option per dictionary entry', async () => {
+test('every attribute gets a filter with an option per dictionary entry', async () => {
     const { profile } = await createProfileFixture();
     const attributes = [
         {
@@ -111,12 +111,6 @@ test('every attribute but identity-like ones gets a filter with an option per di
             keys: Uint8Array.of(0, 0, 1, 2),
             entries: dictEntries(['Ignition', 'Turbofan', 'Builtin']),
             dict: ['Ignition', 'Turbofan', 'Builtin']
-        },
-        {
-            name: 'allocationOwner' as const,
-            keys: Uint32Array.of(0, 1, 2, 3),
-            entries: dictEntries([null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 10 }, { scriptId: 2, start: 0 }]),
-            dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 10 }, { scriptId: 2, start: 0 }]
         }
     ];
     const line = { ...profile.memline!, filters: new FilterSet(), attributes };

@@ -5,6 +5,7 @@ import { createProfile } from '../profile.mjs';
 import { createProfileSession } from '../profile-session.mjs';
 import { extractFromChromiumPerformanceProfile } from '../formats/chromium-performance-profile.js';
 import type { CpuProCompilationRecord, CpuProCompilationSubject, CpuProScript } from '../types.js';
+import type { CompilationOwners, ProfileMemline } from '../lines/types.js';
 import { createWorkHandler, type WorkWrapperChain } from '../misc/work.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 import * as computations from '../computations/misc.js';
@@ -128,11 +129,16 @@ function dictValues<T>(attribute: { keys: ArrayLike<number>; dict: T[] }) {
     return Array.from(attribute.keys, index => attribute.dict[index]);
 }
 
+// Subjects of the allocations, as queries read them, null for allocations without an owner
+function ownerSubjects(owners: CompilationOwners) {
+    return Array.from(owners.values, index => owners.dict[index] ?? null);
+}
+
 function attributes(records: CpuProCompilationRecord[], ids: number[], order: 'consecutive' | null = null) {
-    const [owner, stage] = createMemlineCompilationAttributes(records, ids, order);
+    const { owners, stage } = createMemlineCompilationAttributes(records, ids, order);
 
     return {
-        owner: owner!,
+        owners: owners!,
         stage: stage!
     };
 }
@@ -172,17 +178,34 @@ test('allocation rows map to innermost owner and stage with exclusive starts and
 
             prepareCompilationRecords(prepared);
 
-            const { owner, stage } = attributes(prepared, ids);
+            const attributesOf = attributes(prepared, ids);
 
-            assert.deepEqual(dictValues(stage), stages);
-            assert.deepEqual(dictValues(owner).map(entry => entry?.start ?? null), owners);
-            assert.deepEqual(new Set(stage.dict), new Set(['none', 'Compile', 'Inner', 'Empty', 'Absent']));
-            assert.deepEqual(owner.dict.slice(1).map(entry => entry!.start).sort(), [14, 30]);
+            assert.deepEqual(dictValues(attributesOf.stage), stages);
+            assert.deepEqual(ownerSubjects(attributesOf.owners, ids.length).map(entry => entry?.start ?? null), owners);
+            assert.deepEqual(new Set(attributesOf.stage.dict), new Set(['none', 'Compile', 'Inner', 'Empty', 'Absent']));
+            assert.deepEqual(attributesOf.owners.dict.map(entry => entry.start).sort(), [14, 30]);
         }
     }
 
-    assert.deepEqual(createMemlineCompilationAttributes([], [1]), []);
-    assert.deepEqual(createMemlineCompilationAttributes(records, null), []);
+    assert.deepEqual(createMemlineCompilationAttributes([], [1]), { owners: null, stage: null });
+    assert.deepEqual(createMemlineCompilationAttributes(records, null), { owners: null, stage: null });
+});
+
+test('a record over a part of the allocations of a record before it owns them, the record before it the rest', () => {
+    const records = createCompilationRecords([
+        record({ allocationStart: 10, allocationEnd: 20 }),
+        record({ name: 'Later', start: 30, allocationStart: 15, allocationEnd: 25 })
+    ], []);
+
+    prepareCompilationRecords(records);
+
+    const ids = [10, 11, 15, 16, 20, 21, 25, 26];
+    const { owners } = attributes(records, ids);
+
+    assert.deepEqual(ownerSubjects(owners, ids.length).map(entry => entry?.start ?? null), [
+        null, 14, 14, 30, 30, 30, 30, null
+    ]);
+    assert.deepEqual([[...owners.starts], [...owners.ends]], [[1, 3], [3, 7]]);
 });
 
 test('owners are the compilation subjects of records, by raw script and range, not resolved frames', () => {
@@ -196,17 +219,17 @@ test('owners are the compilation subjects of records, by raw script and range, n
 
     prepareCompilationRecords(records);
 
-    const { owner, stage } = attributes(records, [1, 2, 3, 4, 5, 6]);
-    const range = (subject: CpuProCompilationSubject | null) => [subject!.scriptId, subject!.start, subject!.end];
+    const { owners, stage } = attributes(records, [1, 2, 3, 4, 5, 6]);
+    const range = (subject: CpuProCompilationSubject) => [subject.scriptId, subject.start, subject.end];
 
-    assert.equal(owner.dict[0], null);
-    assert.deepEqual(owner.dict.slice(1).map(range), [
+    assert.deepEqual(owners.dict.map(range), [
         [7, 20, 30],
         [7, 21, 30],
         [null, null, 30],
         [7, 20, 40]
     ]);
-    assert.deepEqual([...owner.keys], [1, 1, 2, 3, 4, 0]);
+    // Allocations of one subject in a row are one run, the last allocation has no owner
+    assert.deepEqual([[...owners.starts], [...owners.ends], [...owners.subjects]], [[0, 2, 3, 4], [2, 3, 4, 5], [0, 1, 2, 3]]);
     assert.deepEqual(stage.dict, ['none', 'Compile', 'Finalize']);
     assert.deepEqual([...stage.keys], [1, 2, 1, 1, 1, 0]);
 
@@ -426,8 +449,8 @@ test('one thread supplies source intervals to independent allocation captures', 
     const second = attributes(profiles[1].thread.compilations!, secondIds);
 
     assert.equal(records, profiles[1].thread.compilations);
-    assert.deepEqual(first.owner.dict, second.owner.dict);
-    assert.notEqual(first.owner.keys, second.owner.keys);
+    assert.deepEqual(first.owners.dict, second.owners.dict);
+    assert.notEqual(first.owners.starts, second.owners.starts);
     assert.deepEqual(dictValues(first.stage), ['Compile', 'Inner', 'Compile', 'none']);
     assert.deepEqual(dictValues(second.stage), ['none', 'Inner', 'Compile']);
     assert.deepEqual(firstIds, [11, 13, 16, 21]);
@@ -540,13 +563,13 @@ test.each([
 
 test('memline allocation attributes take owners and stages from the thread compilation records', async () => {
     const { profile, subjects } = await createStagedProfile(false, 'parse script sources');
-    const memlineAttributes = profile.memline!.attributes;
-    const owner = memlineAttributes.find(attribute => attribute.name === 'allocationOwner')!;
-    const stage = memlineAttributes.find(attribute => attribute.name === 'allocationCompilationStage')!;
+    const memline = profile.memline as ProfileMemline;
+    const owners = memline.compilationOwners!;
+    const stage = memline.attributes.find(attribute => attribute.name === 'allocationCompilationStage')!;
 
-    assert.equal(owner.dict.length, subjects.length + 1);
-    assert.ok(subjects.every(subject => owner.dict[subject.index + 1] === subject));
-    assert.deepEqual(dictValues(owner).map(subject => subject && [subject.scriptId, subject.start]), [
+    assert.equal(owners.dict.length, subjects.length);
+    assert.ok(subjects.every(subject => owners.dict[subject.index] === subject));
+    assert.deepEqual(ownerSubjects(owners).map(subject => subject && [subject.scriptId, subject.start]), [
         null,
         [7, 14],
         [7, 14],

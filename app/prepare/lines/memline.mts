@@ -162,7 +162,14 @@ export async function createMemline(
     );
     const totalAllocationSize = computeCumulativeEnd(allocationSizes, cumulative);
 
-    // Memline attributes
+    // Memline attributes, and owners of allocations from the same records as their compilation stages
+    const compilationAttributes = await work('create memline compilation owners and stages', () =>
+        createMemlineCompilationAttributes(
+            compilations,
+            _cpuproAllocationIds || null,
+            data._cpuproAllocationIdsOrder || null
+        )
+    );
     const attributes = await work('create memline attributes', () => [
         createMemlineAllocationTypeAttribute(
             data._cpuproAllocationTypes || null,
@@ -183,11 +190,7 @@ export async function createMemline(
             data._cpuproAllocationCodeTypeNames || null,
             data._cpuproAllocationContextInfo || null
         ),
-        ...createMemlineCompilationAttributes(
-            compilations,
-            _cpuproAllocationIds || null,
-            data._cpuproAllocationIdsOrder || null
-        )
+        compilationAttributes.stage
     ].filter(attr => attr !== null).map(defineAttributeValues));
 
     // Populations of the memline share the classes of allocations with equal values of every event filter
@@ -226,6 +229,7 @@ export async function createMemline(
         breakdowns: [],
         mappings: Object.create(null),
         signatures: null,
+        compilationOwners: compilationAttributes.owners,
 
         // Important: The methods MUST be defined outside of the function to avoid retaining
         // the context of this function, which would prevent garbage collection of the temporary data

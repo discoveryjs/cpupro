@@ -3,9 +3,9 @@ import { allPageHeader, allPageTable } from './all-page-common.js';
 const compilationTable = {
     view: 'context',
     data: `
-        $owners: #.allocationLine | $ ? lineAttribute("allocationOwner");
+        $owners: #.allocationLine.compilationOwners;
         $stageFilter: #.allocationLine | $ ? filters.attributeFilters()[=>key = "allocationCompilationStage" and filterActive()];
-        $totals: $owners and #.allocationPopulation ? $owners.attributeSampleTotals(#.allocationPopulation) : [];
+        $totals: $owners and #.allocationPopulation ? $owners.compilationOwnerTotals(#.allocationPopulation) : [];
         $subjects: scopeProfile().thread.compilationSubjects or [];
         ($stageFilter
             ? $subjects.($records: records.[$stageFilter.filterOptionEnabled(name)]; { ...$, records: $records, events: $records.size() }).[events]
@@ -29,8 +29,8 @@ const compilationTable = {
                         context: '{ ...#, scopeLine: #.allocationLine }',
                         data: `
                             $subjectIndex: index;
-                            #.allocationLine.lineAttribute("allocationOwner")
-                            .allocationsMatrix(#.allocationPopulation, => $ and $.index = $subjectIndex, scopeProfile())
+                            #.allocationLine.compilationOwners
+                            .allocationsMatrix(#.allocationPopulation, => $.index = $subjectIndex, scopeProfile())
                         `
                     }
                 },
@@ -127,7 +127,7 @@ discovery.page.define('compilations', {
         context: `{
             ...#,
             allocationLine: scopeLine("memline"),
-            allocationPopulation: scopeLine("memline") | $ and lineAttribute("allocationOwner") ? primaryBreakdown().populationFiltered
+            allocationPopulation: scopeLine("memline") | $ and compilationOwners ? primaryBreakdown().populationFiltered
         }`,
         content: {
             view: 'switch',

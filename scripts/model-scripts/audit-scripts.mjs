@@ -39,7 +39,7 @@ function auditAllocations(model, profile, entriesById, rangesByScript) {
     const attributes = new Map(line.attributes.map(attribute => [attribute.name, attribute]));
     const type = attributes.get('allocationType');
     const stage = attributes.get('allocationCompilationStage');
-    const owner = attributes.get('allocationOwner');
+    const owner = line.compilationOwners;
     const byType = new Map();
     const byStage = new Map();
     const byScript = new Map();

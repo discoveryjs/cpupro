@@ -5,11 +5,12 @@ import { createProfileFixture } from '../../test/fixtures/profile.js';
 import { dictEntries, findBreakdown } from '../../test/fixtures/lines.js';
 import type {
     ProfileLine,
-    ProfileLineAllocationOwnerAttribute,
+    CompilationOwners,
     ProfileLineAllocationCompilationStageAttribute
 } from '../prepare/lines/types.js';
 import type { PopulationFiltered } from '../prepare/computations/population.js';
 import type { Profile } from '../prepare/profile.mjs';
+import type { CpuProCompilationSubject } from '../prepare/types.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
 import { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 
@@ -62,12 +63,12 @@ async function createNodesMatrix(mapping: number[]) {
 
 // Owners of the allocation events: the first and the third are of a function, the second of another one, the last
 // has no owner
-function createOwners(): ProfileLineAllocationOwnerAttribute {
+function createOwners(): CompilationOwners {
     return {
-        name: 'allocationOwner',
-        dict: [null, { scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }],
-        entries: dictEntries([null, null, null]),
-        keys: new Uint32Array([1, 2, 1, 0])
+        starts: Uint32Array.of(0, 1, 2),
+        ends: Uint32Array.of(1, 2, 3),
+        subjects: Uint32Array.of(0, 1, 0),
+        dict: [{ scriptId: 1, start: 0 }, { scriptId: 1, start: 20 }] as CpuProCompilationSubject[]
     };
 }
 
@@ -191,7 +192,7 @@ test.each([
     assert.deepEqual(matrix()[0].alive, row.alive);
 });
 
-// An owner attribute as the source, as the compilations page selects allocations of a function
+// Owners of allocations as the source, as the compilations page selects allocations of a function
 async function createOwnerMatrix() {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const line = profile.memline!;
@@ -205,7 +206,7 @@ async function createOwnerMatrix() {
     };
 
     addAllocationKinds(line);
-    line.attributes.push(owners, stages);
+    line.attributes.push(stages);
 
     const matrix = (accepts: unknown) => methods.allocationsMatrix.call(
         { context: {} },
@@ -218,11 +219,11 @@ async function createOwnerMatrix() {
     return { line, population, owners, matrix };
 }
 
-test('an attribute source counts the events of its entries accepted by the test', async () => {
+test('an owners source counts the events of the runs of its owners accepted by the test', async () => {
     const { owners, matrix } = await createOwnerMatrix();
-    const all = matrix((owner: unknown) => owner !== null);
+    const all = matrix(() => true);
 
-    assert.deepEqual(matrix(owners.dict[1]), [
+    assert.deepEqual(matrix(owners.dict[0]), [
         {
             type: 'object',
             total: { count: 2, sum: 64, min: 16, max: 48 },
@@ -265,7 +266,7 @@ test.each([
         ranges: [{ start: 0.1, end: 0.7 }],
         totals: []
     }
-])('an attribute source keeps the allocation filters: $name', async row => {
+])('an owners source keeps the allocation filters: $name', async row => {
     const { line, population, owners, matrix } = await createOwnerMatrix();
     const stopFilters = prepareLineFilters(line);
     const stageFilter = line.filters.get('allocationCompilationStage') as SetAttributeFilter;
@@ -273,7 +274,7 @@ test.each([
     stageFilter.setSelection('include', row.stages);
     population.setRanges(row.ranges);
 
-    assert.deepEqual(matrix(owners.dict[1]).map(entry => entry.total), row.totals);
+    assert.deepEqual(matrix(owners.dict[0]).map(entry => entry.total), row.totals);
     stopFilters();
 });
 
@@ -281,36 +282,36 @@ test.each([
     {
         name: 'the whole line',
         ranges: null,
-        totals: [[1, 64], [2, 64], [1, 32]]
+        totals: [[2, 64], [1, 32]]
     },
     {
         name: 'a part of an event',
         ranges: [{ start: 5, end: 10 }],
-        totals: [[0, 0], [1, 5], [0, 0]]
+        totals: [[1, 5], [0, 0]]
     },
     {
         name: 'parts of events in several ranges',
         ranges: [{ start: 1, end: 3 }, { start: 8, end: 10 }, { start: 20, end: 24 }],
-        totals: [[0, 0], [1, 4], [1, 4]]
+        totals: [[1, 4], [1, 4]]
     }
-])('attribute sample totals count events and their bytes in $name', async row => {
+])('compilation owner totals count events and their bytes in $name', async row => {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const population = profile.memline!.breakdowns[0].populationFiltered;
     const owners = createOwners();
 
     population.setRanges(row.ranges);
-    const totals = methods.attributeSampleTotals(owners, population);
+    const totals = methods.compilationOwnerTotals(owners, population);
 
     assert.deepEqual(totals.map(entry => [entry.count, entry.size]), row.totals);
-    assert.equal(totals[1].entry, owners.dict[1]);
+    assert.equal(totals[0].entry, owners.dict[0]);
 });
 
-test('attribute sample totals are zero when every call stack is rejected', async () => {
+test('compilation owner totals are zero when every call stack is rejected', async () => {
     const { profile } = await createProfileFixture({ noSourceMap: true });
     const population = profile.memline!.breakdowns[0].populationFiltered;
-    const totals = () => methods.attributeSampleTotals(createOwners(), population);
+    const totals = () => methods.compilationOwnerTotals(createOwners(), population);
 
     rejectStacks(profile, population, [0, 1]);
 
-    assert.deepEqual(totals().map(entry => [entry.count, entry.size]), [[0, 0], [0, 0], [0, 0]]);
+    assert.deepEqual(totals().map(entry => [entry.count, entry.size]), [[0, 0], [0, 0]]);
 });

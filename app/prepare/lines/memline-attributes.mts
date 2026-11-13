@@ -11,7 +11,7 @@ import type {
     ProfileLineAllocationLifespanAttribute,
     ProfileLineAllocationSpaceAttribute,
     ProfileLineAllocationTypeAttribute,
-    ProfileLineAllocationOwnerAttribute,
+    CompilationOwners,
     ProfileLineAllocationCompilationStageAttribute,
     ProfileLineAttribute,
     ProfileLineAttributeKeys
@@ -433,32 +433,36 @@ export function createMemlineAllocationCodeTypeAttribute(
 // Owners and compilation stages of allocations: an allocation takes the compilation subject and the stage of the record
 // it is allocated within. Records come by their allocation ranges, an enclosing one before those it encloses
 // (see compareCompilationRecords), so ranges of nested records overwrite the enclosing one and an allocation takes
-// the innermost record. A single pass over the records writes both attributes
+// the innermost record. Stages are an attribute; owners are runs of the allocations of records, which are few
 export function createMemlineCompilationAttributes(
     compilations: CpuProCompilationRecord[] | null,
     _cpuproAllocationIds: AllocationIdVector | null,
     _cpuproAllocationIdsOrder: V8CpuProfileCpuproExtensions['_cpuproAllocationIdsOrder'] | null = null
-): [ProfileLineAllocationOwnerAttribute, ProfileLineAllocationCompilationStageAttribute] | [] {
+): { owners: CompilationOwners | null; stage: ProfileLineAllocationCompilationStageAttribute | null } {
     if (!compilations?.length || !_cpuproAllocationIds) {
-        return [];
+        return {
+            owners: null,
+            stage: null
+        };
     }
 
-    // Subjects and stages of indices follow the absent owner and stage; every subject and stage has records,
+    // Subjects and stages by their indices, the stages after the absent stage; every subject and stage has records,
     // so the dictionaries are dense
-    const ownerDict: (CpuProCompilationSubject | null)[] = [null];
+    const ownerDict: CpuProCompilationSubject[] = [];
     const stageDict = ['none'];
 
     for (let i = 0; i < compilations.length; i++) {
         const record = compilations[i];
 
-        ownerDict[record.subject!.index + 1] = record.subject!;
+        ownerDict[record.subject!.index] = record.subject!;
         stageDict[record.stage + 1] = record.name;
     }
 
     const ids = _cpuproAllocationIds;
     const firstId = consecutiveFirstId(ids, _cpuproAllocationIdsOrder);
-    const owners = new Uint32Array(ids.length);
     const stages = createDictIndexVector(ids.length, stageDict.length);
+    const starts = new Uint32Array(compilations.length);
+    const ends = new Uint32Array(compilations.length);
 
     // Allocations from the start to the end of a record; when IDs are consecutive, the range of IDs gives the range
     // of allocations without a search
@@ -472,31 +476,123 @@ export function createMemlineCompilationAttributes(
             continue;
         }
 
-        const start = firstId !== undefined
+        starts[i] = firstId !== undefined
             ? Math.min(Math.max(record.allocationStart - firstId + 1, 0), ids.length)
             : lowerBound(ids, record.allocationStart, true);
-        const end = firstId !== undefined
+        ends[i] = firstId !== undefined
             ? Math.min(Math.max(record.allocationEnd - firstId + 1, 0), ids.length)
             : lowerBound(ids, record.allocationEnd, true);
-
-        owners.fill(record.subject!.index + 1, start, end);
-        stages.fill(record.stage + 1, start, end);
+        // PERF: A loop rather than fill, as records hold a few allocations and a call of fill costs more than its
+        // writes: about 4 of 13 ms on 770K records in Node
+        for (let j = starts[i]; j < ends[i]; j++) {
+            stages[j] = record.stage + 1;
+        }
     }
 
-    return [
-        {
-            name: 'allocationOwner',
-            keys: owners,
-            entries: dictEntries(ownerDict.length),
-            dict: ownerDict
-        },
-        {
+    return {
+        owners: defineOwnerValues(compilationOwners(compilations, starts, ends, ownerDict), ids.length),
+        stage: {
             name: 'allocationCompilationStage',
             keys: stages,
             entries: dictEntries(stageDict.length),
             dict: stageDict
         }
-    ];
+    };
+}
+
+// Runs of the owners of allocations: records come by their starts, so the owner at an allocation is the last record
+// over it, the top of a stack of the records over the allocations swept so far
+function compilationOwners(
+    compilations: CpuProCompilationRecord[],
+    starts: Uint32Array, // per record: the range of its allocations
+    ends: Uint32Array,
+    dict: CpuProCompilationSubject[]
+): Omit<CompilationOwners, 'values'> {
+    const runStarts: number[] = [];
+    const runEnds: number[] = [];
+    const runSubjects: number[] = [];
+    const stack: number[] = [];
+    let position = 0;
+    // Allocations from the position to an end are of the subject of a record, a run continues the run before it
+    const addRun = (end: number, record: number) => {
+        if (end <= position) {
+            return;
+        }
+
+        const subject = compilations[record].subject!.index;
+        const last = runEnds.length - 1;
+
+        if (last >= 0 && runEnds[last] === position && runSubjects[last] === subject) {
+            runEnds[last] = end;
+        } else {
+            runStarts.push(position);
+            runEnds.push(end);
+            runSubjects.push(subject);
+        }
+
+        position = end;
+    };
+    // Records over the allocations up to a position give their runs, those ending before it leave the stack
+    const sweep = (until: number) => {
+        while (stack.length > 0) {
+            const top = stack[stack.length - 1];
+
+            if (ends[top] > until) {
+                addRun(until, top);
+                break;
+            }
+
+            addRun(ends[top], top);
+            stack.pop();
+        }
+
+        position = Math.max(position, until);
+    };
+
+    for (let i = 0; i < compilations.length; i++) {
+        if (ends[i] > starts[i]) {
+            sweep(starts[i]);
+            stack.push(i);
+        }
+    }
+
+    sweep(Infinity);
+
+    return {
+        starts: Uint32Array.from(runStarts),
+        ends: Uint32Array.from(runEnds),
+        subjects: Uint32Array.from(runSubjects),
+        dict
+    };
+}
+
+// Owners per allocation, the index of the subject of the run of an allocation and -1 out of runs, for queries and views
+// over allocations: materialized when read and released once no reader holds them
+function defineOwnerValues(owners: Omit<CompilationOwners, 'values'>, allocationCount: number) {
+    let values: WeakRef<Int32Array> | null = null;
+
+    Object.defineProperty(owners, 'values', {
+        enumerable: true,
+        get() {
+            let vector = values?.deref();
+
+            if (vector === undefined) {
+                const { starts, ends, subjects } = owners;
+
+                vector = new Int32Array(allocationCount).fill(-1);
+
+                for (let i = 0; i < starts.length; i++) {
+                    vector.fill(subjects[i], starts[i], ends[i]);
+                }
+
+                values = new WeakRef(vector);
+            }
+
+            return vector;
+        }
+    });
+
+    return owners as CompilationOwners;
 }
 
 // The first allocation ID when IDs are consecutive, so a range of IDs is a range of allocations

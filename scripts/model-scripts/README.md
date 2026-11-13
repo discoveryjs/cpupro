@@ -260,13 +260,15 @@ own sizes against independently subtracted nested intervals.
 
 Allocation distributions contain both counts and allocated bytes. `byType` includes
 all allocations, while `eventScriptType` provides the full stage/script/type matrix;
-filter out stage `none` for compilation-only totals. `allocationOwner` is the owner
-of the innermost compilation event, not the allocating JavaScript function for all
-runtime allocations. Unresolved and ambiguous identities remain separate buckets.
+filter out stage `none` for compilation-only totals. Owners come from
+`memline.compilationOwners`: `values` gives per allocation the index of its owner in
+`dict`, -1 for none. The owner is the compilation subject of the innermost compilation
+event, not the allocating JavaScript function for all runtime allocations. Unresolved
+and ambiguous identities remain separate buckets.
 
 `ownerMismatchesAssumingIds1ToN` independently scans event intervals `(start, end]`,
 assuming allocation IDs are consecutive and begin at 1. It is unavailable when an
-event range exceeds that population or the owner attribute is absent. Interpret it
+event range exceeds that population or the line has no compilation owners. Interpret it
 only with zero nesting/range violations; the prepared model does not retain the
 original allocation ID vector for this check. Stage comparison also depends on the
 existing model diagnostic's coordinate assumptions.

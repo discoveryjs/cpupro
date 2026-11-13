@@ -83,6 +83,12 @@ export class Population extends Observer {
         return aggregatePopulation(this, [[0, this.values.length]], groups, groupCount);
     }
 
+    // Sums of the events of intervals [starts[i], ends[i]) in index order by the group of every interval, reading
+    // their events only
+    aggregateIntervals(starts: Uint32Array, ends: Uint32Array, groups: Uint32Array, groupCount: number) {
+        return aggregateIntervals(this, starts, ends, groups, groupCount);
+    }
+
     // Events of zero weight (e.g. samples with a zero time delta) in index order: they have no extent on the axis,
     // so counts of nonzero values miss them
     get zeroEvents(): Uint32Array {
@@ -332,6 +338,30 @@ export class PopulationFiltered extends Observer {
 
             if (samples[index] !== sinkId) {
                 const group = groups[index];
+
+                metrics.samplesTotal[group] -= value;
+                if (value === values[index]) {
+                    metrics.samplesCount[group]--;
+                }
+            }
+        }
+
+        return metrics;
+    }
+
+    // Sums of the events of intervals [starts[i], ends[i]) in index order by the group of every interval, reading
+    // their events only; values are of covered events, whose boundary cuts are subtracted
+    aggregateIntervals(starts: Uint32Array, ends: Uint32Array, groups: Uint32Array, groupCount: number) {
+        const { samples, values, sinkId } = this;
+        const metrics = aggregateIntervals(this, starts, ends, groups, groupCount);
+        const cuts = this.#boundaryCuts;
+
+        for (let i = 0; i < cuts.length; i++) {
+            const { index, value } = cuts[i];
+            const interval = lowerBound(starts, index, true) - 1;
+
+            if (interval >= 0 && index < ends[interval] && samples[index] !== sinkId) {
+                const group = groups[interval];
 
                 metrics.samplesTotal[group] -= value;
                 if (value === values[index]) {
@@ -801,6 +831,38 @@ function aggregateRange(
             samplesTotal[group] += value;
         }
     }
+}
+
+// Counts and totals of the events of intervals [starts[i], ends[i]) of a population by the group of every interval,
+// as of runs of events of one owner: only the events of the intervals are read
+function aggregateIntervals(
+    population: Population | PopulationFiltered,
+    starts: Uint32Array,
+    ends: Uint32Array,
+    groups: Uint32Array, // per interval
+    groupCount: number
+) {
+    const { samples, values, sinkId } = population;
+    const samplesCount = new Uint32Array(groupCount);
+    const samplesTotal = new Float64Array(groupCount);
+
+    for (let i = 0; i < starts.length; i++) {
+        const group = groups[i];
+
+        for (let j = starts[i]; j < ends[i]; j++) {
+            const value = values[j];
+
+            if (value !== 0 && samples[j] !== sinkId) {
+                samplesCount[group]++;
+                samplesTotal[group] += value;
+            }
+        }
+    }
+
+    return {
+        samplesCount,
+        samplesTotal
+    };
 }
 
 // Sums of groups from the sums of event classes and the group of every class, with an entry after the groups

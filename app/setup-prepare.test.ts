@@ -238,6 +238,6 @@ test.each([
 
         assert.equal(profile.thread, thread);
         assert.equal('compilation' in profile, false);
-        assert.equal(profile.memline?.attributes.find(attribute => attribute.name === 'allocationOwner'), undefined);
+        assert.equal(profile.memline?.compilationOwners ?? null, null);
     }
 });

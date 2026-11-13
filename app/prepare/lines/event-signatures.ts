@@ -13,9 +13,6 @@ import {
     type EventIds
 } from './event-signatures.compute.js';
 
-// Identity-like attributes have about as many values as there are signatures; grouping by them would
-// multiply signatures and records for every aggregation, so their own consumers aggregate events directly
-const IDENTITY_ATTRIBUTES = new Set<ProfileLineAttribute['name']>(['allocationOwner']);
 // Windows with up to this many events take their records from events, a pass of about 2 ms
 const WINDOW_EVENTS = 1 << 20;
 // Bins of a window's data grid
@@ -43,7 +40,7 @@ export type BinRecordsGrid = {
 
 /**
  * Signatures of line events: the combination of values that aggregations and filters distinguish, without
- * the event's value. Events of one signature have equal values of every attribute (except identity-like ones),
+ * the event's value. Events of one signature have equal values of every attribute,
  * equal category nodes in every breakdown and equal values of every registered filter partition, so they are
  * accepted or rejected together and fall into the same track of every histogram.
  */
@@ -607,7 +604,7 @@ function collectSignatureColumns(line: ProfileLine) {
         }
     };
 
-    const attributes = attributeColumns(line.attributes.filter(attribute => !IDENTITY_ATTRIBUTES.has(attribute.name)));
+    const attributes = attributeColumns(line.attributes);
 
     for (let i = 0; i < attributes.length; i++) {
         columns.set(attributes[i].values, attributes[i]);

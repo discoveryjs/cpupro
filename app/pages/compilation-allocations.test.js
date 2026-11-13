@@ -86,11 +86,14 @@ async function createCompilationProfile(createRecords, options = { noSourceMap: 
 
 // Allocations of IDs 1-4 of the memory line of the profile fixture are of 16, 32, 48 and 64 bytes
 function addCompilationAttributes(profile, records) {
-    profile.memline.attributes.push(...createMemlineCompilationAttributes(records, [1, 2, 3, 4]));
+    const { owners, stage } = createMemlineCompilationAttributes(records, [1, 2, 3, 4]);
+
+    profile.memline.compilationOwners = owners;
+    profile.memline.attributes.push(stage);
 }
 
 function addStageAttribute(profile, records) {
-    const [, stage] = createMemlineCompilationAttributes(records, [1, 2, 3, 4]);
+    const { stage } = createMemlineCompilationAttributes(records, [1, 2, 3, 4]);
 
     profile.memline.attributes.push(stage);
 }
