@@ -10,6 +10,7 @@ import { isRange, type Range } from '../prepare/computations/coordinates.js';
 import { findCumulativeBoundary, PopulationFiltered, type EventReader, type Population } from '../prepare/computations/population.js';
 import { lowerBound } from '../prepare/computations/misc.js';
 import type { SampledTree } from '../prepare/computations/metrics.js';
+import { getLineColumnMaxima, type LineColumnMaxima } from '../prepare/lines/column-maxima.js';
 import type { BinRecords, EventSignatures, RangeRecords } from '../prepare/lines/event-signatures.js';
 
 // The breakdown of a line whose populations a view of the scope breakdown reads: the scope breakdown on its own line,
@@ -903,84 +904,31 @@ function binTreePopulation(
     return result;
 }
 
-// Columns over a line viewport are binned by spans of this many of them, the bins of a line window
-const COLUMN_SPAN = 2000;
-
-type ColumnMax = {
-    origin: number;
-    total: number;
-    tracks: Float64Array;
-};
-
-// The highest columns of a duration starting at multiples of it from an origin over the extent in the viewport
-// populations, of each track and of their total
-function attributeColumnMax(
-    context: unknown,
-    line: ProfileLine,
-    attribute: ProfileLineAttribute,
-    extent: Range,
-    duration: number,
-    origin: number
-): ColumnMax {
-    const tracks = new Float64Array(attribute.dict.length);
-    const spanLength = COLUMN_SPAN * duration;
-    const firstSpan = origin + Math.floor((extent.start - origin) / spanLength) * spanLength;
-    let total = 0;
-
-    for (let i = 0; firstSpan + i * spanLength < extent.end; i++) {
-        const start = firstSpan + i * spanLength;
-        const spanContext = {
-            context: {
-                ...context as object,
-                scopeViewport: {
-                    start,
-                    end: start + spanLength
-                }
-            }
-        };
-        const span = methods.binLineToAxisLine.call(
-            spanContext,
-            line,
-            attribute,
-            undefined,
-            COLUMN_SPAN,
-            'populationViewport'
-        );
-
-        for (let j = 0; j < span.length; j++) {
-            tracks[j] = Math.max(tracks[j], arrayMax(span[j].bins));
-        }
-
-        total = Math.max(total, arrayMax(span[0].totalBins));
-    }
-
-    return {
-        origin,
-        total,
-        tracks
-    };
-}
-
 // Events of a line have positions on an axis line: its own axis, or through a mapping to the axis line's events
 function placesOnAxis(line: ProfileLine, axisLine: ProfileLine) {
     return line === axisLine || line.mappings[axisLine.type] !== undefined;
 }
 
-// Columns of a duration from either origin have the same boundaries
-function sameColumns(origin: number, otherOrigin: number, duration: number) {
-    const offset = (origin - otherOrigin) / duration;
+// Scales of the rows of histograms of an allocation attribute: highest columns of a duration over the line viewport,
+// of the total and of a shown row's track, the track for a bound may give a column at or above it
+type ColumnMaxFn = (duration: number, columnStart: number, bound?: number) => number;
+type AttributeColumnMax = {
+    readonly total: ColumnMaxFn;
+    track(index: number): ColumnMaxFn;
+};
 
-    return Math.abs(offset - Math.round(offset)) < 1e-6;
-}
+// The tracks of the values of an attribute (by their dictionary indices), kept so a row reads the same function
+function attributeTracks(columnMaxima: LineColumnMaxima, attribute: ProfileLineAttribute) {
+    const tracks: ColumnMaxFn[] = [];
 
-function arrayMax(values: ArrayLike<number>) {
-    let max = 0;
+    for (let i = 0; i < attribute.dict.length; i++) {
+        const track = (duration: number, columnStart: number, bound?: number) =>
+            columnMaxima.track(attribute, i, duration, columnStart, bound);
 
-    for (let i = 0; i < values.length; i++) {
-        max = Math.max(max, values[i]);
+        tracks.push(track);
     }
 
-    return max;
+    return tracks;
 }
 
 type BinOptions = {
@@ -1047,44 +995,51 @@ export const methods = {
     },
 
     // The highest column of a duration over the line viewport, of each track of an allocation attribute and of their
-    // total. Histograms of any window of the viewport scale to them, so panning never changes a scale, and columns
-    // of another merge level get maximums of their own. Columns of a duration share their boundaries: the cells of
-    // zoomed windows, or the bounds of the viewport without a zoom. A duration is computed on its first read and kept
-    // as long as the functions are, the holder of them follows the viewport populations
-    allocationAttributeColumnMax(name: ProfileLineAttribute['name']) {
+    // total: histograms of any window of the viewport scale to them, so panning never changes a scale and columns of
+    // another merge level get maximums of their own. A track read for a bound (the share of the shared scale its own
+    // scale shows below) may give a column at or above it. Null when allocations have no positions on the scope axis
+    allocationAttributeColumnMax(name: ProfileLineAttribute['name']): AttributeColumnMax | null {
         const scopeLine = resolveScopeProfileLine(null, this.context);
         const line = resolveScopeProfileLine('memline', this.context);
         const attribute = line?.attributes.find(attribute => attribute.name === name);
 
-        if (!scopeLine || !line || !attribute || !placesOnAxis(line, scopeLine)) {
+        if (!scopeLine || !line || !attribute) {
             return null;
         }
 
-        const extent = lineViewport(scopeLine);
-        const maxByDuration = new Map<number, ColumnMax>();
-        const columnMax = (duration: number, origin: number) => {
-            let max = maxByDuration.get(duration);
+        const scopeBreakdown = resolveScopeProfileLineBreakdown(null, null, this.context);
+        const columnMaxima = getLineColumnMaxima(
+            line,
+            lineBreakdown(line, scopeBreakdown).populationViewport,
+            scopeLine,
+            lineBreakdown(scopeLine, scopeBreakdown).populationViewport
+        );
 
-            if (max === undefined || !sameColumns(origin, max.origin, duration)) {
-                max = attributeColumnMax(this.context, line, attribute, extent, duration, origin);
-                maxByDuration.set(duration, max);
-            }
-
-            return max;
-        };
-        const total = (duration: number, origin: number) => columnMax(duration, origin).total;
-        const tracks: ((duration: number, origin: number) => number)[] = [];
-
-        for (let i = 0; i < attribute.dict.length; i++) {
-            const track = (duration: number, origin: number) => columnMax(duration, origin).tracks[i];
-
-            tracks.push(track);
+        if (columnMaxima === null) {
+            return null;
         }
 
+        const total = (duration: number, columnStart: number) => columnMaxima.total(duration, columnStart);
+        const tracks = attributeTracks(columnMaxima, attribute);
+
+        // The attribute is computed with others once a histogram is rendered with its scales, before any of them is
+        // drawn: attributes of all shown sections are taken in one walk, of collapsed ones not at all. Rows taking
+        // their track are shown, so a walk of a level takes all rows shown
         return {
-            total,
-            tracks
+            get total() {
+                columnMaxima.register(attribute);
+                return total;
+            },
+            track(index: number) {
+                columnMaxima.show(attribute, index);
+                return tracks[index];
+            }
         };
+    },
+
+    // The highest column of a shown row's track (by its dictionary index) of the column maxima of an attribute
+    columnMaxTrack(columnMax: AttributeColumnMax | null, index: number) {
+        return columnMax?.track(index) ?? null;
     },
 
     binTreeSamples(treeMetrics: SampledTree<unknown>, n = 500, breakdown?: ProfileLineBreakdown | string) {

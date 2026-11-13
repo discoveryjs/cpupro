@@ -17,14 +17,15 @@ export type BinsHistogramOptions = {
     // height: panning never changes the scale, columns of another merge level get a maximum of their own
     scaleMax?: ColumnMaxFn | null;
     // A shadow of the bins scaled to their own maximum as if they were alone, it shows the unevenness of bins low on
-    // a shared scale. A function gives the highest column of a duration over all the data, as scaleMax does
+    // a shared scale. A function gives the highest column of a duration over all the data, as scaleMax does; for
+    // a bound (the share of the shared scale the shadow shows below) a column at or above it is enough
     binsMax?: boolean | ColumnMaxFn;
     scale?: BinsScale;
 };
 
 type ScaleFn = (value: number, max: number) => number;
 // Columns of a duration start at multiples of it from a column start
-type ColumnMaxFn = (columnDuration: number, columnStart: number) => number;
+type ColumnMaxFn = (columnDuration: number, columnStart: number, bound?: number) => number;
 type ColumnValueFn = (bins: ArrayLike<number>, start: number, size: number) => number;
 type Columns = {
     // Bins per column
@@ -51,6 +52,8 @@ const MIN_BAR_HEIGHT = 0.8;
 // Columns are placed at their exact positions, as snapping them to pixels makes their edges jump on zoom.
 const BAR_GAP = 0.5;
 const REL_BARS_OPACITY = 0.4;
+// Bins far enough below a shared scale show a shadow of their own scale
+const REL_BARS_SHARE = 0.9;
 
 // Draws on the canvas grid in device pixels; the caller sizes the canvas to its CSS box and pixel ratio
 export function drawBinsHistogram(
@@ -91,11 +94,6 @@ export function drawBinsHistogram(
         ? columns.size * (range.end - range.start) / bins.length
         : columns.size;
     const columnStart = range ? range.start : 0;
-    // Without a maximum over all the data, the scale depends only on the visible columns rather than on the range
-    // of bins, which follows the viewport in steps and may hold columns far higher than any visible one
-    const columnsMax = typeof binsMax === 'function'
-        ? binsMax(columnDuration, columnStart)
-        : visibleColumnsMax(bins, columns, columnValue);
 
     if (max && !peaks) {
         max *= columns.size;
@@ -113,11 +111,17 @@ export function drawBinsHistogram(
         }
     }
 
+    // Without a maximum over all the data, the scale depends only on the visible columns rather than on the range
+    // of bins, which follows the viewport in steps and may hold columns far higher than any visible one
+    const columnsMax = typeof binsMax === 'function'
+        ? binsMax(columnDuration, columnStart, max ? max * REL_BARS_SHARE : Infinity)
+        : visibleColumnsMax(bins, columns, columnValue);
+
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = color;
 
     // Columns scaled to their own maximum show the shape behind columns scaled to a shared maximum
-    if (binsMax && max && columnsMax < max * 0.9) {
+    if (binsMax && max && columnsMax < max * REL_BARS_SHARE) {
         ctx.globalAlpha = REL_BARS_OPACITY;
         drawColumns(ctx, bins, columns, columnValue, null, columnsMax, scaleFn, minHeight, gap);
         ctx.globalAlpha = 1;

@@ -45,10 +45,11 @@ export function withViewportAttributeTotals(attributeName, content) {
 }
 
 // Scales of the histogram of a row (by its dictionary index) over the whole line viewport: the total of tracks
-// for its columns and the track itself for their shadow, at the duration of the columns shown
+// for its columns and the track itself for their shadow, at the duration of the columns shown. A row taking its track
+// is shown, so the scales of all shown rows are computed together
 export const viewportTrackScales = {
     scaleMax: '=#.viewportTotals.value.columnMax.total',
-    binsMax: '=#.viewportTotals.value.columnMax.tracks[index]'
+    binsMax: '=#.viewportTotals.value.columnMax.columnMaxTrack(index)'
 };
 
 // Share of a row's attribute value (by its dictionary index) among the viewport totals, in percent

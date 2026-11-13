@@ -1571,7 +1571,7 @@ test('column maximums of an attribute are of the line viewport at a column durat
     );
     const read = (max: ReturnType<typeof columnMax>, duration: number, origin = 0) => [
         max!.total(duration, origin),
-        max!.tracks.map(track => track(duration, origin))
+        [max!.track(0)(duration, origin), max!.track(1)(duration, origin)]
     ];
 
     line.attributes = [{
@@ -1592,11 +1592,11 @@ test('column maximums of an attribute are of the line viewport at a column durat
     breakdown.populationWindow.setRanges([{ start: 0, end: 20 }]);
     assert.deepEqual(read(columnMax(windowContext), 80), [80, [64, 64]]);
 
-    // A new viewport gives new maximums, a duration read once is kept by its functions
+    // A new viewport gives new maximums, also to the functions taken before it
     line.viewport.setRange(0, 48);
     breakdown.populationViewport.setRanges([{ start: 0, end: 48 }]);
     assert.deepEqual(read(columnMax(context), 80), [48, [16, 32]]);
-    assert.deepEqual(read(initial, 80, 40), [80, [40, 56]]);
+    assert.deepEqual(read(initial, 80, 40), [40, [16, 24]]);
     assert.equal(methods.allocationAttributeColumnMax.call({ context }, 'allocationSpace'), null);
 });
 
