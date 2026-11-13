@@ -133,6 +133,24 @@ test('original locations belong to the original functions containing them', asyn
     assert.equal(dictionary.scripts.filter(script => script.originalFor === generatedScript).length, 3);
 });
 
+test('call frames of original scripts take the modules their scripts take on registration', async () => {
+    const { dictionary, sourceMaps, generatedLocations, tree } = createFixture();
+    const sourceMapping = createSourceMapping(dictionary, sourceMaps, {
+        api: 'test',
+        areas: ['team-a'],
+        files: { 'a.js': [0] }
+    });
+    const originalLocations = (await sourceMapping.mapLocations(tree))!;
+    const callFrames = generatedLocations.map(index => dictionary.locations[originalLocations[index]].callFrame);
+
+    for (let i = 0; i < callFrames.length; i++) {
+        assert.equal(callFrames[i].module, callFrames[i].script!.module);
+    }
+
+    // the owner of a.js is set on its module when the script is registered
+    assert.equal(callFrames[0].module.owner.name, 'team-a');
+});
+
 test('a location without a position belongs to the original function of its generated function start', async () => {
     const { dictionary, sourceMaps, generatedFunction } = createFixture();
     const generatedNoPosition = dictionary.resolveLocation(generatedFunction);

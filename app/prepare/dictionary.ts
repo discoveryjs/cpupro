@@ -232,7 +232,12 @@ export class Dictionary {
             const sourceScript = script;
             const end = normalizeLoc(inputCallFrame.end);
             const start = normalizeLoc(inputCallFrame.start);
-            const module = this.resolveModule(sourceScript, functionName);
+            // the module of a call frame is the module of its script, a script takes its module before its call frames
+            // are resolved: a script of a profile when it's added, an original script when it's registered
+            const module = sourceScript !== null
+                ? sourceScript.module
+                : this.resolveNoScriptModuleByFunctionName(functionName);
+
             const { name, kind, regexp } = this.#resolveFunctionName(functionName, scriptLineNumber, scriptColumnNumber);
             const callFrame: CpuProCallFrame = {
                 id: this.callFrames.length + 1,

@@ -87,6 +87,13 @@ afterEach(() => {
 });
 
 // A script of the given source length without functions
+// A script of a profile in the dictionary, as the scripts of a profile come with their modules
+function createDictionaryScript(dictionary: Dictionary, source: string | null) {
+    const scripts = new ProfileScriptsMap(dictionary, [{ id: 1, url: 'fixture.js', source: source as string }]);
+
+    return scripts.get(1)!;
+}
+
 function scriptOfLength(id: number, url: string, length: number) {
     return createScript(id, url, '//'.padEnd(length, 'x'));
 }
@@ -518,8 +525,8 @@ test.each([
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     try {
-        const script = createScript(1, 'fixture.js', row.source);
         const dictionary = new Dictionary();
+        const script = createDictionaryScript(dictionary, row.source);
 
         assert.equal(isScriptTopLevelOffset(script, 5), false);
 
@@ -644,7 +651,7 @@ test.each([false, true])(
     async scriptFirst => {
         const source = 'function first() { return 1; }';
         const dictionary = new Dictionary();
-        const script = createScript(1, 'fixture.js', source);
+        const script = createDictionaryScript(dictionary, source);
 
         script.lineOffset = 4;
         script.columnOffset = 50;
@@ -689,7 +696,7 @@ test.each([
     'class Base { static constructor() {} }'
 ])('qualifies a default constructor without changing the class source range: %s', async source => {
     const dictionary = new Dictionary();
-    const script = createScript(1, 'fixture.js', source);
+    const script = createDictionaryScript(dictionary, source);
 
     await prepareScriptSources([script]);
 
@@ -732,8 +739,8 @@ test.each([
     'function ordinary() {}',
     'const arrow = () => 1;'
 ])('does not treat an arbitrary zero-length identity as a default constructor: %s', async source => {
-    const script = createScript(1, 'fixture.js', source);
     const dictionary = new Dictionary();
+    const script = createDictionaryScript(dictionary, source);
 
     await prepareScriptSources([script]);
 
@@ -949,7 +956,7 @@ test.each([
 test('keeps static initializer identity unresolved without changing class location lookup', async () => {
     const source = 'class Example { static field; static method() {} static last; }';
     const dictionary = new Dictionary();
-    const script = createScript(1, 'fixture.js', source);
+    const script = createDictionaryScript(dictionary, source);
 
     await prepareScriptSources([script]);
 

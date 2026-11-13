@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { Dictionary } from './dictionary.js';
-import { createScript } from './preprocessing/scripts.js';
+import { createScript, ProfileScriptsMap } from './preprocessing/scripts.js';
 import type { CpuProLocation } from './types.js';
 import { createScriptFixture } from '../../test/fixtures/scripts.js';
 
@@ -45,6 +45,25 @@ test.each([
     assert.equal(location, dictionary.resolveLocation(null, script, 0));
     // The script call frame adds the location of its start only, a location without a position is added on demand
     assert.equal(dictionary.locations.length, locationCount + 1);
+});
+
+test('call frames of a script take the module of the script, whatever their url', () => {
+    const dictionary = new Dictionary();
+    const scriptsMap = new ProfileScriptsMap(dictionary, [
+        { id: 1, url: 'https://example.com/app.js', source: 'function a() {}\nfunction b() {}\n' }
+    ]);
+    const script = scriptsMap.get(1)!;
+    const callFrame = dictionary.resolveCallFrame({
+        scriptId: 1,
+        url: 'https://example.com/other.js',
+        functionName: 'b',
+        lineNumber: 1,
+        columnNumber: 9
+    }, scriptsMap);
+
+    assert.equal(callFrame.script, script);
+    assert.equal(callFrame.module, script.module);
+    assert.equal(dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)].module, script.module);
 });
 
 test('adds locations of well-known call frames at the indices of the call frames', () => {
