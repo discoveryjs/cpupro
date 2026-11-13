@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
+import { prepareCompilationSubjects, processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
 import { createScriptFixture } from '../../test/fixtures/scripts.js';
 import { scriptSourceSummary } from './script-compilation.js';
@@ -17,7 +17,7 @@ test('compilation states use exact source identities and exclusive byte contribu
         createCompilationRecord({ name: 'PreParse', start: inner.callFrameStart, end: inner.end })
     ];
 
-    const compilation = processScriptCompilation(records, scripts).get(7)!;
+    const compilation = processScriptCompilation(prepareCompilationSubjects(records), scripts).get(7)!;
     const summary = scriptSourceSummary(script, compilation);
 
     assert.deepEqual([...compilation.states], [3, 3, 1]);
@@ -26,7 +26,7 @@ test('compilation states use exact source identities and exclusive byte contribu
     assert.equal(sum(summary.stateSizes!), summary.byteLength);
     assert.equal(summary.unmatched, 0);
 
-    const optimized = processScriptCompilation([
+    const optimized = processScriptCompilation(prepareCompilationSubjects([
         ...records,
         createCompilationRecord({
             name: 'FinalizeMaglevCompilationJob',
@@ -34,7 +34,7 @@ test('compilation states use exact source identities and exclusive byte contribu
             end: inner.end
         }),
         ...records
-    ], scripts).get(7)!;
+    ]), scripts).get(7)!;
 
     assert.deepEqual([...optimized.states], [3, 3, 4]);
     assert.deepEqual([...compilation.states], [3, 3, 1]);
@@ -47,9 +47,9 @@ test('unknown coverage differs from unobserved code, and two-byte payload is wei
 
     assert.equal(scriptSourceSummary(script).compiledBytes, null);
 
-    const compilation = processScriptCompilation([
+    const compilation = processScriptCompilation(prepareCompilationSubjects([
         createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })
-    ], scripts).get(7)!;
+    ]), scripts).get(7)!;
 
     assert.equal(scriptSourceSummary(script, compilation).compiledBytes, 0);
     assert.equal(scriptSourceSummary(script, compilation).stateSizes![2], range.selfSize * 2);
@@ -60,10 +60,10 @@ test('own byte sizes use the script-wide encoding, also when only an unobserved 
     const source = 'function outer() { function inner() { return "\u044f\ud83d\ude00"; } return 1; }';
     const { script, scripts } = createScriptFixture(source);
     const [outer, inner] = script.functionRanges!;
-    const compilation = processScriptCompilation([
+    const compilation = processScriptCompilation(prepareCompilationSubjects([
         createCompilationRecord({ name: 'CompileCode', start: 0, end: script.source!.length }),
         createCompilationRecord({ name: 'CompileFunction', start: outer.callFrameStart, end: outer.end })
-    ], scripts).get(7)!;
+    ]), scripts).get(7)!;
 
     const summary = scriptSourceSummary(script, compilation);
 

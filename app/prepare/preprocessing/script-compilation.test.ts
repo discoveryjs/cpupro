@@ -30,7 +30,7 @@ test('enclosing frame links, incomplete events and unknown stages cannot activat
         createCompilationRecord({ name: 'UnknownStage', start: inner.callFrameStart, end: inner.end })
     ];
 
-    const compilation = processScriptCompilation([...records, ...records], scripts).get(7)!;
+    const compilation = processScriptCompilation(prepareCompilationSubjects([...records, ...records]), scripts).get(7)!;
 
     assert.deepEqual([...compilation.states], [0, 0, 0]);
     assert.deepEqual(compilation.unmatchedStarts, [inner.callFrameStart + 1]);
@@ -43,7 +43,7 @@ test('local script IDs and separate thread event sets do not share compilation s
 
     scripts.set(8, script);
 
-    const first = processScriptCompilation([
+    const first = processScriptCompilation(prepareCompilationSubjects([
         createCompilationRecord({ name: 'CompileFunction', start: range.callFrameStart, end: range.end }),
         createCompilationRecord({
             name: 'PreParse',
@@ -51,10 +51,10 @@ test('local script IDs and separate thread event sets do not share compilation s
             start: range.callFrameStart,
             end: range.end
         })
-    ], scripts);
-    const second = processScriptCompilation([
+    ]), scripts);
+    const second = processScriptCompilation(prepareCompilationSubjects([
         createCompilationRecord({ name: 'ParseFunction', start: range.callFrameStart, end: range.end })
-    ], scripts);
+    ]), scripts);
 
     assert.equal(first.get(7)!.states[1], 3);
     assert.equal(first.get(8)!.states[1], 1);
@@ -72,9 +72,9 @@ test.each([
 ])('%s is compiled evidence but not completed optimization', name => {
     const { script, scripts } = createScriptFixture(nestedFunctions);
     const range = script.functionRanges![0];
-    const compilation = processScriptCompilation([
+    const compilation = processScriptCompilation(prepareCompilationSubjects([
         createCompilationRecord({ name, start: range.callFrameStart, end: range.end })
-    ], scripts).get(7)!;
+    ]), scripts).get(7)!;
 
     assert.equal(compilation.states[1], 3);
     assert.deepEqual(compilation.unknownStages, []);
@@ -82,13 +82,13 @@ test.each([
 
 test('streamed script lookup is recognized without claiming compilation', () => {
     const { script, scripts } = createScriptFixture(nestedFunctions);
-    const compilation = processScriptCompilation([
+    const compilation = processScriptCompilation(prepareCompilationSubjects([
         createCompilationRecord({
             name: 'GetSharedFunctionInfoForStreamedScript',
             start: 0,
             end: script.source!.length
         })
-    ], scripts).get(7)!;
+    ]), scripts).get(7)!;
 
     assert.ok(compilation.states.every(state => state === 0));
     assert.deepEqual(compilation.unknownStages, []);
@@ -102,11 +102,11 @@ test('whole-script stages take precedence while ambiguous function ranges remain
         createCompilationRecord({ name: 'PreParse', start: range.callFrameStart, end: range.end })
     ];
 
-    assert.deepEqual([...processScriptCompilation(records, scripts).get(7)!.states], [3, 1]);
+    assert.deepEqual([...processScriptCompilation(prepareCompilationSubjects(records), scripts).get(7)!.states], [3, 1]);
 
     script.functionRanges!.push({ ...range });
 
-    const ambiguous = processScriptCompilation(records, scripts).get(7)!;
+    const ambiguous = processScriptCompilation(prepareCompilationSubjects(records), scripts).get(7)!;
 
     assert.deepEqual([...ambiguous.states], [3, 0, 0]);
     assert.deepEqual(ambiguous.unmatchedStarts, [0]);

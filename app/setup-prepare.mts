@@ -115,6 +115,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 profileData._scripts,
                 profileDiagnose
             );
+            // The compilation records of a thread take their call frames once, by its first profile: the profiles
+            // of a thread share its scripts through the dictionary of the session
+            const compilationSubjects = thread.profiles.length === 0
+                ? thread.compilationSubjects ?? null
+                : null;
             const profile = await work.measure('create profile', () => createProfile(profileData, {
                 dictionary: dict,
                 sourceMapping,
@@ -122,6 +127,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 diagnose: profileDiagnose,
                 runtime: null,
                 compilations: thread.compilations,
+                compilationSubjects,
                 work: sessionProfiles.length > 1
                     ? runSessionTask.withPrefix(`Profile ${i + 1}/${sessionProfiles.length}`)
                     : runSessionTask
@@ -149,7 +155,10 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             // assign thread to profile
             profile.thread = thread;
             thread.profiles.push(profile);
-            linkThreadScripts(thread, scriptsMap);
+
+            if (thread.profiles.length === 1) {
+                linkThreadScripts(thread, scriptsMap);
+            }
 
             // profiles accross all the dataset
             profiles.push(profile);

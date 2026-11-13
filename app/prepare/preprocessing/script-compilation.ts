@@ -40,21 +40,32 @@ const stageStates = new Map<string, number | null>([
     ['Turbofan.OptimizeConcurrentFinalize', 4]
 ]);
 
+// Subjects of the compilation records of a thread, the functions compiled, by script and start, with the state
+// of the latest stage reached. The call frame of a subject and what follows from it are known once the call frames
+// of the records are resolved (completeCompilationSubjects)
 export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): CpuProCompilationSubject[] {
     const subjects: CpuProCompilationSubject[] = [];
-    const subjectIndexes = new Map<string, number>();
+    const subjectIndexes = new Map<number | null, Map<number | null, number>>(); // script id → start → subject
     const states: number[] = [];
 
-    for (const record of records) {
-        const key = record.scriptId + ':' + record.start;
-        let index = subjectIndexes.get(key);
+    for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        let subjectsByStart = subjectIndexes.get(record.scriptId);
+
+        if (subjectsByStart === undefined) {
+            subjectsByStart = new Map();
+            subjectIndexes.set(record.scriptId, subjectsByStart);
+        }
+
+        // PERF: Subjects are found by numbers rather than by a key string built for every record
+        let index = subjectsByStart.get(record.start);
 
         if (index === undefined) {
             index = subjects.length;
-            subjectIndexes.set(key, index);
+            subjectsByStart.set(record.start, index);
             states.push(0);
             subjects.push({
-                subject: key,
+                subject: record.scriptId + ':' + record.start,
                 scriptId: record.scriptId,
                 start: record.start,
                 callFrame: null,
@@ -70,25 +81,41 @@ export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): 
 
         subject.records.push(record);
         subject.events++;
-        subject.callFrame ??= record.callFrame;
 
         if (record.duration !== null) {
             states[index] = Math.max(states[index], stageStates.get(record.name) ?? 0);
         }
     }
 
-    for (let index = 0; index < subjects.length; index++) {
-        const subject = subjects[index];
-        const frame = subject.callFrame;
-        const state = states[index];
+    for (let i = 0; i < subjects.length; i++) {
+        subjects[i].state = scriptCompilationStates[states[i]];
+    }
 
-        subject.state = scriptCompilationStates[state];
+    return subjects;
+}
+
+// The call frame of a subject is the first one of its records; a function compiled at least to bytecode is activated
+export function completeCompilationSubjects(subjects: CpuProCompilationSubject[]) {
+    for (let i = 0; i < subjects.length; i++) {
+        const subject = subjects[i];
+        const { records } = subject;
+
+        for (let j = 0; j < records.length; j++) {
+            if (records[j].callFrame !== null) {
+                subject.callFrame = records[j].callFrame;
+                break;
+            }
+        }
+
+        const frame = subject.callFrame;
 
         if (frame === null) {
             continue;
         }
 
-        subject.activated = frame.kind === 'function' && state >= 3;
+        const compiled = subject.state === 'compiled' || subject.state === 'optimized';
+
+        subject.activated = frame.kind === 'function' && compiled;
 
         const metrics = frame.script?.sourceMetrics;
 
@@ -96,15 +123,13 @@ export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): 
             subject.sourceSize = (frame.end - frame.start) * metrics.bytesPerChar;
         }
     }
-
-    return subjects;
 }
 
 function resolveCompilationStateIndex(
     record: CpuProCompilationRecord,
     script: CpuProScript,
     ranges: FunctionRange[],
-    byStart: Map<number, number[]>
+    candidates: number[] | undefined // ranges of the record's start
 ) {
     const wholeScript = record.start === 0 && record.end === script.source?.length;
 
@@ -112,7 +137,6 @@ function resolveCompilationStateIndex(
         return 0;
     }
 
-    const candidates = record.start === null ? undefined : byStart.get(record.start);
     let matchedIndex = -1;
 
     if (candidates) {
@@ -136,36 +160,41 @@ function resolveCompilationStateIndex(
     return matchedIndex === -1 && wholeScript ? 0 : matchedIndex;
 }
 
-export function processScriptCompilation(records: CpuProCompilationRecord[], scripts: IProfileScriptsMap) {
-    const recordsByScript = new Map<number, CpuProCompilationRecord[]>();
+export function processScriptCompilation(subjects: CpuProCompilationSubject[], scripts: IProfileScriptsMap) {
+    const subjectsByScript = new Map<number, CpuProCompilationSubject[]>();
     const result = new Map<number, ScriptCompilation>();
     const missingScriptIds = new Set<number>();
 
-    for (const record of records) {
-        const script = record.scriptId !== null
-            ? scripts.get(record.scriptId)
-            : undefined;
+    for (let i = 0; i < subjects.length; i++) {
+        const subject = subjects[i];
 
-        // records of a profile given with its scripts refer to a script id it doesn't have
-        if (script === undefined && record.scriptId !== null && record.scriptId > 0 && scripts.inputScripts.size > 0) {
-            if (!missingScriptIds.has(record.scriptId)) {
-                missingScriptIds.add(record.scriptId);
-                scripts.diagnose('warn', 'Script not found for id', { scriptId: record.scriptId });
-            }
+        if (subject.scriptId === null) {
+            continue;
         }
 
-        if (script && record.scriptId !== null) {
-            let entries = recordsByScript.get(record.scriptId);
-
-            if (!entries) {
-                recordsByScript.set(record.scriptId, entries = []);
+        if (scripts.get(subject.scriptId) === undefined) {
+            // records of a profile given with its scripts refer to a script id it doesn't have
+            if (subject.scriptId > 0 && scripts.inputScripts.size > 0) {
+                if (!missingScriptIds.has(subject.scriptId)) {
+                    missingScriptIds.add(subject.scriptId);
+                    scripts.diagnose('warn', 'Script not found for id', { scriptId: subject.scriptId });
+                }
             }
 
-            entries.push(record);
+            continue;
         }
+
+        let scriptSubjects = subjectsByScript.get(subject.scriptId);
+
+        if (scriptSubjects === undefined) {
+            scriptSubjects = [];
+            subjectsByScript.set(subject.scriptId, scriptSubjects);
+        }
+
+        scriptSubjects.push(subject);
     }
 
-    for (const [scriptId, entries] of recordsByScript) {
+    for (const [scriptId, scriptSubjects] of subjectsByScript) {
         const script = scripts.get(scriptId)!;
         const ranges = script.functionRanges;
 
@@ -182,35 +211,41 @@ export function processScriptCompilation(records: CpuProCompilationRecord[], scr
         const unmatchedStarts = new Set<number | null>();
         const unknownStages = new Set<string>();
 
-        for (let index = 0; index < ranges.length; index++) {
-            const { callFrameStart } = ranges[index];
+        for (let i = 0; i < ranges.length; i++) {
+            const { callFrameStart } = ranges[i];
             const matches = byStart.get(callFrameStart);
 
             if (matches) {
-                matches.push(index);
+                matches.push(i);
             } else {
-                byStart.set(callFrameStart, [index]);
+                byStart.set(callFrameStart, [i]);
             }
         }
 
-        for (const record of entries) {
-            const state = stageStates.get(record.name);
+        for (let i = 0; i < scriptSubjects.length; i++) {
+            const { start, records } = scriptSubjects[i];
+            const candidates = start === null ? undefined : byStart.get(start);
 
-            if (state === undefined) {
-                unknownStages.add(record.name);
-                continue;
-            }
+            for (let j = 0; j < records.length; j++) {
+                const record = records[j];
+                const state = stageStates.get(record.name);
 
-            if (state === null || record.duration === null) {
-                continue;
-            }
+                if (state === undefined) {
+                    unknownStages.add(record.name);
+                    continue;
+                }
 
-            const index = resolveCompilationStateIndex(record, script, ranges, byStart);
+                if (state === null || record.duration === null) {
+                    continue;
+                }
 
-            if (index === -1) {
-                unmatchedStarts.add(record.start);
-            } else {
-                compilation.states[index] = Math.max(compilation.states[index], state);
+                const index = resolveCompilationStateIndex(record, script, ranges, candidates);
+
+                if (index === -1) {
+                    unmatchedStarts.add(record.start);
+                } else {
+                    compilation.states[index] = Math.max(compilation.states[index], state);
+                }
             }
         }
 
@@ -222,11 +257,14 @@ export function processScriptCompilation(records: CpuProCompilationRecord[], scr
     return result;
 }
 
+// Scripts of a thread with the compilation states of their functions, once the call frames of its compilation
+// records are resolved; the compilation subjects take their call frames
 export function linkThreadScripts(thread: CpuProThread, scripts: ProfileScriptsMap) {
-    const compilations = processScriptCompilation(thread.compilations ?? [], scripts);
+    const subjects = thread.compilationSubjects ?? [];
+    const compilations = processScriptCompilation(subjects, scripts);
     const linked = new Set<CpuProScript>();
 
-    thread.compilationSubjects = prepareCompilationSubjects(thread.compilations ?? []);
+    completeCompilationSubjects(subjects);
 
     for (const entry of thread.scripts) {
         const script = scripts.get(entry.id);

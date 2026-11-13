@@ -4,6 +4,7 @@ import { Dictionary } from '../dictionary.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 import { ProfileScriptsMap } from './scripts.js';
 import { resolveCompilationCallFrames } from './compilation-events.js';
+import { prepareCompilationSubjects } from './script-compilation.js';
 import type { CpuProCompilationRecord } from '../types.js';
 import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
 import { createScriptFixture } from '../../../test/fixtures/scripts.js';
@@ -36,7 +37,7 @@ test('a function compilation resolves to the frame of its exact runtime range, n
         end: innerEnd
     });
 
-    resolveCompilationCallFrames([record], dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects([record]), dictionary, scripts);
 
     assert.equal(location.callFrame, scriptFrame);
     assert.equal(record.callFrame?.name, 'inner');
@@ -49,7 +50,7 @@ test('a zero-length compilation at a class start resolves to the class, whose de
     const start = source.indexOf('class');
     const record: CpuProCompilationRecord = createCompilationRecord({ name: 'CompileIgnition', start, end: start });
 
-    resolveCompilationCallFrames([record], dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects([record]), dictionary, scripts);
 
     assert.equal(record.callFrame?.name, 'Empty');
     assert.equal(record.callFrame?.start, start);
@@ -85,7 +86,7 @@ test.each([
         end: row.source.length
     });
 
-    resolveCompilationCallFrames([record], dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects([record]), dictionary, scripts);
 
     assert.equal(record.callFrame?.name, row.frame);
 });
@@ -102,7 +103,7 @@ test.each([
         functionName: row.functionName
     });
 
-    resolveCompilationCallFrames([record], dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects([record]), dictionary, scripts);
 
     assert.equal(record.callFrame?.name, row.frame);
     assert.equal(record.callFrame?.start, innerStart + 1);
@@ -118,7 +119,7 @@ test('a compilation ending at the script end inside a class is not a compilation
         end: source.length
     });
 
-    resolveCompilationCallFrames([record], dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects([record]), dictionary, scripts);
 
     assert.equal(record.callFrame?.name, '(anonymous)');
     assert.equal(record.callFrame?.start, start);
@@ -144,7 +145,7 @@ test('a compilation takes a sampled frame of its exact range, and sets only call
     const before = structuredClone(records);
     const frameCount = dictionary.callFrames.length;
 
-    resolveCompilationCallFrames(records, dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects(records), dictionary, scripts);
 
     assert.equal(records[0].callFrame, sampled);
     assert.notEqual(records[1].callFrame, sampled);
@@ -165,7 +166,7 @@ test('beside a truncated sampled frame, an exact-range compilation is named by i
         createCompilationRecord({ name: 'CompileIgnition', start: innerStart, end: innerEnd })
     ];
 
-    resolveCompilationCallFrames(records, dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects(records), dictionary, scripts);
 
     assert.deepEqual(records.map(record => record.callFrame?.name), ['recorded', 'inner']);
     assert.deepEqual(records.map(record => record.callFrame?.end), [innerEnd, innerEnd]);
@@ -209,7 +210,7 @@ test.each([
         createCompilationRecord({ name: 'CompileIgnition', start: innerStart, end: innerEnd })
     ];
 
-    resolveCompilationCallFrames(records, dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects(records), dictionary, scripts);
 
     assert.equal(records[0].callFrame, null);
     assert.equal(records[1].callFrame?.name, 'inner');
@@ -240,7 +241,7 @@ test('in a script without source, a compilation takes its position from the reco
         createCompilationRecord({ name: 'CompileIgnition', start: innerStart, end: innerEnd })
     ];
 
-    resolveCompilationCallFrames(records, dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects(records), dictionary, scripts);
 
     assert.deepEqual([records[0].callFrame?.line, records[0].callFrame?.column], [2, 3]);
     assert.deepEqual([records[1].callFrame?.line, records[1].callFrame?.column], [0, 0]);
@@ -273,7 +274,7 @@ test.each([
         createCompilationRecord({ name: row.second, start: 0, end: source.length })
     ];
 
-    resolveCompilationCallFrames(records, dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects(records), dictionary, scripts);
 
     assert.deepEqual(records.map(record => record.callFrame?.name), row.frames);
 });
@@ -285,7 +286,7 @@ test('a compilation at the start of a resolved one with another end gets its own
         createCompilationRecord({ name: 'CompileIgnition', start: innerStart, end: innerEnd - 1 })
     ];
 
-    resolveCompilationCallFrames(records, dictionary, scripts);
+    resolveCompilationCallFrames(prepareCompilationSubjects(records), dictionary, scripts);
 
     assert.equal(records[0].callFrame?.name, 'inner');
     assert.equal(records[1].callFrame?.end, innerEnd - 1);
@@ -306,7 +307,7 @@ test('repeated compilation stages resolve source coordinates once per identity',
     const positions = vi.spyOn(scriptFunctions, 'getScriptLineColumnFromOffset');
 
     try {
-        resolveCompilationCallFrames(records, dictionary, scripts);
+        resolveCompilationCallFrames(prepareCompilationSubjects(records), dictionary, scripts);
         assert.equal(positions.mock.calls.length, 1);
         assert.ok(records[0].callFrame);
         assert.ok(records.every(record => record.callFrame === records[0].callFrame));

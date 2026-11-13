@@ -1,7 +1,8 @@
 import { Dictionary } from './dictionary.js';
 import { UniformProfile, UniformProfilingSession } from './formats/types.js';
 import { CpuProProcess, CpuProSession, CpuProThread } from './types.js';
-import { prepareCompilationRecords } from './preprocessing/compilation-events.js';
+import { createCompilationRecords } from './preprocessing/compilation-events.js';
+import { prepareCompilationSubjects } from './preprocessing/script-compilation.js';
 
 export type DatasetProfile = {
     thread: CpuProThread;
@@ -61,7 +62,8 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         }));
 
         if (rawThread.compilations) {
-            thread.compilations = prepareCompilationRecords(rawThread.compilations, thread.events);
+            thread.compilations = createCompilationRecords(rawThread.compilations, thread.events);
+            thread.compilationSubjects = prepareCompilationSubjects(thread.compilations);
         }
     }
 

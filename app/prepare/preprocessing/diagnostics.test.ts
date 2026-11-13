@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createDiagnosticsCollector } from '../diagnostics.js';
 import { processCallFrameCodes } from './call-frame-codes.js';
-import { linkThreadScripts } from './script-compilation.js';
+import { linkThreadScripts, prepareCompilationSubjects } from './script-compilation.js';
 import { scriptFromScriptId } from './scripts.js';
 import { processCodePositionTables } from '../formats/v8-log-processed/positions.js';
 import type { CpuProThread, V8CpuProfileCallFrameCodes } from '../types.js';
@@ -62,9 +62,10 @@ test('reports a script id of compilation records that is not found once', () => 
     const thread = { scripts: [] } as unknown as CpuProThread;
 
     thread.compilations = [
-        createCompilationRecord({ scriptId: 99 }),
-        createCompilationRecord({ scriptId: 99 })
+        createCompilationRecord({ scriptId: 99, start: 0 }),
+        createCompilationRecord({ scriptId: 99, start: 20 })
     ];
+    thread.compilationSubjects = prepareCompilationSubjects(thread.compilations);
     linkThreadScripts(thread, scripts);
 
     assert.deepEqual(diagnostics, [
@@ -82,6 +83,7 @@ test('reports a script with compilation data that is missing in the thread scrip
     const thread = { scripts: [] } as unknown as CpuProThread;
 
     thread.compilations = [createCompilationRecord({ name: 'CompileFunction', start: 0, end: 5 })];
+    thread.compilationSubjects = prepareCompilationSubjects(thread.compilations);
     linkThreadScripts(thread, scripts);
 
     assert.deepEqual(diagnostics, [

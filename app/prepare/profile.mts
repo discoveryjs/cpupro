@@ -1,5 +1,12 @@
 import type { Model } from '@discoveryjs/discovery';
-import type { CpuProCallFrame, CpuProCompilationRecord, CpuProThread, RuntimeCode, V8CpuProfile } from './types.js';
+import type {
+    CpuProCallFrame,
+    CpuProCompilationRecord,
+    CpuProCompilationSubject,
+    CpuProThread,
+    RuntimeCode,
+    V8CpuProfile
+} from './types.js';
 import type { ProfileLine } from './lines/types.js';
 import { convertToInt32Array, convertToUint32Array, createInt32Progression } from './misc/utils.js';
 import { fixTimeDeltasOrderIfNeeded, processLongTimeDeltas, createTimelineAxis, enumerateLongTimeDeltas, LongTimeDeltas } from './preprocessing/time-deltas.js';
@@ -32,6 +39,7 @@ const experimentalFeatures = false;
 export type Profile = Awaited<ReturnType<typeof createProfile>>;
 export type CreateProfileOptions = {
     compilations: CpuProCompilationRecord[] | null;
+    compilationSubjects: CpuProCompilationSubject[] | null; // subjects whose call frames the profile resolves
     dictionary: Dictionary;
     scriptsMap: ProfileScriptsMap;
     sourceMapping: SourceMapping;
@@ -100,6 +108,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         ),
         runtime = null,
         compilations = null,
+        compilationSubjects = null,
         work = noopWorkHandler
     } = options || {};
     const lines: ProfileLine[] = [];
@@ -219,10 +228,10 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         lines[i].profile = profile;
     }
 
-    if (compilations) {
+    if (compilationSubjects) {
         await work('link compilation events', async () => {
             await preparseScriptSourcesResult;
-            resolveCompilationCallFrames(compilations, dictionary, profileScriptsMap);
+            resolveCompilationCallFrames(compilationSubjects, dictionary, profileScriptsMap);
         });
     }
 

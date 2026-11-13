@@ -13,7 +13,7 @@ import {
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute
 } from '../lines/memline-attributes.mjs';
-import { prepareCompilationRecords } from './compilation-events.js';
+import { createCompilationRecords } from './compilation-events.js';
 import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
 
 // Records default to the fixture function `known` at 14..30 (line 0, column 14) of script 7
@@ -118,6 +118,7 @@ function sourceFixture(cpuOnly = false) {
     return {
         data,
         records: source.profiles[0].thread.compilations!,
+        subjects: source.profiles[0].thread.compilationSubjects!,
         dictionary,
         source,
         rawSession: session
@@ -167,7 +168,7 @@ test('allocation rows map to innermost owner and stage with exclusive starts and
         const { ids, stages, owners } = expected;
 
         for (const input of [records, records.slice().reverse()]) {
-            const prepared = prepareCompilationRecords(input, []);
+            const prepared = createCompilationRecords(input, []);
             const { owner, stage } = attributes(prepared, ids);
 
             assert.deepEqual(dictValues(stage), stages);
@@ -344,7 +345,7 @@ test('thread preparation orders source intervals without allocation rows and pre
 
     Object.freeze(input);
 
-    const prepared = prepareCompilationRecords(input, [event]);
+    const prepared = createCompilationRecords(input, [event]);
     const withoutEvents = prepared.map(record => ({ ...record, event: null }));
 
     assert.deepEqual(prepared.map(record => record.name), ['Outer', 'EqualBounds', 'Inner', 'Empty', 'TimeOnly']);
@@ -363,7 +364,7 @@ test('empty allocation intervals do not trigger sorting of otherwise ordered sou
     const sort = vi.spyOn(Array.prototype, 'sort');
 
     try {
-        const prepared = prepareCompilationRecords(input, []);
+        const prepared = createCompilationRecords(input, []);
 
         assert.equal(sort.mock.calls.length, 0);
         assert.deepEqual(prepared, input);
@@ -432,7 +433,7 @@ function completedBefore(stages: string[], name: string) {
 // Creates a profile of the source fixture, completing script parsing once the given stage starts;
 // a stage records whether parsing and record resolution were still pending when it started
 async function createStagedProfile(cpuOnly: boolean, parsingStage: string) {
-    const { data, records, dictionary } = sourceFixture(cpuOnly);
+    const { data, records, subjects, dictionary } = sourceFixture(cpuOnly);
     const stages: string[] = [];
     const pendingAt: string[] = [];
     const parsedUrls: string[] = [];
@@ -475,7 +476,7 @@ async function createStagedProfile(cpuOnly: boolean, parsingStage: string) {
     const work = createWorkHandler(runStage);
 
     try {
-        const options = { compilations: records, dictionary, work };
+        const options = { compilations: records, compilationSubjects: subjects, dictionary, work };
         const profile = await createProfile({ ...data, _capture: undefined }, options);
 
         return {

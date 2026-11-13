@@ -4,7 +4,7 @@ import jora from 'jora';
 import * as scriptFunctions from '../prepare/misc/script-function-resolution.js';
 import { methods } from '../jora/index.mjs';
 import { createScript } from '../prepare/preprocessing/scripts.js';
-import { processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
+import { prepareCompilationSubjects, processScriptCompilation } from '../prepare/preprocessing/script-compilation.js';
 import { createCompilationRecord } from '../../test/fixtures/compilation.js';
 import { parseScriptFixture } from '../../test/fixtures/scripts.js';
 import { findContent, findView, contentQuery, findColumn } from '../../test/helpers/view-config.js';
@@ -60,7 +60,7 @@ function createThread(script, stage) {
         start: range.callFrameStart,
         end: range.end
     });
-    const compilation = processScriptCompilation([record], new Map([[script.id, script]])).get(script.id);
+    const compilation = processScriptCompilation(prepareCompilationSubjects([record]), new Map([[script.id, script]])).get(script.id);
 
     return { scripts: [{ script, compilation }], compilations: [record] };
 }

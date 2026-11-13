@@ -178,7 +178,7 @@ test('unloading detaches synchronization and new data starts unrestricted', asyn
 test.each([
     { isolate: undefined, ids: ['first'] },
     { isolate: 'shared', ids: ['first', 'second'] }
-])('setup passes thread compilations without a capture gate: $isolate', async row => {
+])('setup passes thread compilations without a capture gate and links them once per thread: $isolate', async row => {
     const { isolate, ids } = row;
     const base = {
         pid: 1,
@@ -216,9 +216,18 @@ test.each([
         dur: 5,
         args: { data: { isolate, scriptId: 1, start: 0, end: 10 } }
     };
-    const data = await prepareData({ traceEvents: [...ids.flatMap(profileEvents), compile] });
+    const titles: string[] = [];
+    const data = await prepare({ traceEvents: [...ids.flatMap(profileEvents), compile] }, {
+        rejectData: reason => assert.fail(reason),
+        markers,
+        setWorkTitle: async (title: string) => {
+            titles.push(title);
+        }
+    } as Parameters<typeof prepare>[1]);
     const thread = data.profiles[0].thread;
 
+    // the captures of a thread share its compilations, whose call frames are resolved once
+    assert.equal(titles.filter(title => title.endsWith('link compilation events')).length, 1);
     assert.equal(data.profiles.length, ids.length);
     assert.equal(thread.compilations!.length, 1);
     assert.equal(thread.compilations![0].event, thread.events[0]);

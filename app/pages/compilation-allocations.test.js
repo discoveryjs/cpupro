@@ -7,7 +7,7 @@ import { createCompilationRecord } from '../../test/fixtures/compilation.js';
 import { findBreakdown } from '../../test/fixtures/lines.js';
 import { findContent, findView, contentQuery, findColumn, propertyQuery } from '../../test/helpers/view-config.js';
 import { prepareLineFilters } from '../prepare/lines/filters.js';
-import { prepareCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
+import { completeCompilationSubjects, prepareCompilationSubjects } from '../prepare/preprocessing/script-compilation.js';
 import {
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute
@@ -63,10 +63,12 @@ async function createCompilationProfile(createRecords, options = { noSourceMap: 
     const first = profile.callFrames.find(frame => frame.name === 'first');
     const second = profile.callFrames.find(frame => frame.name === 'second');
     const records = createRecords(first, second);
+    const subjects = prepareCompilationSubjects(records);
 
+    completeCompilationSubjects(subjects);
     profile.thread = {
         compilations: records,
-        compilationSubjects: prepareCompilationSubjects(records),
+        compilationSubjects: subjects,
         events: []
     };
 
