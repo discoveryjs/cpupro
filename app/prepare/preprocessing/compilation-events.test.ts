@@ -151,15 +151,16 @@ test('a compilation takes a sampled frame of its exact range, and its records ta
         createCompilationRecord({ name: 'CompileIgnition', start, end: source.length - 1 }),
         createCompilationRecord({ name: 'Compile', start: start + 1, end: source.length - 1 })
     ];
-    const before = structuredClone(records);
+    const subjects = prepareCompilationSubjects(records);
+    const before = records.map(record => ({ ...record }));
     const frameCount = dictionary.callFrames.length;
 
-    const frames = resolveFrames(records, dictionary, scripts);
+    resolveCompilationCallFrames(subjects, dictionary, scripts);
 
-    assert.equal(frames[0], sampled);
-    assert.notEqual(frames[1], sampled);
+    assert.equal(subjects[0].callFrame, sampled);
+    assert.notEqual(subjects[1].callFrame, sampled);
     assert.equal(dictionary.callFrames.length, frameCount + 1);
-    assert.deepEqual(records.map(record => record.callFrame), frames);
+    assert.deepEqual(records.map(record => record.callFrame), records.map(record => record.subject!.callFrame));
     assert.deepEqual(records.map(record => ({ ...record, callFrame: null })), before);
 });
 

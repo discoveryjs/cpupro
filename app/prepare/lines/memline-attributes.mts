@@ -2,7 +2,6 @@ import { allocTimespan, typeColor } from '../const.js';
 import { lowerBound } from '../computations/misc.js';
 import type {
     AllocationSpaceDictEntry,
-    CompilationOwner,
     GcEpochDictEntry,
     ProfileLineAllocationCodeTypeAttribute,
     ProfileLineAllocationGcEpochAttribute,
@@ -21,6 +20,7 @@ import type {
     AllocationSpaceVector,
     AllocationTypeVector,
     CpuProCompilationRecord,
+    CpuProCompilationSubject,
     V8CpuProfileCpuproExtensions
 } from '../types.js';
 
@@ -425,6 +425,7 @@ export function createMemlineAllocationCodeTypeAttribute(
     };
 }
 
+// Allocations take the compilation subjects of the records they are allocated within as owners
 export function createMemlineAllocationOwnerAttribute(
     compilations: CpuProCompilationRecord[] | null,
     _cpuproAllocationIds: AllocationIdVector | null,
@@ -436,29 +437,23 @@ export function createMemlineAllocationOwnerAttribute(
 
     const values = new Uint32Array(_cpuproAllocationIds.length);
     const firstId = consecutiveFirstId(_cpuproAllocationIds, _cpuproAllocationIdsOrder);
-    const dict: (CompilationOwner | null)[] = [null];
-    const ownerByScript = new Map<number | null, Map<number | null, number>>();
+    // The subject of an index follows the absent owner; every subject has records, so the dictionary is dense
+    const dict: (CpuProCompilationSubject | null)[] = [null];
+
+    for (let i = 0; i < compilations.length; i++) {
+        const { subject } = compilations[i];
+
+        if (subject !== null) {
+            dict[subject.index + 1] = subject;
+        }
+    }
 
     for (let i = 0; i < compilations.length; i++) {
         const record = compilations[i];
-        let byStart = ownerByScript.get(record.scriptId);
 
-        if (byStart === undefined) {
-            byStart = new Map();
-            ownerByScript.set(record.scriptId, byStart);
+        if (record.subject !== null) {
+            fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, record.subject.index + 1);
         }
-
-        let ownerIndex = byStart.get(record.start);
-
-        if (ownerIndex === undefined) {
-            ownerIndex = dict.push({
-                scriptId: record.scriptId,
-                start: record.start
-            }) - 1;
-            byStart.set(record.start, ownerIndex);
-        }
-
-        fillCompilationAllocationRange(values, _cpuproAllocationIds, firstId, record, ownerIndex);
     }
 
     return {

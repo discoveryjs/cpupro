@@ -189,8 +189,8 @@ test('a compilation subject takes the most advanced state of its complete record
         createCompilationRecord({ name: 'Turbofan.OptimizeCode', start: 30, duration: null })
     ]);
 
-    assert.deepEqual(subjects.map(subject => [subject.subject, subject.state, subject.events]), [
-        ['7:10', 'compiled', 2],
-        ['7:30', 'pre-parsed', 2]
+    assert.deepEqual(subjects.map(subject => [subject.index, subject.start, subject.state, subject.events]), [
+        [0, 10, 'compiled', 2],
+        [1, 30, 'pre-parsed', 2]
     ]);
 });

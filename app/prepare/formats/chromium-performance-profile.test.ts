@@ -969,7 +969,7 @@ test('compilation provenance survives JSON round-trip without duplicate event ob
     const runtimeThread = profiles[0].thread;
     const processingRecord = runtimeThread.compilations![0];
 
-    assert.deepEqual(Object.keys(processingRecord), [...keys, 'event', 'callFrame']);
+    assert.deepEqual(Object.keys(processingRecord), [...keys, 'event', 'callFrame', 'subject']);
     assert.equal(processingRecord.event, runtimeThread.events[1]);
     assert.equal(processingRecord.callFrame, null);
     assert.notEqual(runtimeThread.compilations, thread.compilations);

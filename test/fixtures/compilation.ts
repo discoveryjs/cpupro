@@ -17,6 +17,7 @@ export function createCompilationRecord(fields: Partial<CpuProCompilationRecord>
         eventIndex: null,
         event: null,
         callFrame: null,
+        subject: null,
         ...fields
     };
 }

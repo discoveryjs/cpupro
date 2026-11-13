@@ -83,7 +83,7 @@ export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): 
             startSubjects.push(index);
             states.push(0);
             subjects.push({
-                subject: record.scriptId + ':' + record.start,
+                index,
                 scriptId: record.scriptId,
                 start: record.start,
                 end: record.end,
@@ -99,6 +99,7 @@ export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): 
 
         const subject = subjects[index];
 
+        record.subject = subject;
         subject.records.push(record);
         subject.events++;
 

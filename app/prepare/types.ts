@@ -273,11 +273,12 @@ export type CpuProThreadScript = {
 export type CpuProCompilationRecord = UniformCompilationRecord & {
     event: UniformTraceEvent | null;
     callFrame: CpuProCallFrame | null; // the call frame of the record's subject
+    subject: CpuProCompilationSubject | null; // given by prepareCompilationSubjects
 };
 
 // A compiled range of a script and the records of its compilations, which its call frame follows from
 export type CpuProCompilationSubject = {
-    subject: string;
+    index: number; // among the compilation subjects of the thread
     scriptId: number | null;
     start: number | null;
     end: number | null;

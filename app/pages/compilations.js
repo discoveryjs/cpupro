@@ -10,7 +10,7 @@ const compilationTable = {
         ($stageFilter
             ? $subjects.($records: records.[$stageFilter.filterOptionEnabled(name)]; { ...$, records: $records, events: $records.size() }).[events]
             : $subjects)
-            .zip(=>subject, $totals.[entry], =>entry.scriptId + ":" + entry.start)
+            .zip(=>index, $totals.[entry], =>entry.index)
             .({ ...left, count: right.count or 0, size: right.size or 0 })
             .[(callFrame.name or functionName or "Unresolved") ~= #.filter]
     `,
@@ -28,10 +28,9 @@ const compilationTable = {
                         view: 'allocation-samples-matrix',
                         context: '{ ...#, scopeLine: #.allocationLine }',
                         data: `
-                            $scriptId: scriptId;
-                            $start: start;
+                            $subjectIndex: index;
                             #.allocationLine.lineAttribute("allocationOwner")
-                            .allocationsMatrix(#.allocationPopulation, => $ and $.scriptId = $scriptId and $.start = $start, scopeProfile())
+                            .allocationsMatrix(#.allocationPopulation, => $ and $.index = $subjectIndex, scopeProfile())
                         `
                     }
                 },

@@ -43,7 +43,8 @@ export function createCompilationRecords(
             allocationEnd: source.allocationEnd,
             eventIndex: source.eventIndex,
             event: source.eventIndex !== null ? events[source.eventIndex] ?? null : null,
-            callFrame: null
+            callFrame: null,
+            subject: null
         };
 
         records[i] = record;

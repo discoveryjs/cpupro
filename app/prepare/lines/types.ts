@@ -8,7 +8,16 @@ import { DictionaryMetrics, TreeMetrics } from '../computations/metrics';
 import { TreeValueBounds } from '../computations/tree-node-bounds';
 import { Population, PopulationFiltered } from '../computations/population';
 import { Profile } from '../profile.mjs';
-import { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types';
+import {
+    CpuProCallFrame,
+    CpuProCategory,
+    CpuProCompilationSubject,
+    CpuProLocation,
+    CpuProModule,
+    CpuProNode,
+    CpuProOwner,
+    CpuProPackage
+} from '../types';
 
 export type ProfileLineType = 'timeline' | 'memline';
 export type LineKind = 'time' | 'memory'
@@ -76,14 +85,10 @@ export type ProfileLineAllocationCodeTypeAttribute = {
     values: Uint8Array;
     dict: string[];
 };
-export type CompilationOwner = {
-    scriptId: number | null;
-    start: number | null;
-};
 export type ProfileLineAllocationOwnerAttribute = {
     name: 'allocationOwner';
     values: Uint32Array;
-    dict: (CompilationOwner | null)[];
+    dict: (CpuProCompilationSubject | null)[]; // the compilation subjects after the absent owner
 };
 export type ProfileLineAllocationCompilationStageAttribute = {
     name: 'allocationCompilationStage';
