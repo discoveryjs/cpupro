@@ -288,15 +288,18 @@ async function createCallStackTimeline(
 
     // Extract script offset first, since they depends on timestamps order,
     // and should be moved together with timeDeltas if the order is adjusted in fixTimeDeltasOrderIfNeeded()
+    // Without the scripts of the profile, samples have no offsets in them
     const dataScriptOffsets = data._samplePositions?.slice() || await work('extract sample script offsets', () =>
-        scriptOffsetsFromLineColumns(
-            data.nodes,
-            data.samples,
-            data._callFrames,
-            data._scripts,
-            data.lines,
-            data.columns
-        )
+        Array.isArray(data._scripts)
+            ? scriptOffsetsFromLineColumns(
+                data.nodes,
+                data.samples,
+                data._callFrames,
+                profileScriptsMap,
+                data.lines,
+                data.columns
+            )
+            : null
     );
 
     //

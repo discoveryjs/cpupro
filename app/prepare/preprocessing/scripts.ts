@@ -1,7 +1,7 @@
 import type { CpuProModule, CpuProScript, IProfileScriptsMap, SourceMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
-import { createLineBoundaries } from '../misc/line-boundaries.js';
+import { getScriptLineBoundaries } from '../misc/script-function-resolution.js';
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
@@ -243,38 +243,28 @@ export function createScript(id: number, url: string, source: string | null = nu
 }
 
 // FIXME: quick & dirty implementation, optimize when possible
+// Script offsets of samples from their lines and columns, in the sources of the profile's scripts as the model has
+// them, so the offsets are those of the source in which locations are resolved
+// PERF: Line boundaries of a script are of the model's script, computed once for all its readers and only for
+// scripts of samples; samples take them from a table by script id
 export function scriptOffsetsFromLineColumns(
     nodes: V8CpuProfile['nodes'],
     samples: V8CpuProfile['samples'],
     callFrames: V8CpuProfile['_callFrames'],
-    scripts?: V8CpuProfile['_scripts'],
+    scriptsMap: IProfileScriptsMap,
     lines?: V8CpuProfile['lines'],
     columns?: V8CpuProfile['columns']
 ): number[] | null {
-    if (!Array.isArray(scripts)) {
-        return null;
-    }
-
     // Lines and columns of a normalized profile come together, a line and a column per sample
     if (lines === undefined || columns === undefined) {
         return null;
     }
 
-    const scriptLineBoundaries = Object.create(null) as Record<number, {
-        lineBoundaries: ReturnType<typeof createLineBoundaries>;
+    const scriptLines = new Map<number, {
+        lineBoundaries: ReturnType<typeof getScriptLineBoundaries>;
         lineOffset: number;
         columnOffset: number;
-    }>;
-    for (let i = 0; i < scripts.length; i++) {
-        const script = scripts[i];
-        if (script && script.source) {
-            scriptLineBoundaries[script.id] = {
-                lineBoundaries: createLineBoundaries(script.source),
-                lineOffset: script.lineOffset ?? 0,
-                columnOffset: script.columnOffset ?? 0
-            };
-        }
-    }
+    } | null>();
 
     const nodeById = Object.create(null) as Record<number, V8CpuProfile['nodes'][0]>;
     for (let i = 0; i < nodes.length; i++) {
@@ -287,12 +277,26 @@ export function scriptOffsetsFromLineColumns(
         const callFrameRaw = nodeById[samples[i]].callFrame;
         const callFrame = typeof callFrameRaw === 'number' ? callFrames![callFrameRaw] : callFrameRaw;
         const scriptId = Number(callFrame.scriptId);
-        const scriptEntry = scriptLineBoundaries[scriptId];
+        let scriptEntry = scriptLines.get(scriptId);
         const line = lines[i];
         let offset = -1;
 
-        if (scriptEntry && line) {
+        if (scriptEntry === undefined) {
+            const script = scriptsMap.get(scriptId) ?? null;
+
+            scriptEntry = script !== null
+                ? {
+                    lineBoundaries: getScriptLineBoundaries(script),
+                    lineOffset: script.lineOffset,
+                    columnOffset: script.columnOffset
+                }
+                : null;
+            scriptLines.set(scriptId, scriptEntry);
+        }
+
+        if (scriptEntry !== null && scriptEntry.lineBoundaries !== null && line) {
             const column = columns[i];
+
             offset = scriptEntry.lineBoundaries.getOffset(
                 line - scriptEntry.lineOffset,
                 column - (line === scriptEntry.lineOffset ? scriptEntry.columnOffset : 0)

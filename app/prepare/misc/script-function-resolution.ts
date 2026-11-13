@@ -16,7 +16,7 @@ const scriptLines = new WeakMap<CpuProScript, ReturnType<typeof createLineBounda
 const scriptFunctionRanges = new WeakMap<CpuProScript, FunctionRanges>();
 const scriptMaxFunctionPrelude = new WeakMap<CpuProScript, number>();
 
-function getScriptLineBoundaries(script: CpuProScript | null) {
+export function getScriptLineBoundaries(script: CpuProScript | null) {
     if (!script || !script.source) {
         return null;
     }
