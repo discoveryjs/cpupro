@@ -1,18 +1,18 @@
 import { computeSourceURL, isAbsolute, normalize, relative } from 'source-map-js/lib/util.js';
+import {
+    CHECKPOINT_COLUMN,
+    CHECKPOINT_OFFSET,
+    CHECKPOINT_ORIGINAL_COLUMN,
+    CHECKPOINT_ORIGINAL_LINE,
+    CHECKPOINT_PREVIOUS_COLUMN,
+    CHECKPOINT_SIZE,
+    CHECKPOINT_SOURCE,
+    MAPPINGS_INVALID,
+    MAPPINGS_SEPARATOR,
+    indexMappings,
+    mappingsCharValues
+} from './source-map.compute.js';
 import type { SourceMap } from '../types.js';
-
-// Values of mappings characters: base64 digits, SEPARATOR for "," and ";", INVALID for the rest.
-// PERF: The table covers all UTF-16 code units, so a lookup takes no range check
-const SEPARATOR = -2;
-const INVALID = -1;
-const mappingsCharValues = new Int8Array(65536).fill(INVALID);
-
-for (let i = 0; i < 64; i++) {
-    mappingsCharValues['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.charCodeAt(i)] = i;
-}
-
-mappingsCharValues[44 /* , */] = SEPARATOR;
-mappingsCharValues[59 /* ; */] = SEPARATOR;
 
 // Fields of a segment, accumulated over the mappings (names aren't used),
 // and the number of fields of the last decoded segment
@@ -22,20 +22,6 @@ const ORIGINAL_LINE = 2;
 const ORIGINAL_COLUMN = 3;
 const SEGMENT_FIELD_COUNT = 4;
 
-// A checkpoint is the state of decoding before a segment of a line: its generated column, the column
-// of the previous segment of the line, its offset in the mappings, and the original position fields before it
-const CHECKPOINT_COLUMN = 0;
-const CHECKPOINT_PREVIOUS_COLUMN = 1;
-const CHECKPOINT_OFFSET = 2;
-const CHECKPOINT_SOURCE = 3;
-const CHECKPOINT_ORIGINAL_LINE = 4;
-const CHECKPOINT_ORIGINAL_COLUMN = 5;
-const CHECKPOINT_SIZE = 6;
-
-// PERF: A lookup decodes segments from the nearest checkpoint, so a checkpoint per several segments
-// keeps lookups short while the index stays a fraction of the decoded segments
-const CHECKPOINT_SEGMENTS = 8;
-
 // Decodes the segment at an offset of the mappings into the fields, returns the offset after the segment
 function decodeSegment(mappings: string, offset: number, fields: Int32Array) {
     const end = mappings.length;
@@ -43,7 +29,7 @@ function decodeSegment(mappings: string, offset: number, fields: Int32Array) {
     let digit = mappingsCharValues[mappings.charCodeAt(offset)];
 
     // A segment is a sequence of base64 VLQ values up to a separator or the end of the mappings
-    while (digit >= 0) {
+    while (digit < MAPPINGS_SEPARATOR) {
         let value = digit & 31;
         let shift = 5;
 
@@ -52,9 +38,9 @@ function decodeSegment(mappings: string, offset: number, fields: Int32Array) {
             offset++;
             digit = offset < end
                 ? mappingsCharValues[mappings.charCodeAt(offset)]
-                : INVALID;
+                : MAPPINGS_INVALID;
 
-            if (digit < 0) {
+            if (digit >= MAPPINGS_SEPARATOR) {
                 throw new Error(`Invalid character in source map mappings at ${offset}`);
             }
 
@@ -72,10 +58,10 @@ function decodeSegment(mappings: string, offset: number, fields: Int32Array) {
         offset++;
         digit = offset < end
             ? mappingsCharValues[mappings.charCodeAt(offset)]
-            : SEPARATOR;
+            : MAPPINGS_SEPARATOR;
     }
 
-    if (digit === INVALID) {
+    if (digit === MAPPINGS_INVALID) {
         throw new Error(`Invalid character in source map mappings at ${offset}`);
     }
 
@@ -129,8 +115,8 @@ export class SourceMapIndex {
     #mappings: string;
     #fields: Int32Array;
     #checkpoints: Int32Array;
-    #lineCheckpoints: Uint32Array; // by line, its first checkpoint; the checkpoints of a line end where the next start
-    #unsortedLines: Set<number> | null = null;
+    #lineCheckpoints: Uint32Array;
+    #unsortedLines: Set<number> | null;
 
     constructor(sourceMap: SourceMap) {
         const sourceRoot = sourceMap.sourceRoot
@@ -151,73 +137,12 @@ export class SourceMapIndex {
         this.sourcesContent = sourceMap.sourcesContent || [];
         this.#mappings = sourceMap.mappings;
         this.#fields = new Int32Array(SEGMENT_FIELD_COUNT + 1);
-        this.#index();
-    }
 
-    #index() {
-        const mappings = this.#mappings;
-        const fields = this.#fields;
-        // the numbers of checkpoints and lines are known once the mappings are decoded
-        const checkpoints: number[] = [];
-        const lineCheckpoints = [0];
-        let line = 0;
-        let lineSegments = 0;
-        let segmentsAfterCheckpoint = 0;
+        const index = indexMappings(sourceMap.mappings);
 
-        for (let i = 0; i < mappings.length;) {
-            const code = mappings.charCodeAt(i);
-
-            if (code === 59 /* ; */) {
-                line++;
-                lineCheckpoints.push(checkpoints.length / CHECKPOINT_SIZE);
-                lineSegments = 0;
-                fields[GENERATED_COLUMN] = 0; // a generated column is relative to the previous segment of its line
-                i++;
-                continue;
-            }
-
-            if (code === 44 /* , */) {
-                i++;
-                continue;
-            }
-
-            const offset = i;
-            const previousColumn = fields[GENERATED_COLUMN];
-            const source = fields[SOURCE];
-            const originalLine = fields[ORIGINAL_LINE];
-            const originalColumn = fields[ORIGINAL_COLUMN];
-
-            i = decodeSegment(mappings, i, fields);
-
-            // The spec doesn't require segments of a line to be sorted by generated column,
-            // a lookup scans an unsorted line whole
-            if (lineSegments > 0 && fields[GENERATED_COLUMN] < previousColumn) {
-                this.#unsortedLines ??= new Set();
-                this.#unsortedLines.add(line);
-            }
-
-            // A line starts with a checkpoint, and a checkpoint doesn't come between segments at the same column,
-            // so the segments at the column of a lookup's result come after the checkpoint it starts with
-            if (lineSegments === 0 ||
-                (segmentsAfterCheckpoint >= CHECKPOINT_SEGMENTS && fields[GENERATED_COLUMN] > previousColumn)) {
-                checkpoints.push(
-                    fields[GENERATED_COLUMN], // CHECKPOINT_COLUMN
-                    previousColumn, // CHECKPOINT_PREVIOUS_COLUMN
-                    offset, // CHECKPOINT_OFFSET
-                    source, // CHECKPOINT_SOURCE
-                    originalLine, // CHECKPOINT_ORIGINAL_LINE
-                    originalColumn // CHECKPOINT_ORIGINAL_COLUMN
-                );
-                segmentsAfterCheckpoint = 0;
-            }
-
-            lineSegments++;
-            segmentsAfterCheckpoint++;
-        }
-
-        lineCheckpoints.push(checkpoints.length / CHECKPOINT_SIZE);
-        this.#checkpoints = new Int32Array(checkpoints);
-        this.#lineCheckpoints = new Uint32Array(lineCheckpoints);
+        this.#checkpoints = index.checkpoints;
+        this.#lineCheckpoints = index.lineCheckpoints;
+        this.#unsortedLines = index.unsortedLines;
     }
 
     // The checkpoint to decode a line from for a lookup at a column: the last one of the line at or before the column,

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { SourceMapConsumer, SourceMapGenerator } from 'source-map-js';
 import { SourceMapIndex } from './source-map.js';
+import { MAPPINGS_CHUNK_SIZE } from './source-map.compute.js';
 import type { SourceMap } from '../types.js';
 import { sequence } from '../../../test/helpers/values.js';
 
@@ -157,6 +158,39 @@ test('resolves positions on lines of many segments as source-map-js does', () =>
     assertConsumerPositions(JSON.parse(generator.toString()), 4, 310);
 });
 
+test('resolves a segment and a line across the end of a chunk of the mappings as source-map-js does', () => {
+    // line 0: a segment at a column after each other one, but the segment of 6 characters that starts 4 characters
+    // before the end of the first chunk goes 16 columns back, so the line is unsorted; line 1 starts
+    // in the second chunk
+    const segmentCount = Math.floor((MAPPINGS_CHUNK_SIZE - 5) / 5);
+    const crossingStart = 5 * segmentCount + 5;
+    const mappings = 'AAAA' + ',CAAC'.repeat(segmentCount) + ',hBAAgB' + ',CAAC'.repeat(10) + ';AAAA,CAAC';
+
+    assert.ok(crossingStart < MAPPINGS_CHUNK_SIZE && crossingStart + 6 > MAPPINGS_CHUNK_SIZE);
+    assertConsumerPositions(createSourceMap(undefined, ['a.js'], mappings), 3, segmentCount + 30);
+});
+
+test('resolves positions of mappings indexed in several chunks as source-map-js does', () => {
+    const random = sequence(1);
+    const generator = new SourceMapGenerator({ file: 'bundle.js' });
+
+    // Lines of thousands of segments of varying lengths, so lines and segments continue from one chunk to another
+    for (let i = 1; i <= 3; i++) {
+        for (let j = 0; j < 6000; j += 1 + random(3)) {
+            generator.addMapping({
+                generated: { line: i, column: j },
+                original: { line: 1 + random(2000), column: random(200) },
+                source: `file-${random(30)}.js`
+            } as Parameters<typeof generator.addMapping>[0]);
+        }
+    }
+
+    const sourceMap = JSON.parse(generator.toString());
+
+    assert.ok(sourceMap.mappings.length > 3 * MAPPINGS_CHUNK_SIZE);
+    assertConsumerPositions(sourceMap, 4, 6010);
+});
+
 const noPosition = { source: null, line: null, column: null };
 const positionInA = (column: number) => ({ source: 'a.js', line: 1, column });
 
@@ -192,11 +226,24 @@ test.each([
     { mappings: 'AA!A', offset: 2 },
     { mappings: 'AA\u0080A', offset: 2 },
     // a value with the continuation bit ends with the mappings
-    { mappings: 'AAg', offset: 3 }
+    { mappings: 'AAg', offset: 3 },
+    // in a chunk after the first ones
+    { mappings: 'AAAA,'.repeat(10000) + 'AA!A', offset: 50002 },
+    { mappings: 'AAAA,'.repeat(10000) + 'AA\u0080A', offset: 50002 },
+    { mappings: 'AAAA,'.repeat(10000) + 'AAg', offset: 50003 },
+    { mappings: 'AA\u0080A' + ',AAAA'.repeat(10000), offset: 2 }
 ])('invalid mappings $mappings are rejected at the position of the invalid character', row => {
     const index = () => new SourceMapIndex(createSourceMap(undefined, ['a.js'], row.mappings));
 
     assert.throws(index, new RegExp(`Invalid character in source map mappings at ${row.offset}$`));
+});
+
+test('a segment that doesn\'t fit a chunk of the mappings with its separator is rejected', () => {
+    // A valid segment has 5 values at most, of 7 digits at most for 32 bits
+    const mappings = 'AAAA,' + 'A'.repeat(MAPPINGS_CHUNK_SIZE) + ',AAAA';
+    const index = () => new SourceMapIndex(createSourceMap(undefined, ['a.js'], mappings));
+
+    assert.throws(index, /^Error: Too long segment in source map mappings at 5$/);
 });
 
 test('resolves segments at an equal generated column as source-map-js does', () => {
