@@ -105,3 +105,21 @@ test('a source-mapped breakdown shares the populations of its original and keeps
     assert.equal(all.selfValues[0] + all.nestedValues[0], 16 + 32);
     assert.equal(filtered.selfValues[0] + filtered.nestedValues[0], 20 - 4);
 });
+
+// Allocation call stacks are samples of the CPU call stacks: their source is mapped with the CPU stacks' source,
+// which is mapped first; mapped before it, the mapping fails rather than leaving allocations unmapped
+test('a source of samples of another source is not mapped before that source', async () => {
+    const { profile, dictionary, sourceMapping } = await createProfileFixture();
+    const line = profile.memline!;
+    const allocationStack = line.breakdowns.find(breakdown => breakdown.kind === 'call-stack')!;
+
+    await assert.rejects(createSourceMappedBreakdown(
+        'call-stack-sm',
+        line,
+        allocationStack,
+        dictionary,
+        sourceMapping,
+        new Map(),
+        noopWorkHandler
+    ));
+});

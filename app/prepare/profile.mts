@@ -240,7 +240,7 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
 
     // Source mapped tree sets by the source they map. A source of samples of another source is of a later line: the
     // memline is created from the population of the timeline, so the timeline's breakdowns are mapped first
-    const mappedTreeSets = new Map<SampledTreeSet['source'], SampledTreeSet>();
+    const mappedTreeSets = new Map<SampledTreeSet['source'], SampledTreeSet | null>();
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];

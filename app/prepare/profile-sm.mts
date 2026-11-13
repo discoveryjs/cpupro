@@ -16,7 +16,7 @@ export async function createSourceMappedBreakdown(
     breakdown: ProfileLineBreakdown,
     dictionary: Dictionary,
     sourceMapping: SourceMapping,
-    mappedTreeSets: Map<SampledTreeSet['source'], SampledTreeSet>,
+    mappedTreeSets: Map<SampledTreeSet['source'], SampledTreeSet | null>, // null for a source that isn't mapped
     work: WorkHandler
 ) {
     const { source } = breakdown;
@@ -26,18 +26,23 @@ export async function createSourceMappedBreakdown(
     if (origin !== undefined) {
         const originTreeSet = mappedTreeSets.get(origin.source);
 
-        if (originTreeSet !== undefined) {
+        // An origin unknown here is not mapped yet rather than not mapped: its breakdowns are mapped first
+        if (originTreeSet === undefined) {
+            throw new Error('A source of samples of another source is mapped before that source');
+        }
+
+        if (originTreeSet !== null) {
             sampledTreeSet = sampledTreeSetOfSourceIds(originTreeSet, origin.sourceIds);
         }
     } else {
         sampledTreeSet = await createMappedTreeSet(source, dictionary, sourceMapping, work);
     }
 
+    mappedTreeSets.set(source, sampledTreeSet);
+
     if (sampledTreeSet === null) {
         return null;
     }
-
-    mappedTreeSets.set(source, sampledTreeSet);
 
     return createLineBreakdown(
         kind,
