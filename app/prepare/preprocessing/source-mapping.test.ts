@@ -280,12 +280,11 @@ test('original scripts start parsing once per lookup, mapping waits for the pars
     assert.equal(prepareScriptSources.mock.calls.length, 1);
 });
 
-test('mapping resolves locations of a lookup while original scripts of a later lookup are parsing', async () => {
+test('mapping waits for the parsing of original scripts of every lookup', async () => {
     let finishParsing = () => {};
     const { dictionary, generatedScript, generatedFunction, tree } = createFixture();
     const sourceMapping = new SourceMapping(dictionary);
     const parsing = new Promise<undefined>(resolve => finishParsing = () => resolve(undefined));
-    const callFrameNames = () => dictionary.callFrames.map(callFrame => callFrame.name);
 
     sourceMapping.prepareLocations(tree);
     const added = dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, 25);
@@ -299,7 +298,6 @@ test('mapping resolves locations of a lookup while original scripts of a later l
 
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(mapped, false);
-    assert.ok(callFrameNames().includes('helper'));
 
     finishParsing();
     const originalLocations = (await mapping)!;
