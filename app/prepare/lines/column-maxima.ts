@@ -218,16 +218,18 @@ function keepFolds(
 }
 
 // The highest columns of a line's events on its own axis. Levels of columns holding whole cells of the line take the
-// signature records of the cells, walking events only in cells crossed by a column edge. Finer levels are taken for
+// signature records of the cells for values whose rows are shown, walking events only in cells crossed by a column
+// edge; values shown since the last read take them in one pass. Finer levels are taken for
 // values whose rows are shown, for a bound their rows show their own scale below: a value covering a column of cells
 // whole, or with a run covering a column, covers a column of the level whole, and a value whose highest column to its
 // duration reaches the bound at a coarser level reaches it at finer ones. Other values whose rows are shown are walked
 // by their events together, a walk folding the levels from some levels below the requested one up to it
 class OwnColumns {
     readonly #attributes: ProfileLineAttribute[] = [];
-    // Per attribute: the folds of the levels of cells of every value (none for values signatures don't keep), values
-    // whose rows are shown, and the longest runs of values measured by walks
-    readonly #cellFolds: (ColumnFolds[] | null)[] = [];
+    // Per attribute: the groups of signatures and the folds of the levels of cells of values taken (none for attributes
+    // signatures don't keep), values whose rows are shown, and the longest runs of values measured by walks
+    readonly #signatureGroups: (Uint32Array | null)[] = [];
+    readonly #cellFolds: ((ColumnFolds | null)[] | null)[] = [];
     readonly #shown: Uint8Array[] = [];
     readonly #longest: Float64Array[] = [];
     #cellTotal: ColumnFolds | null = null;
@@ -267,14 +269,17 @@ class OwnColumns {
 
         this.#attributes.push(attribute);
         // Values of attributes signatures don't keep, as the owner of an allocation, are walked on every level
+        this.#signatureGroups.push(signatureGroups);
         this.#cellFolds.push(signatureGroups !== null
-            ? this.#cellFoldsOf(signatureGroups, attribute.dict.length)
+            ? new Array(attribute.dict.length).fill(null)
             : null);
         this.#shown.push(shown);
         this.#longest.push(new Float64Array(attribute.dict.length));
     }
 
     total(level: number) {
+        this.#takeCells();
+
         const levelMaxima = takeLevel(this.#levels, level, this.#attributes);
         const duration = this.duration * 2 ** level;
         const cellTotal = this.#cellTotal;
@@ -309,6 +314,8 @@ class OwnColumns {
 
     // The highest column of a value of an attribute (by their indices), or a column at or above a bound
     track(index: number, group: number, level: number, bound: number) {
+        this.#takeCells();
+
         let maximum = this.#knownMaximum(index, group, level, bound);
 
         if (Number.isNaN(maximum)) {
@@ -416,37 +423,65 @@ class OwnColumns {
         return new ColumnFolds(baseLevel, level, this.duration * 2 ** baseLevel, this.origin);
     }
 
-    // The folds of the levels of cells of the values of an attribute, keeping the columns holding them; the total is
-    // folded with the first attribute signatures keep
-    #cellFoldsOf(signatureGroups: Uint32Array, groupCount: number) {
-        const folds: ColumnFolds[] = [];
+    // The folds of the levels of cells of the values shown and not taken yet of every attribute, keeping the columns
+    // holding them, in one pass over the cells; the total is folded with the first pass
+    #takeCells() {
+        if (this.#cells === null) {
+            return;
+        }
+
         const cellDuration = this.duration * 2 ** this.#cellLevel;
         const total = this.#cellTotal === null
             ? new ColumnFolds(this.#cellLevel, this.topLevel, cellDuration, this.origin)
             : null;
+        const walks: AttributeWalk[] = [];
 
-        for (let i = 0; i < groupCount; i++) {
-            folds.push(new ColumnFolds(this.#cellLevel, this.topLevel, cellDuration, this.origin, true));
+        for (let i = 0; i < this.#attributes.length; i++) {
+            const signatureGroups = this.#signatureGroups[i];
+            const cellFolds = this.#cellFolds[i];
+
+            if (signatureGroups !== null && cellFolds !== null) {
+                const shown = this.#shown[i];
+                const folds: (ColumnFolds | null)[] = [];
+
+                for (let j = 0; j < shown.length; j++) {
+                    folds.push(shown[j] === 1 && cellFolds[j] === null
+                        ? new ColumnFolds(this.#cellLevel, this.topLevel, cellDuration, this.origin, true)
+                        : null);
+                }
+
+                const walk = attributeWalk(i, this.#attributes[i], folds, signatureGroups);
+
+                if (walk.walked.length > 0) {
+                    walks.push(walk);
+                }
+            }
+        }
+
+        if (walks.length === 0 && total === null) {
+            return;
         }
 
         addCellColumns(
-            folds,
-            signatureGroups,
+            walks,
             total,
             this.line.signatures!,
-            this.#cells!,
+            this.#cells,
             this.#accepted!,
             this.viewport,
+            cellDuration,
             this.origin
         );
 
-        for (let i = 0; i < groupCount; i++) {
-            folds[i].finish();
+        for (let i = 0; i < walks.length; i++) {
+            const { index, folds, walked } = walks[i];
+
+            for (let j = 0; j < walked.length; j++) {
+                this.#cellFolds[index]![walked[j]] = folds[walked[j]]!.finish();
+            }
         }
 
         this.#cellTotal = total?.finish() ?? this.#cellTotal;
-
-        return folds;
     }
 
     // The ranges a walk of values takes events of: the columns of cells holding them, the whole ranges for values
@@ -458,12 +493,12 @@ class OwnColumns {
             return this.#ranges;
         }
 
-        const held = new Uint8Array(cellFolds[0].held!.length);
+        const held = new Uint8Array(Math.ceil(2 ** (this.topLevel - this.#cellLevel) / 8));
 
         for (let i = 0; i < folds.length; i++) {
             if (folds[i] !== null) {
                 for (let j = 0; j < held.length; j++) {
-                    held[j] |= cellFolds[i].held![j];
+                    held[j] |= cellFolds[i]!.held![j];
                 }
             }
         }
@@ -574,19 +609,18 @@ function addEventParts(
 // values and to the total when given; the last event of such a cell can end beyond the column, its part beyond adds to
 // the columns it covers. Events of other cells add their parts one by one
 function addCellColumns(
-    folds: ColumnFolds[],
-    signatureGroups: Uint32Array,
+    walks: AttributeWalk[],
     total: ColumnFolds | null,
     signatures: EventSignatures,
     cells: RangeRecords,
     accepted: Uint8Array,
     viewport: PopulationFiltered,
+    duration: number,
     origin: number
 ) {
     const { values, cumulative, cumulativeEnd } = viewport.population;
     const { ids } = signatures;
     const { starts } = cells;
-    const { duration } = folds[0];
     const ranges = viewport.ranges ?? [{ start: 0, end: cumulativeEnd }];
 
     for (let i = 0; i < ranges.length; i++) {
@@ -618,20 +652,26 @@ function addCellColumns(
                 const lastEnd = Math.min(fullEnd, rangeEnd);
                 const keptEnd = Math.min(lastEnd, columnEnd);
 
-                const weight = addRecords(folds, signatureGroups, cells, cell, accepted, column);
+                const weight = addRecords(walks, cells, cell, accepted, column);
 
                 total?.add(column, weight);
 
                 // The records hold the last allocation of the cell whole: its part beyond the column or the range
                 // leaves the column, and its part in the range beyond the column adds to the columns it covers
                 if (accepted[ids[last]] === 1 && fullEnd > keptEnd) {
-                    const lastFolds = folds[signatureGroups[ids[last]]];
+                    for (let k = 0; k < walks.length; k++) {
+                        const lastFolds = walks[k].folds[walks[k].values[last]];
 
-                    lastFolds.add(column, keptEnd - fullEnd);
+                        lastFolds?.add(column, keptEnd - fullEnd);
+
+                        if (lastEnd > columnEnd) {
+                            lastFolds?.addPart(columnEnd, lastEnd);
+                        }
+                    }
+
                     total?.add(column, keptEnd - fullEnd);
 
                     if (lastEnd > columnEnd) {
-                        lastFolds.addPart(columnEnd, lastEnd);
                         total?.addPart(columnEnd, lastEnd);
                     }
                 }
@@ -653,7 +693,10 @@ function addCellColumns(
                         partEnd = rangeEnd;
                     }
 
-                    folds[signatureGroups[ids[j]]].addPart(partStart, partEnd);
+                    for (let k = 0; k < walks.length; k++) {
+                        walks[k].folds[walks[k].values[j]]?.addPart(partStart, partEnd);
+                    }
+
                     total?.addPart(partStart, partEnd);
                 }
             }
@@ -661,70 +704,62 @@ function addCellColumns(
     }
 }
 
-// The accepted records of a cell add to a column of the folds of their values; returns the weight of the records, the
-// total adds it once per cell
+// The accepted records of a segment of the axis (a cell or a target) sum per value of every walk first, as signatures
+// split a value into records by other attributes, so the folds of a value walked add a weight per segment; returns the
+// weight of the records, the total adds it once per segment
 function addRecords(
-    folds: ColumnFolds[],
-    signatureGroups: Uint32Array,
+    walks: AttributeWalk[],
     records: RangeRecords,
-    cell: number,
+    segment: number,
     accepted: Uint8Array,
     column: number
 ) {
     const { recordStarts, signatures, weights } = records;
-    const recordsEnd = recordStarts[cell + 1];
+    const recordsStart = recordStarts[segment];
+    const recordsEnd = recordStarts[segment + 1];
     let weight = 0;
 
-    for (let i = recordStarts[cell]; i < recordsEnd; i++) {
-        if (accepted[signatures[i]] === 1) {
-            folds[signatureGroups[signatures[i]]].add(column, weights[i]);
-            weight += weights[i];
+    if (walks.length === 0) {
+        for (let i = recordsStart; i < recordsEnd; i++) {
+            if (accepted[signatures[i]] === 1) {
+                weight += weights[i];
+            }
+        }
+    }
+
+    for (let i = 0; i < walks.length; i++) {
+        const { folds, walked, sums } = walks[i];
+        const signatureGroups = walks[i].signatureGroups!;
+        let walkWeight = 0;
+
+        for (let j = recordsStart; j < recordsEnd; j++) {
+            const signature = signatures[j];
+
+            if (accepted[signature] === 1) {
+                sums[signatureGroups[signature]] += weights[j];
+                walkWeight += weights[j];
+            }
+        }
+
+        // Every walk sums the same accepted records
+        weight = walkWeight;
+
+        for (let j = 0; j < walked.length; j++) {
+            const group = walked[j];
+
+            if (sums[group] !== 0) {
+                folds[group]!.add(column, sums[group]);
+                sums[group] = 0;
+            }
         }
     }
 
     return weight;
 }
 
-// The accepted records of a target sum per value first, so the folds of the values walked take a weight per target
-// without a check per record; sums of values not walked aren't read. Returns the weight of the records, the total
-// adds it once per target
-function addTargetRecords(
-    walk: AttributeWalk,
-    records: RangeRecords,
-    target: number,
-    accepted: Uint8Array,
-    column: number
-) {
-    const { folds, walked, sums } = walk;
-    const signatureGroups = walk.signatureGroups!;
-    const { recordStarts, signatures, weights } = records;
-    const recordsEnd = recordStarts[target + 1];
-    let weight = 0;
-
-    for (let i = recordStarts[target]; i < recordsEnd; i++) {
-        const signature = signatures[i];
-
-        if (accepted[signature] === 1) {
-            sums[signatureGroups[signature]] += weights[i];
-            weight += weights[i];
-        }
-    }
-
-    for (let i = 0; i < walked.length; i++) {
-        const group = walked[i];
-
-        if (sums[group] !== 0) {
-            folds[group]!.add(column, sums[group]);
-            sums[group] = 0;
-        }
-    }
-
-    return weight;
-}
-
-// A walk of the values of an attribute (by its index) whose rows are shown and have no levels yet: their folds (none
-// for other values) and groups, the values of the events and of their signatures (null when signatures don't keep
-// them), and the sums of the values of a target
+// A walk of the values of an attribute (by its index): their folds (none for values not walked) and groups, the values
+// of the events and of their signatures (null when signatures don't keep them), and the sums of the records of
+// a segment per value
 type AttributeWalk = {
     index: number;
     folds: (ColumnFolds | null)[];
@@ -733,6 +768,30 @@ type AttributeWalk = {
     signatureGroups: Uint32Array | null;
     sums: Float64Array;
 };
+
+function attributeWalk(
+    index: number,
+    attribute: ProfileLineAttribute,
+    folds: (ColumnFolds | null)[],
+    signatureGroups: Uint32Array | null
+): AttributeWalk {
+    const walked: number[] = [];
+
+    for (let i = 0; i < folds.length; i++) {
+        if (folds[i] !== null) {
+            walked.push(i);
+        }
+    }
+
+    return {
+        index,
+        folds,
+        walked,
+        values: attribute.values,
+        signatureGroups,
+        sums: new Float64Array(folds.length)
+    };
+}
 
 // The highest columns of a line's events mapped onto another line's axis in order (a nondecreasing mapping): events
 // are placed at their targets, so below the level of a target per column (the floor) columns don't change. A walk of
@@ -802,30 +861,19 @@ class MappedColumns {
     // The walk of an attribute (by its index): the folds of the levels from the floor up of its values shown and
     // with no levels taken yet
     #walkOf(index: number): AttributeWalk {
-        const { values, dict } = this.attributes[index];
+        const attribute = this.attributes[index];
         const shown = this.#shown[index];
         const tracks = this.#levels.get(this.floorLevel)?.tracks[index];
         const baseDuration = this.duration * 2 ** this.floorLevel;
         const folds: (ColumnFolds | null)[] = [];
-        const walked: number[] = [];
 
-        for (let i = 0; i < dict.length; i++) {
-            if (shown[i] === 1 && Number.isNaN(tracks?.[i] ?? NaN)) {
-                folds.push(new ColumnFolds(this.floorLevel, this.topLevel, baseDuration, this.origin));
-                walked.push(i);
-            } else {
-                folds.push(null);
-            }
+        for (let i = 0; i < shown.length; i++) {
+            folds.push(shown[i] === 1 && Number.isNaN(tracks?.[i] ?? NaN)
+                ? new ColumnFolds(this.floorLevel, this.topLevel, baseDuration, this.origin)
+                : null);
         }
 
-        return {
-            index,
-            folds,
-            walked,
-            values,
-            signatureGroups: this.line.signatures?.valuesOf(values) ?? null,
-            sums: new Float64Array(dict.length)
-        };
+        return attributeWalk(index, attribute, folds, this.line.signatures?.valuesOf(attribute.values) ?? null);
     }
 
     // Walks the levels from the floor up of the values of the walks, and of the total when asked
@@ -912,13 +960,9 @@ function addMappedColumns(
             const column = targetColumn(i);
 
             if (column !== -1) {
-                for (let j = 0; j < walks.length; j++) {
-                    const weight = addTargetRecords(walks[j], records!, i, accepted!, column);
+                const weight = addRecords(walks, records!, i, accepted!, column);
 
-                    if (j === 0) {
-                        total?.add(column, weight);
-                    }
-                }
+                total?.add(column, weight);
             }
         }
     };
