@@ -75,6 +75,14 @@ test('allocations map to samples by the IDs of samples only', () => {
     assert.deepEqual([...allocationSamples], [0, 1, 2, 3, 3]);
 });
 
+// A sample takes the allocations up to the largest ID recorded so far: a sample recording an ID before an earlier one,
+// or before the next allocation, takes none
+test('samples take runs of allocations up to the largest ID recorded by them and the samples before', () => {
+    const allocationSamples = mapAllocationsToSamples([1, 2, 3, 5, 8, 9, 13], Uint32Array.of(3, 2, 9, 12), 4);
+
+    assert.deepEqual([...allocationSamples], [0, 0, 0, 2, 2, 2, 4]);
+});
+
 // Recorded IDs need not ascend with samples: the last allocation is after every sample only when its ID is after
 // all of them, which is when the mapping takes it to the sample after the recorded ones
 test.each([

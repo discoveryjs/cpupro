@@ -70,7 +70,11 @@ export function mapLineRanges(source: ProfileLine, target: ProfileLine, ranges: 
 }
 
 // The CPU sample of every allocation: the first sample whose last allocation ID is at or after the allocation's ID.
-// Only the first `sampleCount` IDs are of samples; an allocation after the last of them maps to the next index
+// Only the first `sampleCount` IDs are of samples; an allocation after the last of them maps to the next index.
+// Allocation IDs ascend, so a sample takes the run of allocations up to the largest last allocation ID of the samples
+// so far, beyond the runs of the samples before it
+// PERF: The runs are found by searching the allocation IDs for every sample and filled, rather than by a pass over
+// the tens of millions of allocations comparing each with a sample
 export function mapAllocationsToSamples(
     allocationIds: AllocationIdVector,
     sampleAllocationIds: Uint32Array,
@@ -78,15 +82,21 @@ export function mapAllocationsToSamples(
 ) {
     const allocationSamples = new Uint32Array(allocationIds.length);
     const recordedSamples = Math.min(sampleAllocationIds.length, sampleCount);
-    let sample = 0;
+    let lastId = -1;
+    let start = 0;
 
-    for (let i = 0; i < allocationIds.length; i++) {
-        while (sample < recordedSamples && allocationIds[i] > sampleAllocationIds[sample]) {
-            sample++;
+    for (let sample = 0; sample < recordedSamples && start < allocationIds.length; sample++) {
+        lastId = Math.max(lastId, sampleAllocationIds[sample]);
+
+        const end = lowerBound(allocationIds, lastId, true);
+
+        if (end > start) {
+            allocationSamples.fill(sample, start, end);
+            start = end;
         }
-
-        allocationSamples[i] = sample;
     }
+
+    allocationSamples.fill(recordedSamples, start);
 
     return allocationSamples;
 }
