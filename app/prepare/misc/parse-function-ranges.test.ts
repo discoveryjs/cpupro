@@ -407,6 +407,16 @@ test.each([
         ]
     ],
     [
+        'where types end',
+        [
+            'const a = (b): (C | D) => b, e = (f): (g: H) => I => f, j = (k): K[] => [k];',
+            'const l = m as keyof N ? (() => 1) : null, o = p as readonly Q[] | R;',
+            'type S<T> = T extends infer U extends string ? U : T extends (infer V)[] ? V : never;',
+            'let w: typeof import("x").Y<Z>, z: -1 | `${number}px`;',
+            'function f<T>(this: T, ...rest: <U>(u: U) => U[]): this is { g(): void } { return true; }'
+        ]
+    ],
+    [
         'import and export of TypeScript',
         [
             'import type { A }',

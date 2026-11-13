@@ -2473,173 +2473,191 @@ function skipArrowReturnType() {
     return false;
 }
 
-// Skips a type; false when the token can't start a type
-function skipType(): boolean {
-    if (!skipUnionType()) {
-        return false;
-    }
+// Words that start a type of the type after them: keyof, unique and readonly operators, infer T, typeof x,
+// import("x"), asserts x, and constructor types; each of them is a type name when no type follows it
+const typePrefixes = new Uint8Array(KW_YIELD + 1);
+const typePrefixWords = [
+    KW_KEYOF,
+    KW_UNIQUE,
+    KW_READONLY,
+    KW_INFER,
+    KW_TYPEOF,
+    KW_IMPORT,
+    KW_ASSERTS,
+    KW_ABSTRACT,
+    KW_NEW
+];
 
-    // a conditional type
-    if (!isWord(KW_EXTENDS) || lexer.newlineBefore) {
-        return true;
-    }
-
-    lexer.nextAfterOperand();
-
-    if (!skipUnionType() || lexer.type !== QUESTION) {
-        return false;
-    }
-
-    lexer.nextAfterOperand();
-
-    if (!skipType() || lexer.type !== COLON) {
-        return false;
-    }
-
-    lexer.nextAfterOperand();
-
-    return skipType();
+for (let i = 0; i < typePrefixWords.length; i++) {
+    typePrefixes[typePrefixWords[i]] = 1;
 }
 
-function skipUnionType() {
-    // a leading | or &
-    if (lexer.type === PIPE || lexer.type === AMPERSAND) {
-        lexer.nextAfterOperand();
-    }
+// Tokens that can start a type
+const startsType = new Uint8Array(SLASH + 1);
+const typeStartTokens = [
+    NAME,
+    STRING,
+    NUMBER,
+    TEMPLATE,
+    TEMPLATE_HEAD,
+    PAREN_L,
+    BRACKET_L,
+    BRACE_L,
+    LT,
+    PLUS_MINUS,
+    PIPE,
+    AMPERSAND
+];
+
+for (let i = 0; i < typeStartTokens.length; i++) {
+    startsType[typeStartTokens[i]] = 1;
+}
+
+// Skips a type up to the first token that can't continue it; false when the token can't start a type.
+// A type is skipped as operands and the operators between them, its brackets as a whole: only the tokens
+// that continue a type matter, not its structure
+function skipType() {
+    let operand = false; // the last skipped token ends an operand, a type may end after it
+    let parameters = false; // the operand is parameters of a function type, `=>` follows them
+    let functionType = false; // type parameters or `new` before parentheses make them parameters
+    let extendsCount = 0; // `extends` of conditional types waiting for their `?`
+    let conditionals = 0; // `?` of conditional types waiting for their `:`
 
     while (true) {
-        if (!skipTypeOperator()) {
-            return false;
+        if (!operand) {
+            switch (lexer.type) {
+                case NAME:
+                    if (typePrefixes[lexer.word] === 1) {
+                        functionType = lexer.word === KW_NEW;
+                        lexer.nextAfterOperand();
+                        // a prefix word without a type after it is a name
+                        operand = startsType[lexer.type] === 0;
+                        continue;
+                    }
+
+                    lexer.nextAfterOperand();
+                    break;
+
+                case PAREN_L:
+                    parameters = skipTypeParentheses() || functionType;
+                    functionType = false;
+                    operand = true;
+                    continue;
+
+                case BRACKET_L:
+                case BRACE_L:
+                    skipBalanced();
+                    break;
+
+                case TEMPLATE:
+                case TEMPLATE_HEAD:
+                    skipTemplateType();
+                    break;
+
+                case STRING:
+                case NUMBER:
+                    lexer.nextAfterOperand();
+                    break;
+
+                // type parameters of a generic function type
+                case LT:
+                    skipAngles();
+                    functionType = true;
+                    continue;
+
+                // a negative number, a leading | or &
+                case PLUS_MINUS:
+                case PIPE:
+                case AMPERSAND:
+                    lexer.nextAfterOperand();
+                    continue;
+
+                default:
+                    return false;
+            }
+
+            operand = true;
+            parameters = false;
+            continue;
         }
 
-        if (lexer.type !== PIPE && lexer.type !== AMPERSAND) {
-            return true;
+        switch (lexer.type) {
+            // a qualified name
+            case DOT:
+                lexer.nextAfterOperand();
+                lexer.nextAfterOperand();
+                continue;
+
+            // type arguments, and array and indexed access types
+            case LT:
+            case BRACKET_L:
+                if (lexer.newlineBefore) {
+                    return true;
+                }
+
+                if (lexer.type === LT) {
+                    skipAngles();
+                } else {
+                    skipBalanced();
+                }
+
+                parameters = false;
+                continue;
+
+            case ARROW:
+                if (!parameters) {
+                    return true;
+                }
+                break;
+
+            case PIPE:
+            case AMPERSAND:
+                break;
+
+            case QUESTION:
+                if (extendsCount === 0) {
+                    return true;
+                }
+
+                extendsCount--;
+                conditionals++;
+                break;
+
+            case COLON:
+                if (conditionals === 0) {
+                    return true;
+                }
+
+                conditionals--;
+                break;
+
+            // a conditional type, and a type predicate
+            case NAME:
+                if (lexer.newlineBefore || (lexer.word !== KW_EXTENDS && lexer.word !== KW_IS)) {
+                    return true;
+                }
+
+                if (lexer.word === KW_EXTENDS) {
+                    extendsCount++;
+                }
+                break;
+
+            default:
+                return true;
         }
 
         lexer.nextAfterOperand();
+        operand = false;
+        parameters = false;
     }
 }
 
-// keyof, unique and readonly, infer, and array and indexed access types
-function skipTypeOperator(): boolean {
-    while ((isWord(KW_KEYOF) || isWord(KW_UNIQUE) || isWord(KW_READONLY)) && typeFollows()) {
-        lexer.nextAfterOperand();
-    }
-
-    if (isWord(KW_INFER)) {
-        skipInferType();
-        return true;
-    }
-
-    if (!skipPrimaryType()) {
-        return false;
-    }
-
-    while (lexer.type === BRACKET_L && !lexer.newlineBefore) {
-        skipBalanced();
-    }
-
-    return true;
-}
-
-// Whether a type operator word is followed by its type, otherwise the word is a type name
-function typeFollows() {
-    lexer.peek();
-
-    switch (lexer.peekType) {
-        case NAME:
-        case PAREN_L:
-        case BRACKET_L:
-        case BRACE_L:
-            return true;
-    }
-
-    return false;
-}
-
-// infer T, infer T extends U; a constraint is followed by the ? of a conditional type when it's not a constraint
-function skipInferType() {
-    lexer.nextAfterOperand();
-    lexer.nextAfterOperand();
-
-    if (!isWord(KW_EXTENDS)) {
-        return;
-    }
-
-    const state = lexer.save();
-
-    lexer.nextAfterOperand();
-
-    if (skipUnionType() && lexer.type !== QUESTION) {
-        lexer.discardSaved(state);
-    } else {
-        lexer.restore(state);
-    }
-}
-
-function skipPrimaryType(): boolean {
-    switch (lexer.type) {
-        case PAREN_L:
-            return skipParenthesizedType();
-
-        case LT:
-            // a generic function type
-            skipAngles();
-            expect(PAREN_L);
-            return skipParenthesizedType();
-
-        case BRACE_L:
-        case BRACKET_L:
-            skipBalanced();
-            return true;
-
-        case STRING:
-        case NUMBER:
-            lexer.nextAfterOperand();
-            return true;
-
-        case TEMPLATE:
-        case TEMPLATE_HEAD:
-            skipTemplateType();
-            return true;
-
-        case PLUS_MINUS:
-            lexer.nextAfterOperand();
-            expect(NUMBER);
-            lexer.nextAfterOperand();
-            return true;
-
-        case NAME:
-            return skipNamedType();
-    }
-
-    return false;
-}
-
-// A function type, or a parenthesized type
-function skipParenthesizedType() {
-    const functionType = startsFunctionType();
-
-    skipBalanced();
-
-    if (!functionType) {
-        return true;
-    }
-
-    if (lexer.type !== ARROW) {
-        return false;
-    }
-
-    lexer.nextAfterOperand();
-
-    return skipType();
-}
-
-// Whether parentheses start parameters of a function type: they are empty, start with a rest parameter,
-// or a parameter followed by its type, a separator or the end of the parameters with `=>` after them
-function startsFunctionType() {
-    const state = lexer.save();
+// Skips parentheses of a type; returns whether they are parameters of a function type: they are empty,
+// start with a rest parameter, a parameter followed by its type, a separator or a default value,
+// or have a single parameter with `=>` after them
+function skipTypeParentheses() {
     let parameters = false;
+    let single = false;
 
     lexer.nextAfterOperand();
 
@@ -2658,103 +2676,37 @@ function startsFunctionType() {
                 skipBalanced();
             }
 
-            if (lexer.type === COLON || lexer.type === COMMA || lexer.type === QUESTION || lexer.type === ASSIGN) {
-                parameters = true;
-            } else if (lexer.type === PAREN_R) {
-                lexer.nextAfterOperand();
-                parameters = lexer.type === ARROW;
-            }
+            parameters = (
+                lexer.type === COLON ||
+                lexer.type === COMMA ||
+                lexer.type === QUESTION ||
+                lexer.type === ASSIGN
+            );
+            single = lexer.type === PAREN_R;
             break;
     }
 
-    lexer.restore(state);
-
-    return parameters;
-}
-
-// A type starting with a name: a type reference, a type predicate, typeof, import() or a constructor type
-function skipNamedType() {
-    switch (lexer.word) {
-        case KW_ABSTRACT:
-        case KW_NEW:
-            skipConstructorType();
-            return true;
-
-        case KW_ASSERTS:
-            lexer.peek();
-
-            if (lexer.peekType === NAME && !lexer.peekNewlineBefore) {
-                lexer.nextAfterOperand();
-                lexer.nextAfterOperand();
-                skipTypePredicate();
-                return true;
-            }
-            break;
-
-        case KW_TYPEOF:
-            lexer.nextAfterOperand();
-
-            if (isWord(KW_IMPORT)) {
-                lexer.nextAfterOperand();
+    // the rest of the parentheses
+    while (lexer.type !== PAREN_R) {
+        switch (lexer.type) {
+            case PAREN_L:
+            case BRACKET_L:
+            case BRACE_L:
                 skipBalanced();
-            } else {
-                lexer.nextAfterOperand();
-            }
+                continue;
 
-            skipTypeReferenceTail();
-            return true;
+            case TEMPLATE_HEAD:
+                skipTemplateType();
+                continue;
 
-        case KW_IMPORT:
-            lexer.nextAfterOperand();
-            skipBalanced();
-            skipTypeReferenceTail();
-            return true;
-    }
-
-    lexer.nextAfterOperand();
-    skipTypeReferenceTail();
-    skipTypePredicate();
-
-    return true;
-}
-
-// new (...) => T, abstract new (...) => T
-function skipConstructorType() {
-    if (isWord(KW_ABSTRACT)) {
-        lexer.nextAfterOperand();
-    }
-
-    lexer.nextAfterOperand();
-
-    if (lexer.type === LT) {
-        skipAngles();
-    }
-
-    expect(PAREN_L);
-    skipBalanced();
-    expect(ARROW);
-    lexer.nextAfterOperand();
-    skipType();
-}
-
-// `is T` of a type predicate
-function skipTypePredicate() {
-    if (isWord(KW_IS) && !lexer.newlineBefore) {
-        lexer.nextAfterOperand();
-        skipType();
-    }
-}
-
-// Qualified names and type arguments of a type reference
-function skipTypeReferenceTail() {
-    while (true) {
-        if (lexer.type === DOT) {
-            lexer.nextAfterOperand();
-            lexer.nextAfterOperand();
-        } else if (lexer.type === LT && !lexer.newlineBefore) {
-            skipAngles();
-        } else {
-            return;
+            case EOF:
+                lexer.unexpected();
         }
+
+        lexer.nextAfterOperand();
     }
+
+    lexer.nextAfterOperand();
+
+    return parameters || (single && lexer.type === ARROW);
 }
