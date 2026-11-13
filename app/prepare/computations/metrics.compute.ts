@@ -13,13 +13,10 @@ export type TreeMetricsMap<T> = {
     nestedValues: Float64Array;
 };
 
-// Metrics of the entries of a tree's dictionary (calls of a function, a module...): samples land on entries through
-// sampleIdToDict, the totals of entries sum the nodes not nested in a node of the same entry (totalNodes)
+// Metrics of the entries of a tree's dictionary (calls of a function, a module...): the nodes of an entry give its self
+// metrics, and the nodes not nested in a node of the same entry give its total
 export type DictionaryMetricsMap<T> = {
     dictionary: T[];
-    sampleIdToDict: Uint32Array;
-    totalNodes: Uint32Array;
-    totalNodeToDict: Uint32Array;
     samplesCount: Uint32Array;
     selfValues: Float64Array;
     totalValues: Float64Array;
@@ -63,24 +60,23 @@ export function computeMetrics<T>(
     treeMap.nestedValues.set(buffer.nodeNestedValues);
 
     if (dictMap !== null) {
-        buffer.sampleIdToDict.set(dictMap.sampleIdToDict);
-        buffer.totalNodes.set(dictMap.totalNodes);
-        buffer.totalNodeToDict.set(dictMap.totalNodeToDict);
+        buffer.nodeToDict.set(treeMap.tree.nodes);
+        buffer.nested.set(treeMap.tree.nested);
         buffer.entryCounts.fill(0);
         buffer.entrySelfValues.fill(0);
         buffer.entryTotalValues.fill(0);
         api.accumulateMetrics(
-            buffer.sourceCounts,
-            buffer.sourceValues,
-            buffer.sampleIdToDict,
+            buffer.nodeCounts,
+            buffer.nodeSelfValues,
+            buffer.nodeToDict,
             buffer.entryCounts,
             buffer.entrySelfValues
         );
         api.rollupDictionaryMetrics(
-            buffer.totalNodes,
+            buffer.nodeToDict,
+            buffer.nested,
             buffer.nodeSelfValues,
             buffer.nodeNestedValues,
-            buffer.totalNodeToDict,
             buffer.entryTotalValues
         );
         dictMap.samplesCount.set(buffer.entryCounts);
@@ -89,7 +85,7 @@ export function computeMetrics<T>(
     }
 }
 
-// The metrics of samples, the maps of a tree and of its dictionary (empty without one), and their metrics
+// The metrics of samples, the maps of a tree and of its nodes to the dictionary (empty without one), and their metrics
 function layoutMetricsBuffer<T>(
     sampleCount: number,
     treeMap: TreeMetricsMap<T>,
@@ -97,6 +93,7 @@ function layoutMetricsBuffer<T>(
 ) {
     const nodeCount = treeMap.selfValues.length;
     const entryCount = dictMap?.selfValues.length ?? 0;
+    const dictNodeCount = dictMap !== null ? treeMap.tree.nodes.length : 0;
 
     return layoutScratch({
         sourceValues: [Float64Array, sampleCount],
@@ -108,18 +105,17 @@ function layoutMetricsBuffer<T>(
         sampleToNode: [Uint32Array, treeMap.sampleToNode.length],
         parent: [Uint32Array, treeMap.tree.parent.length],
         nodeCounts: [Uint32Array, nodeCount],
-        sampleIdToDict: [Uint32Array, dictMap?.sampleIdToDict.length ?? 0],
-        totalNodes: [Uint32Array, dictMap?.totalNodes.length ?? 0],
-        totalNodeToDict: [Uint32Array, dictMap?.totalNodeToDict.length ?? 0],
+        nodeToDict: [Uint32Array, dictNodeCount],
+        nested: [Uint32Array, dictNodeCount],
         entryCounts: [Uint32Array, entryCount]
     });
 }
 
 type MetricsApi = typeof metricsJavaScriptApi;
 
-// Passes of metrics.compute.wat over the scratch buffer: self metrics of nodes or dictionary entries from the metrics
-// of samples (dest[map[i]] += source[i] for counts and values), then nested values of nodes and total values
-// of dictionary entries
+// Passes of metrics.compute.wat over the scratch buffer: self metrics of nodes from the metrics of samples, or of
+// dictionary entries from the metrics of nodes (dest[map[i]] += source[i] for counts and values), then nested values
+// of nodes and total values of dictionary entries
 const metricsJavaScriptApi = {
     accumulateMetrics,
     rollupTreeMetrics,
@@ -147,18 +143,16 @@ function rollupTreeMetrics(parent: Uint32Array, selfValues: Float64Array, nested
 }
 
 function rollupDictionaryMetrics(
-    totalNodes: Uint32Array,
+    nodeToDict: Uint32Array,
+    nested: Uint32Array,
     nodeSelfValues: Float64Array,
     nodeNestedValues: Float64Array,
-    totalNodeToDict: Uint32Array,
     totalValues: Float64Array
 ) {
-    for (let i = totalNodes.length - 1; i >= 0; i--) {
-        const nodeId = totalNodes[i];
-        const selfValue = nodeSelfValues[nodeId];
-        const nestedValue = nodeNestedValues[nodeId];
-
-        totalValues[totalNodeToDict[i]] += selfValue + nestedValue;
+    for (let i = nodeToDict.length - 1; i >= 0; i--) {
+        if (nested[i] === 0) {
+            totalValues[nodeToDict[i]] += nodeSelfValues[i] + nodeNestedValues[i];
+        }
     }
 }
 
@@ -184,75 +178,38 @@ function bindMetricsWasm(
                 nestedValues.byteOffset
             );
         },
-        rollupDictionaryMetrics(totalNodes, nodeSelfValues, nodeNestedValues, totalNodeToDict, totalValues) {
+        rollupDictionaryMetrics(nodeToDict, nested, nodeSelfValues, nodeNestedValues, totalValues) {
             wasm.rollupDictionaryMetrics(
-                totalNodes.length,
-                totalNodes.byteOffset,
+                nodeToDict.length,
+                nodeToDict.byteOffset,
+                nested.byteOffset,
                 nodeSelfValues.byteOffset,
                 nodeNestedValues.byteOffset,
-                totalNodeToDict.byteOffset,
                 totalValues.byteOffset
             );
         }
     };
 }
 
-// Maps and metrics of a dimension of a breakdown for every sampled tree. Nodes of a tree that are not nested in a node
-// of the same dictionary entry give the totals of the entries
-// PERF: The maps to dictionary entries are filled by indexed loops, rather than made by TypedArray#map with a callback,
-// for hundreds of thousands of samples and nodes of every tree of a breakdown
-export function createSampleBreakdownMaps<T>(trees: SampledTree<T>[]) {
-    const dimensions: DimensionMaps<T>[] = [];
+// Maps of a dimension of a breakdown for a sampled tree, with metric arrays of its nodes and dictionary entries
+export function createDimensionMaps<T>(sampledTree: SampledTree<T>): DimensionMaps<T> {
+    const { tree, sampleToNode } = sampledTree;
+    const nodeCount = tree.nodes.length;
+    const entryCount = tree.dictionary.length;
 
-    for (let i = 0; i < trees.length; i++) {
-        const { tree, sampleToNode } = trees[i];
-        const { nodes, nested } = tree;
-        const nodeCount = nodes.length;
-        const entryCount = tree.dictionary.length;
-        const sampleIdToDict = new Uint32Array(sampleToNode.length);
-        let totalNodesCount = 0;
-
-        for (let j = 0; j < sampleToNode.length; j++) {
-            sampleIdToDict[j] = nodes[sampleToNode[j]];
+    return {
+        treeMap: {
+            tree,
+            sampleToNode,
+            samplesCount: new Uint32Array(nodeCount),
+            selfValues: new Float64Array(nodeCount),
+            nestedValues: new Float64Array(nodeCount)
+        },
+        dictMap: {
+            dictionary: tree.dictionary,
+            samplesCount: new Uint32Array(entryCount),
+            selfValues: new Float64Array(entryCount),
+            totalValues: new Float64Array(entryCount)
         }
-
-        for (let j = 0; j < nested.length; j++) {
-            if (nested[j] === 0) {
-                totalNodesCount++;
-            }
-        }
-
-        const totalNodes = new Uint32Array(totalNodesCount);
-        const totalNodeToDict = new Uint32Array(totalNodesCount);
-        let k = 0;
-
-        for (let j = 0; j < nodeCount; j++) {
-            if (nested[j] === 0) {
-                totalNodes[k] = j;
-                totalNodeToDict[k] = nodes[j];
-                k++;
-            }
-        }
-
-        dimensions.push({
-            treeMap: {
-                tree,
-                sampleToNode,
-                samplesCount: new Uint32Array(nodeCount),
-                selfValues: new Float64Array(nodeCount),
-                nestedValues: new Float64Array(nodeCount)
-            },
-            dictMap: {
-                dictionary: tree.dictionary,
-                sampleIdToDict,
-                totalNodes,
-                totalNodeToDict,
-                samplesCount: new Uint32Array(entryCount),
-                selfValues: new Float64Array(entryCount),
-                totalValues: new Float64Array(entryCount)
-            }
-        });
-    }
-
-    return dimensions;
+    };
 }

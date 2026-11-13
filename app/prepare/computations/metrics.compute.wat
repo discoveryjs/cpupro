@@ -3,8 +3,9 @@
 ;; Metrics of the trees and dictionaries of a breakdown from the metrics of samples. Counts and indices are u32
 ;; (4 bytes); values are f64 (8 bytes)
 
-;; Self metrics of nodes or dictionary entries from the metrics of samples, the counts and the values in one pass
-;; over the map: a sample with a zero count has a zero value, since its events are none or cut whole
+;; Self metrics of nodes from the metrics of samples, or of dictionary entries from the metrics of nodes, the counts and
+;; the values in one pass over the map: a sample with a zero count has a zero value, since its events are none or cut
+;; whole, and so has a node with a zero count
 (func $accumulateMetrics (export "accumulateMetrics")
   (param $srcSize i32)
   (param $srcCounts i32)
@@ -115,24 +116,26 @@
   )
 )
 
+;; Total values of dictionary entries from the nodes not nested in a node of the same entry
 (func $rollupDictionaryMetrics (export "rollupDictionaryMetrics")
-  (param $totalNodesSize i32)
-  (param $totalNodes i32)
+  (param $nodesCount i32)
+  (param $nodeToDict i32)
+  (param $nested i32)
   (param $nodeSelfValues i32)
   (param $nodeNestedValues i32)
-  (param $totalNodeToDict i32)
   (param $totalValues i32)
   (local $index i32)
   (local $nodeOffset i32)
   (local $value f64)
   (local $resultAddr i32)
 
-  ;; for (let i = totalNodesSize - 1; i >= 0; i--) {
-  ;;     const nodeId = totalNodes[i];
-  ;;     totalValues[totalNodeToDict[i]] += nodeSelfValues[nodeId] + nodeNestedValues[nodeId];
+  ;; for (let i = nodesCount - 1; i >= 0; i--) {
+  ;;     if (nested[i] === 0) {
+  ;;         totalValues[nodeToDict[i]] += nodeSelfValues[i] + nodeNestedValues[i];
+  ;;     }
   ;; }
 
-  (local.set $index (local.get $totalNodesSize))
+  (local.set $index (local.get $nodesCount))
 
   (block $exit
     (loop $loop
@@ -140,13 +143,11 @@
 
       (local.set $index (i32.sub (local.get $index) (i32.const 1)))
 
-      ;; nodeOffset = totalNodes[i] * 8
-      (local.set $nodeOffset
-        (i32.shl
-          (i32.load (i32.add (local.get $totalNodes) (i32.shl (local.get $index) (i32.const 2))))
-          (i32.const 3)
-        )
+      (br_if $loop
+        (i32.load (i32.add (local.get $nested) (i32.shl (local.get $index) (i32.const 2))))
       )
+
+      (local.set $nodeOffset (i32.shl (local.get $index) (i32.const 3)))
 
       (br_if $loop
         (f64.eq
@@ -164,7 +165,7 @@
         (i32.add
           (local.get $totalValues)
           (i32.shl
-            (i32.load (i32.add (local.get $totalNodeToDict) (i32.shl (local.get $index) (i32.const 2))))
+            (i32.load (i32.add (local.get $nodeToDict) (i32.shl (local.get $index) (i32.const 2))))
             (i32.const 3)
           )
         )

@@ -2,7 +2,7 @@ import { Observer, exposeGetters } from './misc.js';
 import { CpuProNode } from '../types.js';
 import { CallTree, AncestorSubsetCallTree } from './call-tree.js';
 import { Population, PopulationFiltered } from './population.js';
-import { computeMetrics, createSampleBreakdownMaps, type DimensionMaps } from './metrics.compute.js';
+import { computeMetrics, createDimensionMaps, type DimensionMaps } from './metrics.compute.js';
 
 export type DictDimension<T extends CpuProNode> = {
     all: DictionaryMetrics<T>;
@@ -403,7 +403,7 @@ export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>
     population: PopulationFiltered,
     trees: [...T]
 ) {
-    const dimensions = createSampleBreakdownMaps(trees);
+    const dimensions = trees.map(createDimensionMaps);
 
     for (let i = 0; i < dimensions.length; i++) {
         computeMetrics(population.samplesCount, population.samplesTotal, dimensions[i].treeMap, dimensions[i].dictMap);
