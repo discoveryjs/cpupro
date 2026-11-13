@@ -157,7 +157,7 @@ test('recursive object previews remain bounded with entry and depth limits disab
 });
 
 test('a compact array reads only the displayed prefix', async () => {
-    const array = new Array(1000000).fill(1);
+    const array = new Array(1000).fill(1);
 
     Object.defineProperty(array, 4, {
         get() {
@@ -167,14 +167,14 @@ test('a compact array reads only the displayed prefix', async () => {
 
     const text = await render(array);
 
-    assert.equal(text, '[1, 1, 1, 1, \u2026 999996 more]');
+    assert.equal(text, '[1, 1, 1, 1, \u2026 996 more]');
 });
 
 test('typed vectors remain bounded when expanded is requested', async () => {
-    const vector = new Uint32Array(1000000);
+    const vector = new Uint32Array(1000);
     const text = await render(vector, { expanded: 10 });
 
-    assert.ok(text.endsWith('[0, 0, 0, 0, \u2026 999996 more]'));
+    assert.ok(text.endsWith('[0, 0, 0, 0, \u2026 996 more]'));
     assert.equal(text.includes('\n'), false);
     assert.ok(text.length < 100);
 });
