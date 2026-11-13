@@ -17,10 +17,14 @@ const FIELDS = [
     'name',
     'defaultConstructor',
     'start',
+    'startLine',
+    'startColumn',
     'end',
     'callFrameStart',
     'callFrameStartLine',
-    'callFrameStartColumn'
+    'callFrameStartColumn',
+    'endLine',
+    'endColumn'
 ];
 
 // Node strips types of the TypeScript modules, their imports name the modules with .js

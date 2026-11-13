@@ -59,28 +59,40 @@ test('source ranges include leading comments and declaration prefixes, runtime r
     const coordinates = (range: FunctionRange) => ({
         name: range.name,
         start: range.start,
+        startLine: range.startLine,
+        startColumn: range.startColumn,
         callFrameStart: range.callFrameStart,
         callFrameStartLine: range.callFrameStartLine,
         callFrameStartColumn: range.callFrameStartColumn,
-        end: range.end
+        end: range.end,
+        endLine: range.endLine,
+        endColumn: range.endColumn
     });
 
     assert.deepEqual(ranges.map(coordinates), [
         {
             name: 'outer',
             start: 0,
+            startLine: 1,
+            startColumn: 0,
             callFrameStart: 26,
             callFrameStartLine: 2,
             callFrameStartColumn: 14,
-            end: 68
+            end: 68,
+            endLine: 4,
+            endColumn: 1
         },
         {
             name: 'inner',
             start: 35,
+            startLine: 3,
+            startColumn: 4,
             callFrameStart: 61,
             callFrameStartLine: 3,
             callFrameStartColumn: 30,
-            end: 66
+            end: 66,
+            endLine: 3,
+            endColumn: 35
         }
     ]);
 });

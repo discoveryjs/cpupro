@@ -16,7 +16,11 @@ export type FunctionRange = {
     callFrameStartLine: number;
     callFrameStartColumn: number;
     start: number; // with the leading comments
+    startLine: number;
+    startColumn: number;
     end: number;
+    endLine: number;
+    endColumn: number;
     selfSize: number;
 }
 // Function ranges of several scripts as columns, the ranges of a script follow the ranges of the previous one;
@@ -37,7 +41,11 @@ export function createFunctionRangeColumns(count: number): FunctionRangeColumns 
         name: new Array(count),
         defaultConstructor: new Uint8Array(count),
         start: new Uint32Array(count),
+        startLine: new Uint32Array(count),
+        startColumn: new Uint32Array(count),
         end: new Uint32Array(count),
+        endLine: new Uint32Array(count),
+        endColumn: new Uint32Array(count),
         callFrameStart: new Uint32Array(count),
         callFrameStartLine: new Uint32Array(count),
         callFrameStartColumn: new Uint32Array(count),
@@ -65,7 +73,11 @@ export function writeFunctionRanges(
         columns.name[index] = range.name;
         columns.defaultConstructor[index] = range.defaultConstructor ? 1 : 0;
         columns.start[index] = range.start;
+        columns.startLine[index] = range.startLine;
+        columns.startColumn[index] = range.startColumn;
         columns.end[index] = range.end;
+        columns.endLine[index] = range.endLine;
+        columns.endColumn[index] = range.endColumn;
         columns.callFrameStart[index] = range.callFrameStart;
         columns.callFrameStartLine[index] = range.callFrameStartLine;
         columns.callFrameStartColumn[index] = range.callFrameStartColumn;
@@ -89,11 +101,15 @@ export function readFunctionRanges(
             type: types[columns.type[index]],
             name: columns.name[index],
             defaultConstructor: columns.defaultConstructor[index] === 1,
-            start: columns.start[index],
-            end: columns.end[index],
             callFrameStart: columns.callFrameStart[index],
             callFrameStartLine: columns.callFrameStartLine[index],
             callFrameStartColumn: columns.callFrameStartColumn[index],
+            start: columns.start[index],
+            startLine: columns.startLine[index],
+            startColumn: columns.startColumn[index],
+            end: columns.end[index],
+            endLine: columns.endLine[index],
+            endColumn: columns.endColumn[index],
             selfSize: columns.selfSize[index]
         };
     }
@@ -156,23 +172,31 @@ export function parseScriptSourceRanges(
     return functionRanges;
 }
 
-// Ranges of parsed functions with the line (1-based) and column (0-based) of their call frame starts
+// Ranges of parsed functions with lines (1-based) and columns (0-based) of their call frame starts, starts and ends
 function createFunctionRanges(parsed: ParsedFunctionRanges, lines: ReturnType<typeof createLineBoundaries>) {
     const ranges: FunctionRange[] = new Array(parsed.count);
 
     for (let i = 0; i < parsed.count; i++) {
         const callFrameStart = parsed.callFrameStart[i];
         const callFrameStartLine = lines.lineOf(callFrameStart);
+        const start = parsed.start[i];
+        const startLine = lines.lineOf(start);
+        const end = parsed.end[i];
+        const endLine = lines.lineOf(end);
 
         ranges[i] = {
             type: functionRangeTypes[parsed.type[i]],
             name: parsed.name[i] ?? '',
             defaultConstructor: parsed.defaultConstructor[i],
-            start: parsed.start[i],
-            end: parsed.end[i],
             callFrameStart,
             callFrameStartLine: callFrameStartLine + 1,
             callFrameStartColumn: lines.columnOf(callFrameStart, callFrameStartLine),
+            start,
+            startLine: startLine + 1,
+            startColumn: lines.columnOf(start, startLine),
+            end,
+            endLine: endLine + 1,
+            endColumn: lines.columnOf(end, endLine),
             selfSize: 0
         };
     }

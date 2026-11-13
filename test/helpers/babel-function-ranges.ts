@@ -142,15 +142,23 @@ function createRange(node: Node, parent: Node | null, code: string, parenStarts:
         }
     }
 
+    const start = leadingComment !== undefined
+        ? leadingComment
+        : node;
+
     return {
         type: node.type,
         name: nameOf(node, parent),
         defaultConstructor: isClassWithoutConstructor(node),
-        start: leadingComment !== undefined ? leadingComment.start : node.start,
-        end: node.end,
         callFrameStart,
         callFrameStartLine,
         callFrameStartColumn,
+        start: start.start,
+        startLine: start.loc.start.line,
+        startColumn: start.loc.start.column,
+        end: node.end,
+        endLine: node.loc.end.line,
+        endColumn: node.loc.end.column,
         selfSize: 0
     };
 }
