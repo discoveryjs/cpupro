@@ -13,7 +13,7 @@ import { resolveCompilationCallFrames } from './preprocessing/compilation-events
 import { createLocationsFromScriptOffsets } from './preprocessing/locations.js';
 import { detectRuntime } from './misc/detect-runtime.js';
 import { createSampledTreeSet } from './computations/sampled-tree-set.js';
-import { collectProfileUsedScriptIds, ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
+import { ProfileScriptsMap, scriptOffsetsFromLineColumns } from './preprocessing/scripts.js';
 import { SourceMapping } from './preprocessing/source-mapping.js';
 import { prepareScriptSources } from './misc/script-function-resolution.js';
 import { Dictionary } from './dictionary.js';
@@ -104,16 +104,11 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     } = options || {};
     const lines: ProfileLine[] = [];
 
-    // Prepare script sources in advance (if any), so that they are available for line-column
-    // and script-offset mapping to functions (call frames).
-    // The parsing might be done in a workers, which is not only about performance,
-    // but also about memory pressure while parsing large amount of script sources.
+    // Sources of the profile's scripts are parsed in workers while the call stack timeline is created,
+    // their function ranges map line-columns and script offsets to functions (call frames)
     const preparseStart = performance.now();
-    const preparseScriptSourcesResult = profileScriptsMap.size > 0
-        ? prepareScriptSources(
-            profileScriptsMap.getScriptsById(collectProfileUsedScriptIds(data, compilations)),
-            diagnose
-        ).finally(() => {
+    const preparseScriptSourcesResult = profileScriptsMap.inputScripts.size > 0
+        ? prepareScriptSources(profileScriptsMap.inputScripts, diagnose).finally(() => {
             performance.measure('preparseScriptSources', { start: preparseStart });
         })
         : Promise.resolve();

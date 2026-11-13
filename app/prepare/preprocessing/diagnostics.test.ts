@@ -19,10 +19,14 @@ function createScriptsMap() {
     };
 }
 
-test('reports used script ids that are not found, except the absent script id 0', () => {
+test('reports script ids of a profile with scripts that are not found, except the absent script id 0', () => {
     const { diagnostics, scripts } = createScriptsMap();
 
-    scripts.getScriptsById([7, 99, 0, '0']);
+    scriptFromScriptId(7, 'fixture.js', scripts);
+    scriptFromScriptId(99, null, scripts);
+    scriptFromScriptId(99, null, scripts);
+    scriptFromScriptId(0, null, scripts);
+    scriptFromScriptId('0', null, scripts);
 
     assert.deepEqual(diagnostics, [
         {
@@ -49,6 +53,26 @@ test('reports a normalized script id only when it already belongs to a script', 
             scope: [],
             message: 'Script already exists for normalized script id',
             details: { scriptId: 7, originalScriptId: ':7' }
+        }
+    ]);
+});
+
+test('reports a script id of compilation records that is not found once', () => {
+    const { diagnostics, scripts } = createScriptsMap();
+    const thread = { scripts: [] } as unknown as CpuProThread;
+
+    thread.compilations = [
+        createCompilationRecord({ scriptId: 99 }),
+        createCompilationRecord({ scriptId: 99 })
+    ];
+    linkThreadScripts(thread, scripts);
+
+    assert.deepEqual(diagnostics, [
+        {
+            level: 'warn',
+            scope: [],
+            message: 'Script not found for id',
+            details: { scriptId: 99 }
         }
     ]);
 });

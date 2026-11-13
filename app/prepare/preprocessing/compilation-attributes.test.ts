@@ -13,7 +13,6 @@ import {
     createMemlineAllocationOwnerAttribute,
     createMemlineAllocationCompilationStageAttribute
 } from '../lines/memline-attributes.mjs';
-import { collectProfileUsedScriptIds } from './scripts.js';
 import { prepareCompilationRecords } from './compilation-events.js';
 import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
 
@@ -379,8 +378,6 @@ test('empty allocation intervals do not trigger sorting of otherwise ordered sou
 
 test('thread records remain available without capture or isolate agreement', () => {
     const { data, records, dictionary, rawSession } = sourceFixture();
-
-    assert.deepEqual([...collectProfileUsedScriptIds(data, records)], [0, 7, 8]);
 
     rawSession.threads[0].isolate = 'different';
     data._capture = undefined;

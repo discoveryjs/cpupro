@@ -1,4 +1,4 @@
-import type { CpuProCompilationRecord, CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
@@ -6,6 +6,7 @@ import { createLineBoundaries } from '../misc/line-boundaries.js';
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
     diagnose: Diagnose;
+    inputScripts: Set<CpuProScript>;
     #scriptById: Map<number | string, CpuProScript>;
     #scriptIdFromString: Map<string, number>;
     #scriptIndexByUrl: Map<string, number[]>;
@@ -18,6 +19,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     ) {
         this.dict = dict;
         this.diagnose = diagnose;
+        this.inputScripts = new Set();
         this.#scriptById = new Map();
         this.#scriptIdFromString = new Map();
         this.#scriptIndexByUrl = new Map();
@@ -62,6 +64,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
             const script: CpuProScript = this.resolveScript(id, url, source)!;
 
             this.set(id, script);
+            this.inputScripts.add(script);
 
             script.lineOffset = lineOffset;
             script.columnOffset = columnOffset;
@@ -84,22 +87,6 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     }
     entries() {
         return this.#scriptById.entries();
-    }
-
-    getScriptsById(ids: Set<number | string> | (number | string)[]) {
-        const scripts: CpuProScript[] = [];
-
-        for (const id of ids) {
-            const script = this.#scriptById.get(id);
-
-            if (script) {
-                scripts.push(script);
-            } else if (!isNoScriptId(id)) {
-                this.diagnose('warn', 'Script not found for id', { scriptId: id });
-            }
-        }
-
-        return scripts;
     }
 
     #getScriptIndexByUrl(scriptId: number, url: string): number {
@@ -208,6 +195,12 @@ export function scriptFromScriptId(
         // resolveScript() registers the script by normScriptId itself, so check before it
         const normScriptIdExists = scriptsMap.has(normScriptId);
 
+        // a profile given with its scripts refers to a script id it doesn't have; a negative id is given
+        // to a script known by its url only
+        if (normScriptId > 0 && !normScriptIdExists && scriptsMap.inputScripts.size > 0) {
+            scriptsMap.diagnose('warn', 'Script not found for id', { scriptId });
+        }
+
         script = scriptsMap.resolveScript(normScriptId, url) as CpuProScript;
         scriptsMap.set(scriptId, script);
 
@@ -304,55 +297,4 @@ export function scriptOffsetsFromLineColumns(
     }
 
     return result;
-}
-
-// Extract all script ids used in the profile, in all known places
-// (nodes, callFrames, allocation locations, compilation events)
-export function collectProfileUsedScriptIds(data: V8CpuProfile, compilations: readonly CpuProCompilationRecord[] | null = null) {
-    const {
-        nodes,
-        _callFrames,
-        _cpuproAllocationScriptIds
-    } = data;
-    const usedScriptIds = new Set<number | string>();
-
-    for (let i = 0; i < nodes.length; i++) {
-        const callFrame = nodes[i].callFrame;
-
-        // when callFrame is a number, it is an index into _callFrames array,
-        // otherwise it is a callFrame object
-        if (typeof callFrame !== 'number') {
-            usedScriptIds.add(callFrame.scriptId);
-        }
-    }
-
-    if (Array.isArray(_callFrames)) {
-        for (let i = 0; i < _callFrames.length; i++) {
-            usedScriptIds.add(_callFrames[i].scriptId);
-        }
-    }
-
-    if (_cpuproAllocationScriptIds !== undefined) {
-        let prevScriptId: number | null = null;
-
-        // Allocation script ids form long runs, so the set is updated only on value changes
-        for (let i = 0; i < _cpuproAllocationScriptIds.length; i++) {
-            if (_cpuproAllocationScriptIds[i] !== prevScriptId) {
-                prevScriptId = _cpuproAllocationScriptIds[i];
-                usedScriptIds.add(prevScriptId);
-            }
-        }
-    }
-
-    if (Array.isArray(compilations)) {
-        for (let index = 0; index < compilations.length; index++) {
-            const { scriptId } = compilations[index];
-
-            if (scriptId !== null && scriptId > 0) {
-                usedScriptIds.add(scriptId);
-            }
-        }
-    }
-
-    return usedScriptIds;
 }

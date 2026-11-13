@@ -139,11 +139,20 @@ function resolveCompilationStateIndex(
 export function processScriptCompilation(records: CpuProCompilationRecord[], scripts: IProfileScriptsMap) {
     const recordsByScript = new Map<number, CpuProCompilationRecord[]>();
     const result = new Map<number, ScriptCompilation>();
+    const missingScriptIds = new Set<number>();
 
     for (const record of records) {
         const script = record.scriptId !== null
             ? scripts.get(record.scriptId)
             : undefined;
+
+        // records of a profile given with its scripts refer to a script id it doesn't have
+        if (script === undefined && record.scriptId !== null && record.scriptId > 0 && scripts.inputScripts.size > 0) {
+            if (!missingScriptIds.has(record.scriptId)) {
+                missingScriptIds.add(record.scriptId);
+                scripts.diagnose('warn', 'Script not found for id', { scriptId: record.scriptId });
+            }
+        }
 
         if (script && record.scriptId !== null) {
             let entries = recordsByScript.get(record.scriptId);

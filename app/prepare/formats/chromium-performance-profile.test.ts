@@ -3,7 +3,6 @@ import { test, vi } from 'vitest';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './chromium-performance-profile.js';
 import { isCPUProfile } from './cpuprofile.js';
 import { createDiagnosticsCollector, type Diagnose } from '../diagnostics.js';
-import { collectProfileUsedScriptIds } from '../preprocessing/scripts.js';
 import { Dictionary } from '../dictionary.js';
 import { createProfileSession } from '../profile-session.mjs';
 import { createProfile } from '../profile.mjs';
@@ -424,7 +423,6 @@ test('preserves instant and complete compilation allocation events with their fu
     assert.deepEqual(traceEvents.map(event => event.ts), [0, 20, 10, 30]);
     assert.equal(session.threads[0].userTimings.length, 0);
     assert.equal('_events' in session.profiles[0], false);
-    assert.deepEqual([...collectProfileUsedScriptIds(session.profiles[0], session.threads[0].compilations)], [5]);
     assert.deepEqual(
         session.threads[0].compilations!.map(record => [record.line, record.column]),
         [[0, 3097], [0, 3097]]

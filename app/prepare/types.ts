@@ -467,6 +467,7 @@ export type CpuProScript = {
 }
 export interface IProfileScriptsMap {
     diagnose: Diagnose;
+    inputScripts: Set<CpuProScript>; // the scripts given with the profile
     get(scriptId: number | string): CpuProScript | undefined;
     has(scriptId: number | string): boolean;
     set(scriptId: number | string, script: CpuProScript): void;
