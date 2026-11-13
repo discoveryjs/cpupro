@@ -10,8 +10,8 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     sourceMaps: Map<CpuProScript, SourceMap>; // of the input scripts, kept by the input rather than by the scripts
     #scriptById: Map<number | string, CpuProScript>;
     #scriptIdFromString: Map<string, number>;
-    #scriptIndexByUrl: Map<string, number[]>;
     #scriptByUrl: Map<string, CpuProScript[]>;
+    #takenScripts: Set<CpuProScript>; // scripts of the profile's ids, which other ids of the profile don't take
 
     constructor(
         dict: Dictionary,
@@ -24,7 +24,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         this.sourceMaps = new Map();
         this.#scriptById = new Map();
         this.#scriptIdFromString = new Map();
-        this.#scriptIndexByUrl = new Map();
+        this.#takenScripts = new Set();
         this.#scriptByUrl = this.#createScriptByUrlMap(dict.scripts);
 
         this.#addScripts(scripts);
@@ -34,7 +34,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         const scriptByUrlMap = new Map<string, CpuProScript[]>();
 
         for (const script of scripts) {
-            const { url } = script; // FIXME: use script.source
+            const { url } = script;
             let scriptByUrl = scriptByUrlMap.get(url || '');
 
             if (scriptByUrl === undefined) {
@@ -89,29 +89,11 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         return this.#scriptById.has(scriptId);
     }
     set(scriptId: number | string, script: CpuProScript): this {
+        this.#takenScripts.add(script);
         return this.#scriptById.set(scriptId, script) && this;
     }
     entries() {
         return this.#scriptById.entries();
-    }
-
-    #getScriptIndexByUrl(scriptId: number, url: string): number {
-        let byUrl = this.#scriptIndexByUrl.get(url);
-        let seed = -1;
-
-        if (byUrl === undefined) {
-            seed = 0;
-            byUrl = [scriptId];
-            this.#scriptIndexByUrl.set(url, byUrl);
-        } else {
-            seed = byUrl.indexOf(scriptId);
-
-            if (seed === -1) {
-                seed = byUrl.push(scriptId) - 1;
-            }
-        }
-
-        return seed;
     }
 
     resolveScript(scriptId: number, url?: string | null, source?: string | null) {
@@ -125,17 +107,16 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         if (script === undefined) {
             url ||= '';
 
-            const scriptIndexByUrl = this.#getScriptIndexByUrl(scriptId, url);
-
-            // FIXME: must take into account the source if provided
             let scriptByUrl = this.#scriptByUrl.get(url);
             if (scriptByUrl === undefined) {
                 scriptByUrl = [];
                 this.#scriptByUrl.set(url, scriptByUrl);
             }
 
-            if (scriptIndexByUrl < scriptByUrl.length) {
-                script = scriptByUrl[scriptIndexByUrl];
+            const sharedScript = this.#findSharedScript(scriptByUrl, source ?? null);
+
+            if (sharedScript !== null) {
+                script = sharedScript;
             } else {
                 script = createScript(this.dict.scripts.length + 1, url, source);
                 script.module = this.dict.resolveModule(script); // ensure script has module
@@ -147,6 +128,27 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         }
 
         return script;
+    }
+
+    // Profiles of a dataset share the script of a URL and a source, so the call frames of the script are shared too.
+    // Scripts of one URL differ by their sources, e.g. versions of a script or scripts without a URL in the profiles
+    // of different processes, so a script with a source takes a script of its source only, never one without a source
+    // whose source it would lose; a script without one takes any script of its URL. Distinct ids of a profile are
+    // distinct scripts, so a profile takes a script once
+    #findSharedScript(scriptByUrl: CpuProScript[], source: string | null) {
+        for (let i = 0; i < scriptByUrl.length; i++) {
+            const candidate = scriptByUrl[i];
+
+            if (this.#takenScripts.has(candidate)) {
+                continue;
+            }
+
+            if (source === null || candidate.source === source) {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     normalizeScriptId(scriptId: string | number): number {
