@@ -117,38 +117,58 @@ function resolveBuiltinCallFrame(
     }, null as unknown as IProfileScriptsMap);
 }
 
-function resolveCallFrameFromContextInfo(
-    dictionary: Dictionary,
-    contextInfoValue: number,
-    vmStateCallFrames: (CpuProCallFrame | null)[],
-    builtinsCallFrames: (CpuProCallFrame | null)[]
-): CpuProCallFrame {
-    let callFrame: CpuProCallFrame | null;
+// Context info of an allocation (V8's EncodeContextInfo) holds a VM state in bits 0-3 and a builtin in bits 4-31
+// as its id + 1, 0 without a builtin. The fields are independent, a compiler may allocate under a builtin;
+// the names of VM states and builtins are keyed by the fields
+export function contextInfoVmState(contextInfo: number) {
+    return contextInfo & 0x0f;
+}
 
-    if (contextInfoValue === 0) {
-        // Safeguard: check we are not trying to resolve a call frame for context info value 0, which is invalid
-        throw new Error('Context info value cannot be zero when resolving call frame');
+export function contextInfoBuiltin(contextInfo: number) {
+    return contextInfo >>> 4;
+}
+
+// What allocates in a context: a VM state other than JS (0) takes precedence over a builtin
+export function contextInfoKind(contextInfo: number): 'js' | 'vm-state' | 'builtin' {
+    if (contextInfoVmState(contextInfo) !== 0) {
+        return 'vm-state';
     }
 
-    if (contextInfoValue <= 0x0f) {
-        callFrame = vmStateCallFrames[contextInfoValue];
+    if (contextInfoBuiltin(contextInfo) !== 0) {
+        return 'builtin';
+    }
 
-        if (!callFrame) {
-            // TODO: add a diagnostic here to indicate that an unknown VM state code was encountered
-            callFrame = resolveVmStateCallFrame(dictionary, `unknown-vm-state[${contextInfoValue}]`);
-            callFrame.kind = 'vm-state';
-            vmStateCallFrames[contextInfoValue] = callFrame;
-        }
-    } else {
-        const builtinId = contextInfoValue >>> 4;
+    return 'js';
+}
 
-        callFrame = builtinsCallFrames[builtinId];
+function resolveContextVmStateCallFrame(
+    dictionary: Dictionary,
+    vmState: number,
+    vmStateCallFrames: (CpuProCallFrame | null)[]
+): CpuProCallFrame {
+    let callFrame = vmStateCallFrames[vmState];
 
-        if (!callFrame) {
-            // TODO: add a diagnostic here to indicate that an unknown builtin code was encountered
-            callFrame = resolveBuiltinCallFrame(dictionary, `unknown-builtin[${builtinId}]`);
-            builtinsCallFrames[builtinId] = callFrame;
-        }
+    if (!callFrame) {
+        // TODO: add a diagnostic here to indicate that an unknown VM state code was encountered
+        callFrame = resolveVmStateCallFrame(dictionary, `unknown-vm-state[${vmState}]`);
+        callFrame.kind = 'vm-state';
+        vmStateCallFrames[vmState] = callFrame;
+    }
+
+    return callFrame;
+}
+
+function resolveContextBuiltinCallFrame(
+    dictionary: Dictionary,
+    builtin: number,
+    builtinsCallFrames: (CpuProCallFrame | null)[]
+): CpuProCallFrame {
+    let callFrame = builtinsCallFrames[builtin];
+
+    if (!callFrame) {
+        // TODO: add a diagnostic here to indicate that an unknown builtin code was encountered
+        callFrame = resolveBuiltinCallFrame(dictionary, `unknown-builtin[${builtin}]`);
+        builtinsCallFrames[builtin] = callFrame;
     }
 
     return callFrame;
@@ -235,7 +255,8 @@ export function createVectorLocations(
         [1, 0],
         [0, 1]
     ]);
-    const contextNodes = new Map<number, Map<number, number>>();
+    const childNodes = new Map<number, Map<number, number>>(); // location → parent → node
+    const contextNodes = new Map<number, Map<number, number>>(); // context info → parent → node
 
     const addNode = (parent: number, locationIndex: number) => {
         nodeParent.push(parent);
@@ -255,6 +276,31 @@ export function createVectorLocations(
         return node;
     };
 
+    // A child of the root is the node of its location
+    const childNode = (parent: number, locationIndex: number) => {
+        if (parent === 0) {
+            return locationNode(locationIndex);
+        }
+
+        let nodeByParent = childNodes.get(locationIndex);
+
+        if (nodeByParent === undefined) {
+            nodeByParent = new Map();
+            childNodes.set(locationIndex, nodeByParent);
+        }
+
+        let node = nodeByParent.get(parent);
+
+        if (node === undefined) {
+            node = addNode(parent, locationIndex);
+            nodeByParent.set(parent, node);
+        }
+
+        return node;
+    };
+
+    // Context info under a node is a chain of its builtin and then its VM state other than JS, so neither is lost
+    // when a VM state allocates under a builtin; contexts of a builtin under the same node share its node
     const contextNode = (parent: number, contextInfoValue: number) => {
         let nodeByParent = contextNodes.get(contextInfoValue);
 
@@ -266,14 +312,23 @@ export function createVectorLocations(
         let node = nodeByParent.get(parent);
 
         if (node === undefined) {
-            const callFrame = resolveCallFrameFromContextInfo(
-                dictionary,
-                contextInfoValue,
-                vmStateCallFrames,
-                builtinsCallFrames
-            );
+            const builtin = contextInfoBuiltin(contextInfoValue);
+            const vmState = contextInfoVmState(contextInfoValue);
 
-            node = addNode(parent, dictionary.resolveLocationIndex(callFrame));
+            node = parent;
+
+            if (builtin !== 0) {
+                const callFrame = resolveContextBuiltinCallFrame(dictionary, builtin, builtinsCallFrames);
+
+                node = childNode(node, dictionary.resolveLocationIndex(callFrame));
+            }
+
+            if (vmState !== 0) {
+                const callFrame = resolveContextVmStateCallFrame(dictionary, vmState, vmStateCallFrames);
+
+                node = childNode(node, dictionary.resolveLocationIndex(callFrame));
+            }
+
             nodeByParent.set(parent, node);
         }
 
@@ -328,14 +383,7 @@ export function createVectorLocations(
                     node = contextNode(node, contextInfoValue);
                 }
             } else if (contextInfoValue !== 0) {
-                const callFrame = resolveCallFrameFromContextInfo(
-                    dictionary,
-                    contextInfoValue,
-                    vmStateCallFrames,
-                    builtinsCallFrames
-                );
-
-                node = locationNode(dictionary.resolveLocationIndex(callFrame));
+                node = contextNode(0, contextInfoValue);
             }
 
             siteNodes[site] = node;

@@ -3,7 +3,7 @@ import { test } from 'vitest';
 import { createScriptFixture, parseScriptFixture } from '../../../test/fixtures/scripts.js';
 import { Dictionary } from '../dictionary.js';
 import { ProfileScriptsMap } from './scripts.js';
-import { createLocationsFromScriptOffsets, createVectorLocations } from './locations.js';
+import { contextInfoBuiltin, contextInfoKind, contextInfoVmState, createLocationsFromScriptOffsets, createVectorLocations } from './locations.js';
 import type { CpuProLocation } from '../types.js';
 
 // Offsets 15 and 22 are inside "a" of script 7 and inside "c" of script 8, offsets 44 and 51 are inside "b"
@@ -91,7 +91,7 @@ test.each<{
         nodes: 2
     },
     {
-        title: 'without a script to VM states up to 0x0f and to builtins above it',
+        title: 'without a script to VM states in bits 0-3 and to builtins in bits above them',
         scriptIds: [0, 0, 0, 0, 0],
         scriptOffsets: [-1, -1, -1, -1, -1],
         contextInfo: [1, 1, 2, 0x0f, 0x20],
@@ -144,6 +144,35 @@ test.each<{
         nodes: 14
     },
     {
+        title: 'without a script to a VM state under a builtin, keeping both',
+        scriptIds: [0, 0, 0, 0],
+        scriptOffsets: [-1, -1, -1, -1],
+        contextInfo: [0x23, 0x20, 0x23, 3],
+        vmStateNames: { 3: 'bytecode compiler' },
+        builtinsNames: { 2: 'ArrayForEach' },
+        paths: [
+            '(bytecode compiler):-1 < (builtin) ArrayForEach:-1',
+            '(builtin) ArrayForEach:-1',
+            '(bytecode compiler):-1 < (builtin) ArrayForEach:-1',
+            '(bytecode compiler):-1'
+        ],
+        nodes: 5
+    },
+    {
+        title: 'at a script offset to a VM state under a builtin of the location, keeping both',
+        scriptIds: [7, 7, 7],
+        scriptOffsets: [22, 22, 22],
+        contextInfo: [0x23, 0x20, 3],
+        vmStateNames: { 3: 'bytecode compiler' },
+        builtinsNames: { 2: 'ArrayForEach' },
+        paths: [
+            '(bytecode compiler):-1 < (builtin) ArrayForEach:-1 < a:22',
+            '(builtin) ArrayForEach:-1 < a:22',
+            '(bytecode compiler):-1 < a:22'
+        ],
+        nodes: 6
+    },
+    {
         title: 'of empty vectors to the root and unknown nodes only',
         scriptIds: [],
         scriptOffsets: [],
@@ -170,6 +199,19 @@ test.each<{
     assert.deepEqual(allocationPaths(dictionary, result), row.paths);
     assert.equal(result.parent.length, row.nodes);
     assert.deepEqual(dictionary.scripts.map(script => script.url), ['first.js', 'second.js']);
+});
+
+// Values of a trace: the names of builtins are keyed by the field, its id + 1 (ArrayForEach is 1149 there)
+test.each([
+    { contextInfo: 3, vmState: 3, builtin: 0, kind: 'vm-state' },
+    { contextInfo: 11072, vmState: 0, builtin: 692, kind: 'builtin' },
+    { contextInfo: 18387, vmState: 3, builtin: 1149, kind: 'vm-state' },
+    { contextInfo: 0x8000_0000, vmState: 0, builtin: 0x0800_0000, kind: 'builtin' },
+    { contextInfo: 0, vmState: 0, builtin: 0, kind: 'js' }
+])('context info $contextInfo is VM state $vmState and builtin $builtin, of kind $kind', row => {
+    assert.equal(contextInfoVmState(row.contextInfo), row.vmState);
+    assert.equal(contextInfoBuiltin(row.contextInfo), row.builtin);
+    assert.equal(contextInfoKind(row.contextInfo), row.kind);
 });
 
 test.each([
