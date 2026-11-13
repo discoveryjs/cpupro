@@ -1,4 +1,5 @@
 import type { EventClasses } from './population-filter.js';
+import { stepStarts } from './misc.js';
 import { createRecordsBuffer, recordsApiOf, type RecordsBuffer } from './population-records.compute.js';
 
 // Parts follow a grid of bins on the population's own value axis, so ranges on that grid cover whole parts;
@@ -210,13 +211,11 @@ export class PopulationRecords {
 // Starts of parts of events, plus the end of the last part: bins of a grid on the value axis, empty bins
 // dropped and bins with many events split
 function splitParts(cumulative: Float64Array, cumulativeEnd: number) {
-    const eventCount = cumulative.length;
+    const binStarts = stepStarts(cumulative, GRID_BIN_COUNT, cumulativeEnd / GRID_BIN_COUNT);
     const starts = [0];
 
     for (let i = 1; i <= GRID_BIN_COUNT; i++) {
-        const end = i === GRID_BIN_COUNT
-            ? eventCount
-            : findCumulativeBoundary(cumulative, cumulativeEnd * i / GRID_BIN_COUNT);
+        const end = binStarts[i];
         let start = starts[starts.length - 1];
 
         while (end - start > MAX_PART_EVENTS) {
@@ -230,24 +229,6 @@ function splitParts(cumulative: Float64Array, cumulativeEnd: number) {
     }
 
     return Uint32Array.from(starts);
-}
-
-// First event with a coordinate at or after the value
-function findCumulativeBoundary(cumulative: Float64Array, value: number) {
-    let left = 0;
-    let right = cumulative.length;
-
-    while (left < right) {
-        const middle = (left + right) >>> 1;
-
-        if (cumulative[middle] < value) {
-            left = middle + 1;
-        } else {
-            right = middle;
-        }
-    }
-
-    return left;
 }
 
 // A record sums the events of a sample and a class in a part. Records are numbered in the order of parts, so table

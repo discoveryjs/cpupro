@@ -2,7 +2,7 @@ import type { PopulationFiltered } from '../computations/population.js';
 import type { EventClasses } from '../computations/population-filter.js';
 import type { PreparedAttributeFilter } from '../computations/attribute-filter.js';
 import { equalRanges, type RangeSet } from '../computations/coordinates.js';
-import { lowerBound } from '../computations/misc.js';
+import { lowerBound, stepStarts } from '../computations/misc.js';
 import { growTypedArray } from '../misc/utils.js';
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
 import {
@@ -235,46 +235,6 @@ export class RangeRecords {
         this.signatures = records.signatures.slice(0, records.count);
         this.weights = records.weights.slice(0, records.count);
     }
-}
-
-// Starts of the events of every step of nondecreasing values of events: the first event whose value is at least
-// so many steps, plus the end of the events for the last step
-function stepStarts(values: Uint32Array | Float64Array, stepCount: number, step: number) {
-    const starts = new Uint32Array(stepCount + 1);
-    let start = 0;
-
-    // PERF: Steps of nondecreasing values follow each other closely, so the start of a step is searched from the start
-    // of the one before it: doubling steps find an end of the search, halving finds the start in it, reading a few
-    // values near it rather than all of them
-    for (let i = 0; i < stepCount; i++) {
-        const threshold = i * step;
-        let end = start;
-        let size = 1;
-
-        while (end < values.length && values[end] < threshold) {
-            start = end + 1;
-            end += size;
-            size *= 2;
-        }
-
-        end = Math.min(end, values.length);
-
-        while (start < end) {
-            const middle = (start + end) >>> 1;
-
-            if (values[middle] < threshold) {
-                start = middle + 1;
-            } else {
-                end = middle;
-            }
-        }
-
-        starts[i] = start;
-    }
-
-    starts[stepCount] = values.length;
-
-    return starts;
 }
 
 /**

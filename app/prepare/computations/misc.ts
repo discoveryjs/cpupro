@@ -71,3 +71,43 @@ export function lowerBound(values: ArrayLike<number>, value: number, upper = fal
 
     return start;
 }
+
+// Starts of the events of every step of nondecreasing values of events: the first event whose value is at least
+// so many steps, plus the end of the events for the last step
+export function stepStarts(values: Uint32Array | Float64Array, stepCount: number, step: number) {
+    const starts = new Uint32Array(stepCount + 1);
+    let start = 0;
+
+    // PERF: Steps of nondecreasing values follow each other closely, so the start of a step is searched from the start
+    // of the one before it: doubling steps find an end of the search, halving finds the start in it, reading a few
+    // values near it rather than all of them
+    for (let i = 0; i < stepCount; i++) {
+        const threshold = i * step;
+        let end = start;
+        let size = 1;
+
+        while (end < values.length && values[end] < threshold) {
+            start = end + 1;
+            end += size;
+            size *= 2;
+        }
+
+        end = Math.min(end, values.length);
+
+        while (start < end) {
+            const middle = (start + end) >>> 1;
+
+            if (values[middle] < threshold) {
+                start = middle + 1;
+            } else {
+                end = middle;
+            }
+        }
+
+        starts[i] = start;
+    }
+
+    starts[stepCount] = values.length;
+
+    return starts;
+}
