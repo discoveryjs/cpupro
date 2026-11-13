@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { ProfileScriptsMap } from './scripts.js';
-import { linkThreadScripts, prepareCompilationSubjects, processScriptCompilation } from './script-compilation.js';
+import {
+    indexCompilationStages,
+    linkThreadScripts,
+    prepareCompilationSubjects,
+    processScriptCompilation
+} from './script-compilation.js';
 import { createProfileSession } from '../profile-session.mjs';
 import { extractFromChromiumPerformanceProfile } from '../formats/chromium-performance-profile.js';
 import { Dictionary } from '../dictionary.js';
@@ -193,4 +198,16 @@ test('a compilation subject takes the most advanced state of its complete record
         [0, 10, 'compiled', 2],
         [1, 30, 'pre-parsed', 2]
     ]);
+});
+
+test('compilation stages are the names of records in the order they are met, a record takes the index of its stage', () => {
+    const records = [
+        createCompilationRecord({ name: 'CompileFunction' }),
+        createCompilationRecord({ name: 'PreParse' }),
+        createCompilationRecord({ name: 'CompileFunction' }),
+        createCompilationRecord({ name: 'Turbofan.OptimizeCode' })
+    ];
+
+    assert.deepEqual(indexCompilationStages(records), ['CompileFunction', 'PreParse', 'Turbofan.OptimizeCode']);
+    assert.deepEqual(records.map(record => record.stage), [0, 1, 0, 2]);
 });

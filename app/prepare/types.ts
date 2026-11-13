@@ -257,6 +257,7 @@ export type CpuProThread = {
     events: UniformTraceEvent[];
     compilations?: CpuProCompilationRecord[];
     compilationSubjects?: CpuProCompilationSubject[];
+    compilationStages?: string[]; // names of the compilation records in the order they are met
     counters: CpuProCounterEntry[];
     userTimings: UniformTraceEvent[]; // subset of user defined events, e.g. cat="blink.user_timing" in Chromium traces
 }
@@ -274,6 +275,7 @@ export type CpuProCompilationRecord = UniformCompilationRecord & {
     event: UniformTraceEvent | null;
     callFrame: CpuProCallFrame | null; // the call frame of the record's subject
     subject: CpuProCompilationSubject | null; // given by prepareCompilationSubjects
+    stage: number; // the index of the record's stage in the compilation stages of its thread
 };
 
 // A compiled range of a script and the records of its compilations, which its call frame follows from

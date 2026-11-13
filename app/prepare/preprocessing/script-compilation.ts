@@ -115,6 +115,27 @@ export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): 
     return subjects;
 }
 
+// Stages of the compilation records of a thread: the names of the records in the order they are met, a record takes
+// the index of its stage
+export function indexCompilationStages(records: CpuProCompilationRecord[]) {
+    const stages: string[] = [];
+    const stageByName = new Map<string, number>();
+
+    for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        let stage = stageByName.get(record.name);
+
+        if (stage === undefined) {
+            stage = stages.push(record.name) - 1;
+            stageByName.set(record.name, stage);
+        }
+
+        record.stage = stage;
+    }
+
+    return stages;
+}
+
 // A function compiled at least to bytecode is activated
 export function completeCompilationSubjects(subjects: CpuProCompilationSubject[]) {
     for (let i = 0; i < subjects.length; i++) {
