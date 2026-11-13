@@ -270,13 +270,20 @@ test('splits a bin of more than 65,536 events into parts of at most 65,536 event
 });
 
 // Every event is a sample of its own, so every event is a record and records of 1.1M events fill more than a block
-// of 1M records; ranges and a sample filter cross the end of the first block
+// of records (records.blockSize); ranges and a sample filter cross the end of the first block
 test('metrics from records equal event aggregation across blocks of records', () => {
     const eventCount = 1_100_000;
     const population = new Population(createUint32Progression(eventCount), new Uint32Array(eventCount).fill(1));
     const viewport = new PopulationFiltered(population);
     const expected = new PopulationFiltered(population);
-    const accepts = Uint8Array.from({ length: eventCount }, (_, sample) => sample % 3 === 0 ? 0 : 1);
+    const accepts = new Uint8Array(eventCount);
+
+    for (let i = 0; i < eventCount; i++) {
+        if (i % 3 !== 0) {
+            accepts[i] = 1;
+        }
+    }
+
     const filter: PreparedAttributeFilter = { key: 'sample', domain: 'sample', size: eventCount, accepts };
 
     setEventPass(expected);
@@ -293,6 +300,8 @@ test('metrics from records equal event aggregation across blocks of records', ()
         viewport.setRanges(rangeSets[i]);
         expected.setRanges(rangeSets[i]);
 
+        // Records of blocks give metrics and counts; assertEqualPopulations also compares every event, ten times
+        // the cost of the test over 1.1M events
         assert.deepEqual(viewport.samplesTotal, expected.samplesTotal);
         assert.deepEqual(viewport.samplesCount, expected.samplesCount);
         assert.deepEqual(viewport.sink, expected.sink);
