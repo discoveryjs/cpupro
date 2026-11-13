@@ -40,12 +40,14 @@ const stageStates = new Map<string, number | null>([
     ['Turbofan.OptimizeConcurrentFinalize', 4]
 ]);
 
-// Subjects of the compilation records of a thread, the functions compiled, by script and start, with the state
-// of the latest stage reached. The call frame of a subject and what follows from it are known once the call frames
-// of the records are resolved (completeCompilationSubjects)
+// Subjects of the compilation records of a thread, the ranges compiled, with the state of the latest stage reached.
+// A subject is what its call frame follows from: the script, the start and the end of the range and the function
+// name. Stages of the compilation of a whole script are named by the script or by a function, as V8 compiles the top
+// level as a function, so they are of one subject. The call frame of a subject and what follows from it are known
+// once the call frames of subjects are resolved (completeCompilationSubjects)
 export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): CpuProCompilationSubject[] {
     const subjects: CpuProCompilationSubject[] = [];
-    const subjectIndexes = new Map<number | null, Map<number | null, number>>(); // script id → start → subject
+    const subjectIndexes = new Map<number | null, Map<number | null, number[]>>(); // script id → start → subjects
     const states: number[] = [];
 
     for (let i = 0; i < records.length; i++) {
@@ -57,17 +59,35 @@ export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): 
             subjectIndexes.set(record.scriptId, subjectsByStart);
         }
 
-        // PERF: Subjects are found by numbers rather than by a key string built for every record
-        let index = subjectsByStart.get(record.start);
+        // PERF: Subjects are found by numbers rather than by a key string built for every record; a start has
+        // a single subject as a rule
+        let startSubjects = subjectsByStart.get(record.start);
+        let index = -1;
 
-        if (index === undefined) {
+        if (startSubjects === undefined) {
+            startSubjects = [];
+            subjectsByStart.set(record.start, startSubjects);
+        }
+
+        for (let j = 0; j < startSubjects.length; j++) {
+            const subject = subjects[startSubjects[j]];
+
+            if (subject.end === record.end && subject.functionName === record.functionName) {
+                index = startSubjects[j];
+                break;
+            }
+        }
+
+        if (index === -1) {
             index = subjects.length;
-            subjectsByStart.set(record.start, index);
+            startSubjects.push(index);
             states.push(0);
             subjects.push({
                 subject: record.scriptId + ':' + record.start,
                 scriptId: record.scriptId,
                 start: record.start,
+                end: record.end,
+                functionName: record.functionName,
                 callFrame: null,
                 state: scriptCompilationStates[0],
                 activated: false,
@@ -94,19 +114,10 @@ export function prepareCompilationSubjects(records: CpuProCompilationRecord[]): 
     return subjects;
 }
 
-// The call frame of a subject is the first one of its records; a function compiled at least to bytecode is activated
+// A function compiled at least to bytecode is activated
 export function completeCompilationSubjects(subjects: CpuProCompilationSubject[]) {
     for (let i = 0; i < subjects.length; i++) {
         const subject = subjects[i];
-        const { records } = subject;
-
-        for (let j = 0; j < records.length; j++) {
-            if (records[j].callFrame !== null) {
-                subject.callFrame = records[j].callFrame;
-                break;
-            }
-        }
-
         const frame = subject.callFrame;
 
         if (frame === null) {

@@ -45,16 +45,22 @@ function contextFor(profile, kind = 'location') {
     });
 }
 
+// Call frames the records resolve to: a subject takes the frame of its first record, as resolution gives it
+const recordFrames = new WeakMap();
+
 // A record of script 1 of the profile fixture, it owns allocations of IDs over (allocationStart, allocationEnd]
 function record(name, start, allocationStart = null, allocationEnd = null, callFrame = null) {
-    return createCompilationRecord({
+    const result = createCompilationRecord({
         name,
         scriptId: 1,
         start,
         allocationStart,
-        allocationEnd,
-        callFrame
+        allocationEnd
     });
+
+    recordFrames.set(result, callFrame);
+
+    return result;
 }
 
 // The records are created for the functions `first` and `second` of the profile fixture
@@ -64,6 +70,10 @@ async function createCompilationProfile(createRecords, options = { noSourceMap: 
     const second = profile.callFrames.find(frame => frame.name === 'second');
     const records = createRecords(first, second);
     const subjects = prepareCompilationSubjects(records);
+
+    for (let i = 0; i < subjects.length; i++) {
+        subjects[i].callFrame = recordFrames.get(subjects[i].records[0]) ?? null;
+    }
 
     completeCompilationSubjects(subjects);
     profile.thread = {
@@ -368,7 +378,7 @@ test('a compilation takes the most advanced state of complete records, activated
         record('PreParseCached', 20, 2, 2, second),
         record('ParseFunction', 30, 2, 2, second),
         record('CompileIgnition', 0, 2, 3, { ...first, kind: 'script' }),
-        { ...record('CompileIgnition', 40, 3, 3, second), duration: null }
+        Object.assign(record('CompileIgnition', 40, 3, 3, second), { duration: null })
     ];
     const { profile, records } = await createCompilationProfile(createRecords);
 

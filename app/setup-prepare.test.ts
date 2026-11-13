@@ -231,7 +231,7 @@ test.each([
     assert.equal(data.profiles.length, ids.length);
     assert.equal(thread.compilations!.length, 1);
     assert.equal(thread.compilations![0].event, thread.events[0]);
-    assert.equal(thread.compilations![0].callFrame!.script!.url, '/script.js');
+    assert.equal(thread.compilationSubjects![0].callFrame!.script!.url, '/script.js');
 
     for (let i = 0; i < data.profiles.length; i++) {
         const profile = data.profiles[i];

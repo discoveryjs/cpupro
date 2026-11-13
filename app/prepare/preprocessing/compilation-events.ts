@@ -76,35 +76,71 @@ function compareCompilationRecords(first: CpuProCompilationRecord, second: CpuPr
         (first.tm ?? 0) - (second.tm ?? 0) || (second.duration ?? 0) - (first.duration ?? 0);
 }
 
-// Call frames of the records of compilation subjects. Records of a subject share the frame of the last one resolved
-// for the same range; records of a script without its source resolve each
+// Call frames of compilation subjects. The records of a subject compile the same range, which gives the call frame
+// with the source of the script; at the script start a stage of the script, if any, tells it is the script compiled.
+// Without the source, the position of a record gives the frame, so the subject takes the frame of its first record
+// that resolves
 export function resolveCompilationCallFrames(
     subjects: CpuProCompilationSubject[],
     dictionary: Dictionary,
     scripts: IProfileScriptsMap
 ) {
     for (let i = 0; i < subjects.length; i++) {
-        const { scriptId, records } = subjects[i];
+        const subject = subjects[i];
+        const { scriptId, records } = subject;
+        const first = records[0];
         const script = scriptId !== null && scriptId > 0
             ? scripts.get(scriptId) ?? null
             : null;
-        let resolved: CpuProCompilationRecord | null = null;
 
-        for (let j = 0; j < records.length; j++) {
+        subject.callFrame = null;
+
+        if (script === null || !hasCompilationSourceRange(first)) {
+            continue;
+        }
+
+        if (script.source !== null) {
+            const record = scriptStageOf(subject) ?? first;
+
+            if (hasCompilationSourceRange(record)) {
+                subject.callFrame = resolveCompilationCallFrame(record, script, dictionary, scripts);
+            }
+
+            continue;
+        }
+
+        for (let j = 0; j < records.length && subject.callFrame === null; j++) {
             const record = records[j];
 
-            if (script === null || !hasCompilationSourceRange(record)) {
-                record.callFrame = null;
-            } else if (script.source === null) {
-                record.callFrame = resolveCompilationCallFrame(record, script, dictionary, scripts);
-            } else if (resolved !== null && canReuseCompilationFrame(resolved, record)) {
-                record.callFrame = resolved.callFrame;
-            } else {
-                record.callFrame = resolveCompilationCallFrame(record, script, dictionary, scripts);
-                resolved = record;
+            if (hasCompilationSourceRange(record)) {
+                subject.callFrame = resolveCompilationCallFrame(record, script, dictionary, scripts);
             }
         }
     }
+
+    // Records take the call frame of their subject, so the records of a thread give their call frames as they are
+    for (let i = 0; i < subjects.length; i++) {
+        const { callFrame, records } = subjects[i];
+
+        for (let j = 0; j < records.length; j++) {
+            records[j].callFrame = callFrame;
+        }
+    }
+}
+
+// A record of a stage of the script compilation, among the records of a subject at the script start
+function scriptStageOf(subject: CpuProCompilationSubject) {
+    if (subject.start !== 0) {
+        return null;
+    }
+
+    for (let i = 0; i < subject.records.length; i++) {
+        if (isScriptCompilationRecord(subject.records[i])) {
+            return subject.records[i];
+        }
+    }
+
+    return null;
 }
 
 export function isScriptCompilationRecord(record: CpuProCompilationRecord) {
@@ -127,18 +163,6 @@ function hasCompilationSourceRange(record: CpuProCompilationRecord): record is C
     }
 
     return start >= 0 && end >= start;
-}
-
-function canReuseCompilationFrame(previous: CpuProCompilationRecord, record: CpuProCompilationRecord) {
-    if (previous.end !== record.end || previous.functionName !== record.functionName) {
-        return false;
-    }
-
-    if (record.start === 0) {
-        return isScriptCompilationRecord(previous) === isScriptCompilationRecord(record);
-    }
-
-    return true;
 }
 
 function resolveCompilationCallFrame(

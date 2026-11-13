@@ -457,7 +457,7 @@ async function createStagedProfile(cpuOnly: boolean, parsingStage: string) {
         parsingPending = false;
     };
     const runStage: WorkWrapperChain = async (identity, task) => {
-        if (parsingPending && records.every(record => record.callFrame === null)) {
+        if (parsingPending && subjects.every(subject => subject.callFrame === null)) {
             pendingAt.push(identity.name);
         }
 
@@ -481,6 +481,7 @@ async function createStagedProfile(cpuOnly: boolean, parsingStage: string) {
         return {
             profile,
             records,
+            subjects,
             stages,
             pendingAt,
             parsedUrls
@@ -511,10 +512,10 @@ test('without allocations, scripts are parsed while CPU stages run, until compil
 test.each([
     { cpuOnly: false, parsingStage: 'parse script sources' },
     { cpuOnly: true, parsingStage: 'link compilation events' }
-])('compilation records resolve before source maps, including event-only scripts (CPU-only: $cpuOnly)', async row => {
-    const { profile, records, stages, parsedUrls } = await createStagedProfile(row.cpuOnly, row.parsingStage);
-    const known = records.find(record => record.scriptId === 7)!;
-    const fresh = records.find(record => record.scriptId === 8)!;
+])('compilation subjects resolve before source maps, including event-only scripts (CPU-only: $cpuOnly)', async row => {
+    const { profile, subjects, stages, parsedUrls } = await createStagedProfile(row.cpuOnly, row.parsingStage);
+    const known = subjects.find(subject => subject.scriptId === 7)!;
+    const fresh = subjects.find(subject => subject.scriptId === 8)!;
 
     assert.ok(parsedUrls.includes('event-only.js'));
     assert.equal('compilation' in profile, false);

@@ -12,7 +12,7 @@ const compilationTable = {
             : $subjects)
             .zip(=>subject, $totals.[entry], =>entry.scriptId + ":" + entry.start)
             .({ ...left, count: right.count or 0, size: right.size or 0 })
-            .[(callFrame.name or records.functionName or "Unresolved") ~= #.filter]
+            .[(callFrame.name or functionName or "Unresolved") ~= #.filter]
     `,
     content: [
         allPageTable({
