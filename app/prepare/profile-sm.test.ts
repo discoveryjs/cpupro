@@ -31,7 +31,10 @@ test('a source-mapped breakdown attributes generated functions to the original f
         original: { line: 2, column: 9 },
         source: 'original.js'
     });
-    compiled.sourceMap = JSON.parse(generator.toString());
+    const sourceMapping = new SourceMapping(dictionary);
+
+    sourceMapping.addSourceMaps(new Map([[compiled, JSON.parse(generator.toString())]]));
+    compiled.hasSourceMap = true;
 
     const line = profile.timeline!;
     const mapped = await createSourceMappedBreakdown(
@@ -39,7 +42,7 @@ test('a source-mapped breakdown attributes generated functions to the original f
         line,
         line.breakdowns[0],
         dictionary,
-        new SourceMapping(dictionary),
+        sourceMapping,
         new Map(),
         noopWorkHandler
     );

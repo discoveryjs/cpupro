@@ -113,6 +113,9 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
     } = options || {};
     const lines: ProfileLine[] = [];
 
+    // the source maps of the profile's scripts are input, source mapping takes them for the session
+    sourceMapping.addSourceMaps(profileScriptsMap.sourceMaps);
+
     // Sources of the profile's scripts are parsed in workers while the call stack timeline is created,
     // their function ranges map line-columns and script offsets to functions (call frames)
     const preparseStart = performance.now();

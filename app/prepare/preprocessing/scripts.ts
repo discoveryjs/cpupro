@@ -1,4 +1,4 @@
-import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
+import type { CpuProModule, CpuProScript, IProfileScriptsMap, SourceMap, V8CpuProfile, V8CpuProfileScript } from '../types.js';
 import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import { createLineBoundaries } from '../misc/line-boundaries.js';
@@ -7,6 +7,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
     diagnose: Diagnose;
     inputScripts: Set<CpuProScript>;
+    sourceMaps: Map<CpuProScript, SourceMap>; // of the input scripts, kept by the input rather than by the scripts
     #scriptById: Map<number | string, CpuProScript>;
     #scriptIdFromString: Map<string, number>;
     #scriptIndexByUrl: Map<string, number[]>;
@@ -20,6 +21,7 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
         this.dict = dict;
         this.diagnose = diagnose;
         this.inputScripts = new Set();
+        this.sourceMaps = new Map();
         this.#scriptById = new Map();
         this.#scriptIdFromString = new Map();
         this.#scriptIndexByUrl = new Map();
@@ -69,7 +71,11 @@ export class ProfileScriptsMap implements IProfileScriptsMap {
             script.lineOffset = lineOffset;
             script.columnOffset = columnOffset;
             script.sourceMapUrl = sourceMapUrl ?? null;
-            script.sourceMap = sourceMap ?? null;
+
+            if (sourceMap) {
+                script.hasSourceMap = true;
+                this.sourceMaps.set(script, sourceMap);
+            }
         }
     }
 
@@ -227,7 +233,7 @@ export function createScript(id: number, url: string, source: string | null = nu
         lineOffset: 0,
         columnOffset: 0,
         sourceMapUrl: null,
-        sourceMap: null,
+        hasSourceMap: false,
         module: null as unknown as CpuProModule,
         callFrames: [],
         functionRanges: null,

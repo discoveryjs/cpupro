@@ -141,8 +141,8 @@ function pageContent() {
                 { header: '%', align: 'right', sorting: 'compiledBytes / byteLength desc',
                     content: 'text:compiledBytes is number and byteLength > 0 ? (compiledBytes / byteLength).percent(1) : "–"'
                 },
-                { header: 'Source map', sorting: 'script.sourceMap desc',
-                    content: 'text:script.originalFor ? "Original" : script.sourceMap ? "Yes" : script.sourceMapUrl ? "Referenced" : "No"' },
+                { header: 'Source map', sorting: 'script.hasSourceMap desc',
+                    content: 'text:script.originalFor ? "Original" : script.hasSourceMap ? "Yes" : script.sourceMapUrl ? "Referenced" : "No"' },
                 { header: 'Script', sorting: 'script.url ascN',
                     content: 'text-match{ text: script.url or "(anonymous script)", match: #.filter }' }
             ]
