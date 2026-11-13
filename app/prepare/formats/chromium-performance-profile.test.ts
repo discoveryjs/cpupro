@@ -5,6 +5,7 @@ import { isCPUProfile } from './cpuprofile.js';
 import { createDiagnosticsCollector, type Diagnose } from '../diagnostics.js';
 import { Dictionary } from '../dictionary.js';
 import { createProfileSession } from '../profile-session.mjs';
+import { methods as ownershipMethods } from '../../jora/ownership.js';
 import { createProfile } from '../profile.mjs';
 import { createMemlineGcAttributes } from '../lines/memline-attributes.mjs';
 import type { V8CpuProfile } from '../types.js';
@@ -165,6 +166,18 @@ test.each([
         ownership: session.ownership
     }, row.expected);
     assert.equal(session.profiles.length, 1);
+});
+
+test('a prepared session keeps areas of files of its own, which lookupAreas reads', () => {
+    const ownership = { api: 'ownership', areas: ['app', 'ui'], files: { 'app.js': [0, 1], 'lib.js': [] } };
+    const raw = extractFromChromiumPerformanceProfile({ traceEvents: captureEvents([]), metadata: { ownership } });
+    const { session } = createProfileSession(raw, new Dictionary());
+
+    assert.deepEqual(session.ownership, ownership);
+    assert.notEqual(session.ownership, ownership);
+    assert.notEqual(session.ownership!.files['app.js'], ownership.files['app.js']);
+    assert.deepEqual(ownershipMethods.lookupAreas(session.ownership, 'app.js'), ['app', 'ui']);
+    assert.equal(ownershipMethods.lookupAreas(session.ownership, 'lib.js'), null);
 });
 
 test('records only complete, paired, sampled and compile events in thread events', () => {

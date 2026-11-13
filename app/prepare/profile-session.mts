@@ -1,5 +1,5 @@
 import { Dictionary } from './dictionary.js';
-import { UniformProfile, UniformProfilingSession } from './formats/types.js';
+import { Ownership, UniformProfile, UniformProfilingSession } from './formats/types.js';
 import { CpuProProcess, CpuProSession, CpuProThread } from './types.js';
 import { createCompilationRecords } from './preprocessing/compilation-events.js';
 import { indexCompilationStages, prepareCompilationSubjects } from './preprocessing/script-compilation.js';
@@ -25,7 +25,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         startTime: rawSession.startTime ?? null,
         source: rawSession.source ?? null,
         dataOrigin: rawSession.dataOrigin ?? null,
-        ownership: rawSession.ownership ?? null,
+        ownership: copyOwnership(rawSession.ownership ?? null),
         processes,
         defaultProcess: null,
         profiles: [],
@@ -144,4 +144,23 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
 
         return thread;
     }
+}
+
+// Areas of files are kept for queries (see lookupAreas) by a copy of their own, rather than the input record
+function copyOwnership(ownership: Ownership | null): Ownership | null {
+    if (ownership === null) {
+        return null;
+    }
+
+    const files: Ownership['files'] = {};
+
+    for (const [path, areas] of Object.entries(ownership.files)) {
+        files[path] = areas.slice();
+    }
+
+    return {
+        api: ownership.api,
+        areas: ownership.areas.slice(),
+        files
+    };
 }
