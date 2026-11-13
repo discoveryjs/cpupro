@@ -89,7 +89,7 @@ function binarySearchFunctionRangeIndex(starts: Uint32Array<ArrayBuffer>, positi
     let right = starts.length - 1;
 
     while (left <= right) {
-        const mid = Math.floor((left + right) / 2);
+        const mid = (left + right) >>> 1;
         const offset = starts[mid];
 
         if (offset === position) {
