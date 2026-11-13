@@ -615,19 +615,26 @@ function addCellColumns(
             // PERF: Cells within a column take the records of their signatures, not their events
             if (cellWithin) {
                 const columnEnd = origin + (column + 1) * duration;
-                const lastEnd = Math.min(cumulative[last] + values[last], rangeEnd);
+                const fullEnd = cumulative[last] + values[last];
+                const lastEnd = Math.min(fullEnd, rangeEnd);
+                const keptEnd = Math.min(lastEnd, columnEnd);
 
                 const weight = addRecords(folds, signatureGroups, cells, cell, accepted, column);
 
                 total?.add(column, weight);
 
-                if (accepted[ids[last]] === 1 && lastEnd > columnEnd) {
+                // The records hold the last allocation of the cell whole: its part beyond the column or the range
+                // leaves the column, and its part in the range beyond the column adds to the columns it covers
+                if (accepted[ids[last]] === 1 && fullEnd > keptEnd) {
                     const lastFolds = folds[signatureGroups[ids[last]]];
 
-                    lastFolds.add(column, columnEnd - lastEnd);
-                    lastFolds.addPart(columnEnd, lastEnd);
-                    total?.add(column, columnEnd - lastEnd);
-                    total?.addPart(columnEnd, lastEnd);
+                    lastFolds.add(column, keptEnd - fullEnd);
+                    total?.add(column, keptEnd - fullEnd);
+
+                    if (lastEnd > columnEnd) {
+                        lastFolds.addPart(columnEnd, lastEnd);
+                        total?.addPart(columnEnd, lastEnd);
+                    }
                 }
 
                 j = cellEnd;

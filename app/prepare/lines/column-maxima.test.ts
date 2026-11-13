@@ -516,6 +516,16 @@ test.each([
         expected: [11567.75, [7542, 650, 5000]]
     },
     {
+        name: 'a viewport range ending in the last allocation of a cell leaves its part beyond the range out',
+        prepare: (line: ProfileLine) => {
+            line.viewport.setRange(10240.5, 30719.5);
+            line.breakdowns[0].populationViewport.setRanges([{ start: 10240.5, end: 30719.5 }]);
+        },
+        duration: 16384,
+        start: 2048.5,
+        expected: [12287, [7542, 650, 5000]]
+    },
+    {
         name: 'ranges of 300 bytes in every cell after the values other than x leave no column of cells covered',
         prepare: (line: ProfileLine) => {
             const ranges = cellParts(30, 1999, 100, 400);
