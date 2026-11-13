@@ -128,17 +128,22 @@ export function contextInfoBuiltin(contextInfo: number) {
     return contextInfo >>> 4;
 }
 
+// Kinds of what allocates in a context, numbers for the readers of an allocation each
+export const CONTEXT_KIND_JS = 0;
+export const CONTEXT_KIND_VM_STATE = 1;
+export const CONTEXT_KIND_BUILTIN = 2;
+
 // What allocates in a context: a VM state other than JS (0) takes precedence over a builtin
-export function contextInfoKind(contextInfo: number): 'js' | 'vm-state' | 'builtin' {
+export function contextInfoKind(contextInfo: number) {
     if (contextInfoVmState(contextInfo) !== 0) {
-        return 'vm-state';
+        return CONTEXT_KIND_VM_STATE;
     }
 
     if (contextInfoBuiltin(contextInfo) !== 0) {
-        return 'builtin';
+        return CONTEXT_KIND_BUILTIN;
     }
 
-    return 'js';
+    return CONTEXT_KIND_JS;
 }
 
 function resolveContextVmStateCallFrame(

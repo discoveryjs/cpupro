@@ -3,7 +3,16 @@ import { test } from 'vitest';
 import { createScriptFixture, parseScriptFixture } from '../../../test/fixtures/scripts.js';
 import { Dictionary } from '../dictionary.js';
 import { ProfileScriptsMap } from './scripts.js';
-import { contextInfoBuiltin, contextInfoKind, contextInfoVmState, createLocationsFromScriptOffsets, createVectorLocations } from './locations.js';
+import {
+    CONTEXT_KIND_BUILTIN,
+    CONTEXT_KIND_JS,
+    CONTEXT_KIND_VM_STATE,
+    contextInfoBuiltin,
+    contextInfoKind,
+    contextInfoVmState,
+    createLocationsFromScriptOffsets,
+    createVectorLocations
+} from './locations.js';
 import type { CpuProLocation } from '../types.js';
 
 // Offsets 15 and 22 are inside "a" of script 7 and inside "c" of script 8, offsets 44 and 51 are inside "b"
@@ -203,11 +212,11 @@ test.each<{
 
 // Values of a trace: the names of builtins are keyed by the field, its id + 1 (ArrayForEach is 1149 there)
 test.each([
-    { contextInfo: 3, vmState: 3, builtin: 0, kind: 'vm-state' },
-    { contextInfo: 11072, vmState: 0, builtin: 692, kind: 'builtin' },
-    { contextInfo: 18387, vmState: 3, builtin: 1149, kind: 'vm-state' },
-    { contextInfo: 0x8000_0000, vmState: 0, builtin: 0x0800_0000, kind: 'builtin' },
-    { contextInfo: 0, vmState: 0, builtin: 0, kind: 'js' }
+    { contextInfo: 3, vmState: 3, builtin: 0, kind: CONTEXT_KIND_VM_STATE },
+    { contextInfo: 11072, vmState: 0, builtin: 692, kind: CONTEXT_KIND_BUILTIN },
+    { contextInfo: 18387, vmState: 3, builtin: 1149, kind: CONTEXT_KIND_VM_STATE },
+    { contextInfo: 0x8000_0000, vmState: 0, builtin: 0x0800_0000, kind: CONTEXT_KIND_BUILTIN },
+    { contextInfo: 0, vmState: 0, builtin: 0, kind: CONTEXT_KIND_JS }
 ])('context info $contextInfo is VM state $vmState and builtin $builtin, of kind $kind', row => {
     assert.equal(contextInfoVmState(row.contextInfo), row.vmState);
     assert.equal(contextInfoBuiltin(row.contextInfo), row.builtin);
