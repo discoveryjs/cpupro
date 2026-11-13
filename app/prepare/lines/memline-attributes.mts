@@ -1,5 +1,6 @@
 import { allocTimespan, typeColor } from '../const.js';
 import { lowerBound } from '../computations/misc.js';
+import { CONTEXT_KIND_BUILTIN, CONTEXT_KIND_VM_STATE, contextInfoKind } from '../preprocessing/locations.js';
 import type {
     AllocationSpaceDictEntry,
     GcEpochDictEntry,
@@ -404,16 +405,19 @@ export function createMemlineAllocationCodeTypeAttribute(
     const dict = Object.values(_cpuproAllocationCodeTypeNames || {})
         .map(name => normCodeTypeNames[name] || name);
 
-    // Allocations of builtins and other non-JS contexts take their own code types
+    // Allocations of builtins and of VM states other than JS take their own code types, a VM state taking precedence
+    // over a builtin it runs under (see contextInfoKind)
     if (contextInfo) {
         const builtinType = dict.push('Builtin') - 1;
         const otherType = dict.push('Other') - 1;
 
         for (let i = 0; i < values.length; i++) {
-            if (contextInfo[i] !== 0) {
-                values[i] = contextInfo[i] & 0x0f
-                    ? otherType
-                    : builtinType;
+            const kind = contextInfoKind(contextInfo[i]);
+
+            if (kind === CONTEXT_KIND_VM_STATE) {
+                values[i] = otherType;
+            } else if (kind === CONTEXT_KIND_BUILTIN) {
+                values[i] = builtinType;
             }
         }
     }

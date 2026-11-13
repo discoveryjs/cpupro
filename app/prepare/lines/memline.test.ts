@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import { createProfileFixture } from '../../../test/fixtures/profile.js';
 import { createMemline } from './memline.mjs';
 import {
+    createMemlineAllocationCodeTypeAttribute,
     createMemlineAllocationLifespanAttribute,
     createMemlineAllocationTypeAttribute,
     createMemlineGcEpochAttribute
@@ -70,6 +71,32 @@ test('maps allocation attribute codes to dictionary indices of 1 byte without ch
     assert.deepEqual([...types], [7, 7, 9]);
     assert.deepEqual([...spaces], [2, 4, 2]);
     assert.deepEqual([...gc], [0 << 2 | 2, 1 << 2 | 0, 2 << 2 | 1]);
+});
+
+// Context info holds a VM state in bits 0-3 and a builtin (its id + 1) in bits 4-31: JS code (0), the VM state
+// OTHER (5), a builtin in JS, and a builtin under which the bytecode compiler (3) allocates
+test.each([
+    {
+        name: 'take the types of their contexts outside JS code, a VM state over a builtin',
+        contextInfo: Uint32Array.of(0, 0x05, 0x10, 0x13),
+        values: [0, 4, 3, 4],
+        dict: ['Ignition', 'Turbofan', 'Sparkplug', 'Builtin', 'Other']
+    },
+    {
+        name: 'keep their code types without context info',
+        contextInfo: null,
+        values: [0, 1, 2, 1],
+        dict: ['Ignition', 'Turbofan', 'Sparkplug']
+    }
+])('code types of allocations $name', row => {
+    const attribute = createMemlineAllocationCodeTypeAttribute(
+        Uint32Array.of(0, 1, 2, 1),
+        { 0: 'ignition', 1: 'turbofan', 2: 'baseline' },
+        row.contextInfo
+    );
+
+    assert.deepEqual(attribute!.values, Uint8Array.from(row.values));
+    assert.deepEqual(attribute!.dict, row.dict);
 });
 
 test('classes of allocations keep one lifespan implied by GC epochs from lists of traces', async () => {
