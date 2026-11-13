@@ -268,7 +268,7 @@ export type CpuProThreadScript = Omit<V8CpuProfileScript, 'id' | 'source'> & {
     compilation: ScriptCompilation | null;
 };
 
-export type CpuProCompilationRecord = Omit<UniformCompilationRecord, 'event' | 'callFrame'> & {
+export type CpuProCompilationRecord = UniformCompilationRecord & {
     event: UniformTraceEvent | null;
     callFrame: CpuProCallFrame | null;
 };

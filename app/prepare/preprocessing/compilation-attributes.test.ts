@@ -4,7 +4,6 @@ import { Dictionary } from '../dictionary.js';
 import { createProfile } from '../profile.mjs';
 import { createProfileSession } from '../profile-session.mjs';
 import { extractFromChromiumPerformanceProfile } from '../formats/chromium-performance-profile.js';
-import type { UniformCompilationRecord } from '../formats/types.js';
 import type { CpuProCompilationRecord, CpuProScript } from '../types.js';
 import { createWorkHandler, type WorkWrapperChain } from '../misc/work.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
@@ -17,7 +16,7 @@ import { createCompilationRecords } from './compilation-events.js';
 import { createCompilationRecord } from '../../../test/fixtures/compilation.js';
 
 // Records default to the fixture function `known` at 14..30 (line 0, column 14) of script 7
-function record(fields: Partial<UniformCompilationRecord> = {}) {
+function record(fields: Partial<CpuProCompilationRecord> = {}) {
     return createCompilationRecord({
         start: 14,
         end: 30,

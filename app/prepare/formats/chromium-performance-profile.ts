@@ -903,7 +903,7 @@ function extractCompilations(
         }
 
         // The source event has one owner. Persist its index, not a second object path;
-        // runtime links are filled on processing records, never during extraction.
+        // the model links its records to the events.
         records.push({
             name: event.name,
             tm: event.tm >= 0 ? event.tm : null,
@@ -916,9 +916,7 @@ function extractCompilations(
             functionName: null,
             allocationStart: data?.startAllocationId ?? null,
             allocationEnd: data?.endAllocationId ?? null,
-            eventIndex,
-            event: null,
-            callFrame: null
+            eventIndex
         });
     }
 

@@ -54,8 +54,6 @@ export type UniformCompilationRecord = {
     allocationEnd: number | null;
     // Local to the source thread's events; absent when the source is not a trace event.
     eventIndex: number | null;
-    event: null;
-    callFrame: null;
 }
 export type UniformProfile = V8CpuProfile;
 export type UniformTraceEvent = {

@@ -1,7 +1,7 @@
-import type { UniformCompilationRecord } from '../../app/prepare/formats/types.js';
+import type { CpuProCompilationRecord } from '../../app/prepare/types.js';
 
 // A complete compilation record of script 7, without source position details, allocations or trace event provenance
-export function createCompilationRecord(fields: Partial<UniformCompilationRecord> = {}): UniformCompilationRecord {
+export function createCompilationRecord(fields: Partial<CpuProCompilationRecord> = {}): CpuProCompilationRecord {
     return {
         name: 'Compile',
         tm: 0,

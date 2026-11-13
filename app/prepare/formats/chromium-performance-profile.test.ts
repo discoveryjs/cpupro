@@ -568,9 +568,7 @@ test('compilation facts belong to source threads independently of captures', () 
         functionName: null,
         allocationStart: 10,
         allocationEnd: 10,
-        eventIndex: 0,
-        event: null,
-        callFrame: null
+        eventIndex: 0
     });
     assert.deepEqual(records.map(record => record.eventIndex), [0, 2, 4]);
     assert.equal(thread.events[records[0].eventIndex!].data, first.args);
@@ -579,8 +577,8 @@ test('compilation facts belong to source threads independently of captures', () 
     assert.equal(records[2].allocationStart, null);
 
     for (let i = 0; i < records.length; i++) {
-        assert.equal(records[i].event, null);
-        assert.equal(records[i].callFrame, null);
+        assert.equal('event' in records[i], false);
+        assert.equal('callFrame' in records[i], false);
         assert.equal('selfTime' in records[i], false);
         assert.equal('locationIndex' in records[i], false);
     }
@@ -908,7 +906,7 @@ test('session linking shares one linked dataset across captures and preserves so
     assert.equal(profiles[0].thread.isolate, 'shared');
     assert.notEqual(preparedBackground.compilations, background.compilations);
     assert.equal(preparedBackground.compilations![0].event, background.events[0]);
-    assert.equal(background.compilations![0].event, null);
+    assert.equal('event' in background.compilations![0], false);
     assert.equal(preparedBackground.profiles.length, 0);
     assert.equal(preparedBackground.isolate, 'background');
     assert.equal(profiles[0].profile._capture, raw.profiles[0]._capture);
@@ -963,8 +961,7 @@ test('compilation provenance survives JSON round-trip without duplicate event ob
     assert.equal(JSON.stringify(restored), JSON.stringify(raw));
     assert.deepEqual(thread, raw.threads[0]);
     assert.equal(record.eventIndex, 1);
-    assert.equal(record.event, null);
-    assert.equal(record.callFrame, null);
+    assert.equal('event' in record, false);
     assert.equal(thread.events[record.eventIndex!].name, 'Compile');
 
     const dictionary = new Dictionary();
@@ -972,7 +969,7 @@ test('compilation provenance survives JSON round-trip without duplicate event ob
     const runtimeThread = profiles[0].thread;
     const processingRecord = runtimeThread.compilations![0];
 
-    assert.deepEqual(Object.keys(processingRecord), keys);
+    assert.deepEqual(Object.keys(processingRecord), [...keys, 'event', 'callFrame']);
     assert.equal(processingRecord.event, runtimeThread.events[1]);
     assert.equal(processingRecord.callFrame, null);
     assert.notEqual(runtimeThread.compilations, thread.compilations);
