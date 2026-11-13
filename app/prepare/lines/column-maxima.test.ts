@@ -412,49 +412,88 @@ function cellParts(first: number, end: number, from: number, to: number) {
     return parts;
 }
 
-// Over a million allocations of a byte, so the line has signature records of 2000 cells of 1024 bytes: x everywhere,
-// y on every other byte of [10340, 11040), [11264, 11864) and [26600, 26800) and over [27600, 27648), the end of a
-// cell before cells of x only, and z of 5000 bytes over [20980, 25980)
-async function createCellsLine() {
-    const values = new Uint32Array(2043001).fill(1);
-    const types = new Uint8Array(values.length);
-    // Allocations after z start 4999 bytes after their index
-    const yBytes = [
-        [10340, 11040, 2],
-        [11264, 11864, 2],
-        [26600, 26800, 2],
-        [27600, 27648, 1]
-    ];
+// Allocations over 2000 cells of 1024 bytes: the allocations given as [start byte, size, type] in their order, and
+// allocations of x over the bytes between them, one up to the next allocation given or the end of a cell
+function cellAllocations(allocations: number[][]) {
+    const values: number[] = [];
+    const types: number[] = [];
+    let next = 0;
 
-    for (let i = 0; i < yBytes.length; i++) {
-        const [start, end, step] = yBytes[i];
-        const shift = start > 20980 ? 4999 : 0;
+    for (let byte = 0; byte < 2000 * 1024;) {
+        if (next < allocations.length && allocations[next][0] === byte) {
+            const [, size, type] = allocations[next++];
 
-        for (let j = start; j < end; j += step) {
-            types[j - shift] = 1;
+            values.push(size);
+            types.push(type);
+            byte += size;
+        } else {
+            const cellEnd = (Math.floor(byte / 1024) + 1) * 1024;
+            const end = next < allocations.length
+                ? Math.min(cellEnd, allocations[next][0])
+                : cellEnd;
+
+            values.push(end - byte);
+            types.push(0);
+            byte = end;
         }
     }
 
-    values[20980] = 5000;
-    types[20980] = 2;
+    return {
+        values: Uint32Array.from(values),
+        types: Uint8Array.from(types)
+    };
+}
 
+// A memline of allocations over 2000 cells (see cellAllocations) with their types and signatures. Cells for windows
+// of all but one allocation instead of millions are the 2000 cells of 1024 bytes; column maxima take the records
+// built here
+async function createCellAllocationsLine(allocations: number[][], dict: string[]) {
+    const { values, types } = cellAllocations(allocations);
     const { line, breakdown } = await createLineFixture({
         type: 'memline',
         values
     });
+    const viewport = breakdown.populationViewport;
+    const { cumulative, cumulativeEnd } = viewport.population;
 
     line.attributes = [{
         name: 'allocationType',
         values: types,
-        dict: ['x', 'y', 'z']
+        dict
     }] as unknown as ProfileLineAttribute[];
     line.signatures = new EventSignatures(line);
+
+    const cells = line.signatures.cellRecords(cumulative, cumulativeEnd, values.length - 1);
+
+    assert.ok(cells !== null && cells.starts.length - 1 === 2000);
 
     return {
         line,
         attribute: line.attributes[0],
-        viewport: breakdown.populationViewport
+        viewport
     };
+}
+
+// A line of x everywhere, y on every other byte of [10340, 11040), [11264, 11864) and [26600, 26800) and over
+// [27600, 27648), the end of a cell before cells of x only, and z of 5000 bytes over [20980, 25980)
+async function createCellsLine() {
+    const yBytes = (start: number, end: number, step: number) => {
+        const allocations: number[][] = [];
+
+        for (let i = start; i < end; i += step) {
+            allocations.push([i, 1, 1]);
+        }
+
+        return allocations;
+    };
+
+    return createCellAllocationsLine([
+        ...yBytes(10340, 11040, 2),
+        ...yBytes(11264, 11864, 2),
+        [20980, 5000, 2],
+        ...yBytes(26600, 26800, 2),
+        ...yBytes(27600, 27648, 1)
+    ], ['x', 'y', 'z']);
 }
 
 test.each([
@@ -469,7 +508,7 @@ test.each([
         prepare: (line: ProfileLine) => line.breakdowns[0].populationViewport.filter.set({
             key: 'test',
             domain: 'event',
-            size: 2043001,
+            size: line.attributes[0].values.length,
             values: line.attributes[0].values,
             accepts: Uint8Array.of(1, 1, 0)
         }),
@@ -639,29 +678,9 @@ test.each([
     assert.deepEqual(row.reads.map(read), row.reads.map(expected));
 });
 
-// Over a million allocations of a byte, so the line has signature records of 2000 cells of 1024 bytes, and one of y
-// over [2148, 16484): it covers cells 3 to 15 whole
+// One allocation of y over [2148, 16484) among x: it covers cells 3 to 15 whole
 test('an allocation over many cells covers columns of every level within it', async () => {
-    const values = new Uint32Array(2033665).fill(1);
-    const types = new Uint8Array(values.length);
-
-    values[2148] = 14336;
-    types[2148] = 1;
-
-    const { line, breakdown } = await createLineFixture({
-        type: 'memline',
-        values
-    });
-    const attribute = {
-        name: 'allocationType',
-        values: types,
-        dict: ['x', 'y']
-    } as unknown as ProfileLineAttribute;
-
-    line.attributes = [attribute];
-    line.signatures = new EventSignatures(line);
-
-    const viewport = breakdown.populationViewport;
+    const { line, attribute, viewport } = await createCellAllocationsLine([[2148, 14336, 1]], ['x', 'y']);
     const maxima = getLineColumnMaxima(line, viewport, line, viewport);
     const read = (duration: number) => readMaxima(maxima, attribute, duration, 0);
 
@@ -690,7 +709,7 @@ test('an attribute signatures don\'t keep has the highest columns of its runs on
     const { line, attribute, viewport } = await createCellsLine();
     const owner = {
         name: 'allocationOwner',
-        values: new Uint32Array(2043001),
+        values: new Uint32Array(attribute.values.length),
         dict: ['one']
     } as unknown as ProfileLineAttribute;
     const maxima = getLineColumnMaxima(line, viewport, line, viewport);
