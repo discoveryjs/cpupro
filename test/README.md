@@ -30,7 +30,7 @@ test('restores an exact half-open range', () => {
 
 Use small deterministic inputs and assert the intended contract. Prefer invariants and concrete values over large snapshots. Assertions about shared objects should use `assert.equal`; array contents should use `assert.deepEqual`.
 
-Fixtures shared by several modules live in `test/fixtures/`, with tests of their contracts beside them; reusable adapters live in `test/helpers/`. Module-specific fixtures can stay beside their test. Nothing in production imports the test directories.
+Fixtures shared by several modules live in `test/fixtures/`, with tests of their contracts beside them; reusable adapters live in `test/helpers/`. Function ranges of the specialized source parser are compared with ranges of a `@babel/parser` syntax tree from `test/helpers/babel-function-ranges.ts`; over a corpus of sources (e.g. sources of a trace written by `scripts/model-scripts/dump-script-sources.mjs`) they are compared by `node scripts/compare-function-ranges.mjs <directory>`. Module-specific fixtures can stay beside their test. Nothing in production imports the test directories.
 
 Tests sum numeric values with `sum(values)` and take deterministic pseudo-random inputs from `sequence(seed)` in `test/helpers/values.ts`; each test seeds its own sequence, so its inputs don't depend on other tests.
 

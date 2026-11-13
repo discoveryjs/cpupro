@@ -197,6 +197,7 @@ node --test scripts/model-script.test.mjs
 | [`analyze-signals.mjs`](analyze-signals.mjs) | `thread=<name\|tid>`, `json` | Independent scopes, windows and event statistics from [`app/signals.js`](../../app/signals.js); population distributions from `sampleDistribution()` and optional coverage from `samplesByCompilation()` |
 | [`audit-scripts.mjs`](audit-scripts.mjs) | None | Scripts page queries, exclusive source-size checks, compilation identities, and allocation count/byte distributions by type, stage, script and owner |
 | [`alive-allocations.mjs`](alive-allocations.mjs) | `thread=<name\|tid>` (required), `limit=<n>` (default 50) | Alive allocations by type and space, plus location-based function metrics with and without compilation allocations |
+| [`dump-script-sources.mjs`](dump-script-sources.mjs) | `dir=<path>` (required) | Writes the sources of parsed scripts, generated and original, one file per script with an extension of its dialect, for [`compare-function-ranges.mjs`](../compare-function-ranges.mjs) |
 
 ## Alive allocations example
 
