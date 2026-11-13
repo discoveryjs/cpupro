@@ -4,7 +4,11 @@ import type { Ownership } from '../formats/types.js';
 import type { CpuProScript, SourceMap } from '../types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { SourceMapIndex } from '../misc/source-map.js';
-import { getFunctionAtSourceLineColumn, prepareScriptSources } from '../misc/script-function-resolution.js';
+import {
+    getFunctionAtSourceLineColumn,
+    prepareScriptSources,
+    releaseScriptLineBoundaries
+} from '../misc/script-function-resolution.js';
 import { createScript } from './scripts.js';
 
 const NOT_LOOKED_UP = -1;
@@ -204,6 +208,14 @@ export class SourceMapping {
         this.#growOriginalLocations();
 
         return this.#originalLocations.subarray(0, locations.length);
+    }
+
+    // Once the profiles of the session are mapped, the line boundaries of original scripts have no reader:
+    // original locations keep their offsets, and views take lines of sources from the sources
+    releaseLineBoundaries() {
+        for (const scripts of this.#originalScriptsByUrl.values()) {
+            releaseScriptLineBoundaries(scripts);
+        }
     }
 
     #growOriginalLocations() {

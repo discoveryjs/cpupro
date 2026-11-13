@@ -30,6 +30,14 @@ function getScriptLineBoundaries(script: CpuProScript | null) {
     return lines;
 }
 
+// Releases the line boundaries of scripts whose lines and columns are no longer mapped to offsets;
+// a later reader creates them again from the source
+export function releaseScriptLineBoundaries(scripts: CpuProScript[]) {
+    for (let i = 0; i < scripts.length; i++) {
+        scriptLines.delete(scripts[i]);
+    }
+}
+
 function getScriptFunctionRanges(script: CpuProScript | null) {
     if (!script || script.source === null) {
         return null;

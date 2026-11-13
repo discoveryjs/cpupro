@@ -172,6 +172,8 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             }
         }
 
+        sourceMapping.releaseLineBoundaries();
+
         // choose defaults
         if (session.defaultProfile === null && session.profiles.length > 0) {
             session.defaultProfile = session.profiles[0];

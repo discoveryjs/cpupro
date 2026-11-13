@@ -21,6 +21,7 @@ import {
     isScriptTopLevelOffset,
     matchCallFrameIdentity,
     prepareScriptSources,
+    releaseScriptLineBoundaries,
     terminateParseWorkerPool
 } from './script-function-resolution.js';
 import { computeScriptSourceMetrics } from './source-text-metrics.js';
@@ -438,6 +439,15 @@ test('limits source-range refinement to nearby index entries', async () => {
 
     assert.equal(getFunctionAtSourceLineColumn(script, 500, 'function '.length), target);
     assert.ok(startReads < 10, `read ${startReads} source starts`);
+});
+
+test('released line boundaries of a script are created again from the source by a later reader', () => {
+    const script = createScript(1, 'fixture.js', 'first\nsecond\nthird');
+
+    assert.equal(getScriptOffsetFromLineColumn(script, 1, 2), 8);
+    releaseScriptLineBoundaries([script]);
+    assert.equal(getScriptOffsetFromLineColumn(script, 2, 1), 14);
+    assert.deepEqual(getScriptLineColumnFromOffset(script, 8), { line: 1, column: 2 });
 });
 
 test.each([
