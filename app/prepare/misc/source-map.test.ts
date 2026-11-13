@@ -288,3 +288,17 @@ test('resolves segments at an equal generated column as source-map-js does', () 
         column: 2
     });
 });
+
+test.each([
+    { column: 0, original: { source: 'a.js', line: 1, column: 0 } },
+    { column: 1, original: noPosition },
+    { column: 2, original: { source: 'b.js', line: 1, column: 0 } },
+    { column: 3, original: noPosition },
+    { column: 4, original: { source: 'c.js', line: 2, column: 0 } }
+])('a segment of 2 or 3 values has no original position, but its values count for the next ones, column $column', row => {
+    // column 0 → a.js 0:0; column 1: a source of 1 only; column 2 → b.js 0:0; column 3: a source of 2
+    // and an original line of 1 only; column 4 → c.js 1:0
+    const index = new SourceMapIndex(createSourceMap(undefined, ['a.js', 'b.js', 'c.js'], 'AAAA,CC,CAAA,CCC,CAAA'));
+
+    assert.deepEqual(originalPositionFor(index, 0, row.column), row.original);
+});
