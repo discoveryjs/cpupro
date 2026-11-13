@@ -341,7 +341,14 @@ const categoriesTimeline = {
             when: 'scopeProfile().timeline',
             context: `
                 $timeline: scopeProfile().timeline;
-                { ...#, scopeLine: $timeline, scopeBreakdown: null, scopeViewport: $timeline.lineViewportBounds() }
+                $viewport: $timeline.lineViewportBounds();
+                {
+                    ...#,
+                    scopeLine: $timeline,
+                    scopeBreakdown: null,
+                    scopeViewport: $viewport,
+                    scope({ scale: "time", viewport: $viewport })
+                }
             `,
             content: [chartUsedHeap, userTimingsTimeline]
         }

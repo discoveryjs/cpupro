@@ -13,7 +13,7 @@ function number(data, header) {
 
 const signalDetails = {
     view: 'context',
-    context: '{ ...#, scopeProfile: $ }',
+    context: '{ ...#, scopeProfile: $, scope({ profile: $ }) }',
     content: {
         view: 'tabs', name: 'signalTab',
         tabs: `=[

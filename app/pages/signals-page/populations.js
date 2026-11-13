@@ -82,7 +82,7 @@ export function samplePopulation(type) {
         header: `text:"${cpu ? 'CPU samples' : 'Allocations'}"`,
         content: {
             view: 'context',
-            context: `{ ...#, scopeLine: $.${type} }`,
+            context: `{ ...#, scopeLine: $.${type}, scope({ line: "${type}" }) }`,
             data: `sampleDistribution('${type}')`,
             content: {
                 view: 'context',

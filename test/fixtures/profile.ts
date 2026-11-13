@@ -3,6 +3,8 @@ import { Dictionary } from '../../app/prepare/dictionary.js';
 import { ProfileScriptsMap } from '../../app/prepare/preprocessing/scripts.js';
 import { SourceMapping } from '../../app/prepare/preprocessing/source-mapping.js';
 import { createProfile, type Profile } from '../../app/prepare/profile.mjs';
+import { createProfileSession } from '../../app/prepare/profile-session.mjs';
+import type { UniformProfilingSession } from '../../app/prepare/formats/types.js';
 import type { CpuProCompilationRecord, CpuProSession, CpuProThread, V8CpuProfile } from '../../app/prepare/types.js';
 import { noopWorkHandler } from '../../app/prepare/misc/work.js';
 import { Population, PopulationFiltered } from '../../app/prepare/computations/population.js';
@@ -106,6 +108,38 @@ export function joinSession<T extends object>(profiles: T[]) {
     }
 
     return session;
+}
+
+// A session of a renderer process with a main thread of two profiles, one with a time line and a memory line
+// and one with a time line only, and a worker thread without profiles; and a process without threads
+export async function createSessionFixture() {
+    const rawSession = {
+        processes: [
+            { pid: 1, name: 'renderer' },
+            { pid: 2, name: 'gpu' }
+        ],
+        threads: [
+            { pid: 1, tid: 1, name: 'main', scripts: [] },
+            { pid: 1, tid: 2, name: 'worker', scripts: [] }
+        ],
+        profiles: []
+    } as unknown as UniformProfilingSession;
+    const { session } = createProfileSession(rawSession, new Dictionary());
+    const [renderer, gpu] = session.processes;
+    const [main, worker] = renderer.threads;
+    const first = (await createProfileFixture()).profile;
+    const cpuOnly = (await createProfileFixture({ cpuOnly: true })).profile;
+    const profiles = [first, cpuOnly];
+
+    for (let i = 0; i < profiles.length; i++) {
+        profiles[i].thread = main;
+        main.profiles.push(profiles[i]);
+        session.profiles.push(profiles[i]);
+    }
+
+    session.defaultProcess = renderer;
+
+    return { session, renderer, gpu, main, worker, first, cpuOnly, profiles };
 }
 
 // Values of a line of the length with many events per unit, e.g. for zooming that stops at a number of events:

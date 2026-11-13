@@ -1,5 +1,6 @@
 import { toggleProfile } from './prepare/profile.mts';
 import { subscribeSelectionSync } from './selection-sync.js';
+import { createRootScope } from './jora/scope.js';
 import { allConvolutionRule, moduleConvolutionRule, profilePresenceConvolutionRule, setSamplesConvolutionRule, topLevelConvolutionRule } from './prepare/computations/samples-convolution.mjs';
 
 const model = discovery;
@@ -146,6 +147,20 @@ model.on('data', () => {
             ? entries.filter(entry => entry.bucket === source.bucket && !entry.disabled).map(entry => entry.profile)
             : [];
     });
+});
+// The root scope follows the primary profile, line and breakdown, whichever action selects them
+model.on('context', (prevContext, context) => {
+    const { primaryProfile, primaryLineType, primaryBreakdownKind } = context;
+
+    if (
+        primaryProfile !== prevContext?.primaryProfile ||
+        primaryLineType !== prevContext?.primaryLineType ||
+        primaryBreakdownKind !== prevContext?.primaryBreakdownKind
+    ) {
+        model.setContext({
+            scope: createRootScope(model.data?.sessions || [], primaryProfile, primaryLineType, primaryBreakdownKind)
+        });
+    }
 });
 
 // discovery.action.call('setSamplesConvolutionRule', (self) => {

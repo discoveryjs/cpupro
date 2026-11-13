@@ -16,6 +16,7 @@ import { histAllocationCodeType } from './hist-allocation-code-type.js';
 import { viewportShare } from './scope-values.js';
 import { categoriesFractionBars } from './categories-fraction-bar.js';
 import { evaluateModule } from '../../../test/helpers/evaluate-module.js';
+import { createRootScope } from '../../jora/scope.js';
 import { findView, findViews, lineMetricsValueContext } from '../../../test/helpers/view-config.js';
 import * as lineWindow from '../../views/misc/line-window.js';
 import { dictEntries } from '../../../test/fixtures/lines.js';
@@ -47,9 +48,14 @@ const [, gcEvents, timeCharts] = section.content;
 
 // The context of the page for the timeline of its primary profile among the profiles of a loaded recording
 function pageContext(profile, profiles = [profile]) {
-    joinSession(profiles);
+    const session = joinSession(profiles);
 
-    return { primaryProfile: profile, primaryLineType: 'timeline', data: { profiles } };
+    return {
+        primaryProfile: profile,
+        primaryLineType: 'timeline',
+        scope: createRootScope([session], profile, 'timeline', null),
+        data: { profiles }
+    };
 }
 
 // A profile of 4 allocations of 16, 32, 48 and 64 bytes on samples [0, 1, 1, 2] of a timeline of 3 samples over 10-40

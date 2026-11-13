@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { createLineFixture } from './profile.js';
+import { createLineFixture, createSessionFixture } from './profile.js';
 
 test.each(['timeline', 'memline'] as const)(
     'a line fixture of a %s is a prepared profile graph independent of other fixtures',
@@ -29,3 +29,26 @@ test.each(['timeline', 'memline'] as const)(
         assert.equal(second.breakdown.populationFiltered.ranges, null);
     }
 );
+
+test('a session fixture is a session graph of processes, threads and profiles independent of other fixtures', async () => {
+    const fixture = await createSessionFixture();
+    const other = await createSessionFixture();
+    const { session, renderer, gpu, main, worker, first, cpuOnly, profiles } = fixture;
+
+    assert.deepEqual(session.processes, [renderer, gpu]);
+    assert.equal(session.defaultProcess, renderer);
+    assert.equal(renderer.session, session);
+    assert.deepEqual(renderer.threads, [main, worker]);
+    assert.deepEqual(gpu.threads, []);
+    assert.equal(main.process, renderer);
+    assert.equal(worker.process, renderer);
+    assert.deepEqual(main.profiles, [first, cpuOnly]);
+    assert.deepEqual(worker.profiles, []);
+    assert.deepEqual(session.profiles, profiles);
+    assert.equal(first.thread, main);
+    assert.equal(cpuOnly.thread, main);
+    assert.deepEqual(first.lines.map(line => line.type), ['timeline', 'memline']);
+    assert.deepEqual(cpuOnly.lines.map(line => line.type), ['timeline']);
+    assert.notEqual(other.session, session);
+    assert.notEqual(other.first, first);
+});

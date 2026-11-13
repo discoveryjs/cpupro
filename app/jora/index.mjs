@@ -9,6 +9,7 @@ import { methods as sourceMethods } from './source.js';
 import { methods as ownershipMethods } from './ownership.js';
 import { methods as filterMethods, assertions as filterAssertions } from './filters.js';
 import { methods as viewportMethods } from './viewport.js';
+import { methods as scopeMethods } from './scope.js';
 import { methods as eventsMethods } from './events.js';
 import { methods as signalsMethods } from './signals.js';
 import { formatMicrosecondsTime } from '../prepare/misc/time-utils.js';
@@ -88,6 +89,7 @@ export const methods = {
     ...ownershipMethods,
     ...filterMethods,
     ...viewportMethods,
+    ...scopeMethods,
     ...eventsMethods,
     ...signalsMethods,
     scriptSourceSummary,

@@ -108,7 +108,7 @@ export function correlations(type) {
         header: `text:${JSON.stringify(cpu ? 'CPU samples and events' : 'Allocations and stages')}`,
         content: {
             view: 'context',
-            context: `{ ...#, scopeLine: $.${type} }`,
+            context: `{ ...#, scopeLine: $.${type}, scope({ line: "${type}" }) }`,
             data: `samplesByCompilation('${type}')`,
             content: {
                 view: 'switch',
