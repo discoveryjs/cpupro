@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { Dictionary } from '../dictionary.js';
 import { createProfile } from '../profile.mjs';
 import { noopWorkHandler } from '../misc/work.js';
@@ -38,10 +38,10 @@ async function createRunsLine() {
 // Allocations of 5, 7, 3, 4, 6, 2 and 9 bytes of new (N) and old (O) space, mapped onto CPU samples of 10 ms
 // starting at 10 ms: the sample at 10 ms holds N5 and O7, the one at 30 ms N3, N4 and O6, the one at 40 ms O2.
 // N9 follows the last sample and has no time
-async function createMappedProfile() {
+async function createMappedProfile(startTime = 0) {
     const data = {
-        startTime: 0,
-        endTime: 60,
+        startTime,
+        endTime: startTime + 60,
         nodes: [
             {
                 id: 1,
@@ -223,6 +223,26 @@ test.each([
     );
 
     assert.deepEqual(readMaxima(maxima, memline.attributes[0], row.duration, row.start), row.expected);
+});
+
+test('columns from a start off their origin by the rounding of coordinates are read from one hierarchy', async () => {
+    // Timestamps of a trace: a unit of their last place is 2^-15
+    const startTime = 270351962000;
+    const { memline, timeline } = await createMappedProfile(startTime) as ProfileWithLines;
+    const maxima = getLineColumnMaxima(
+        memline,
+        memline.breakdowns[0].populationViewport,
+        timeline,
+        timeline.breakdowns[0].populationViewport
+    );
+    const createHierarchy = vi.spyOn(timeline.range.frame, 'rebaseValue');
+    // The origin of the columns, a multiple of the top column before the start, rounds to the timestamps
+    const duration = 0.3;
+    const start = startTime + 12.5;
+
+    assert.deepEqual(readMaxima(maxima, memline.attributes[0], duration, start), [13, [7, 7]]);
+    assert.deepEqual(readMaxima(maxima, memline.attributes[0], duration / 4, start), [13, [7, 7]]);
+    assert.equal(createHierarchy.mock.calls.length, 1);
 });
 
 test('filtered allocations leave gaps between the runs of their own axis', async () => {

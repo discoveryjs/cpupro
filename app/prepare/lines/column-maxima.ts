@@ -23,6 +23,9 @@ const EVENT_CHUNK = 4096;
 // Cells of a line per column, at least, for columns whose edges cross cells
 const CROSSED_CELLS_PER_COLUMN = 16;
 
+// Roundings of coordinates giving a column start or a duration, each within a unit of the last place
+const COORDINATE_ROUNDINGS = 4;
+
 // The highest columns of a level, of the values of every attribute and of their total; NaN for ones not taken yet.
 // A walk of a value ending at a column reaching a bound gives columns its highest ones are at or above
 type LevelMaxima = {
@@ -1213,13 +1216,21 @@ export class LineColumnMaxima {
 
 }
 
-// The level of a duration from a column start in a hierarchy, null when its columns aren't columns of it
+// The level of a duration from a column start in a hierarchy, null when its columns aren't columns of it. Column
+// starts and durations are computed from coordinates, so they are known to a few units of the last place of the
+// coordinates: off the columns of a hierarchy by no more they are columns of it, as columns of a hierarchy built
+// for them are
 function hierarchyLevel(hierarchy: Hierarchy, duration: number, columnStart: number) {
+    const { origin } = hierarchy;
     const level = Math.round(Math.log2(duration / hierarchy.duration));
     const levelDuration = hierarchy.duration * 2 ** level;
-    const offset = (columnStart - hierarchy.origin) / duration;
+    const column = Math.round((columnStart - origin) / levelDuration);
+    const precision = COORDINATE_ROUNDINGS * Number.EPSILON * Math.max(Math.abs(columnStart), Math.abs(origin));
 
-    if (Math.abs(levelDuration - duration) > duration * 1e-9 || Math.abs(offset - Math.round(offset)) > 1e-6) {
+    if (
+        Math.abs(levelDuration - duration) > Math.max(duration * 1e-9, precision) ||
+        Math.abs(origin + column * levelDuration - columnStart) > Math.max(duration * 1e-6, precision)
+    ) {
         return null;
     }
 
