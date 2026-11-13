@@ -17,6 +17,9 @@ import { lineWindowExtent } from './range.js';
 // every few levels
 const LEVELS_AHEAD = 4;
 
+// Events a walk lists at once
+const EVENT_CHUNK = 4096;
+
 // Cells of a line per column, at least, for columns whose edges cross cells
 const CROSSED_CELLS_PER_COLUMN = 16;
 
@@ -553,16 +556,22 @@ function addEventParts(
     ids: Uint32Array | null,
     bound: number
 ) {
-    const { values, cumulative } = viewport.population;
+    const { cumulative, cumulativeEnd } = viewport.population;
     const { sinkId } = viewport;
     // PERF: Samples are compiled only when signatures don't tell the acceptance of events
     const samples = accepted === null
         ? viewport.samples
         : null;
+    // PERF: Signatures of events aren't read when all of them are accepted
+    const acceptsAll = accepted !== null && accepted.indexOf(0) === -1;
+    const lastEvent = cumulative.length - 1;
+    const walked = new Uint8Array(folds.length);
+    const events = new Uint32Array(EVENT_CHUNK);
     let walking = 0;
 
     for (let i = 0; i < folds.length; i++) {
         if (folds[i] !== null) {
+            walked[i] = 1;
             walking++;
         }
     }
@@ -573,32 +582,55 @@ function addEventParts(
         const rangeFirst = Math.max(0, lowerBound(cumulative, rangeStart, true) - 1);
         const rangeLast = lowerBound(cumulative, rangeEnd);
 
-        for (let j = rangeFirst; j < rangeLast && walking > 0; j++) {
-            const group = groups !== null
-                ? groups[j]
-                : 0;
-            const groupFolds = folds[group];
+        for (let chunkStart = rangeFirst; chunkStart < rangeLast && walking > 0; chunkStart += EVENT_CHUNK) {
+            const chunkEnd = Math.min(chunkStart + EVENT_CHUNK, rangeLast);
+            let count = 0;
 
-            if (groupFolds !== null && values[j] !== 0 &&
-                (accepted !== null ? accepted[ids![j]] === 1 : samples![j] !== sinkId)) {
+            // PERF: Events of walked values are listed without a branch per event, as they are scattered among the
+            // events of other values and a branch on each mispredicts
+            if (groups === null) {
+                for (let j = chunkStart; j < chunkEnd; j++) {
+                    events[count++] = j;
+                }
+            } else {
+                for (let j = chunkStart; j < chunkEnd; j++) {
+                    events[count] = j;
+                    count += walked[groups[j]];
+                }
+            }
+
+            for (let k = 0; k < count; k++) {
+                const j = events[k];
+                const group = groups !== null
+                    ? groups[j]
+                    : 0;
+                const groupFolds = folds[group];
+
+                // PERF: An event ends where the next one starts, so its value isn't read
                 let partStart = cumulative[j];
-                let partEnd = partStart + values[j];
+                let partEnd = j < lastEvent
+                    ? cumulative[j + 1]
+                    : cumulativeEnd;
 
-                // PERF: Comparisons cut parts at range edges faster than Math.max and Math.min here, as measured
-                // on walks of tens of millions of events
-                if (partStart < rangeStart) {
-                    partStart = rangeStart;
-                }
+                if (groupFolds !== null && partEnd > partStart &&
+                    (acceptsAll || (accepted !== null ? accepted[ids![j]] === 1 : samples![j] !== sinkId))) {
+                    // PERF: Comparisons cut parts at range edges faster than Math.max and Math.min here, as measured
+                    // on walks of tens of millions of events
+                    if (partStart < rangeStart) {
+                        partStart = rangeStart;
+                    }
 
-                if (partEnd > rangeEnd) {
-                    partEnd = rangeEnd;
-                }
+                    if (partEnd > rangeEnd) {
+                        partEnd = rangeEnd;
+                    }
 
-                groupFolds.addPart(partStart, partEnd);
+                    groupFolds.addPart(partStart, partEnd);
 
-                if (groupFolds.topMaximum >= bound) {
-                    folds[group] = null;
-                    walking--;
+                    if (groupFolds.topMaximum >= bound) {
+                        folds[group] = null;
+                        walked[group] = 0;
+                        walking--;
+                    }
                 }
             }
         }

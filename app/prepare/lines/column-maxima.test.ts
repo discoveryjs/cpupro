@@ -625,6 +625,28 @@ async function createAlternatingLine() {
     };
 }
 
+// Twelve thousand allocations of a byte, y every fourth byte and over [8184, 8200): walks list the events of their
+// values a few thousand at a time, and the highest column of y, [8176, 8208), holds events of two of them
+test('a walk of a value over many events adds the events of its columns listed apart', async () => {
+    const { line, breakdown } = await createLineFixture({
+        type: 'memline',
+        values: new Uint32Array(12000).fill(1)
+    });
+    const isY = (index: number) => index % 4 === 0 || (index >= 8184 && index < 8200);
+    const attribute = {
+        name: 'allocationSpace',
+        values: Uint8Array.from({ length: 12000 }, (_, index) => isY(index) ? 1 : 0),
+        dict: ['x', 'y']
+    } as unknown as ProfileLineAttribute;
+    const viewport = breakdown.populationViewport;
+
+    line.attributes = [attribute];
+
+    const maxima = getLineColumnMaxima(line, viewport, line, viewport);
+
+    assert.deepEqual(readMaxima(maxima, attribute, 32, 16), [32, [24, 20]]);
+});
+
 // Reads of y in order, for bounds a row shows its own scale below. In cells y holds 350 bytes of a column of 1024, so
 // one of 512 holds 175 at least; its highest columns are 256 of 512, 48 of 64 by its contiguous bytes and 32 of 32.
 // Without cells y holds 7 bytes of a column of 20 and 4 of 5
