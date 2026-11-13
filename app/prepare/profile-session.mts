@@ -56,7 +56,8 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         );
 
         thread.scripts = scripts.map(script => ({
-            ...script,
+            id: script.id,
+            url: script.url,
             script: null,
             compilation: null
         }));

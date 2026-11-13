@@ -174,6 +174,8 @@ test('thread script links retain local IDs and isolate events even when Dictiona
     assert.equal(first[0].compilation!.states[1], 3);
     assert.equal(second[0].compilation!.states[1], 1);
     assert.deepEqual(first.map(entry => entry.url), ['shared.js', 'thread-1.js']);
+    // a thread script keeps the id and url of the input script, not its source and source map
+    assert.deepEqual(Object.keys(first[0]), ['id', 'url', 'script', 'compilation']);
     assert.deepEqual(second.map(entry => entry.url), ['shared.js', 'thread-2.js']);
     assert.equal('compilation' in shared, false);
     assert.deepEqual(raw.threads.map(thread => thread.scripts), before);

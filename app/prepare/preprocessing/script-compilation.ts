@@ -291,7 +291,6 @@ export function linkThreadScripts(thread: CpuProThread, scripts: ProfileScriptsM
             thread.scripts.push({
                 id,
                 url: script.url,
-                source: script.source,
                 script,
                 compilation: compilations.get(id) ?? null
             });
