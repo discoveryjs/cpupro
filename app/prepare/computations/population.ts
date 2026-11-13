@@ -88,32 +88,6 @@ export class Population extends Observer {
         return aggregatePopulation(this, [[0, this.values.length]], groups, groupCount);
     }
 
-    // Events of a few groups, a vector per group: the events the group counts (of a nonzero value and a destination
-    // other than the sink) in index order, for walks over the events of a group rather than over all events. Counts
-    // of the groups size the vectors, so a single pass over the events fills them
-    groupEvents(groups: Uint8Array | Uint32Array, groupCount: number, selected: number[]) {
-        const { samples, values, sinkId } = this;
-        const { samplesCount } = this.aggregateBy(groups, groupCount);
-        const slots = new Uint32Array(groupCount); // per group: 1 + its index in selected
-        const offsets = new Uint32Array(selected.length);
-        const events: Uint32Array[] = [];
-
-        for (let i = 0; i < selected.length; i++) {
-            slots[selected[i]] = i + 1;
-            events.push(new Uint32Array(samplesCount[selected[i]]));
-        }
-
-        for (let i = 0; i < groups.length; i++) {
-            const slot = slots[groups[i]];
-
-            if (slot !== 0 && values[i] !== 0 && samples[i] !== sinkId) {
-                events[slot - 1][offsets[slot - 1]++] = i;
-            }
-        }
-
-        return events;
-    }
-
     // Events of zero weight (e.g. samples with a zero time delta) in index order: they have no extent on the axis,
     // so counts of nonzero values miss them
     get zeroEvents(): Uint32Array {
