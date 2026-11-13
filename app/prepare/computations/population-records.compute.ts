@@ -41,7 +41,7 @@ type RecordsApi = typeof recordsJavaScriptApi;
 // Passes of population-records.compute.wat over the first size staged events. Records of the part are at their number
 // minus firstRecord; numbers below firstRecord in the tables belong to earlier parts and are free
 const recordsJavaScriptApi = {
-    // Consecutive events of one sample and class take their record without a lookup
+    // A hash table with linear probing finds the record of an event's sample and class
     groupPairs(buffer: RecordsBuffer, size: number, firstRecord: number) {
         const {
             samples,
@@ -55,9 +55,6 @@ const recordsJavaScriptApi = {
         } = buffer;
         const slotMask = slots.length - 1;
         let previousSample = -1;
-        let previousClass = -1;
-        // Index of the record of the previous event among the records of the part
-        let index = 0;
         let count = 0;
         let runs = 0;
         let nonzero = 0;
@@ -66,34 +63,30 @@ const recordsJavaScriptApi = {
             const sample = samples[i];
             const eventClass = classes[i];
             const value = values[i];
+            let slot = hashPair(sample, eventClass) & slotMask;
+            let record = slots[slot];
+            // Index of the record among the records of the part
+            let index = record - firstRecord;
 
-            if (sample !== previousSample || eventClass !== previousClass) {
-                let slot = hashPair(sample, eventClass) & slotMask;
-                let record = slots[slot];
-
-                while (record >= firstRecord) {
-                    index = record - firstRecord;
-
-                    if (recordSamples[index] === sample && recordClasses[index] === eventClass) {
-                        break;
-                    }
-
-                    slot = (slot + 1) & slotMask;
-                    record = slots[slot];
+            while (record >= firstRecord) {
+                if (recordSamples[index] === sample && recordClasses[index] === eventClass) {
+                    break;
                 }
 
-                if (record < firstRecord) {
-                    index = count++;
-                    addRecord(buffer, index, sample, eventClass);
-                    slots[slot] = firstRecord + index;
-                }
+                slot = (slot + 1) & slotMask;
+                record = slots[slot];
+                index = record - firstRecord;
+            }
 
-                if (sample !== previousSample) {
-                    runs++;
-                }
+            if (record < firstRecord) {
+                index = count++;
+                addRecord(buffer, index, sample, eventClass);
+                slots[slot] = firstRecord + index;
+            }
 
+            if (sample !== previousSample) {
                 previousSample = sample;
-                previousClass = eventClass;
+                runs++;
             }
 
             if (value !== 0) {
