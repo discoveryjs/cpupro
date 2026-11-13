@@ -657,9 +657,7 @@ function parseFor() {
 }
 
 function parseForInit() {
-    const word = lexer.word;
-
-    if (word === KW_VAR || word === KW_CONST || word === KW_LET || word === KW_USING) {
+    if (isWord(KW_VAR) || isWord(KW_CONST) || isWord(KW_LET) || isWord(KW_USING)) {
         lexer.peek();
 
         if (lexer.peekType === NAME || lexer.peekType === BRACE_L || lexer.peekType === BRACKET_L) {
@@ -1679,7 +1677,7 @@ function parseBinary(minPrec: number, flags: number) {
 
         left = NONE;
 
-        if (lexer.word === KW_AS || lexer.word === KW_SATISFIES) {
+        if (isWord(KW_AS) || isWord(KW_SATISFIES)) {
             lexer.nextAfterOperand();
             skipType();
             continue;
