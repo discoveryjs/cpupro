@@ -28,7 +28,8 @@ export function createComputeMemory(byteSize: number): ComputeMemory {
         : new Uint8Array(byteSize);
 }
 
-// A buffer of vectors in one memory, a vector starts at a multiple of its element size
+// A buffer of vectors in one memory, a vector starts at a multiple of its element size. The memory keeps room
+// after the last vector for a read of 4 bytes at any element (see elementMask)
 export function createComputeBuffer<L extends BufferLayout>(layout: L) {
     const names = Object.keys(layout);
     const offsets: number[] = [];
@@ -42,7 +43,7 @@ export function createComputeBuffer<L extends BufferLayout>(layout: L) {
         byteSize = offset + Type.BYTES_PER_ELEMENT * length;
     }
 
-    const memory = createComputeMemory(byteSize);
+    const memory = createComputeMemory(byteSize + 3);
     const buffer: Record<string, ComputeMemory | ComputeVector> = { memory };
 
     for (let i = 0; i < names.length; i++) {
@@ -52,6 +53,13 @@ export function createComputeBuffer<L extends BufferLayout>(layout: L) {
     }
 
     return buffer as ComputeBuffer<L>;
+}
+
+// Mask of the bytes of an element of a vector of 1, 2 or 4 byte unsigned integers. WASM reads an element of any
+// width as 4 bytes at its byte offset and masks out the bytes after it, so a vector is staged in its own element type
+// PERF: Classes of records staged as Uint32 by a converting copy cost about 12% more of the grouping in Chrome
+export function elementMask(vector: Uint8Array | Uint16Array | Uint32Array) {
+    return 2 ** (8 * vector.BYTES_PER_ELEMENT) - 1;
 }
 
 // The api of a computation over a compute buffer: the module's exports bound by bindWasm over WASM memory,
