@@ -1,4 +1,18 @@
+import { namedEvents as namedEventIndices } from '../prepare/preprocessing/thread-events.js';
+
 export const methods = {
+    // Events of a thread with any of the names, in their order
+    namedEvents(thread, names) {
+        const indices = namedEventIndices(thread.events, names);
+        const events = [];
+
+        for (let i = 0; i < indices.length; i++) {
+            events.push(thread.events[indices[i]]);
+        }
+
+        return events;
+    },
+
     eventsTimeline(threads, selectedIntervals = []) {
         const colors = new Map(selectedIntervals.map(({ name, color }) => [name, color]));
         const groups = [];

@@ -93,7 +93,8 @@ export function joinSession<T extends object>(profiles: T[]) {
     for (let i = 0; i < profiles.length; i++) {
         const profile = profiles[i] as Partial<Profile>;
 
-        profile.thread = { ...profile.thread, process: { session } } as CpuProThread;
+        // A thread of a session has events, possibly none
+        profile.thread = { events: [], ...profile.thread, process: { session } } as CpuProThread;
     }
 
     return session;

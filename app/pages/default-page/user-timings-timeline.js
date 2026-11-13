@@ -7,7 +7,7 @@ export const userTimingsTimeline = {
         spans: thread.userTimings
             .({ start: tm, end: tm + duration, text: name, event: $ })
             .[start is number and start >= 0],
-        intervals: thread.events.[name="MinorGC" or name="MajorGC"]
+        intervals: thread.namedEvents(["MinorGC", "MajorGC"])
             .({ start: tm, end: tm + duration, name, color: name = 'MinorGC' ? '#f7b26b38' : '#f78c6b38' })
             .[start is number]
             + [0, 500000].({ offset: $, name: "Timeline", color: '#6666' })

@@ -326,7 +326,7 @@ const categoriesTimeline = {
             context: '{ ...#, scopeViewport: scopeLine().lineViewportBounds() }',
             zoom: true,
             data: `
-                scopeProfile().thread.events.[name in ["MinorGC", "MajorGC"]].({
+                scopeProfile().thread.namedEvents(["MinorGC", "MajorGC"]).({
                     start: tm,
                     end: tm + duration,
                     color: name = "MinorGC" ? "#f7b26b38" : "#f78c6b38"
