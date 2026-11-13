@@ -287,7 +287,7 @@ export function getScriptOffsetFromLineColumn(script: CpuProScript | null, line:
     const lines = getScriptLineBoundaries(script);
 
     if (lines) {
-        return lines.getOffset(line + 1, column + 1);
+        return lines.offsetOf(line, column);
     }
 
     return -1;
@@ -297,9 +297,11 @@ export function getScriptLineColumnFromOffset(script: CpuProScript | null, offse
     const lines = getScriptLineBoundaries(script);
 
     if (lines && offset >= 0) {
+        const line = lines.lineOf(offset);
+
         return {
-            line: lines.getLine(offset) - 1,
-            column: lines.getColumn(offset) - 1
+            line,
+            column: lines.columnOf(offset, line)
         };
     }
 

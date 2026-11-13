@@ -162,6 +162,7 @@ function createFunctionRanges(parsed: ParsedFunctionRanges, lines: ReturnType<ty
 
     for (let i = 0; i < parsed.count; i++) {
         const callFrameStart = parsed.callFrameStart[i];
+        const callFrameStartLine = lines.lineOf(callFrameStart);
 
         ranges[i] = {
             type: functionRangeTypes[parsed.type[i]],
@@ -170,8 +171,8 @@ function createFunctionRanges(parsed: ParsedFunctionRanges, lines: ReturnType<ty
             start: parsed.start[i],
             end: parsed.end[i],
             callFrameStart,
-            callFrameStartLine: lines.getLine(callFrameStart),
-            callFrameStartColumn: lines.getColumn(callFrameStart) - 1,
+            callFrameStartLine: callFrameStartLine + 1,
+            callFrameStartColumn: lines.columnOf(callFrameStart, callFrameStartLine),
             selfSize: 0
         };
     }

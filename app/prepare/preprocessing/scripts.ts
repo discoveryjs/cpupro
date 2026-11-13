@@ -297,10 +297,10 @@ export function scriptOffsetsFromLineColumns(
         // Lines and columns of samples are 1-based positions in the document of a script, as positions of call frames
         // are: the first line of the script starts at its column offset
         if (scriptEntry !== null && scriptEntry.lineBoundaries !== null && line) {
-            const scriptLine = line - scriptEntry.lineOffset;
-            const column = columns[i] - (scriptLine === 1 ? scriptEntry.columnOffset : 0);
+            const scriptLine = line - 1 - scriptEntry.lineOffset;
+            const column = columns[i] - 1 - (scriptLine === 0 ? scriptEntry.columnOffset : 0);
 
-            offset = scriptEntry.lineBoundaries.getOffset(scriptLine, column);
+            offset = scriptEntry.lineBoundaries.offsetOf(scriptLine, column);
         }
 
         result[i] = offset;

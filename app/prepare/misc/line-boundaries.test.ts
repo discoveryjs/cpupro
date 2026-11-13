@@ -1,24 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { createLineBoundaries } from './line-boundaries.js';
-
-// Line starts of a document, read by the offsets of its lines; a line past the last one has the last line's offset
-function lineStarts(document: string) {
-    const lines = createLineBoundaries(document);
-    const starts = [lines.getOffset(1)];
-
-    for (let i = 2; ; i++) {
-        const offset = lines.getOffset(i);
-
-        if (offset === starts[starts.length - 1]) {
-            break;
-        }
-
-        starts.push(offset);
-    }
-
-    return starts;
-}
+import { computeLineStarts, createLineBoundaries } from './line-boundaries.js';
 
 test.each([
     {
@@ -62,12 +44,45 @@ test.each([
         starts: [0, 2, 3, 4, 6, 8]
     }
 ])('finds starts of lines of a document $title', row => {
-    assert.deepEqual(lineStarts(row.document), row.starts);
+    assert.deepEqual([...computeLineStarts(row.document)], row.starts);
 });
 
-test('finds lines of offsets in any order of lookups', () => {
-    const document = 'ab\r\ncd\ref\ngh';
+// Every offset of a document and the offsets around it go to their line and column and back,
+// a position of a line break is its line end
+test.each([
+    '',
+    'abc',
+    'ab\r\ncd\ref\ngh',
+    'a\n',
+    '\n\n',
+    'a\u2028b\u2029'
+])('finds lines and columns of offsets and offsets of lines and columns in %j', document => {
     const lines = createLineBoundaries(document);
+    const starts = computeLineStarts(document);
 
-    assert.deepEqual([11, 0, 7, 4, 3].map(offset => lines.getLine(offset)), [4, 1, 3, 2, 1]);
+    for (let offset = -1; offset <= document.length + 1; offset++) {
+        const position = Math.max(0, Math.min(offset, document.length));
+        let line = 0;
+
+        while (line + 1 < starts.length && starts[line + 1] <= position) {
+            line++;
+        }
+
+        const column = position - starts[line];
+
+        assert.equal(lines.lineOf(offset), line, `line of ${offset}`);
+        assert.equal(lines.columnOf(offset), column, `column of ${offset}`);
+        assert.equal(lines.columnOf(offset, line), column, `column of ${offset} on its line`);
+        assert.equal(lines.offsetOf(line, column), position, `offset of ${line}:${column}`);
+    }
+});
+
+test('takes a line outside a document at its first or last line, a column past a line at the next line', () => {
+    const lines = createLineBoundaries('ab\ncd');
+
+    assert.equal(lines.offsetOf(-1, 1), 1);
+    assert.equal(lines.offsetOf(0, -1), 0);
+    assert.equal(lines.offsetOf(0, 10), 3);
+    assert.equal(lines.offsetOf(5, 1), 4);
+    assert.equal(lines.offsetOf(1, 10), 5);
 });
