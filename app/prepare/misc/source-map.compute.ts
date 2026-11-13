@@ -74,6 +74,10 @@ export function indexMappings(mappings: string): MappingsIndex {
         const checkpointCount = state[STATE_CHECKPOINT_COUNT];
         // A non-ASCII character is invalid, as its bytes are: the bytes before the first one are the characters
         const { written } = mappingsEncoder.encodeInto(mappings.slice(start, end), buffer.mappings);
+
+        // the byte after the chunk is a separator, so a segment ends at it
+        buffer.mappings[written] = 44 /* , */;
+
         const invalidOffset = api.indexMappings(buffer, written, start);
 
         if (invalidOffset !== -1) {
@@ -156,8 +160,8 @@ function getMappingsIndexer() {
 // checkpoints, the first checkpoints of the lines it starts and unsorted lines
 function createMappingsBuffer() {
     const buffer = createComputeBuffer({
-        // a UTF-16 code unit takes 3 bytes of UTF-8 at most
-        mappings: [Uint8Array, 3 * MAPPINGS_CHUNK_SIZE],
+        // a UTF-16 code unit takes 3 bytes of UTF-8 at most, and a separator follows the chunk
+        mappings: [Uint8Array, 3 * MAPPINGS_CHUNK_SIZE + 1],
         charValues: [Uint8Array, 256],
         state: [Int32Array, STATE_SIZE],
         checkpoints: [Int32Array, CHUNK_SEGMENTS * CHECKPOINT_SIZE],
@@ -173,9 +177,10 @@ function createMappingsBuffer() {
 type MappingsBuffer = ReturnType<typeof createMappingsBuffer>;
 type MappingsApi = typeof mappingsJavaScriptApi;
 
-// The index pass (source-map.compute.wat) over the first size bytes of the chunk at a start of the mappings:
-// decodes the segments of the chunk from the state, writes the checkpoints of the chunk, the first checkpoints
-// of the lines it starts and its unsorted lines; returns -1, or the offset of an invalid byte in the chunk
+// The index pass (source-map.compute.wat) over the first size bytes of the chunk at a start of the mappings,
+// a separator follows them: decodes the segments of the chunk from the state, writes the checkpoints of the chunk,
+// the first checkpoints of the lines it starts and its unsorted lines; returns -1, or the offset of an invalid byte
+// in the chunk
 const mappingsJavaScriptApi = {
     indexMappings(buffer: MappingsBuffer, size: number, start: number) {
         const { mappings, charValues, state, checkpoints, lineCheckpoints, unsortedLines } = buffer;
@@ -209,14 +214,10 @@ const mappingsJavaScriptApi = {
             }
 
             const segmentOffset = offset;
-            const previousColumn = generatedColumn;
-            const previousSource = source;
-            const previousOriginalLine = originalLine;
-            const previousOriginalColumn = originalColumn;
             let fieldCount = 0;
             let digit = charValues[byte];
 
-            // A segment is a sequence of base64 VLQ values up to a separator or the end of the chunk
+            // A segment is a sequence of base64 VLQ values up to a separator, the one after the chunk included
             while (digit < MAPPINGS_SEPARATOR) {
                 let value = digit & 31;
                 let shift = 5;
@@ -224,11 +225,6 @@ const mappingsJavaScriptApi = {
                 // A digit with the continuation bit is followed by more digits of the value
                 while (digit & 32) {
                     offset++;
-
-                    if (offset >= size) {
-                        return offset;
-                    }
-
                     digit = charValues[mappings[offset]];
 
                     if (digit >= MAPPINGS_SEPARATOR) {
@@ -245,7 +241,36 @@ const mappingsJavaScriptApi = {
 
                 // the fields are the generated column, source, original line and column, a name isn't used
                 if (fieldCount === 0) {
-                    generatedColumn += delta;
+                    const column = generatedColumn + delta;
+
+                    // The decisions of a segment take the fields before it, which the fields after the generated
+                    // column still are. The spec doesn't require segments of a line to be sorted by generated column,
+                    // a lookup scans an unsorted line whole
+                    if (lineSegments > 0 && column < generatedColumn) {
+                        unsortedLines[unsortedLineCount++] = line;
+                    }
+
+                    // A line starts with a checkpoint, and a checkpoint doesn't come between segments at the same
+                    // column, so the segments at the column of a lookup's result come after the checkpoint
+                    // it starts with
+                    if (lineSegments === 0 || (
+                        segmentsAfterCheckpoint >= CHECKPOINT_SEGMENTS &&
+                        column > generatedColumn
+                    )) {
+                        checkpoints[checkpoint + CHECKPOINT_COLUMN] = column;
+                        checkpoints[checkpoint + CHECKPOINT_PREVIOUS_COLUMN] = generatedColumn;
+                        checkpoints[checkpoint + CHECKPOINT_OFFSET] = start + segmentOffset;
+                        checkpoints[checkpoint + CHECKPOINT_SOURCE] = source;
+                        checkpoints[checkpoint + CHECKPOINT_ORIGINAL_LINE] = originalLine;
+                        checkpoints[checkpoint + CHECKPOINT_ORIGINAL_COLUMN] = originalColumn;
+                        checkpoint += CHECKPOINT_SIZE;
+                        checkpointCount++;
+                        segmentsAfterCheckpoint = 0;
+                    }
+
+                    generatedColumn = column;
+                    lineSegments++;
+                    segmentsAfterCheckpoint++;
                 } else if (fieldCount === 1) {
                     source += delta;
                 } else if (fieldCount === 2) {
@@ -256,40 +281,12 @@ const mappingsJavaScriptApi = {
 
                 fieldCount++;
                 offset++;
-                digit = offset < size
-                    ? charValues[mappings[offset]]
-                    : MAPPINGS_SEPARATOR;
+                digit = charValues[mappings[offset]];
             }
 
             if (digit === MAPPINGS_INVALID) {
                 return offset;
             }
-
-            // The spec doesn't require segments of a line to be sorted by generated column,
-            // a lookup scans an unsorted line whole
-            if (lineSegments > 0 && generatedColumn < previousColumn) {
-                unsortedLines[unsortedLineCount++] = line;
-            }
-
-            // A line starts with a checkpoint, and a checkpoint doesn't come between segments at the same column,
-            // so the segments at the column of a lookup's result come after the checkpoint it starts with
-            if (lineSegments === 0 || (
-                segmentsAfterCheckpoint >= CHECKPOINT_SEGMENTS &&
-                generatedColumn > previousColumn
-            )) {
-                checkpoints[checkpoint + CHECKPOINT_COLUMN] = generatedColumn;
-                checkpoints[checkpoint + CHECKPOINT_PREVIOUS_COLUMN] = previousColumn;
-                checkpoints[checkpoint + CHECKPOINT_OFFSET] = start + segmentOffset;
-                checkpoints[checkpoint + CHECKPOINT_SOURCE] = previousSource;
-                checkpoints[checkpoint + CHECKPOINT_ORIGINAL_LINE] = previousOriginalLine;
-                checkpoints[checkpoint + CHECKPOINT_ORIGINAL_COLUMN] = previousOriginalColumn;
-                checkpoint += CHECKPOINT_SIZE;
-                checkpointCount++;
-                segmentsAfterCheckpoint = 0;
-            }
-
-            lineSegments++;
-            segmentsAfterCheckpoint++;
         }
 
         state[STATE_LINE] = line;
