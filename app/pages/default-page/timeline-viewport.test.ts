@@ -677,11 +677,22 @@ const codesExpand = findView(histCodes, { view: 'expand' });
 const [, heapSizeRange] = findView(histHeapTotal, { view: 'labeled-value', text: 'Total size' }).value;
 const userTimingsNote = findView(userTimingsTimeline.header, { view: 'context' });
 
+// Sections of time are shown for a scope placing data on a line of time
 test.each([
-    ['code states for a timeline', codesExpand.when, null, { primaryLineType: 'timeline' }, true],
-    ['code states for a memline', codesExpand.when, null, { primaryLineType: 'memline' }, false],
-    ['heap sizes for a timeline', heapExpand.when, null, { primaryLineType: 'timeline' }, true],
-    ['heap sizes for a memline', heapExpand.when, null, { primaryLineType: 'memline' }, false],
+    ['code states', codesExpand.when],
+    ['heap sizes', heapExpand.when]
+])('timelines show %s on the time scale only', async (_, when) => {
+    const { profile } = await createProfileFixture();
+    const session = joinSession([profile]);
+    const scopes = [
+        createRootScope([session], profile, 'timeline', null),
+        createRootScope([session], profile, 'memline', null)
+    ];
+
+    assert.deepEqual(scopes.map(scope => query(when)(null, { scope })), [true, false]);
+});
+
+test.each([
     ['the range of different heap sizes', heapSizeRange.when, { minTotal: 1, maxTotal: 2 }, {}, true],
     ['the range of equal heap sizes', heapSizeRange.when, { minTotal: 2, maxTotal: 2 }, {}, false],
     ['the line mapping control of a profile with several lines', findView(timeline, { content: mappingBins }).when, null, { scopeProfile: { lines: [1, 2] } }, true],

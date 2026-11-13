@@ -24,7 +24,7 @@ export const histHeapTotal = withScopeValue('heapScope', '=scopeLine().viewport'
     }
 `, {
     view: 'expand',
-    when: '#.primaryLineType != "memline"',
+    when: '#.scope.scale.kind = "time"',
     ...sessionExpandState('default-timelines-heap', false, '$'),
     data: `
         $profile: scopeProfile();

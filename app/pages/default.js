@@ -509,24 +509,31 @@ const pageContent = [
         whenData: 'size() > 1'
     },
 
-    pageIndicators,
-
+    // The sections show a breakdown of a line of the profile, the profile may have no line of the primary type
     {
-        view: 'expand',
-        ...sessionExpandState('default-timelines', true),
-        className: 'timelines trigger-outside',
-        header: categoriesFractionBars,
-        content: categoriesTimeline
-    },
+        view: 'scope',
+        requires: 'breakdown',
+        content: [
+            pageIndicators,
 
-    hierarchicalComponentsTables,
+            {
+                view: 'expand',
+                ...sessionExpandState('default-timelines', true),
+                className: 'timelines trigger-outside',
+                header: categoriesFractionBars,
+                content: categoriesTimeline
+            },
 
-    {
-        view: 'expand',
-        ...sessionExpandState('default-flamegraphs', true),
-        className: 'flamecharts trigger-outside',
-        header: 'text:"Flame graphs"',
-        content: flamecharts
+            hierarchicalComponentsTables,
+
+            {
+                view: 'expand',
+                ...sessionExpandState('default-flamegraphs', true),
+                className: 'flamecharts trigger-outside',
+                header: 'text:"Flame graphs"',
+                content: flamecharts
+            }
+        ]
     }
 ];
 

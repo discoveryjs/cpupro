@@ -14,7 +14,7 @@ export const histCodes = withLineWindowValue('codeBins', `
     }
 `, {
     view: 'expand',
-    when: '#.primaryLineType != "memline"',
+    when: '#.scope.scale.kind = "time"',
     ...sessionExpandState('default-code-tiers', false, '$'),
     data: `
         $profile: scopeProfile();
