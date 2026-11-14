@@ -87,6 +87,7 @@ async function createMappedProfile(startTime = 0) {
 }
 
 // Rows of all values are shown before they're read, as views show the rows of a section
+// Rows of all values are shown before they're read, as views show the rows of a section
 function readMaxima(
     maxima: ReturnType<typeof getLineColumnMaxima>,
     attribute: ProfileLineAttribute,
@@ -94,6 +95,10 @@ function readMaxima(
     start: number
 ): Expected {
     const tracks: number[] = [];
+
+    for (let i = 0; i < attribute.dict.length; i++) {
+        maxima!.show(attribute, i);
+    }
 
     for (let i = 0; i < attribute.dict.length; i++) {
         maxima!.show(attribute, i);

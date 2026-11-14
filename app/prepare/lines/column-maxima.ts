@@ -710,10 +710,8 @@ export class LineColumnMaxima {
         return columns.total(level);
     }
 
-    // The highest column of a value of an attribute (by its index). A row read is shown
+    // The highest column of a value of an attribute (by its index) whose row is shown
     track(attribute: ProfileLineAttribute, group: number, duration: number, columnStart: number) {
-        this.show(attribute, group);
-
         const { columns, level } = this.#hierarchyLevel(duration, columnStart);
 
         return columns.track(this.#attributes.indexOf(attribute), group, level);
