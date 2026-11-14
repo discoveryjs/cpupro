@@ -1,6 +1,5 @@
 import type { ProfileLine, ProfileLineAttribute } from './types.js';
 import type { PopulationFiltered } from '../computations/population.js';
-import type { Range } from '../computations/coordinates.js';
 import type { EventSignatures, RangeRecords } from './event-signatures.js';
 import { lowerBound } from '../computations/misc.js';
 import { lineWindowExtent } from './range.js';
@@ -10,15 +9,9 @@ import { lineWindowExtent } from './range.js';
 // Rows of attribute values scale to the highest columns of their level over the whole viewport, of their value and
 // of the total; columns are taken for the values whose rows are shown. Columns of a level add to the column of the
 // next level holding them when they're complete, so weights added to the columns of a level give the highest columns
-// of every level above it.
-
-// Levels a walk folds below the requested one: a value's highest columns on its own axis change down to the level its
-// runs cover a column of, a few levels below the cells for values of many events; zooming in takes a walk then only
-// every few levels
-const LEVELS_AHEAD = 4;
-
-// Events a walk lists at once
-const EVENT_CHUNK = 4096;
+// of every level above it. The columns of every level are taken in one pass over the segments of the axis holding
+// events whole (cells of the line's own axis, targets of another line's axis) from the level of the segments, the
+// floor: below it a column holds a part of a segment at most.
 
 // Cells of a line per column, at least, for columns whose edges cross cells
 const CROSSED_CELLS_PER_COLUMN = 16;
@@ -26,57 +19,32 @@ const CROSSED_CELLS_PER_COLUMN = 16;
 // Roundings of coordinates giving a column start or a duration, each within a unit of the last place
 const COORDINATE_ROUNDINGS = 4;
 
-// The highest columns of a level, of the values of every attribute and of their total; NaN for ones not taken yet.
-// A walk of a value ending at a column reaching a bound gives columns its highest ones are at or above
-type LevelMaxima = {
-    total: number;
-    tracks: Float64Array[];
-    atLeast: Float64Array[];
-};
-
 // The highest columns of one value (or of all values) at the levels from a base level to a top level: weights add
 // to the columns of the base level in their order, a column is complete when a later one starts outside it, and adds
-// to the column of the level above holding it. Parts placed on the axis give the longest run of parts continuing one
-// another too
+// to the column of the level above holding it
 class ColumnFolds {
     readonly maxima: Float64Array;
-    longest = 0;
-    // Columns of the base level with weights (a bit per column), when kept
-    readonly held: Uint8Array | null;
     // The base column weights add to, and per level the weight of the complete columns of the column holding it
     #column = -1;
     readonly #sums: Float64Array;
     readonly #holds: Uint8Array;
-    // The highest complete column
-    #highest = 0;
     // The base column parts were added to last, in absolute coordinates
     #from = Infinity;
     #to = -Infinity;
-    #runStart = 0;
-    #runEnd = -1;
 
     constructor(
         readonly baseLevel: number,
         topLevel: number,
         readonly duration: number,
-        readonly origin: number,
-        keepsHeld = false
+        readonly origin: number
     ) {
         this.maxima = new Float64Array(topLevel - baseLevel + 1);
-        this.held = keepsHeld
-            ? new Uint8Array(Math.ceil(2 ** (topLevel - baseLevel) / 8))
-            : null;
         this.#sums = new Float64Array(this.maxima.length);
         this.#holds = new Uint8Array(this.maxima.length);
     }
 
     maximum(level: number) {
         return this.maxima[level - this.baseLevel];
-    }
-
-    // The highest complete column of any level, the top level has a column as high at least
-    get topMaximum() {
-        return this.#highest;
     }
 
     // A weight in a column of the base level, counted from the origin
@@ -87,10 +55,6 @@ class ColumnFolds {
             }
 
             this.#column = column;
-
-            if (this.held !== null) {
-                this.held[column >> 3] |= 1 << (column & 7);
-            }
         }
 
         this.#sums[0] += weight;
@@ -99,13 +63,6 @@ class ColumnFolds {
     // A part [start, end) of an event on the axis adds its parts in the base columns it crosses
     addPart(start: number, end: number) {
         const { duration } = this;
-
-        if (start !== this.#runEnd) {
-            this.#runStart = start;
-        }
-
-        this.#runEnd = end;
-        this.longest = Math.max(this.longest, end - this.#runStart);
 
         // PERF: Most parts are within the column of the part before them
         if (start >= this.#from && end <= this.#to) {
@@ -163,8 +120,6 @@ class ColumnFolds {
             }
         }
 
-        this.#highest = Math.max(this.#highest, sum);
-
         if (level < sums.length) {
             sums[level] += sum;
             holds[level] = 1;
@@ -182,286 +137,145 @@ function commonLevel(a: number, b: number) {
         : 32 - Math.clz32(a ^ b);
 }
 
-// Levels taken so far, a level with the highest columns of the attributes added after it was taken
-function takeLevel(levels: Map<number, LevelMaxima>, level: number, attributes: ProfileLineAttribute[]) {
-    let levelMaxima = levels.get(level);
+// The axis of the columns of a hierarchy: the floor, the level of its segments (null when the whole events are its
+// segments, on a line without cells), whether its columns hold no more than their duration (an axis of lengths of
+// events, as the line's own axis is), and the pass adding the events of walks and the total to the columns of a level
+type ColumnsAxis = {
+    floorLevel: number | null;
+    bounded: boolean;
+    addColumns(walks: AttributeWalk[], total: ColumnFolds | null, duration: number): void;
+};
 
-    if (levelMaxima === undefined) {
-        levelMaxima = {
-            total: NaN,
-            tracks: [],
-            atLeast: []
-        };
-        levels.set(level, levelMaxima);
-    }
+// The line's own axis: its cells, or its events on a line too small to have cells
+function ownAxis(line: ProfileLine, viewport: PopulationFiltered, topLevel: number, duration: number, origin: number) {
+    const signatures = line.signatures!;
+    const accepted = signatureAcceptance(line, viewport);
+    const { cumulative, cumulativeEnd } = viewport.population;
+    const cells = signatures.cellRecords(cumulative, cumulativeEnd);
+    const floorLevel = cells !== null
+        ? cellLevel(cells, cumulativeEnd, topLevel, duration, origin)
+        : null;
+    const addColumns = (walks: AttributeWalk[], total: ColumnFolds | null, levelDuration: number) =>
+        addCellColumns(walks, total, signatures, cells, accepted, viewport, levelDuration, origin);
 
-    for (let i = levelMaxima.tracks.length; i < attributes.length; i++) {
-        levelMaxima.tracks.push(new Float64Array(attributes[i].dict.length).fill(NaN));
-        levelMaxima.atLeast.push(new Float64Array(attributes[i].dict.length).fill(NaN));
-    }
-
-    return levelMaxima;
+    return {
+        floorLevel,
+        bounded: true,
+        addColumns
+    };
 }
 
-// The highest columns of the levels of the folds of a value walked to its last event, or columns its highest ones are
-// at or above when the walk ended at a bound
-function keepFolds(
-    levels: Map<number, LevelMaxima>,
-    attributes: ProfileLineAttribute[],
-    index: number,
-    group: number,
-    folds: ColumnFolds,
-    complete: boolean
+// Another line's axis the line's events are mapped onto in order: the targets of its events
+function mappedAxis(
+    line: ProfileLine,
+    viewport: PopulationFiltered,
+    mapping: Uint32Array,
+    axisViewport: PopulationFiltered,
+    duration: number,
+    origin: number
 ) {
-    for (let i = folds.baseLevel; i < folds.baseLevel + folds.maxima.length; i++) {
-        const levelMaxima = takeLevel(levels, i, attributes);
-        const maxima = complete
-            ? levelMaxima.tracks[index]
-            : levelMaxima.atLeast[index];
+    const signatures = line.signatures!;
+    const accepted = signatureAcceptance(line, viewport);
+    const addColumns = (walks: AttributeWalk[], total: ColumnFolds | null, levelDuration: number) =>
+        addMappedColumns(walks, total, signatures, accepted, viewport, mapping, axisViewport, levelDuration, origin);
 
-        maxima[group] = folds.maximum(i);
-    }
+    return {
+        floorLevel: Math.min(0, targetLevel(axisViewport, duration)),
+        bounded: false,
+        addColumns
+    };
 }
 
-// The highest columns of a line's events on its own axis. Levels of columns holding whole cells of the line take the
-// signature records of the cells for values whose rows are shown, walking events only in cells crossed by a column
-// edge; values shown since the last read take them in one pass. Finer levels are taken for
-// values whose rows are shown, for a bound their rows show their own scale below: a value covering a column of cells
-// whole, or with a run covering a column, covers a column of the level whole, and a value whose highest column to its
-// duration reaches the bound at a coarser level reaches it at finer ones. Other values whose rows are shown are walked
-// by their events together, a walk folding the levels from some levels below the requested one up to it
-class OwnColumns {
+// Column maxima take the acceptance of events from their signatures: every filter of a line is a column of its
+// signatures, and the viewport population of a line has no constraints beyond its filters
+function signatureAcceptance(line: ProfileLine, viewport: PopulationFiltered) {
+    return line.signatures!.acceptance(viewport)!;
+}
+
+// The highest columns of the levels of a hierarchy on an axis, of the values whose rows are shown and of their total.
+// Folds take the columns of every level from the floor up in one pass, values shown later in a pass of their own.
+// Below the floor a column holds a part of a segment at most: its highest column is the one of the floor, and on an
+// axis of lengths no more than its duration, a bound rather than the highest column. On a line without cells the
+// folds are taken from the level read, and from a finer level read again
+class Columns {
     readonly #attributes: ProfileLineAttribute[] = [];
-    // Per attribute: the groups of signatures and the folds of the levels of cells of values taken (none for attributes
-    // signatures don't keep), values whose rows are shown, and the longest runs of values measured by walks
-    readonly #signatureGroups: (Uint32Array | null)[] = [];
-    readonly #cellFolds: ((ColumnFolds | null)[] | null)[] = [];
+    // Per attribute: values whose rows are shown, and the folds of their columns (none for values not taken yet)
     readonly #shown: Uint8Array[] = [];
-    readonly #longest: Float64Array[] = [];
-    #cellTotal: ColumnFolds | null = null;
-    #totalLongest = 0;
-    readonly #cellLevel: number;
-    readonly #cells: RangeRecords | null;
-    readonly #accepted: Uint8Array | null;
-    readonly #ids: Uint32Array | null;
-    readonly #ranges: readonly Range[];
-    readonly #levels = new Map<number, LevelMaxima>();
+    readonly #folds: (ColumnFolds | null)[][] = [];
+    #total: ColumnFolds | null = null;
+    #baseLevel = Infinity;
 
     constructor(
-        readonly line: ProfileLine,
-        readonly viewport: PopulationFiltered,
+        readonly axis: ColumnsAxis,
         readonly topLevel: number,
         readonly duration: number,
         readonly origin: number
-    ) {
-        const { signatures } = line;
-        const { cumulative, cumulativeEnd } = viewport.population;
-
-        this.#accepted = signatures?.acceptance(viewport) ?? null;
-        this.#ids = signatures?.ids ?? null;
-        this.#cells = signatures !== null && this.#accepted !== null
-            ? signatures.cellRecords(cumulative, cumulativeEnd)
-            : null;
-        this.#cellLevel = this.#cells !== null
-            ? cellLevel(this.#cells, cumulativeEnd, topLevel, duration, origin)
-            : Infinity;
-        this.#ranges = viewport.ranges ?? [{ start: 0, end: cumulativeEnd }];
-    }
+    ) {}
 
     addAttribute(attribute: ProfileLineAttribute, shown: Uint8Array) {
-        const signatureGroups = this.#cells !== null
-            ? signatureEntries(this.line.signatures!, attribute)
-            : null;
-
         this.#attributes.push(attribute);
-        // Values of attributes signatures don't keep, as the owner of an allocation, are walked on every level
-        this.#signatureGroups.push(signatureGroups);
-        this.#cellFolds.push(signatureGroups !== null
-            ? new Array(attribute.dict.length).fill(null)
-            : null);
         this.#shown.push(shown);
-        this.#longest.push(new Float64Array(attribute.dict.length));
+        this.#folds.push(new Array(attribute.dict.length).fill(null));
     }
 
     total(level: number) {
-        this.#takeCells();
+        this.#take(level);
 
-        const levelMaxima = takeLevel(this.#levels, level, this.#attributes);
-        const duration = this.duration * 2 ** level;
-        const cellTotal = this.#cellTotal;
-
-        if (cellTotal !== null && level >= this.#cellLevel) {
-            return cellTotal.maximum(Math.min(level, this.topLevel));
-        }
-
-        // Events of a column of cells covering it whole cover the finer columns in it, as does a run covering a column
-        if (cellTotal !== null && cellTotal.maximum(this.#cellLevel) >= cellTotal.duration) {
-            return duration;
-        }
-
-        if (this.#totalLongest >= 2 * duration) {
-            return duration;
-        }
-
-        if (Number.isNaN(levelMaxima.total)) {
-            const folds = this.#walkFolds(level);
-
-            addEventParts([folds], null, null, this.viewport, this.#ranges, this.#accepted, this.#ids, Infinity);
-            folds.finish();
-            this.#totalLongest = Math.max(this.#totalLongest, folds.longest);
-
-            for (let i = folds.baseLevel; i <= level; i++) {
-                takeLevel(this.#levels, i, this.#attributes).total = folds.maximum(i);
-            }
-        }
-
-        return levelMaxima.total;
+        return this.#maximum(this.#total!, level);
     }
 
-    // The highest column of a value of an attribute (by their indices), or a column at or above a bound
-    track(index: number, group: number, level: number, bound: number) {
-        this.#takeCells();
+    // The highest column of a value of an attribute (by their indices)
+    track(index: number, group: number, level: number) {
+        this.#take(level);
 
-        let maximum = this.#knownMaximum(index, group, level, bound);
+        return this.#maximum(this.#folds[index][group]!, level);
+    }
 
-        if (Number.isNaN(maximum)) {
-            this.#walk(index, level, bound);
-            maximum = this.#knownMaximum(index, group, level, bound);
+    #maximum(folds: ColumnFolds, level: number) {
+        const maximum = folds.maximum(Math.min(Math.max(level, this.#baseLevel), this.topLevel));
+
+        if (level < this.#baseLevel && this.axis.bounded) {
+            return Math.min(maximum, this.duration * 2 ** level);
         }
 
         return maximum;
     }
 
-    // The highest column of a value known without a walk, or a column at or above the bound; NaN when unknown
-    #knownMaximum(index: number, group: number, level: number, bound: number) {
-        const cellFolds = this.#cellFolds[index]?.[group] ?? null;
-        const duration = this.duration * 2 ** level;
-        let lower = 0;
-
-        if (cellFolds !== null && level >= this.#cellLevel) {
-            return cellFolds.maximum(Math.min(level, this.topLevel));
-        }
-
-        // A value covering a column of cells whole covers the finer columns in it, as does a run covering a column
-        if (cellFolds !== null && cellFolds.maximum(this.#cellLevel) >= cellFolds.duration) {
-            return duration;
-        }
-
-        if (this.#longest[index][group] >= 2 * duration) {
-            return duration;
-        }
-
-        if (cellFolds !== null) {
-            lower = cellFolds.maximum(this.#cellLevel) / 2 ** (this.#cellLevel - level);
-        }
-
-        // A column holds two columns of the level below, one of them with half of it at least, and is held by
-        // a column of the level above
-        for (const [takenLevel, levelMaxima] of this.#levels) {
-            // Levels taken before the attribute was added have no columns of it
-            const maximum = levelMaxima.tracks[index]?.[group] ?? NaN;
-            const column = Number.isNaN(maximum)
-                ? levelMaxima.atLeast[index]?.[group] ?? NaN
-                : maximum;
-
-            if (takenLevel === level && !Number.isNaN(maximum)) {
-                return maximum;
-            }
-
-            if (column > 0) {
-                lower = Math.max(lower, takenLevel > level
-                    ? column / 2 ** (takenLevel - level)
-                    : column);
-            }
-        }
-
-        return lower >= bound
-            ? lower
-            : NaN;
-    }
-
-    // Values shown and unknown at a level are walked together. The share of the duration a value's highest column
-    // has doesn't fall at finer levels, so a value whose column of the level reaches the bound reaches it at the
-    // levels of the walk below, and its walk ends there
-    #walk(index: number, level: number, bound: number) {
-        const longest = this.#longest[index];
-        const folds = this.#unknownFolds(index, level, bound);
-        const walked = folds.slice();
-
-        addEventParts(
-            walked,
-            this.#attributes[index].keys,
-            this.#attributes[index].entries,
-            this.viewport,
-            this.#walkRanges(index, folds),
-            this.#accepted,
-            this.#ids,
-            bound
-        );
-
-        for (let i = 0; i < folds.length; i++) {
-            const groupFolds = folds[i];
-
-            if (groupFolds !== null) {
-                groupFolds.finish();
-                longest[i] = Math.max(longest[i], groupFolds.longest);
-                keepFolds(this.#levels, this.#attributes, index, i, groupFolds, walked[i] !== null);
-            }
-        }
-    }
-
-    // The folds of the values of an attribute (by its index) shown and unknown at a level, none for other values
-    #unknownFolds(index: number, level: number, bound: number) {
-        const shown = this.#shown[index];
-        const folds: (ColumnFolds | null)[] = [];
-
-        for (let i = 0; i < shown.length; i++) {
-            folds.push(shown[i] === 1 && Number.isNaN(this.#knownMaximum(index, i, level, bound))
-                ? this.#walkFolds(level)
-                : null);
-        }
-
-        return folds;
-    }
-
-    #walkFolds(level: number) {
-        const baseLevel = level - LEVELS_AHEAD;
-
-        return new ColumnFolds(baseLevel, level, this.duration * 2 ** baseLevel, this.origin);
-    }
-
-    // The folds of the levels of cells of the values shown and not taken yet of every attribute, keeping the columns
-    // holding them, in one pass over the cells; the total is folded with the first pass
-    #takeCells() {
-        if (this.#cells === null) {
-            return;
-        }
-
-        const cellDuration = this.duration * 2 ** this.#cellLevel;
-        const total = this.#cellTotal === null
-            ? new ColumnFolds(this.#cellLevel, this.topLevel, cellDuration, this.origin)
-            : null;
+    // Folds of the total and of the values shown and not taken yet, all of them again from a finer base level
+    #take(level: number) {
+        const baseLevel = this.axis.floorLevel ?? Math.min(level, this.#baseLevel);
+        const baseDuration = this.duration * 2 ** baseLevel;
         const walks: AttributeWalk[] = [];
 
+        if (baseLevel < this.#baseLevel) {
+            this.#baseLevel = baseLevel;
+            this.#total = null;
+
+            for (let i = 0; i < this.#folds.length; i++) {
+                this.#folds[i].fill(null);
+            }
+        }
+
+        const total = this.#total === null
+            ? new ColumnFolds(baseLevel, this.topLevel, baseDuration, this.origin)
+            : null;
+
         for (let i = 0; i < this.#attributes.length; i++) {
-            const signatureGroups = this.#signatureGroups[i];
-            const cellFolds = this.#cellFolds[i];
+            const shown = this.#shown[i];
+            const folds: (ColumnFolds | null)[] = [];
 
-            if (signatureGroups !== null && cellFolds !== null) {
-                const shown = this.#shown[i];
-                const folds: (ColumnFolds | null)[] = [];
+            for (let j = 0; j < shown.length; j++) {
+                const taken = this.#folds[i][j] !== null;
 
-                for (let j = 0; j < shown.length; j++) {
-                    folds.push(shown[j] === 1 && cellFolds[j] === null
-                        ? new ColumnFolds(this.#cellLevel, this.topLevel, cellDuration, this.origin, true)
-                        : null);
-                }
+                folds.push(shown[j] === 1 && !taken
+                    ? new ColumnFolds(baseLevel, this.topLevel, baseDuration, this.origin)
+                    : null);
+            }
 
-                const walk = attributeWalk(i, this.#attributes[i], folds, signatureGroups);
+            const walk = attributeWalk(i, this.#attributes[i], folds);
 
-                if (walk !== null) {
-                    walks.push(walk);
-                }
+            if (walk !== null) {
+                walks.push(walk);
             }
         }
 
@@ -469,211 +283,83 @@ class OwnColumns {
             return;
         }
 
-        addCellColumns(
-            walks,
-            total,
-            this.line.signatures!,
-            this.#cells,
-            this.#accepted!,
-            this.viewport,
-            cellDuration,
-            this.origin
-        );
+        this.axis.addColumns(walks, total, baseDuration);
 
         for (let i = 0; i < walks.length; i++) {
             const { index, folds, walked } = walks[i];
 
             for (let j = 0; j < walked.length; j++) {
-                this.#cellFolds[index]![walked[j]] = folds[walked[j]]!.finish();
+                this.#folds[index][walked[j]] = folds[walked[j]]!.finish();
             }
         }
 
-        this.#cellTotal = total?.finish() ?? this.#cellTotal;
-    }
-
-    // The ranges a walk of values takes events of: the columns of cells holding them, the whole ranges for values
-    // without cells
-    #walkRanges(index: number, folds: (ColumnFolds | null)[]) {
-        const cellFolds = this.#cellFolds[index];
-
-        if (cellFolds === null) {
-            return this.#ranges;
-        }
-
-        const held = new Uint8Array(Math.ceil(2 ** (this.topLevel - this.#cellLevel) / 8));
-
-        for (let i = 0; i < folds.length; i++) {
-            if (folds[i] !== null) {
-                for (let j = 0; j < held.length; j++) {
-                    held[j] |= cellFolds[i]!.held![j];
-                }
-            }
-        }
-
-        return heldRanges(held, this.duration * 2 ** this.#cellLevel, this.origin, this.#ranges);
+        this.#total = total?.finish() ?? this.#total;
     }
 }
 
-// Ranges of the parts of columns of a duration (from an origin, a bit per column) in ranges, adjacent columns merged
-function heldRanges(held: Uint8Array, duration: number, origin: number, ranges: readonly Range[]) {
-    const columnCount = held.length * 8;
-    const columnHeld = (column: number) => (held[column >> 3] & (1 << (column & 7))) !== 0;
-    const parts: Range[] = [];
-    let rangeIndex = 0;
+// A walk of the values of an attribute (by its index): their folds (none for values not walked) and the ones walked,
+// the keys of events (the signatures of events, see keyLineBySignatures) with the folds of their codes by their
+// entries, and the sums of the records of a segment per value
+type AttributeWalk = {
+    index: number;
+    folds: (ColumnFolds | null)[];
+    walked: number[];
+    keys: ArrayLike<number>;
+    entries: ArrayLike<number>;
+    codeFolds: (ColumnFolds | null)[];
+    sums: Float64Array;
+};
 
-    for (let i = 0; i < columnCount; i++) {
-        if (!columnHeld(i)) {
-            continue;
-        }
-
-        const start = origin + i * duration;
-
-        while (i + 1 < columnCount && columnHeld(i + 1)) {
-            i++;
-        }
-
-        const end = origin + (i + 1) * duration;
-
-        while (rangeIndex < ranges.length && ranges[rangeIndex].end <= start) {
-            rangeIndex++;
-        }
-
-        for (let j = rangeIndex; j < ranges.length && ranges[j].start < end; j++) {
-            parts.push({
-                start: Math.max(start, ranges[j].start),
-                end: Math.min(end, ranges[j].end)
-            });
-        }
-    }
-
-    return parts;
-}
-
-// Accepted events of weight of the ranges add their parts in a range to the folds of their values (by groups), or to
-// the only fold; folds whose top level reaches a bound leave the walk, which ends when none is left
-function addEventParts(
-    folds: (ColumnFolds | null)[],
-    groups: ArrayLike<number> | null,
-    entries: ArrayLike<number> | null, // per code of groups: the index of its folds
-    viewport: PopulationFiltered,
-    ranges: readonly Range[],
-    accepted: Uint8Array | null,
-    ids: Uint32Array | null,
-    bound: number
-) {
-    const { cumulative, cumulativeEnd } = viewport.population;
-    const { sinkId } = viewport;
-    // PERF: Samples are compiled only when signatures don't tell the acceptance of events
-    const samples = accepted === null
-        ? viewport.samples
-        : null;
-    // PERF: Signatures of events aren't read when all of them are accepted
-    const acceptsAll = accepted !== null && accepted.indexOf(0) === -1;
-    const lastEvent = cumulative.length - 1;
-    // PERF: Events read the folds of their codes, which share the folds of their entries, rather than the entry
-    // of their code per event
-    const walkFolds = entries !== null
-        ? codeFolds(entries, folds)
-        : folds.slice();
-    const walked = new Uint8Array(walkFolds.length);
-    const events = new Uint32Array(EVENT_CHUNK);
-    let walking = 0;
-
-    for (let i = 0; i < walkFolds.length; i++) {
-        if (walkFolds[i] !== null) {
-            walked[i] = 1;
-        }
-    }
+// A walk of an attribute's values with folds, null when none has them
+function attributeWalk(
+    index: number,
+    attribute: ProfileLineAttribute,
+    folds: (ColumnFolds | null)[]
+): AttributeWalk | null {
+    const walked: number[] = [];
 
     for (let i = 0; i < folds.length; i++) {
         if (folds[i] !== null) {
-            walking++;
+            walked.push(i);
         }
     }
 
-    for (let i = 0; i < ranges.length && walking > 0; i++) {
-        const rangeStart = ranges[i].start;
-        const rangeEnd = ranges[i].end;
-        const rangeFirst = Math.max(0, lowerBound(cumulative, rangeStart, true) - 1);
-        const rangeLast = lowerBound(cumulative, rangeEnd);
-
-        for (let chunkStart = rangeFirst; chunkStart < rangeLast && walking > 0; chunkStart += EVENT_CHUNK) {
-            const chunkEnd = Math.min(chunkStart + EVENT_CHUNK, rangeLast);
-            let count = 0;
-
-            // PERF: Events of walked values are listed without a branch per event, as they are scattered among the
-            // events of other values and a branch on each mispredicts
-            if (groups === null) {
-                for (let j = chunkStart; j < chunkEnd; j++) {
-                    events[count++] = j;
-                }
-            } else {
-                for (let j = chunkStart; j < chunkEnd; j++) {
-                    events[count] = j;
-                    count += walked[groups[j]];
-                }
-            }
-
-            for (let k = 0; k < count; k++) {
-                const j = events[k];
-                const group = groups !== null
-                    ? groups[j]
-                    : 0;
-                const groupFolds = walkFolds[group];
-
-                // PERF: An event ends where the next one starts, so its value isn't read
-                let partStart = cumulative[j];
-                let partEnd = j < lastEvent
-                    ? cumulative[j + 1]
-                    : cumulativeEnd;
-
-                if (groupFolds !== null && partEnd > partStart &&
-                    (acceptsAll || (accepted !== null ? accepted[ids![j]] === 1 : samples![j] !== sinkId))) {
-                    // PERF: Comparisons cut parts at range edges faster than Math.max and Math.min here, as measured
-                    // on walks of tens of millions of events
-                    if (partStart < rangeStart) {
-                        partStart = rangeStart;
-                    }
-
-                    if (partEnd > rangeEnd) {
-                        partEnd = rangeEnd;
-                    }
-
-                    groupFolds.addPart(partStart, partEnd);
-
-                    if (groupFolds.topMaximum >= bound) {
-                        leaveWalk(folds, walkFolds, walked, entries !== null ? entries[group] : group);
-                        walking--;
-                    }
-                }
-            }
-        }
+    if (walked.length === 0) {
+        return null;
     }
+
+    return {
+        index,
+        folds,
+        walked,
+        keys: attribute.keys,
+        entries: attribute.entries,
+        codeFolds: codeFolds(attribute.entries, folds),
+        sums: new Float64Array(folds.length)
+    };
 }
 
-// Folds of an entry leave a walk with every code of the entry
-// PERF: A function of its own: with its loop in the walk of events, the walk runs about 15% slower in Chrome
-function leaveWalk(folds: (ColumnFolds | null)[], walkFolds: (ColumnFolds | null)[], walked: Uint8Array, entry: number) {
-    const entryFolds = folds[entry];
+// The folds of codes by their entries
+// PERF: A loop, as Array.from with a function takes about half a millisecond for the entries of tens of thousands
+// of signatures
+function codeFolds(entries: ArrayLike<number>, folds: (ColumnFolds | null)[]) {
+    const result: (ColumnFolds | null)[] = new Array(entries.length);
 
-    for (let code = 0; code < walkFolds.length; code++) {
-        if (walkFolds[code] === entryFolds) {
-            walkFolds[code] = null;
-            walked[code] = 0;
-        }
+    for (let i = 0; i < entries.length; i++) {
+        result[i] = folds[entries[i]];
     }
 
-    folds[entry] = null;
+    return result;
 }
 
 // Cells of events within a range and a column add the accepted records of their signatures to the folds of their
 // values and to the total when given; the last event of such a cell can end beyond the column, its part beyond adds to
-// the columns it covers. Events of other cells add their parts one by one
+// the columns it covers. Events of other cells, and of a line without cells, add their parts one by one
 function addCellColumns(
     walks: AttributeWalk[],
     total: ColumnFolds | null,
     signatures: EventSignatures,
-    cells: RangeRecords,
+    cells: RangeRecords | null,
     accepted: Uint8Array,
     viewport: PopulationFiltered,
     duration: number,
@@ -681,7 +367,9 @@ function addCellColumns(
 ) {
     const { values, cumulative, cumulativeEnd } = viewport.population;
     const { ids } = signatures;
-    const { starts } = cells;
+    const starts = cells !== null
+        ? cells.starts
+        : Uint32Array.of(0, values.length);
     const ranges = viewport.ranges ?? [{ start: 0, end: cumulativeEnd }];
 
     for (let i = 0; i < ranges.length; i++) {
@@ -696,6 +384,7 @@ function addCellColumns(
             const last = cellEnd - 1;
             const column = Math.floor((cumulative[j] - origin) / duration);
             const cellWithin = (
+                cells !== null &&
                 j === starts[cell] &&
                 cellEnd <= rangeLast &&
                 cumulative[j] >= rangeStart &&
@@ -721,7 +410,7 @@ function addCellColumns(
                 // leaves the column, and its part in the range beyond the column adds to the columns it covers
                 if (accepted[ids[last]] === 1 && fullEnd > keptEnd) {
                     for (let k = 0; k < walks.length; k++) {
-                        const lastFolds = walks[k].codeFolds[walks[k].values[last]];
+                        const lastFolds = walks[k].codeFolds[walks[k].keys[last]];
 
                         lastFolds?.add(column, keptEnd - fullEnd);
 
@@ -755,7 +444,7 @@ function addCellColumns(
                     }
 
                     for (let k = 0; k < walks.length; k++) {
-                        walks[k].codeFolds[walks[k].values[j]]?.addPart(partStart, partEnd);
+                        walks[k].codeFolds[walks[k].keys[j]]?.addPart(partStart, partEnd);
                     }
 
                     total?.addPart(partStart, partEnd);
@@ -789,15 +478,14 @@ function addRecords(
     }
 
     for (let i = 0; i < walks.length; i++) {
-        const { folds, walked, sums } = walks[i];
-        const signatureGroups = walks[i].signatureGroups!;
+        const { folds, walked, entries, sums } = walks[i];
         let walkWeight = 0;
 
         for (let j = recordsStart; j < recordsEnd; j++) {
             const signature = signatures[j];
 
             if (accepted[signature] === 1) {
-                sums[signatureGroups[signature]] += weights[j];
+                sums[entries[signature]] += weights[j];
                 walkWeight += weights[j];
             }
         }
@@ -818,192 +506,6 @@ function addRecords(
     return weight;
 }
 
-// A walk of the values of an attribute (by its index): their folds (none for values not walked) and groups, the values
-// of the events with the folds of their codes, the values of their signatures (null when signatures don't keep them),
-// and the sums of the records of a segment per value
-type AttributeWalk = {
-    index: number;
-    folds: (ColumnFolds | null)[];
-    walked: number[];
-    values: ArrayLike<number>;
-    codeFolds: (ColumnFolds | null)[]; // per code of the values: the folds of its entry
-    signatureGroups: Uint32Array | null;
-    sums: Float64Array;
-};
-
-// A walk of an attribute's values with folds, null when none has them
-function attributeWalk(
-    index: number,
-    attribute: ProfileLineAttribute,
-    folds: (ColumnFolds | null)[],
-    signatureGroups: Uint32Array | null
-): AttributeWalk | null {
-    const walked: number[] = [];
-
-    for (let i = 0; i < folds.length; i++) {
-        if (folds[i] !== null) {
-            walked.push(i);
-        }
-    }
-
-    if (walked.length === 0) {
-        return null;
-    }
-
-    return {
-        index,
-        folds,
-        walked,
-        values: attribute.keys,
-        codeFolds: codeFolds(attribute.entries, folds),
-        signatureGroups,
-        sums: new Float64Array(folds.length)
-    };
-}
-
-// The folds of codes by their entries
-// PERF: A loop, as Array.from with a function takes about half a millisecond for the entries of tens of thousands
-// of signatures
-function codeFolds(entries: ArrayLike<number>, folds: (ColumnFolds | null)[]) {
-    const result: (ColumnFolds | null)[] = new Array(entries.length);
-
-    for (let i = 0; i < entries.length; i++) {
-        result[i] = folds[entries[i]];
-    }
-
-    return result;
-}
-
-// Entries of the values of an attribute per signature of the line's events, null when signatures don't keep the values
-function signatureEntries(signatures: EventSignatures, attribute: ProfileLineAttribute) {
-    const codes = signatures.valuesOf(attribute.keys);
-
-    if (codes === null) {
-        return null;
-    }
-
-    const { entries } = attribute;
-    const signatureGroups = new Uint32Array(codes.length);
-
-    for (let i = 0; i < codes.length; i++) {
-        signatureGroups[i] = entries[codes[i]];
-    }
-
-    return signatureGroups;
-}
-
-// The highest columns of a line's events mapped onto another line's axis in order (a nondecreasing mapping): events
-// are placed at their targets, so below the level of a target per column (the floor) columns don't change. A walk of
-// the events costs the same for any number of levels, so every level from the floor up is taken by one walk of the
-// values whose rows are shown and not walked yet, the total with the first walk
-class MappedColumns {
-    readonly floorLevel: number;
-    readonly attributes: ProfileLineAttribute[] = [];
-    // Per attribute: values whose rows are shown, and the groups of signatures (none when signatures don't keep them)
-    readonly #shown: Uint8Array[] = [];
-    readonly #signatureGroups: (Uint32Array | null)[] = [];
-    readonly #levels = new Map<number, LevelMaxima>();
-
-    constructor(
-        readonly line: ProfileLine,
-        readonly viewport: PopulationFiltered,
-        readonly mapping: Uint32Array,
-        readonly axisViewport: PopulationFiltered,
-        readonly topLevel: number,
-        readonly duration: number,
-        readonly origin: number
-    ) {
-        this.floorLevel = Math.min(0, targetLevel(axisViewport, duration));
-    }
-
-    addAttribute(attribute: ProfileLineAttribute, shown: Uint8Array) {
-        this.attributes.push(attribute);
-        this.#shown.push(shown);
-        this.#signatureGroups.push(this.line.signatures !== null
-            ? signatureEntries(this.line.signatures, attribute)
-            : null);
-    }
-
-    total(level: number) {
-        return this.#level(level).total;
-    }
-
-    // A shown value is walked from the floor up, so its highest column is exact
-    track(index: number, group: number, level: number) {
-        return this.#level(level).tracks[index][group];
-    }
-
-    #level(requestedLevel: number) {
-        const walks = this.#walks();
-
-        if (this.#levels.size === 0 || walks.length > 0) {
-            this.#walk(walks, this.#levels.size === 0);
-        }
-
-        return this.#levels.get(Math.min(Math.max(requestedLevel, this.floorLevel), this.topLevel))!;
-    }
-
-    // The walks of the attributes with values to walk
-    #walks() {
-        const walks: AttributeWalk[] = [];
-
-        for (let i = 0; i < this.attributes.length; i++) {
-            const walk = this.#walkOf(i);
-
-            if (walk !== null) {
-                walks.push(walk);
-            }
-        }
-
-        return walks;
-    }
-
-    // The walk of an attribute (by its index): the folds of the levels from the floor up of its values shown and
-    // with no levels taken yet, null when there are none
-    #walkOf(index: number) {
-        const attribute = this.attributes[index];
-        const shown = this.#shown[index];
-        const tracks = this.#levels.get(this.floorLevel)?.tracks[index];
-        const baseDuration = this.duration * 2 ** this.floorLevel;
-        const folds: (ColumnFolds | null)[] = [];
-
-        for (let i = 0; i < shown.length; i++) {
-            folds.push(shown[i] === 1 && Number.isNaN(tracks?.[i] ?? NaN)
-                ? new ColumnFolds(this.floorLevel, this.topLevel, baseDuration, this.origin)
-                : null);
-        }
-
-        return attributeWalk(index, attribute, folds, this.#signatureGroups[index]);
-    }
-
-    // Walks the levels from the floor up of the values of the walks, and of the total when asked
-    #walk(walks: AttributeWalk[], withTotal: boolean) {
-        const { floorLevel, topLevel } = this;
-        const baseDuration = this.duration * 2 ** floorLevel;
-        const total = withTotal
-            ? new ColumnFolds(floorLevel, topLevel, baseDuration, this.origin)
-            : null;
-
-        addMappedColumns(this, walks, total, baseDuration);
-
-        for (let i = 0; i < walks.length; i++) {
-            const { index, folds, walked } = walks[i];
-
-            for (let j = 0; j < walked.length; j++) {
-                keepFolds(this.#levels, this.attributes, index, walked[j], folds[walked[j]]!.finish(), true);
-            }
-        }
-
-        if (total !== null) {
-            total.finish();
-
-            for (let i = floorLevel; i <= topLevel; i++) {
-                takeLevel(this.#levels, i, this.attributes).total = total.maximum(i);
-            }
-        }
-    }
-}
-
 // The level whose columns are no longer than the shortest target, columns of it and below hold a target at most
 function targetLevel(axisViewport: PopulationFiltered, duration: number) {
     const { values } = axisViewport.population;
@@ -1021,24 +523,22 @@ function targetLevel(axisViewport: PopulationFiltered, duration: number) {
 // Events add to the columns of their targets: whole targets by the signature records of their events, events of
 // targets cut by the coverage of the population and the covered parts of cut events one by one
 function addMappedColumns(
-    columns: MappedColumns,
     walks: AttributeWalk[],
     total: ColumnFolds | null,
-    duration: number
+    signatures: EventSignatures,
+    accepted: Uint8Array,
+    viewport: PopulationFiltered,
+    mapping: Uint32Array,
+    axisViewport: PopulationFiltered,
+    duration: number,
+    origin: number
 ) {
-    const { line, viewport, mapping, axisViewport } = columns;
-    const { signatures } = line;
     const { sinkId, coverage, boundaryCuts } = viewport;
     const { values } = viewport.population;
     const { destination } = viewport.eventReader();
-    const accepted = signatures?.acceptance(viewport) ?? null;
-    const keptBySignatures = (walk: AttributeWalk) => walk.signatureGroups !== null;
-    const targetColumn = createTargetColumns(axisViewport, duration, columns.origin);
-    // Signature records of whole targets sum their events, unless signatures don't tell their acceptance or groups;
-    // the total takes their weight
-    const records = signatures !== null && accepted !== null && walks.every(keptBySignatures)
-        ? signatures.targetRecords(mapping, axisViewport.population.values.length)
-        : null;
+    const targetColumn = createTargetColumns(axisViewport, duration, origin);
+    // Signature records of whole targets sum their events; the total takes their weight
+    const records = signatures.targetRecords(mapping, axisViewport.population.values.length);
     const addEvent = (event: number, weight: number) => {
         const column = targetColumn(mapping[event]);
 
@@ -1046,7 +546,7 @@ function addMappedColumns(
             total?.add(column, weight);
 
             for (let i = 0; i < walks.length; i++) {
-                walks[i].codeFolds[walks[i].values[event]]?.add(column, weight);
+                walks[i].codeFolds[walks[i].keys[event]]?.add(column, weight);
             }
         }
     };
@@ -1060,7 +560,7 @@ function addMappedColumns(
             const column = targetColumn(i);
 
             if (column !== -1) {
-                const weight = addRecords(walks, records!, i, accepted!, column);
+                const weight = addRecords(walks, records, i, accepted, column);
 
                 total?.add(column, weight);
             }
@@ -1072,7 +572,7 @@ function addMappedColumns(
         const firstTarget = mapping[first];
         const lastTarget = mapping[end - 1];
 
-        if (records === null || end - first < 2 || lastTarget - firstTarget < 2) {
+        if (end - first < 2 || lastTarget - firstTarget < 2) {
             addEvents(first, end);
             return;
         }
@@ -1097,7 +597,6 @@ function addMappedColumns(
 
         addSpan(first, end);
     }
-
 }
 
 // Columns of targets on an axis: -1 for targets rejected by the axis population, out of its ranges or of no
@@ -1157,7 +656,7 @@ function cellLevel(cells: RangeRecords, cumulativeEnd: number, topLevel: number,
 type Hierarchy = {
     origin: number;
     duration: number;
-    columns: OwnColumns | MappedColumns;
+    columns: Columns;
 };
 
 // The highest columns of the attributes of a line's viewport population at the levels of its histograms, on the
@@ -1211,14 +710,13 @@ export class LineColumnMaxima {
         return columns.total(level);
     }
 
-    // The highest column of a value of an attribute (by its index), or a column at or above a bound when one is:
-    // a row scaled to a shared maximum shows its own scale below a share of it only. A row read is shown
-    track(attribute: ProfileLineAttribute, group: number, duration: number, columnStart: number, bound = Infinity) {
+    // The highest column of a value of an attribute (by its index). A row read is shown
+    track(attribute: ProfileLineAttribute, group: number, duration: number, columnStart: number) {
         this.show(attribute, group);
 
         const { columns, level } = this.#hierarchyLevel(duration, columnStart);
 
-        return columns.track(this.#attributes.indexOf(attribute), group, level, bound);
+        return columns.track(this.#attributes.indexOf(attribute), group, level);
     }
 
     #hierarchyLevel(duration: number, columnStart: number) {
@@ -1256,17 +754,10 @@ export class LineColumnMaxima {
             topLevel++;
         }
 
-        const columns = this.mapping === null
-            ? new OwnColumns(this.line, this.viewport, topLevel, duration, axisOrigin)
-            : new MappedColumns(
-                this.line,
-                this.viewport,
-                this.mapping,
-                this.axisViewport,
-                topLevel,
-                duration,
-                axisOrigin
-            );
+        const axis = this.mapping === null
+            ? ownAxis(this.line, this.viewport, topLevel, duration, axisOrigin)
+            : mappedAxis(this.line, this.viewport, this.mapping, this.axisViewport, duration, axisOrigin);
+        const columns = new Columns(axis, topLevel, duration, axisOrigin);
 
         for (let i = 0; i < this.#attributes.length; i++) {
             columns.addAttribute(this.#attributes[i], this.#shown[i]);
@@ -1307,7 +798,7 @@ function hierarchyLevel(hierarchy: Hierarchy, duration: number, columnStart: num
 const lineColumnMaxima = new WeakMap<PopulationFiltered, Map<PopulationFiltered, LineColumnMaxima>>();
 
 // Null when the line's events have no positions on the axis: neither its own axis nor a mapping to the axis line's
-// events, or a mapping out of their order
+// events, or a mapping out of their order; and for a line without signatures, which column maxima walk by
 export function getLineColumnMaxima(
     line: ProfileLine,
     viewport: PopulationFiltered,
@@ -1318,7 +809,7 @@ export function getLineColumnMaxima(
         ? line.mappings[axisLine.type]
         : null;
 
-    if (mapping === undefined) {
+    if (mapping === undefined || line.signatures === null) {
         return null;
     }
 

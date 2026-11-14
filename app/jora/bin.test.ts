@@ -13,7 +13,7 @@ import type { ProfileLine } from '../prepare/lines/types.js';
 import { createState, selectRange } from '../views/ruler-range.js';
 import { createLineFixture, createProfileFixture, joinSession } from '../../test/fixtures/profile.js';
 import { createLineMapping } from '../prepare/computations/line-mapping.js';
-import { EventSignatures } from '../prepare/lines/event-signatures.js';
+import { EventSignatures, keyLineBySignatures } from '../prepare/lines/event-signatures.js';
 import { PopulationFiltered } from '../prepare/computations/population.js';
 import type { SetAttributeFilter } from '../prepare/computations/attribute-filter.js';
 import { dictEntries } from '../../test/fixtures/lines.js';
@@ -1568,7 +1568,13 @@ test.each([
 test('column maximums of an attribute are of the line viewport at a column duration, not of a window', async () => {
     const { profile, line, breakdown } = await createLineFixture({
         type: 'memline',
-        values: new Uint32Array([16, 32, 48, 64])
+        values: new Uint32Array([16, 32, 48, 64]),
+        attributes: [{
+            name: 'allocationType',
+            keys: Uint32Array.of(0, 1, 1, 0),
+            entries: dictEntries(['array', 'string']),
+            dict: ['array', 'string']
+        }]
     });
     const context = { scopeProfile: profile, scopeLine: line, scopeBreakdown: breakdown };
     const windowContext = { ...context, scopeViewport: { start: 0, end: 20 } };
@@ -1581,12 +1587,8 @@ test('column maximums of an attribute are of the line viewport at a column durat
         [max!.track(0)(duration, origin), max!.track(1)(duration, origin)]
     ];
 
-    line.attributes = [{
-        name: 'allocationType',
-        keys: Uint32Array.of(0, 1, 1, 0),
-        entries: dictEntries(['array', 'string']),
-        dict: ['array', 'string']
-    }];
+    line.signatures = new EventSignatures(line);
+    keyLineBySignatures(line);
 
     const initial = columnMax(context);
 

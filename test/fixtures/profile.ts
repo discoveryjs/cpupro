@@ -11,7 +11,9 @@ import { FilterSet } from '../../app/prepare/computations/filter-set.js';
 import { createSampledTreeSet } from '../../app/prepare/computations/sampled-tree-set.js';
 import { createLineBreakdown } from '../../app/prepare/lines/breakdown.js';
 import { prepareLineRange } from '../../app/prepare/lines/range.js';
-import type { ProfileLineType } from '../../app/prepare/lines/types.js';
+import type { ProfileLineAttribute, ProfileLineType } from '../../app/prepare/lines/types.js';
+import { createEventClasses } from '../../app/prepare/lines/event-signatures.js';
+import { createAttributeFilter } from '../../app/prepare/lines/filters/attribute.js';
 import { processPaths } from '../../app/prepare/preprocessing/short-paths.js';
 import { processDisplayNames } from '../../app/prepare/preprocessing/module-names.js';
 
@@ -112,10 +114,12 @@ export function denseValues(length: number, eventsPerUnit = 100) {
     return Uint32Array.from({ length: length * eventsPerUnit }, (_, index) => index % eventsPerUnit === eventsPerUnit - 1 ? 1 : 0);
 }
 
+// Attributes of the line's events, when given, class its events as a line's attributes with event filters do
 export async function createLineFixture({
     type = 'timeline', origin = 0, before = 0, after = 0,
     values = new Uint32Array([10, 10, 5]),
-    samples = Uint32Array.from(values, (_, index) => index % 2)
+    samples = Uint32Array.from(values, (_, index) => index % 2),
+    attributes = []
 }: {
     type?: ProfileLineType;
     origin?: number;
@@ -123,10 +127,14 @@ export async function createLineFixture({
     after?: number;
     values?: Uint32Array;
     samples?: Uint32Array;
+    attributes?: ProfileLineAttribute[];
 } = {}) {
     const { profile, dictionary } = await createProfileFixture({ cpuOnly: type === 'timeline', noSourceMap: true });
     const line = profile[type]!;
-    const population = new Population(samples, values);
+    const hasEventFilter = (attribute: ProfileLineAttribute) => createAttributeFilter(attribute, values.length) !== null;
+    const population = attributes.length > 0
+        ? new Population(samples, values, undefined, undefined, createEventClasses(values.length, attributes.filter(hasEventFilter)))
+        : new Population(samples, values);
     const original = line.breakdowns[0].source;
     const source = {
         ...original,
@@ -147,7 +155,7 @@ export async function createLineFixture({
     line.values = values;
     line.eventClasses = population.records.classes;
     line.sourceInfo = { nodes: source.nodes.length, samples: samples.length, samplesInterval: 10 };
-    line.attributes = [];
+    line.attributes = attributes;
     line.filters = new FilterSet();
     line.range = range;
     line.viewport = new RangeView(new RangeSelection(range.selection.space), range.frame, range.extent);

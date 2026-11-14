@@ -237,11 +237,7 @@ test('maximums of a column duration over all data are the full height of columns
         durations.push([duration, start]);
         return 20;
     };
-    const bounds = [];
-    const binsMax = (duration, start, bound) => {
-        bounds.push(bound);
-        return 10;
-    };
+    const binsMax = () => 10;
     const layers = (width, viewport) => draw(width, 20, {
         bins,
         range,
@@ -256,8 +252,6 @@ test('maximums of a column duration over all data are the full height of columns
     // Bins merged by 2 on a narrower canvas are columns of a twice longer duration, from the start of the bins
     layers(4, { start: 45, end: 85 });
     assert.deepEqual(durations, [[10, 5], [10, 5], [20, 5]]);
-    // A shadow shows below 0.9 of the shared scale, so a column reaching it is enough
-    assert.deepEqual(bounds, [18, 18, 18]);
 });
 
 test('the viewport places columns aligned to their bins and clips the edges', () => {

@@ -966,8 +966,8 @@ function placesOnAxis(line: ProfileLine, axisLine: ProfileLine) {
 }
 
 // Scales of the rows of histograms of an allocation attribute: highest columns of a duration over the line viewport,
-// of the total and of a shown row's track, the track for a bound may give a column at or above it
-type ColumnMaxFn = (duration: number, columnStart: number, bound?: number) => number;
+// of the total and of a shown row's track
+type ColumnMaxFn = (duration: number, columnStart: number) => number;
 type AttributeColumnMax = {
     readonly total: ColumnMaxFn;
     track(index: number): ColumnMaxFn;
@@ -978,8 +978,8 @@ function attributeTracks(columnMaxima: LineColumnMaxima, attribute: ProfileLineA
     const tracks: ColumnMaxFn[] = [];
 
     for (let i = 0; i < attribute.dict.length; i++) {
-        const track = (duration: number, columnStart: number, bound?: number) =>
-            columnMaxima.track(attribute, i, duration, columnStart, bound);
+        const track = (duration: number, columnStart: number) =>
+            columnMaxima.track(attribute, i, duration, columnStart);
 
         tracks.push(track);
     }

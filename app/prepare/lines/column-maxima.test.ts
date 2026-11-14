@@ -4,7 +4,7 @@ import { Dictionary } from '../dictionary.js';
 import { createProfile } from '../profile.mjs';
 import { noopWorkHandler } from '../misc/work.js';
 import { createLineFixture } from '../../../test/fixtures/profile.js';
-import { EventSignatures } from './event-signatures.js';
+import { EventSignatures, keyLineBySignatures } from './event-signatures.js';
 import { getLineColumnMaxima } from './column-maxima.js';
 import type { V8CpuProfile } from '../types.js';
 import type { SetAttributeFilter } from '../computations/attribute-filter.js';
@@ -14,13 +14,37 @@ import { dictEntries } from '../../../test/fixtures/lines.js';
 
 type Expected = [total: number, tracks: number[]];
 
-// Allocations of 6, 0, 5, 3, 4, 10 and 2 bytes on their own axis: x over [0, 11) with an empty allocation of y
-// inside, then y over [11, 18), x over [18, 28) and y over [28, 30)
-async function createRunsLine() {
+// A memline of allocations of the values with an attribute, keyed by the signatures of its allocations as lines are;
+// a filter of allocations by their indices rejects some, registered before signatures as filters of lines are
+async function createKeyedLine(values: Uint32Array, attribute: ProfileLineAttribute, rejected: number[] = []) {
     const { line, breakdown } = await createLineFixture({
         type: 'memline',
-        values: Uint32Array.of(6, 0, 5, 3, 4, 10, 2)
+        values,
+        attributes: [attribute]
     });
+
+    if (rejected.length > 0) {
+        breakdown.populationViewport.filter.set({
+            key: 'test',
+            domain: 'event',
+            size: values.length,
+            values: Uint32Array.from(values, (_, index) => index),
+            accepts: Uint8Array.from(values, (_, index) => rejected.includes(index) ? 0 : 1)
+        });
+    }
+
+    line.signatures = new EventSignatures(line);
+    keyLineBySignatures(line);
+
+    return {
+        line,
+        viewport: breakdown.populationViewport
+    };
+}
+
+// Allocations of 6, 0, 5, 3, 4, 10 and 2 bytes on their own axis: x over [0, 11) with an empty allocation of y
+// inside, then y over [11, 18), x over [18, 28) and y over [28, 30)
+async function createRunsLine(rejected: number[] = []) {
     const attribute = {
         name: 'allocationSpace',
         keys: Uint8Array.of(0, 1, 0, 1, 1, 0, 1),
@@ -28,12 +52,9 @@ async function createRunsLine() {
         dict: ['x', 'y']
     } as unknown as ProfileLineAttribute;
 
-    line.attributes = [attribute];
-
     return {
-        line,
-        attribute,
-        viewport: breakdown.populationViewport
+        ...await createKeyedLine(Uint32Array.of(6, 0, 5, 3, 4, 10, 2), attribute, rejected),
+        attribute
     };
 }
 
@@ -65,6 +86,7 @@ async function createMappedProfile(startTime = 0) {
     return createProfile(data, { dictionary: new Dictionary(), work: noopWorkHandler });
 }
 
+// Rows of all values are shown before they're read, as views show the rows of a section
 function readMaxima(
     maxima: ReturnType<typeof getLineColumnMaxima>,
     attribute: ProfileLineAttribute,
@@ -72,6 +94,10 @@ function readMaxima(
     start: number
 ): Expected {
     const tracks: number[] = [];
+
+    for (let i = 0; i < attribute.dict.length; i++) {
+        maxima!.show(attribute, i);
+    }
 
     for (let i = 0; i < attribute.dict.length; i++) {
         tracks.push(maxima!.track(attribute, i, duration, start));
@@ -119,12 +145,7 @@ test.each([
     },
     {
         name: 'a rejected allocation leaves a gap, x over [0, 6)',
-        prepare: (line: ProfileLine) => line.breakdowns[0].populationViewport.filter.set({
-            key: 'test',
-            domain: 'event',
-            size: 7,
-            accepts: Uint8Array.of(0, 1, 1, 1, 1, 1, 1)
-        }),
+        rejected: [0],
         duration: 10,
         start: 0,
         expected: [10, [8, 7]]
@@ -140,7 +161,10 @@ test.each([
         expected: [9, [8, 5]]
     }
 ] as const)('highest columns of allocations on their own axis: $name', async row => {
-    const { line, attribute, viewport } = await createRunsLine();
+    const rejected = 'rejected' in row
+        ? [...row.rejected]
+        : [];
+    const { line, attribute, viewport } = await createRunsLine(rejected);
 
     if ('prepare' in row) {
         row.prepare(line);
@@ -175,15 +199,6 @@ test.each([
         duration: 2.5,
         start: 10,
         expected: [13, [7, 7]]
-    },
-    {
-        name: 'allocations are read one by one without signatures',
-        prepare: (profile: ProfileWithLines) => {
-            profile.memline.signatures = null;
-        },
-        duration: 20,
-        start: 10,
-        expected: [15, [7, 8]]
     },
     {
         name: 'memline ranges [8, 21) count the covered parts of cut allocations, O4 and O2',
@@ -247,7 +262,6 @@ test('columns from a start off their origin by the rounding of coordinates are r
     assert.equal(createHierarchy.mock.calls.length, 1);
 });
 
-// Allocations read one by one on another line's axis take the rows of the entries of their codes
 test('values of an attribute take the rows of the entries of their codes on the timeline', async () => {
     const { memline, timeline } = await createMappedProfile() as ProfileWithLines;
     const read = () => readMaxima(
@@ -262,17 +276,17 @@ test('values of an attribute take the rows of the entries of their codes on the 
         10
     );
 
-    memline.signatures = null;
-
     const expected = read();
     const space = memline.attributes[0];
 
-    // Two codes per entry, alternating between allocations
+    // Two codes per entry, alternating between allocations, keyed by the signatures of allocations again
     memline.attributes = [{
         ...space,
-        keys: Uint8Array.from(space.keys, (value, index) => value * 2 + index % 2),
+        keys: Uint8Array.from(space.keys, (signature, index) => space.entries[signature] * 2 + index % 2),
         entries: Uint8Array.from({ length: space.dict.length * 2 }, (_, code) => code >> 1)
     }];
+    memline.signatures = new EventSignatures(memline);
+    keyLineBySignatures(memline);
 
     assert.deepEqual(read(), expected);
 });
@@ -290,19 +304,13 @@ test('filtered allocations leave gaps between the runs of their own axis', async
 });
 
 test('a later run of a value adds to the column it is in, not to the column of the previous run', async () => {
-    const { line, breakdown } = await createLineFixture({
-        type: 'memline',
-        values: Uint32Array.of(1, 5, 1, 2, 1)
-    });
     const attribute = {
         name: 'allocationSpace',
         keys: Uint8Array.of(1, 0, 1, 0, 1),
         entries: dictEntries(['x', 'y']),
         dict: ['x', 'y']
     } as unknown as ProfileLineAttribute;
-    const viewport = breakdown.populationViewport;
-
-    line.attributes = [attribute];
+    const { line, viewport } = await createKeyedLine(Uint32Array.of(1, 5, 1, 2, 1), attribute);
 
     // x over [1, 6) and [7, 9), y between and around them at a finer level than x
     const maxima = getLineColumnMaxima(line, viewport, line, viewport);
@@ -310,19 +318,12 @@ test('a later run of a value adds to the column it is in, not to the column of t
     assert.deepEqual(readMaxima(maxima, attribute, 4, 0), [4, [3, 1]]);
 });
 
-// Levels are read in the order of zooming in and out, every read after a walk at another level
+// Levels are read in the order of zooming in and out, a finer one after a coarser one
 test.each([
     {
         name: 'with a rejected allocation, x over [0, 6), leaving runs of the total shorter than twice a column',
         create: async () => {
-            const { line, attribute, viewport } = await createRunsLine();
-
-            viewport.filter.set({
-                key: 'test',
-                domain: 'event',
-                size: 7,
-                accepts: Uint8Array.of(0, 1, 1, 1, 1, 1, 1)
-            });
+            const { line, attribute, viewport } = await createRunsLine([0]);
 
             return {
                 maxima: getLineColumnMaxima(line, viewport, line, viewport),
@@ -417,6 +418,7 @@ test.each([
 
             return {
                 maxima: getLineColumnMaxima(line, viewport, line, viewport),
+                line,
                 attribute
             };
         },
@@ -435,6 +437,7 @@ test.each([
                     timeline,
                     timeline.breakdowns[0].populationViewport
                 ),
+                line: memline,
                 attribute: memline.attributes[0]
             };
         },
@@ -442,11 +445,12 @@ test.each([
         expected: [[13, [7, 7]], [13, [13]]]
     }
 ] as const)('an attribute read after another on the same grid gets its highest columns, $name', async row => {
-    const { maxima, attribute } = await row.create();
+    const { maxima, line, attribute } = await row.create();
+    // One value, keyed by the signatures of allocations when the line has them
     const later = {
         name: 'allocationLifespan',
-        keys: new Uint8Array(7),
-        entries: dictEntries(['all']),
+        keys: line.signatures?.ids ?? new Uint8Array(7),
+        entries: new Uint32Array(line.signatures?.count ?? 1),
         dict: ['all']
     } as unknown as ProfileLineAttribute;
 
@@ -498,34 +502,27 @@ function cellAllocations(allocations: number[][]) {
     };
 }
 
-// A memline of allocations over 2000 cells (see cellAllocations) with their types and signatures. Cells for windows
-// of all but one allocation instead of millions are the 2000 cells of 1024 bytes; column maxima take the records
-// built here
+// A memline of allocations over 2000 cells (see cellAllocations) with their types, keyed by their signatures, and
+// the types of the allocations. Cells for windows of all but one allocation instead of millions are the 2000 cells
+// of 1024 bytes; column maxima take the records built here
 async function createCellAllocationsLine(allocations: number[][], dict: string[]) {
     const { values, types } = cellAllocations(allocations);
-    const { line, breakdown } = await createLineFixture({
-        type: 'memline',
-        values
-    });
-    const viewport = breakdown.populationViewport;
-    const { cumulative, cumulativeEnd } = viewport.population;
-
-    line.attributes = [{
+    const { line, viewport } = await createKeyedLine(values, {
         name: 'allocationType',
         keys: types,
         entries: dictEntries(dict),
         dict
-    }] as unknown as ProfileLineAttribute[];
-    line.signatures = new EventSignatures(line);
-
-    const cells = line.signatures.cellRecords(cumulative, cumulativeEnd, values.length - 1);
+    } as unknown as ProfileLineAttribute);
+    const { cumulative, cumulativeEnd } = viewport.population;
+    const cells = line.signatures!.cellRecords(cumulative, cumulativeEnd, values.length - 1);
 
     assert.ok(cells !== null && cells.starts.length - 1 === 2000);
 
     return {
         line,
         attribute: line.attributes[0],
-        viewport
+        viewport,
+        types
     };
 }
 
@@ -565,7 +562,7 @@ test.each([
             domain: 'event',
             size: line.attributes[0].keys.length,
             values: line.attributes[0].keys,
-            accepts: Uint8Array.of(1, 1, 0)
+            accepts: Uint8Array.from(line.attributes[0].entries, entry => entry === 2 ? 0 : 1)
         }),
         duration: 1024,
         start: 0,
@@ -578,16 +575,10 @@ test.each([
         expected: [2048, [2048, 650, 2048]]
     },
     {
-        name: 'below the cells, values covering a column of cells cover the finer columns in it',
-        duration: 512,
+        name: 'below the cells a column holds no more than its duration and the highest column of the cells',
+        durations: [512, 256],
         start: 0,
-        expected: [512, [512, 256, 512]]
-    },
-    {
-        name: 'below the cells, y is walked in its cells',
-        duration: 256,
-        start: 0,
-        expected: [256, [256, 128, 256]]
+        expected: [[512, [512, 350, 512]], [256, [256, 256, 256]]]
     },
     {
         name: 'a viewport range [10240.5, 30000.25) cuts the first allocation of a cell, its column edge crosses y',
@@ -629,17 +620,17 @@ test.each([
         },
         durations: [1024, 256],
         start: 30720,
-        expected: [[300, [300, 0, 0]], [156, [156, 0, 0]]]
+        expected: [[300, [300, 0, 0]], [256, [256, 0, 0]]]
     },
     {
-        name: 'columns crossing cells below many cells are walked',
+        name: 'columns crossing cells below many cells take the bound of the columns of many cells',
         prepare: (line: ProfileLine) => {
             line.viewport.setRange(10240.5, 30000.25);
             line.breakdowns[0].populationViewport.setRanges([{ start: 10240.5, end: 30000.25 }]);
         },
         duration: 8192,
         start: 10240.5,
-        expected: [8192, [7542, 650, 5000]]
+        expected: [8192, [8192, 662.5, 5000]]
     }
 ] as const)('highest columns of allocations on their own axis by cells: $name', async row => {
     const { line, attribute, viewport } = await createCellsLine();
@@ -660,9 +651,9 @@ test.each([
 });
 
 // Codes of values of an attribute other than its dictionary indices (as GC epochs of lifespans) reach the rows of their
-// entries in columns of cells and in walks below them
+// entries in columns of cells and below them
 test('values of an attribute take the rows of the entries of their codes', async () => {
-    const { line, attribute, viewport } = await createCellsLine();
+    const { line, attribute, viewport, types } = await createCellsLine();
     const read = (duration: number, start: number) => readMaxima(
         getLineColumnMaxima(line, viewport, line, viewport),
         line.attributes[0],
@@ -688,111 +679,73 @@ test('values of an attribute take the rows of the entries of their codes', async
     // Two codes per entry, alternating between events
     line.attributes = [{
         ...attribute,
-        keys: Uint8Array.from(attribute.keys, (value, index) => value * 2 + index % 2),
+        keys: Uint8Array.from(types, (type, index) => type * 2 + index % 2),
         entries: Uint8Array.from({ length: attribute.dict.length * 2 }, (_, code) => code >> 1)
     }];
     line.signatures = new EventSignatures(line);
-    line.signatures.cellRecords(viewport.population.cumulative, viewport.population.cumulativeEnd, line.values.length - 1);
+    keyLineBySignatures(line);
+    line.signatures.cellRecords(
+        viewport.population.cumulative,
+        viewport.population.cumulativeEnd,
+        line.values.length - 1
+    );
 
     assert.deepEqual(reads(), expected);
 });
 
-// Allocations of a byte, x and y one after another, so y holds half of any column longer than a byte
-async function createAlternatingLine() {
-    const { line, breakdown } = await createLineFixture({
-        type: 'memline',
-        values: new Uint32Array(256).fill(1)
-    });
-    const attribute = {
-        name: 'allocationSpace',
-        keys: Uint8Array.from({ length: 256 }, (_, index) => index % 2),
-        entries: dictEntries(['x', 'y']),
-        dict: ['x', 'y']
-    } as unknown as ProfileLineAttribute;
-
-    line.attributes = [attribute];
-
-    return {
-        line,
-        attribute,
-        viewport: breakdown.populationViewport
-    };
-}
-
-// Twelve thousand allocations of a byte, y every fourth byte and over [8184, 8200): walks list the events of their
-// values a few thousand at a time, and the highest column of y, [8176, 8208), holds events of two of them
-test('a walk of a value over many events adds the events of its columns listed apart', async () => {
-    const { line, breakdown } = await createLineFixture({
-        type: 'memline',
-        values: new Uint32Array(12000).fill(1)
-    });
-    const isY = (index: number) => index % 4 === 0 || (index >= 8184 && index < 8200);
-    const attribute = {
-        name: 'allocationSpace',
-        keys: Uint8Array.from({ length: 12000 }, (_, index) => isY(index) ? 1 : 0),
-        entries: dictEntries(['x', 'y']),
-        dict: ['x', 'y']
-    } as unknown as ProfileLineAttribute;
-    const viewport = breakdown.populationViewport;
-
-    line.attributes = [attribute];
-
-    const maxima = getLineColumnMaxima(line, viewport, line, viewport);
-
-    assert.deepEqual(readMaxima(maxima, attribute, 32, 16), [32, [24, 20]]);
-});
-
-// Reads of y in order, for bounds a row shows its own scale below. In cells y holds 350 bytes of a column of 1024, so
-// one of 512 holds 175 at least; its highest columns are 256 of 512, 48 of 64 by its contiguous bytes and 32 of 32.
-// Without cells y holds 7 bytes of a column of 20 and 4 of 5
 test.each([
     {
-        name: 'a bound the columns of cells reach at their share of the duration takes no walk',
-        create: createCellsLine,
-        reads: [[512, 100, 175]]
-    },
-    {
-        name: 'a walk ends at the first column reaching the bound, [10240, 10752) of 206 bytes of y',
-        create: createCellsLine,
-        reads: [[512, 200, 206]]
-    },
-    {
-        name: 'a walk ended at the bound is no highest column for a later read without one',
-        create: createCellsLine,
-        reads: [[512, 200, 206], [512, Infinity, 256]]
-    },
-    {
-        name: 'a read at a bound is no highest column for a later read without one',
-        create: createCellsLine,
-        reads: [[512, 100, 175], [512, Infinity, 256]]
-    },
-    {
-        name: 'a walk takes the levels some levels below the requested one',
-        create: createCellsLine,
-        reads: [[512, Infinity, 256], [64, Infinity, 48], [32, Infinity, 32]]
-    },
-    {
-        name: 'below the levels of a walk a run at least twice as long as columns covers one of them',
-        create: createCellsLine,
-        reads: [[512, Infinity, 256], [16, Infinity, 16]]
-    },
-    {
-        name: 'a column of a level below taken before is held by a column of the level above, without cells',
-        create: createRunsLine,
-        reads: [[5, Infinity, 4], [20, 3, 4]]
-    },
-    {
-        name: 'a share of the duration a value reaches at a level it reaches below the levels of a walk',
-        create: createAlternatingLine,
-        reads: [[64, Infinity, 32], [1, 0.4, 0.5], [1, Infinity, 1]]
-    }
-] as const)('a track read for a bound: $name', async row => {
-    const { line, attribute, viewport } = await row.create();
-    const maxima = getLineColumnMaxima(line, viewport, line, viewport)!;
-    const read = (reading: readonly number[]) => maxima.track(attribute, 1, reading[0], 0, reading[1]);
-    const expected = (reading: readonly number[]) => reading[2];
+        name: 'on their own axis, by the records of cells',
+        create: async () => {
+            const { line, attribute, viewport } = await createCellsLine();
 
-    assert.deepEqual(row.reads.map(read), row.reads.map(expected));
+            return {
+                maxima: getLineColumnMaxima(line, viewport, line, viewport),
+                attribute
+            };
+        },
+        duration: 2048,
+        start: 0,
+        expected: [2048, [2048, 650, 2048]]
+    },
+    {
+        name: 'on the timeline, by the records of samples',
+        create: async () => {
+            const { memline, timeline } = await createMappedProfile() as ProfileWithLines;
+
+            return {
+                maxima: getLineColumnMaxima(
+                    memline,
+                    memline.breakdowns[0].populationViewport,
+                    timeline,
+                    timeline.breakdowns[0].populationViewport
+                ),
+                attribute: memline.attributes[0]
+            };
+        },
+        duration: 10,
+        start: 10,
+        expected: [13, [7, 7]]
+    }
+] as const)('attributes shown together take the records of their values in one pass, $name', async row => {
+    const { maxima, attribute } = await row.create();
+    // The keys of the attribute with its entries in reverse order
+    const reversed = {
+        name: 'allocationLifespan',
+        keys: attribute.keys,
+        entries: Uint32Array.from(attribute.dict, (_, code) => attribute.dict.length - 1 - code),
+        dict: [...attribute.dict].reverse()
+    } as unknown as ProfileLineAttribute;
+
+    for (let i = 0; i < attribute.dict.length; i++) {
+        maxima!.show(attribute, i);
+        maxima!.show(reversed, i);
+    }
+
+    const [total, tracks] = readMaxima(maxima, attribute, row.duration, row.start);
+
+    assert.deepEqual([total, tracks], row.expected);
+    assert.deepEqual(readMaxima(maxima, reversed, row.duration, row.start), [total, [...tracks].reverse()]);
 });
 
 // One allocation of y over [2148, 16484) among x: it covers cells 3 to 15 whole
@@ -822,30 +775,6 @@ test('an allocation over many cells covers columns of every level within it', as
     ]);
 });
 
-test('an attribute signatures don\'t keep has the highest columns of its runs on every level', async () => {
-    const { line, attribute, viewport } = await createCellsLine();
-    const owner = {
-        name: 'allocationOwner',
-        keys: new Uint32Array(attribute.keys.length),
-        entries: dictEntries(['one']),
-        dict: ['one']
-    } as unknown as ProfileLineAttribute;
-    const maxima = getLineColumnMaxima(line, viewport, line, viewport);
-
-    assert.deepEqual(readMaxima(maxima, owner, 1024, 0), [1024, [1024]]);
-    assert.deepEqual(readMaxima(maxima, owner, 512, 0), [512, [512]]);
-
-    // Values without cells are walked over the whole ranges
-    const allocator = {
-        name: 'allocationAllocator',
-        keys: Uint32Array.from(attribute.keys, value => value === 0 ? 0 : value + 1),
-        entries: dictEntries(['x', 'none', 'y', 'z']),
-        dict: ['x', 'none', 'y', 'z']
-    } as unknown as ProfileLineAttribute;
-
-    assert.deepEqual(readMaxima(maxima, allocator, 256, 0), [256, [256, 0, 128, 256]]);
-});
-
 type ProfileWithLines = {
     memline: ProfileLine;
     timeline: ProfileLine;
@@ -865,4 +794,8 @@ test('a line gives no maximums on an axis it has no positions on', async () => {
     assert.equal(columnMaxima(unmapped, timeline), null);
     assert.equal(columnMaxima(timeline, memline), null);
     assert.notEqual(columnMaxima(memline, timeline), null);
+
+    // Column maxima walk the events of a line by their signatures
+    memline.signatures = null;
+    assert.equal(columnMaxima(memline, timeline), null);
 });
