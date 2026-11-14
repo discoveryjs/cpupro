@@ -2,7 +2,13 @@ import { Observer, exposeGetters } from './misc.js';
 import { CpuProNode } from '../types.js';
 import { CallTree, AncestorSubsetCallTree } from './call-tree.js';
 import { Population, PopulationFiltered } from './population.js';
-import { computeMetrics, createDimensionMaps, type DimensionMaps } from './metrics.compute.js';
+import {
+    computeMetrics,
+    createDimensionMaps,
+    type DictionaryMetricsMap,
+    type DimensionMaps,
+    type TreeMetricsMap
+} from './metrics.compute.js';
 
 export type DictDimension<T extends CpuProNode> = {
     all: DictionaryMetrics<T>;
@@ -22,44 +28,32 @@ export type SampledTree<T> = {
 export class TreeMetrics<T extends CpuProNode> extends Observer {
     tree: CallTree<T>;
     sampleToNode: Uint32Array;
-    #samplesCount: Uint32Array;
-    #selfValues: Float64Array;
-    #nestedValues: Float64Array;
-    // Brings stale values up to date before they are read
-    #refresh: (() => void) | null;
+    // Gives the metric arrays brought up to date
+    #values: () => TreeMetricsMap<T>;
 
     constructor(
         tree: CallTree<T>,
         sampleToNode: Uint32Array,
-        samplesCount: Uint32Array,
-        selfValues: Float64Array,
-        nestedValues: Float64Array,
-        refresh: (() => void) | null = null
+        values: () => TreeMetricsMap<T>
     ) {
         super();
 
         this.tree = tree;
         this.sampleToNode = sampleToNode;
-        this.#samplesCount = samplesCount;
-        this.#selfValues = selfValues;
-        this.#nestedValues = nestedValues;
-        this.#refresh = refresh;
+        this.#values = values;
         exposeGetters(this, TreeMetrics.prototype, ['samplesCount', 'selfValues', 'nestedValues']);
     }
 
     get samplesCount() {
-        this.#refresh?.();
-        return this.#samplesCount;
+        return this.#values().samplesCount;
     }
 
     get selfValues() {
-        this.#refresh?.();
-        return this.#selfValues;
+        return this.#values().selfValues;
     }
 
     get nestedValues() {
-        this.#refresh?.();
-        return this.#nestedValues;
+        return this.#values().nestedValues;
     }
 
     getMetrics(index: number) {
@@ -131,14 +125,15 @@ export class SubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics<T> {
     constructor(tree: CallTree<T>, population: Population | PopulationFiltered, sourceMetrics: TreeMetrics<T>) {
         const size = tree.nodes.length + 1; // add extra element for excluded metrics
         const sampleToNode = projectSampleToNode(tree, sourceMetrics);
-
-        super(
+        const treeMap = {
             tree,
             sampleToNode,
-            new Uint32Array(size),
-            new Float64Array(size),
-            new Float64Array(size)
-        );
+            samplesCount: new Uint32Array(size),
+            selfValues: new Float64Array(size),
+            nestedValues: new Float64Array(size)
+        };
+
+        super(tree, sampleToNode, () => treeMap);
 
         this.population = population;
         this.subscribe = this.population.subscribe.bind(this.population);
@@ -180,14 +175,16 @@ export class AncestorSubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics
 
     constructor(tree: AncestorSubsetCallTree<T>, originalMetrics: TreeMetrics<T>) {
         const size = tree.nodes.length + 1; // +1 for excluded slot (compatibility)
-
-        super(
+        const sampleToNode = projectSampleToNode(tree, originalMetrics);
+        const treeMap = {
             tree,
-            projectSampleToNode(tree, originalMetrics),
-            new Uint32Array(size),
-            new Float64Array(size),
-            new Float64Array(size)
-        );
+            sampleToNode,
+            samplesCount: new Uint32Array(size),
+            selfValues: new Float64Array(size),
+            nestedValues: new Float64Array(size)
+        };
+
+        super(tree, sampleToNode, () => treeMap);
 
         this.originalMetrics = originalMetrics;
         this.subscribe = originalMetrics.subscribe.bind(originalMetrics);
@@ -238,42 +235,30 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     dictionary: T[];
     #entries: DictionaryMetric<T>[] | null = null;
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
-    #samplesCount: Uint32Array;
-    #selfValues: Float64Array;
-    #totalValues: Float64Array;
-    // Brings stale values up to date before they are read
-    #refresh: (() => void) | null;
+    // Gives the metric arrays brought up to date
+    #values: () => DictionaryMetricsMap<T>;
 
     constructor(
         dictionary: T[],
-        samplesCount: Uint32Array,
-        selfValues: Float64Array,
-        totalValues: Float64Array,
-        refresh: (() => void) | null = null
+        values: () => DictionaryMetricsMap<T>
     ) {
         super();
 
         this.dictionary = dictionary;
-        this.#samplesCount = samplesCount;
-        this.#selfValues = selfValues;
-        this.#totalValues = totalValues;
-        this.#refresh = refresh;
+        this.#values = values;
         exposeGetters(this, DictionaryMetrics.prototype, ['samplesCount', 'selfValues', 'totalValues', 'entries']);
     }
 
     get samplesCount() {
-        this.#refresh?.();
-        return this.#samplesCount;
+        return this.#values().samplesCount;
     }
 
     get selfValues() {
-        this.#refresh?.();
-        return this.#selfValues;
+        return this.#values().selfValues;
     }
 
     get totalValues() {
-        this.#refresh?.();
-        return this.#totalValues;
+        return this.#values().totalValues;
     }
 
     // Entries are created on the first read, since views read the entries of a few dictionaries. Their fields
@@ -299,38 +284,33 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     }
 
     #entryFields(): PropertyDescriptorMap {
-        const refresh = this.#refresh;
-        const samplesCount = this.#samplesCount;
-        const selfValues = this.#selfValues;
-        const totalValues = this.#totalValues;
+        const values = this.#values;
 
         return {
             samples: {
                 enumerable: true,
                 get(this: DictionaryMetric<T>) {
-                    refresh?.();
-                    return samplesCount[this.entryIndex];
+                    return values().samplesCount[this.entryIndex];
                 }
             },
             selfValue: {
                 enumerable: true,
                 get(this: DictionaryMetric<T>) {
-                    refresh?.();
-                    return selfValues[this.entryIndex];
+                    return values().selfValues[this.entryIndex];
                 }
             },
             nestedValue: {
                 enumerable: true,
                 get(this: DictionaryMetric<T>) {
-                    refresh?.();
+                    const { selfValues, totalValues } = values();
+
                     return totalValues[this.entryIndex] - selfValues[this.entryIndex];
                 }
             },
             totalValue: {
                 enumerable: true,
                 get(this: DictionaryMetric<T>) {
-                    refresh?.();
-                    return totalValues[this.entryIndex];
+                    return values().totalValues[this.entryIndex];
                 }
             }
         };
@@ -353,83 +333,95 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     }
 }
 
+function copyMetrics<T>(source: DimensionMaps<T>, target: DimensionMaps<T>) {
+    target.treeMap.samplesCount.set(source.treeMap.samplesCount);
+    target.treeMap.selfValues.set(source.treeMap.selfValues);
+    target.treeMap.nestedValues.set(source.treeMap.nestedValues);
+    target.dictMap.samplesCount.set(source.dictMap.samplesCount);
+    target.dictMap.selfValues.set(source.dictMap.selfValues);
+    target.dictMap.totalValues.set(source.dictMap.totalValues);
+}
+
 function createDimension<T extends CpuProNode>(
-    dimensionMaps: DimensionMaps<T>,
-    refresh: () => void
+    sampledTree: SampledTree<T>,
+    allValues: () => DimensionMaps<T>,
+    filteredValues: () => DimensionMaps<T>
 ): { dict: DictDimension<T>; tree: TreeDimension<T> } {
-    const { treeMap, dictMap } = dimensionMaps;
-    const dictAll = new DictionaryMetrics<T>(
-        dictMap.dictionary,
-        dictMap.samplesCount.slice(),
-        dictMap.selfValues.slice(),
-        dictMap.totalValues.slice()
-    );
-    const dictFiltered = new DictionaryMetrics(
-        dictMap.dictionary,
-        dictMap.samplesCount,
-        dictMap.selfValues,
-        dictMap.totalValues,
-        refresh
-    );
-    const treeAll = new TreeMetrics(
-        treeMap.tree,
-        treeMap.sampleToNode,
-        treeMap.samplesCount.slice(),
-        treeMap.selfValues.slice(),
-        treeMap.nestedValues.slice()
-    );
-    const treeFiltered = new TreeMetrics(
-        treeMap.tree,
-        treeMap.sampleToNode,
-        treeMap.samplesCount,
-        treeMap.selfValues,
-        treeMap.nestedValues,
-        refresh
-    );
+    const { tree, sampleToNode } = sampledTree;
 
     return {
         dict: {
-            all: dictAll,
-            filtered: dictFiltered
+            all: new DictionaryMetrics(tree.dictionary, () => allValues().dictMap),
+            filtered: new DictionaryMetrics(tree.dictionary, () => filteredValues().dictMap)
         },
         tree: {
-            all: treeAll,
-            filtered: treeFiltered
+            all: new TreeMetrics(tree, sampleToNode, () => allValues().treeMap),
+            filtered: new TreeMetrics(tree, sampleToNode, () => filteredValues().treeMap)
         }
     };
 }
 
+// Metrics of a breakdown are computed, and their arrays allocated, when a dimension is first read, since views read
+// the metrics of the displayed breakdown only and the other breakdowns of a line may never be read. The metrics of
+// all events are of the base population, the filtered ones of the filtered population and follow its changes when
+// they are read; while the population is unchanged since the breakdown was created, the two are the same, and the
+// one read second copies the other. The filtered metrics have arrays of their own even then, since a view keeps the
+// arrays of the metrics it shows and reads them again when notified of a change
 export function createSampleBreakdown<T extends readonly SampledTree<CpuProNode>[]>(
     population: PopulationFiltered,
     trees: [...T]
 ) {
-    const dimensions = trees.map(createDimensionMaps);
+    const base = population.population;
+    const allDimensions: (DimensionMaps<CpuProNode> | null)[] = new Array(trees.length).fill(null);
+    const filteredDimensions: (DimensionMaps<CpuProNode> | null)[] = new Array(trees.length).fill(null);
+    const staleDimensions = new Uint8Array(trees.length);
+    let populationChanged = false;
+    const allValues = (index: number) => {
+        let maps = allDimensions[index];
 
-    for (let i = 0; i < dimensions.length; i++) {
-        computeMetrics(population.samplesCount, population.samplesTotal, dimensions[i].treeMap, dimensions[i].dictMap);
-    }
+        if (maps === null) {
+            const filtered = filteredDimensions[index];
 
-    // Filtered metrics follow population changes when they are read: a line computes its breakdowns over
-    // shared populations, while views read the metrics of the displayed breakdown only
-    const staleDimensions = new Uint8Array(dimensions.length);
-    const refreshDimension = (index: number) => {
-        if (staleDimensions[index] === 0) {
-            return;
+            maps = allDimensions[index] = createDimensionMaps(trees[index]);
+
+            if (!populationChanged && filtered !== null) {
+                copyMetrics(filtered, maps);
+            } else {
+                computeMetrics(base.samplesCount, base.samplesTotal, maps.treeMap, maps.dictMap);
+            }
+        }
+
+        return maps;
+    };
+    const filteredValues = (index: number) => {
+        let maps = filteredDimensions[index];
+
+        if (maps === null) {
+            const all = allDimensions[index];
+
+            maps = filteredDimensions[index] = createDimensionMaps(trees[index]);
+
+            if (!populationChanged && all !== null) {
+                copyMetrics(all, maps);
+                return maps;
+            }
+        } else if (staleDimensions[index] === 0) {
+            return maps;
         }
 
         staleDimensions[index] = 0;
+        computeMetrics(population.samplesCount, population.samplesTotal, maps.treeMap, maps.dictMap);
 
-        const { treeMap, dictMap } = dimensions[index];
-
-        computeMetrics(population.samplesCount, population.samplesTotal, treeMap, dictMap);
+        return maps;
     };
 
     // Build dimensions with dict/tree separation
-    const dimensionsWithStructure = dimensions.map((maps, index) =>
-        createDimension(maps, () => refreshDimension(index))
+    const dimensionsWithStructure = trees.map((sampledTree, index) =>
+        createDimension(sampledTree, () => allValues(index), () => filteredValues(index))
     );
 
     const recomputeMetrics = () => {
+        populationChanged = true;
         staleDimensions.fill(1);
 
         for (let i = 0; i < dimensionsWithStructure.length; i++) {

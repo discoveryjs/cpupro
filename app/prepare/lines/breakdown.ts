@@ -17,7 +17,7 @@ export async function createLineBreakdown(
     work: WorkHandler
 ): Promise<ProfileLineBreakdown> {
     const population = populationFiltered.population;
-    const { recomputeMetrics, dimensions } = await work('compute breakdown metrics', () => {
+    const { recomputeMetrics, dimensions } = await work('create breakdown dimensions', () => {
         const computeStart = Date.now();
         const { recomputeMetrics, dimensions } = createSampleBreakdown(populationFiltered, sampledTrees);
         const lineDimensions = dimensions.map(dimension =>

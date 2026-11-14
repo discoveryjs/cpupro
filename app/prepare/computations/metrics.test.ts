@@ -46,6 +46,41 @@ test('filtered metrics of every breakdown of a population follow its changes whe
     assert.deepEqual([...filtered.dict.selfValues], [...all.dict.selfValues]);
 });
 
+// Metrics of a dimension as read: of its tree nodes and of its dictionary entries
+function dimensionMetrics(dimension: ReturnType<typeof createSampleBreakdown>['dimensions'][number], part: 'all' | 'filtered') {
+    const tree = dimension.tree[part];
+    const dict = dimension.dict[part];
+
+    return [tree.samplesCount, tree.selfValues, tree.nestedValues, dict.samplesCount, dict.selfValues, dict.totalValues]
+        .map(values => [...values]);
+}
+
+test('metrics of a breakdown first read after a change of its population are those of one read before it', async () => {
+    const { profile } = await createProfileFixture();
+    const breakdown = findBreakdown(profile.memline!, 'call-stack');
+    const population = breakdown.populationFiltered;
+    const { nodes } = breakdown.callFrames!.filtered;
+    const sampledTrees = [{ tree: nodes.tree, sampleToNode: nodes.sampleToNode }];
+    const early = createSampleBreakdown(population, sampledTrees).dimensions[0];
+    const late = createSampleBreakdown(population, sampledTrees).dimensions[0];
+    const allEvents = dimensionMetrics(early, 'all');
+    const accepts = new Uint8Array(population.samplesMask.length).fill(1);
+
+    assert.deepEqual(dimensionMetrics(early, 'filtered'), allEvents);
+
+    accepts[0] = 0;
+    population.filter.set({
+        key: 'samples',
+        domain: 'sample',
+        size: accepts.length,
+        accepts
+    });
+
+    assert.deepEqual(dimensionMetrics(late, 'all'), allEvents);
+    assert.deepEqual(dimensionMetrics(late, 'filtered'), dimensionMetrics(early, 'filtered'));
+    assert.notDeepEqual(dimensionMetrics(late, 'filtered'), allEvents);
+});
+
 test('a kept dictionary entry is current after a change without reading the entries again', async () => {
     const { profile } = await createProfileFixture();
     const breakdown = findBreakdown(profile.memline!, 'call-stack');

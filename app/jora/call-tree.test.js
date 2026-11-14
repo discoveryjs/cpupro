@@ -14,13 +14,16 @@ function createMetrics() {
     const nested = nestedFromNodesSubtree(nodes, subtree, dictionary.length);
     const tree = new CallTree(dictionary, nodes, parent, subtree, nested);
 
-    return new TreeMetrics(
+    const sampleToNode = new Uint32Array([1, 2, 3, 4, 2, 0]);
+    const treeMap = {
         tree,
-        new Uint32Array([1, 2, 3, 4, 2, 0]),
-        new Uint32Array([1, 1, 2, 1, 1]),
-        new Float64Array([10, 20, 30, 40, 50]),
-        new Float64Array([140, 70, 40, 0, 0])
-    );
+        sampleToNode,
+        samplesCount: new Uint32Array([1, 1, 2, 1, 1]),
+        selfValues: new Float64Array([10, 20, 30, 40, 50]),
+        nestedValues: new Float64Array([140, 70, 40, 0, 0])
+    };
+
+    return new TreeMetrics(tree, sampleToNode, () => treeMap);
 }
 
 test.each([0, 1, 3])('keeps extra mask cells zero without testing them: extraSize=%i', extraSize => {
