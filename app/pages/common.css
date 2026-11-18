@@ -256,17 +256,17 @@ h2 .logo {
     border-radius: 0 0 2px 2px;
 }
 
-.page > .view-expand.trigger-outside > .header {
+:is(.page, .page > .view-scope) > .view-expand.trigger-outside > .header {
     --discovery-view-expand-trigger-size: calc(var(--discovery-page-padding-left) - 2px);
     margin-right: calc(-1 * var(--discovery-page-padding-right) + 1px);
 }
-.page > .view-expand > .header .view-sampled-count-total {
+:is(.page, .page > .view-scope) > .view-expand > .header .view-sampled-count-total {
     margin-left: .75ex;
 }
-.page > .view-expand > .header .text-divider {
+:is(.page, .page > .view-scope) > .view-expand > .header .text-divider {
     display: inline;
 }
-.page > .view-expand > .header .text-divider::before {
+:is(.page, .page > .view-scope) > .view-expand > .header .text-divider::before {
     content: '—';
     padding: 0 1ex;
     color: #888;
