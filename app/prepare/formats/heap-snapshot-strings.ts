@@ -2,10 +2,17 @@ import { exposeGetters } from '../computations/misc.js';
 
 const textDecoder = new TextDecoder();
 
+// Strings of a heap snapshot by their indices: a string is taken by get(), all of them are values
+export type HeapSnapshotStringTable = {
+    readonly length: number;
+    get(index: number): string;
+    readonly values: string[];
+};
+
 // The strings section of a heap snapshot kept as its bytes, JSON strings separated by commas: a string is decoded
 // when it's taken, all of them when `values` is read. PERF: Decoding the strings of a snapshot of tens of millions
 // of objects takes hundreds of ms and hundreds of MB of heap, while views take a small part of them
-export class HeapSnapshotStrings {
+export class HeapSnapshotStrings implements HeapSnapshotStringTable {
     readonly bytes: Uint8Array;   // the section between its brackets
     readonly starts: Uint32Array; // per string: the offset of its first byte after the opening quote
     #values: WeakRef<string[]> | null = null;
@@ -50,5 +57,22 @@ export class HeapSnapshotStrings {
         }
 
         return values;
+    }
+}
+
+// The strings of a snapshot decoded as an array of strings, e.g. from jsonxl
+export class HeapSnapshotStringArray implements HeapSnapshotStringTable {
+    readonly values: string[];
+
+    constructor(values: string[]) {
+        this.values = values;
+    }
+
+    get length() {
+        return this.values.length;
+    }
+
+    get(index: number) {
+        return this.values[index];
     }
 }

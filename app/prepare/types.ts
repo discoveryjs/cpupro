@@ -2,6 +2,7 @@ import { Dictionary } from './dictionary.js';
 import type { Diagnose } from './diagnostics.js';
 import { Ownership, UniformCompilationRecord, UniformTraceEvent } from './formats/types.js';
 import { Profile } from './profile.mjs';
+import type { HeapSnapshot } from './heap-snapshot.js';
 import { FunctionRange } from './misc/parse-script-source-ranges.js';
 import { ScriptCompilation } from './preprocessing/script-compilation.js';
 import { SourceMetrics } from './misc/source-text-metrics.js';
@@ -231,6 +232,7 @@ export type CpuProSession = {
     defaultProcess: CpuProProcess | null;
     profiles: Profile[];
     defaultProfile: Profile | null;
+    heapSnapshots: HeapSnapshot[];
     shared: {
         scripts: Dictionary['scripts'];
         locations: Dictionary['locations'];
@@ -254,6 +256,7 @@ export type CpuProThread = {
     isolate?: string | null;
     process: CpuProProcess | null;
     profiles: Profile[];
+    heapSnapshots: HeapSnapshot[];
     scripts: CpuProThreadScript[];
     events: UniformTraceEvent[];
     compilations?: CpuProCompilationRecord[];

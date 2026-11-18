@@ -6,6 +6,7 @@ import { processPaths } from './prepare/preprocessing/short-paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { Dictionary } from './prepare/dictionary.js';
 import { createProfile, Profile } from './prepare/profile.mjs';
+import { createHeapSnapshot, HeapSnapshot } from './prepare/heap-snapshot.js';
 import { ProfileLineType } from './prepare/lines/types.js';
 import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
@@ -71,6 +72,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
     //
     const sessions: CpuProSession[] = [];
     const profiles: Profile[] = [];
+    const heapSnapshots: HeapSnapshot[] = [];
     const availableLineTypes: Set<ProfileLineType> = new Set([]);
 
     for (let sessionIndex = 0; sessionIndex < profilingDataset.sessions.length; sessionIndex++) {
@@ -95,7 +97,11 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             : work;
 
         // create session
-        const { session, profiles: sessionProfiles } = createProfileSession(rawSession, dict);
+        const {
+            session,
+            profiles: sessionProfiles,
+            heapSnapshots: sessionHeapSnapshots
+        } = createProfileSession(rawSession, dict);
         sessions.push(session);
 
         // process session profiles if any
@@ -172,6 +178,18 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
             }
         }
 
+        // process session heap snapshots if any
+        for (let i = 0; i < sessionHeapSnapshots.length; i++) {
+            const { thread, heapSnapshot: heapSnapshotData } = sessionHeapSnapshots[i];
+            const heapSnapshot = await runSessionTask('create heap snapshot', () =>
+                createHeapSnapshot(heapSnapshotData, thread)
+            );
+
+            thread.heapSnapshots.push(heapSnapshot);
+            session.heapSnapshots.push(heapSnapshot);
+            heapSnapshots.push(heapSnapshot);
+        }
+
         sourceMapping.completeSession();
 
         // choose defaults
@@ -229,6 +247,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         defaultSession,
         profiles,
         defaultProfile,
+        heapSnapshots,
         diagnostics
     };
 

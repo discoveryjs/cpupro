@@ -1,4 +1,5 @@
 import { RuntimeCode, V8CpuProfile, V8CpuProfileScript } from '../types';
+import type { UniformHeapSnapshot } from './heap-snapshot.js';
 
 export type Ownership = {
     api: string;
@@ -23,6 +24,7 @@ export type UniformProfilingSession = {
     processes: UniformProcess[];
     threads: UniformThread[];
     profiles: UniformProfile[];
+    heapSnapshots?: UniformHeapSnapshot[];
 
     ownership: Ownership | null;
 }

@@ -1,5 +1,6 @@
 import { Dictionary } from './dictionary.js';
 import { Ownership, UniformProfile, UniformProfilingSession } from './formats/types.js';
+import type { UniformHeapSnapshot } from './formats/heap-snapshot.js';
 import { CpuProProcess, CpuProSession, CpuProThread } from './types.js';
 import { createCompilationRecords } from './preprocessing/compilation-events.js';
 import { indexCompilationStages, prepareCompilationSubjects } from './preprocessing/script-compilation.js';
@@ -8,9 +9,14 @@ export type DatasetProfile = {
     thread: CpuProThread;
     profile: UniformProfile;
 };
+export type DatasetHeapSnapshot = {
+    thread: CpuProThread;
+    heapSnapshot: UniformHeapSnapshot;
+};
 export type DatasetSession = {
     session: CpuProSession;
     profiles: DatasetProfile[];
+    heapSnapshots: DatasetHeapSnapshot[];
 }
 
 export function createProfileSession(rawSession: UniformProfilingSession, dict: Dictionary): DatasetSession {
@@ -19,6 +25,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
     const threads: CpuProThread[] = [];
     const threadsMap = new Map<string, CpuProThread>();
     const profiles: DatasetProfile[] = [];
+    const heapSnapshots: DatasetHeapSnapshot[] = [];
     const session: CpuProSession = {
         name: rawSession.name ?? null,
         runtime: rawSession.runtime ?? null,
@@ -30,6 +37,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         defaultProcess: null,
         profiles: [],
         defaultProfile: null,
+        heapSnapshots: [],
         shared: {
             scripts: dict.scripts,
             locations: dict.locations,
@@ -87,6 +95,14 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
         });
     }
 
+    // A heap snapshot has no thread in the input, it takes a thread of its own
+    for (const rawHeapSnapshot of rawSession.heapSnapshots ?? []) {
+        heapSnapshots.push({
+            thread: createThread(null, null),
+            heapSnapshot: rawHeapSnapshot
+        });
+    }
+
     // Finalize processes and threads relations, create missing processes if needed
     for (const thread of threads) {
         const process = processesMap.get(thread.pid) ?? createProcess(thread.pid);
@@ -97,7 +113,8 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
 
     return {
         session,
-        profiles
+        profiles,
+        heapSnapshots
     };
 
     //
@@ -135,6 +152,7 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
             name: null,
             process: null,
             profiles: [],
+            heapSnapshots: [],
             scripts: [],
             events: [],
             counters: [],

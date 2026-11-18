@@ -2,6 +2,7 @@ import { isCPUProfile, normalizeCpuProfile } from './formats/cpuprofile.js';
 import { extractFromDevToolsEnhancedTraces, isDevToolsEnhancedTraces } from './formats/chromium-devtools-enhanced-traces.js';
 import { extractFromChromiumPerformanceProfile, isChromiumPerformanceProfile } from './formats/chromium-performance-profile.js';
 import { convertV8LogIntoCpuProfile, isV8LogProfile } from './formats/v8-log-processed.js';
+import { extractFromHeapSnapshot, isHeapSnapshot, type UniformHeapSnapshot } from './formats/heap-snapshot.js';
 import type { V8CpuProfile, V8CpuProfileCpuproExtensions } from './types.js';
 import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
 import { FEATURE_MULTI_PROFILES } from './const.js';
@@ -13,7 +14,8 @@ export const supportedFormats = [
     '* [V8 log preprocessed](https://v8.dev/docs/profile#web-ui-for---prof) with --preprocess (.json)',
     '* [V8 CPU profile](https://nodejs.org/docs/latest/api/cli.html#--cpu-prof) (.cpuprofile)',
     '* [Chromium Performance Profile](https://developer.chrome.com/docs/devtools/performance/reference#save) (.json)',
-    '* [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces) (.devtools)'
+    '* [Edge Enhanced Performance Traces](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/experimental-features/share-traces) (.devtools)',
+    '* [V8 heap snapshot](https://developer.chrome.com/docs/devtools/memory-problems/heap-snapshots) (.heapsnapshot)'
 ];
 export const supportedFormatsText = supportedFormats
     .map(line => line.replace(/\[(.+?)\]\(.*?\)/g, '$1'));
@@ -40,7 +42,10 @@ function createProfilingDataset(sessions: UniformProfilingSession[] = []): Unifo
     };
 }
 
-function createProfilingSession(profiles: UniformProfile[] = []): UniformProfilingSession {
+function createProfilingSession(
+    profiles: UniformProfile[] = [],
+    heapSnapshots: UniformHeapSnapshot[] = []
+): UniformProfilingSession {
     return {
         name: null,
         runtime: null,
@@ -53,6 +58,7 @@ function createProfilingSession(profiles: UniformProfile[] = []): UniformProfili
         processes: [],
         threads: [],
         profiles,
+        heapSnapshots,
         ownership: null
     };
 }
@@ -134,6 +140,10 @@ export function extractAndValidate(
                 createProfilingSession(processProfiles(profiles, extensions, rejectData, diagnose))
             ]);
         }
+    } else if (isHeapSnapshot(data)) {
+        result = createProfilingDataset([
+            createProfilingSession([], [extractFromHeapSnapshot(data)])
+        ]);
     } else if (isV8LogProfile(data) || isCPUProfile(data)) {
         result = createProfilingDataset([
             createProfilingSession(processProfiles([data], extensions, rejectData, diagnose))

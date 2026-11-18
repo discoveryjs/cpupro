@@ -5,6 +5,7 @@ import { resolveScopeProfileLine, resolveScopeViewport } from './jora/profile.js
 import { viewportRange } from './jora/viewport.js';
 import { subscribeSelectionSync } from './selection-sync.js';
 import { evaluateModule } from '../test/helpers/evaluate-module.js';
+import { decode as decodeHeapSnapshot } from './prepare/formats/heap-snapshot.js';
 
 type Data = Awaited<ReturnType<typeof prepare>>;
 type Profile = Data['profiles'][number];
@@ -267,4 +268,60 @@ test('a profile has the collections its breakdowns use, the session has all of t
     assert.deepEqual(data.profiles[1].callFrames.map(callFrame => callFrame.name), ['(root)', 'task']);
     assert.deepEqual(scriptUrls(session.shared.scripts), ['/script.js', '/worker.js']);
     assert.ok(session.shared.owners.length > 0);
+});
+
+// A root holding an object and a string, as V8 writes a snapshot
+const heapSnapshotText = JSON.stringify({
+    snapshot: {
+        meta: {
+            node_fields: ['type', 'name', 'id', 'self_size', 'edge_count', 'detachedness'],
+            node_types: [['hidden', 'array', 'string', 'object', 'code', 'closure', 'regexp', 'number', 'native', 'synthetic'], 'string', 'number', 'number', 'number', 'number'],
+            edge_fields: ['type', 'name_or_index', 'to_node'],
+            edge_types: [['context', 'element', 'property', 'internal', 'hidden', 'shortcut', 'weak'], 'string_or_number', 'node']
+        },
+        node_count: 3,
+        edge_count: 2,
+        trace_function_count: 0
+    },
+    nodes: [9, 1, 1, 0, 2, 0, 3, 2, 3, 32, 0, 0, 2, 3, 5, 24, 0, 0],
+    edges: [2, 2, 6, 2, 3, 12],
+    strings: ['<dummy>', '', 'Foo', 'text']
+});
+
+async function* bytesOf(text: string) {
+    yield new TextEncoder().encode(text);
+}
+
+test('a heap snapshot is a session of a thread with the snapshot and no profiles', async () => {
+    const data = await prepareData(await decodeHeapSnapshot(bytesOf(heapSnapshotText)));
+    const session = data.sessions[0];
+    const heapSnapshot = data.heapSnapshots[0];
+
+    assert.equal(data.profiles.length, 0);
+    assert.equal(data.defaultProfile, null);
+    assert.deepEqual(session.heapSnapshots, [heapSnapshot]);
+    assert.deepEqual(heapSnapshot.thread.heapSnapshots, [heapSnapshot]);
+    assert.equal(heapSnapshot.thread.process!.session, session);
+    assert.equal(heapSnapshot.selfSize, 56);
+    assert.deepEqual(
+        heapSnapshot.nodeTypes.filter(type => type.count > 0),
+        [
+            { name: 'string', count: 1, selfSize: 24 },
+            { name: 'object', count: 1, selfSize: 32 },
+            { name: 'synthetic', count: 1, selfSize: 0 }
+        ]
+    );
+    assert.equal(heapSnapshot.strings.get(heapSnapshot.nodes.columns.name[1]), 'Foo');
+});
+
+// A snapshot written with a TypedArray per field and decoded with strings as an array (e.g. jsonxl) is taken as is
+test('a heap snapshot decoded with columns and an array of strings', async () => {
+    const decoded = await decodeHeapSnapshot(bytesOf(heapSnapshotText));
+    const strings = decoded.strings.values;
+    const heapSnapshot = (await prepareData({ ...decoded, strings })).heapSnapshots[0];
+
+    assert.equal(heapSnapshot.nodes.columns.self_size, decoded.nodes.columns.self_size);
+    assert.equal(heapSnapshot.edges.columns.to_node, decoded.edges.columns.to_node);
+    assert.equal(heapSnapshot.strings.get(3), 'text');
+    assert.equal(heapSnapshot.strings.values, strings);
 });

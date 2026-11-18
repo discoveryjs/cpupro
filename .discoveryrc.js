@@ -6,7 +6,7 @@ module.exports = {
     colorScheme: 'dark-only',
     embed: true,
     upload: {
-        accept: ['.cpuprofile', '.devtools', '.log', '.json', '.jsonxl']
+        accept: ['.cpuprofile', '.devtools', '.log', '.json', '.jsonxl', '.heapsnapshot']
     },
     basedir: __dirname + '/app',
     encodings: './encodings',

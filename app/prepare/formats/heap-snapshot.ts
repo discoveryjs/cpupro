@@ -1,4 +1,4 @@
-import { HeapSnapshotStrings } from './heap-snapshot-strings.js';
+import { HeapSnapshotStringArray, HeapSnapshotStrings, type HeapSnapshotStringTable } from './heap-snapshot-strings.js';
 import {
     createSliceBuffer,
     scanApiOf,
@@ -31,7 +31,7 @@ export type V8HeapSnapshot = {
     };
     nodes: HeapSnapshotTable;
     edges: HeapSnapshotTable;
-    strings: HeapSnapshotStrings;
+    strings: HeapSnapshotStrings | string[];
     // Tables of the other sections the meta describes (trace_function_infos, samples, locations, scopes, ...),
     // and the parsed JSON of the rest (trace_tree)
     [section: string]: unknown;
@@ -43,6 +43,15 @@ export type HeapSnapshotColumn = Uint8Array | Uint32Array | Float64Array;
 export type HeapSnapshotTable = {
     length: number;
     columns: Record<string, HeapSnapshotColumn>;
+};
+
+// A heap snapshot of a session: the sections of a decoded snapshot, the decoded object isn't kept
+export type UniformHeapSnapshot = {
+    snapshot: V8HeapSnapshot['snapshot'];
+    nodes: HeapSnapshotTable;
+    edges: HeapSnapshotTable;
+    strings: HeapSnapshotStringTable;
+    sections: Record<string, unknown>; // the other sections, e.g. locations, samples, scopes, trace_tree
 };
 
 // The fields of a section in the meta
@@ -58,6 +67,33 @@ const sectionFields: Record<string, string> = {
 };
 
 const textDecoder = new TextDecoder();
+
+// A snapshot with its sections of numbers as columns: decoded by the heap-snapshot encoding, or written so
+// (e.g. jsonxl with a TypedArray per field) and decoded with strings as an array. A snapshot of V8's layout,
+// with arrays of numbers, isn't one
+export function isHeapSnapshot(data: unknown): data is V8HeapSnapshot {
+    const maybe = data as Partial<V8HeapSnapshot> | null;
+
+    return (
+        maybe?.snapshot?.meta !== undefined &&
+        maybe.nodes?.columns !== undefined &&
+        maybe.edges?.columns !== undefined
+    );
+}
+
+export function extractFromHeapSnapshot(data: V8HeapSnapshot): UniformHeapSnapshot {
+    const { snapshot, nodes, edges, strings, ...sections } = data;
+
+    return {
+        snapshot,
+        nodes,
+        edges,
+        strings: Array.isArray(strings)
+            ? new HeapSnapshotStringArray(strings)
+            : strings,
+        sections
+    };
+}
 
 // Decoding of a stream of a heap snapshot (an encoding, see app/encodings.js)
 export async function decode(iterator: AsyncIterable<Uint8Array>) {

@@ -12,6 +12,7 @@ const { histCodes } = require('./default-page/hist-codes.js');
 const { histHeapTotal } = require('./default-page/hist-heap-total.js');
 const { withLineWindow, withLineWindowValue, lineWindowHistogram } = require('../views/misc/line-window.js');
 const { pageIndicators } = require('./default-page/page-indicators.js');
+const { heapSnapshotSummary } = require('./default-page/heap-snapshot.js');
 const { hierarchicalComponentsTables } = require('./default-page/tables.js');
 const { userTimingsTimeline } = require('./default-page/user-timings-timeline.js');
 
@@ -541,8 +542,16 @@ discovery.page.define('default', {
     view: 'switch',
     content: [
         {
-            when: 'no profiles',
+            when: 'no profiles and no heapSnapshots',
             content: noDataPageContent
+        },
+        {
+            when: 'no profiles',
+            content: {
+                view: 'list',
+                data: 'heapSnapshots',
+                item: heapSnapshotSummary
+            }
         },
         { content: {
             view: 'context',
