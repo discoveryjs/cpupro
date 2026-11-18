@@ -64,9 +64,9 @@ function record(name, start, allocationStart = null, allocationEnd = null, callF
 
 // The records are created for the functions `first` and `second` of the profile fixture
 async function createCompilationProfile(createRecords, options = { noSourceMap: true }) {
-    const { profile } = await createProfileFixture(options);
-    const first = profile.callFrames.find(frame => frame.name === 'first');
-    const second = profile.callFrames.find(frame => frame.name === 'second');
+    const { profile, dictionary } = await createProfileFixture(options);
+    const first = dictionary.callFrames.find(frame => frame.name === 'first');
+    const second = dictionary.callFrames.find(frame => frame.name === 'second');
     const records = createRecords(first, second);
     const subjects = prepareCompilationRecords(records);
 

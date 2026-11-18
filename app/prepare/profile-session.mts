@@ -36,7 +36,8 @@ export function createProfileSession(rawSession: UniformProfilingSession, dict: 
             callFrames: dict.callFrames,
             modules: dict.modules,
             packages: dict.packages,
-            categories: dict.categories
+            categories: dict.categories,
+            owners: dict.owners
         } as const
     } as const;
 

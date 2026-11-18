@@ -238,6 +238,7 @@ export type CpuProSession = {
         modules: Dictionary['modules'];
         packages: Dictionary['packages'];
         categories: Dictionary['categories'];
+        owners: Dictionary['owners'];
     };
 }
 export type CpuProProcess = {

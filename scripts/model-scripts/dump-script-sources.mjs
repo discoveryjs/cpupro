@@ -17,7 +17,7 @@ function dialectExtension(url) {
     return '.js';
 }
 
-// Writes the sources of the parsed scripts of every profile, generated and original, to a directory,
+// Writes the sources of the parsed scripts of every session, generated and original, to a directory,
 // one file per script with an extension of its dialect, for scripts/compare-function-ranges.mjs
 export default function dumpScriptSources(model, { options }) {
     if (!options.dir) {
@@ -31,8 +31,8 @@ export default function dumpScriptSources(model, { options }) {
 
     mkdirSync(options.dir, { recursive: true });
 
-    for (let i = 0; i < model.data.profiles.length; i++) {
-        const scripts = model.data.profiles[i].scripts;
+    for (let i = 0; i < model.data.sessions.length; i++) {
+        const scripts = model.data.sessions[i].shared.scripts;
 
         for (let j = 0; j < scripts.length; j++) {
             const script = scripts[j];

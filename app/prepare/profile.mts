@@ -28,6 +28,7 @@ import { type Diagnose, diagnoseToConsole } from './diagnostics.js';
 import { createLineMapping, hasAllocationsAfterSamples, mapAllocationsToSamples } from './computations/line-mapping.js';
 import { remapSamples } from './preprocessing/samples.js';
 import { Population } from './computations/population.js';
+import { defineProfileCollections } from './usage.js';
 import { createSourceMappedBreakdown } from './profile-sm.mjs';
 import { prepareLineFilters } from './lines/filters.js';
 import { EventSignatures, keyLineBySignatures } from './lines/event-signatures.js';
@@ -199,38 +200,6 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         }
     }
 
-    // create profile
-    const usage = callStackSampledTreeSet?.dictionary || dictionary;
-    const profile = {
-        name: data._name ?? null,
-        // FIXME: categories/packages must be related to profile
-        runtime: detectRuntime(
-            usage.categories,
-            usage.packages,
-            runtime || data._runtime
-        ),
-        thread: null as unknown as CpuProThread, // to be set by caller
-
-        // ...usage,
-        ...dictionary,
-        codes,
-        codesByCallFrame,
-        codesByScript,
-
-        // lines
-        timeline,
-        memline,
-        lines,
-
-        // ---- legacy fields ----
-
-        heap: data._heap || null
-    };
-
-    for (let i = 0; i < lines.length; i++) {
-        lines[i].profile = profile;
-    }
-
     if (compilationSubjects) {
         await work('link compilation events', async () => {
             await preparseScriptSourcesResult;
@@ -273,6 +242,35 @@ export async function createProfile(data: V8CpuProfile, options?: Partial<Create
         await work(`key ${line.type} events by signatures`, () =>
             keyLineBySignatures(line)
         );
+    }
+
+    const profile = defineProfileCollections({
+        name: data._name ?? null,
+        runtime: null as unknown as ReturnType<typeof detectRuntime>,
+        thread: null as unknown as CpuProThread, // to be set by caller
+
+        codes,
+        codesByCallFrame,
+        codesByScript,
+
+        // lines
+        timeline,
+        memline,
+        lines,
+
+        // ---- legacy fields ----
+
+        heap: data._heap || null
+    }, lines);
+
+    profile.runtime = detectRuntime(
+        profile.categories,
+        profile.packages,
+        runtime || data._runtime
+    );
+
+    for (let i = 0; i < lines.length; i++) {
+        lines[i].profile = profile;
     }
 
     return profile;

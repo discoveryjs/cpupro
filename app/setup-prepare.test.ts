@@ -241,3 +241,30 @@ test.each([
         assert.equal(profile.memline?.compilationOwners ?? null, null);
     }
 });
+
+// A worker and a page thread of a session share its dictionary
+test('a profile has the collections its breakdowns use, the session has all of them', async () => {
+    const workerNodes = cpuNodes.map(node => ({
+        ...node,
+        callFrame: node.callFrame.scriptId === '1'
+            ? { ...node.callFrame, url: '/worker.js', functionName: 'task' }
+            : node.callFrame
+    }));
+    const data = await prepareData([cpuNodes, workerNodes].map((nodes, index) => ({
+        startTime: 100,
+        endTime: 140,
+        _pid: 1,
+        _tid: index + 1,
+        nodes,
+        samples: [2, 2, 2],
+        timeDeltas: [10, 10, 10]
+    })));
+    const scriptUrls = (scripts: { url: string }[]) => scripts.map(script => script.url);
+    const session = data.sessions[0];
+
+    assert.deepEqual(scriptUrls(data.profiles[0].scripts), ['/script.js']);
+    assert.deepEqual(scriptUrls(data.profiles[1].scripts), ['/worker.js']);
+    assert.deepEqual(data.profiles[1].callFrames.map(callFrame => callFrame.name), ['(root)', 'task']);
+    assert.deepEqual(scriptUrls(session.shared.scripts), ['/script.js', '/worker.js']);
+    assert.ok(session.shared.owners.length > 0);
+});
