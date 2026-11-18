@@ -31,10 +31,15 @@ discovery.page.define('scripts', {
     ],
     content: {
         view: 'context',
-        // scripts are parsed on demand, only those that are listed and not parsed yet
+        // scripts of the thread, with the original scripts of their source maps when included; scripts are parsed
+        // on demand, only those that are listed and not parsed yet
         data: `
-            (scopeProfile().thread.scripts or [])
-                .[script and (no script.originalFor or #.originals)]
+            $entries: (scopeProfile().thread.scripts or []).[script];
+            $originals: #.originals
+                ? $entries.script.originals.({ script: $, compilation: null })
+                : [];
+
+            ($entries + $originals)
                 .[script.url ~= #.filter]
                 .parseScriptSources()
         `,

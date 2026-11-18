@@ -65,21 +65,21 @@ function createThread(script, stage) {
     return { scripts: [{ script, compilation }], compilations: [record] };
 }
 
-// Scripts of a thread: a Latin-1 one, a UTF-16 one, a source-map original of the first one, an entry
-// without a script and a script without source
+// Scripts of a thread: a Latin-1 one with a source-map original, a UTF-16 one, an entry without a script
+// and a script without source
 function createScriptsThread() {
     const latin1 = parsedScript(1, 'latin1.js', 'function latin1() {}');
     const utf16 = parsedScript(2, 'utf16.js', 'function utf16() { return "\u044f"; }');
     const original = parsedScript(3, 'original.ts', 'function original() {}');
 
     original.originalFor = latin1;
+    latin1.originals = [original];
 
     return {
         scripts: [
             { script: latin1, compilation: null },
             { script: null, compilation: null },
             { script: utf16, compilation: null },
-            { script: original, compilation: null },
             { script: createScript(4, 'missing.js'), compilation: null }
         ],
         compilations: []
@@ -93,7 +93,7 @@ function utfRow(nonLatin1CodeUnits, surrogatePairs) {
 
 test.each([
     ['without originals', {}, ['latin1.js', 'utf16.js', 'missing.js']],
-    ['with originals', { originals: true }, ['latin1.js', 'utf16.js', 'original.ts', 'missing.js']],
+    ['with originals', { originals: true }, ['latin1.js', 'utf16.js', 'missing.js', 'original.ts']],
     ['matching the filter', { filter: /^utf/ }, ['utf16.js']],
     ['with UTF-16 storage only', { utfOnly: true }, ['utf16.js']]
 ])('the scripts of the scope thread are listed %s', async (_, options, urls) => {
@@ -130,7 +130,7 @@ test('the preparation stage parses the listed scripts and resolves to their entr
         assert.deepEqual(parsed, ['utf16.js']);
 
         await query(prepare.data)(null, { primaryProfile: { thread }, originals: true });
-        assert.deepEqual(parsed, ['utf16.js', 'latin1.js', 'utf16.js', 'original.ts', 'missing.js']);
+        assert.deepEqual(parsed, ['utf16.js', 'latin1.js', 'utf16.js', 'missing.js', 'original.ts']);
     } finally {
         parser.mockResolvedValue(undefined);
     }
@@ -151,7 +151,8 @@ test('compiled bytes are observed for listed scripts of a thread with compilatio
     const original = parsedScript(3, 'original.ts', 'function original() {}');
 
     original.originalFor = idle;
-    thread.scripts.push({ script: idle, compilation: null }, { script: original, compilation: null });
+    idle.originals = [original];
+    thread.scripts.push({ script: idle, compilation: null });
 
     const rows = await listScripts({ primaryProfile: { thread }, originals: true });
 

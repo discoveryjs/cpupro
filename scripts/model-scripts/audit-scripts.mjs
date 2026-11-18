@@ -190,8 +190,12 @@ export default async function(model) {
         const context = { ...model.getContext(), scopeProfile: profile, originals: false, utfOnly: false, filter: null };
         const pending = new Set((thread.scripts || []).filter(entry => entry.script?.functionRanges === null).map(entry => entry.script));
         const entries = await model.query(`
-            (scopeProfile().thread.scripts or [])
-                .[script and (no script.originalFor or #.originals)]
+            $entries: (scopeProfile().thread.scripts or []).[script];
+            $originals: #.originals
+                ? $entries.script.originals.({ script: $, compilation: null })
+                : [];
+
+            ($entries + $originals)
                 .[script.url ~= #.filter]
                 .parseScriptSources()
         `, model.data, context);
