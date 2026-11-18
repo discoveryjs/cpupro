@@ -311,9 +311,10 @@ async function createCallStackTimeline(
 
     // The input data is not modified, so the vectors following the order of samples are copied
     // before the order is fixed; copies keep the element types of the input vectors, while the last allocation IDs
-    // of samples become a Uint32Array, as the mapping of the memline to the timeline keeps them
+    // of samples become a Uint32Array, as the mapping of the memline to the timeline keeps them. Samples are
+    // the ids of their nodes in the input
     const dataTimeDeltas = data.timeDeltas.slice();
-    const dataSamples = data.samples.slice();
+    const sampleNodeIds = data.samples.slice();
     const sampleAllocationIds = data._cpuproAllocationMapping
         ? new Uint32Array(data._cpuproAllocationMapping)
         : null;
@@ -322,7 +323,7 @@ async function createCallStackTimeline(
     await work('ensure correct time deltas order', () =>
         fixTimeDeltasOrderIfNeeded(
             dataTimeDeltas,
-            dataSamples,
+            sampleNodeIds,
             dataScriptOffsets,
             sampleAllocationIds
         )
@@ -364,7 +365,7 @@ async function createCallStackTimeline(
     const afterProfileSample = (
         allocationIds !== null &&
         sampleAllocationIds !== null &&
-        hasAllocationsAfterSamples(allocationIds, sampleAllocationIds, dataSamples.length)
+        hasAllocationsAfterSamples(allocationIds, sampleAllocationIds, sampleNodeIds.length)
     );
 
     // convert arrays into TypedArrays;
@@ -377,38 +378,40 @@ async function createCallStackTimeline(
 
     const {
         timeDeltas,
-        samples,
         sampleScriptOffsets
     } = await work('convert vectors into TypedArrays', () => ({
         timeDeltas: convertToUint32Array(dataTimeDeltas, extraLength),
-        samples: convertToUint32Array(dataSamples, extraLength),
         sampleScriptOffsets: Array.isArray(dataScriptOffsets)
             ? convertToInt32Array(dataScriptOffsets, extraLength)
             : null
     }));
 
-    // create node index by id and remap sample node ids to node indices;
+    // The node index of every sample, the vector typed with the samples added below;
     // at this point, only data.nodes use ids for reference to other nodes
-    const nodeIndexById = await work('remap samples to node indices', () => {
+    const { nodeIndexById, sampleNodes } = await work('map samples to node indices', () => {
         const nodeIndexById = createNodeIndexById(data.nodes);
+        const sampleNodes = new Uint32Array(sampleNodeIds.length + extraLength);
 
-        for (let i = 0; i < samples.length; i++) {
-            samples[i] = nodeIndexById[samples[i]];
+        for (let i = 0; i < sampleNodeIds.length; i++) {
+            sampleNodes[i] = nodeIndexById[sampleNodeIds[i]];
         }
 
-        return nodeIndexById;
+        return {
+            nodeIndexById,
+            sampleNodes
+        };
     });
 
     // The sample of allocations after the profile follows the samples of the profile with no time
     if (afterProfileSample) {
-        samples[dataSamples.length] = generatedNodes.addNode(
+        sampleNodes[sampleNodeIds.length] = generatedNodes.addNode(
             dictionary.callFrames.wellKnownIndex['after-profile-end'],
             1, // parentId = root
             -1 // parentScriptOffset
         );
 
         if (sampleScriptOffsets !== null) {
-            sampleScriptOffsets[dataSamples.length] = -1;
+            sampleScriptOffsets[sampleNodeIds.length] = -1;
         }
     }
 
@@ -418,7 +421,7 @@ async function createCallStackTimeline(
             processLongTimeDeltas(
                 longDeltas,
                 timeDeltas,
-                samples,
+                sampleNodes,
                 sampleScriptOffsets,
                 sampleAllocationIds,
                 generatedNodes
@@ -428,8 +431,8 @@ async function createCallStackTimeline(
 
     // The CPU sample of every allocation, among the samples of the timeline before the sample after the profile
     const recordedSampleCount = afterProfileSample
-        ? samples.length - 1
-        : samples.length;
+        ? sampleNodes.length - 1
+        : sampleNodes.length;
     const allocationSamples = allocationIds !== null && timelineAllocationIds !== null
         ? await work('map allocations to CPU samples', () =>
             mapAllocationsToSamples(allocationIds, timelineAllocationIds, recordedSampleCount)
@@ -443,7 +446,7 @@ async function createCallStackTimeline(
             data.nodes,
             generatedNodes,
             data._callFrames || null,
-            samples,
+            sampleNodes,
             sampleScriptOffsets
         )
     );
@@ -487,32 +490,35 @@ async function createCallStackTimeline(
         )
     );
 
-    const callStackBreakdownBasis = await work('create tree source', () =>
+    // Samples of the tree source are the source ids of samples: the nodes of their locations, or their nodes
+    // without script offsets
+    const { samples: sampleSourceIds, ...callStackBreakdownBasis } = await work('create tree source', () =>
         createLocationsFromScriptOffsets(
             dictionary,
             nodeParent,
             nodeScriptOffsets,
             callFrameByNodeIndex,
-            samples,
+            sampleNodes,
             sampleScriptOffsets
         ) || {
             parent: nodeParent,
             sourceIdToNode: createInt32Progression(nodeParent.length),
             nodes: callFrameByNodeIndex,
-            dictionary: dictionary.callFrames as CpuProCallFrame[]
+            dictionary: dictionary.callFrames as CpuProCallFrame[],
+            samples: sampleNodes
         }
     );
 
-    const { samples: callStackSamples, sampleToNode } = await work('normalize CPU samples', () =>
-        remapSamples(samples, callStackBreakdownBasis.sourceIdToNode)
+    const { sampledIds, sampleToNode } = await work('normalize CPU samples', () =>
+        remapSamples(sampleSourceIds, callStackBreakdownBasis.sourceIdToNode)
     );
     const callStackSource = {
         ...callStackBreakdownBasis,
         sourceIdToNode: sampleToNode
     };
     const cpuSamplesPopulation = await work('create CPU population', () =>
-        callStackSamples.length > 0
-            ? new Population(callStackSamples, timeDeltas)
+        sampledIds.length > 0
+            ? new Population(sampledIds, timeDeltas)
             : null
     );
     const callStackSampledTreeSet = cpuSamplesPopulation

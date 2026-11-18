@@ -360,13 +360,13 @@ test('adds a node per sampled node and script offset after the call tree nodes, 
     const nodeParent = new Uint32Array([0, 0, 1]);
     const nodeScriptOffsets = new Int32Array([-1, -1, 22]);
     const nodeCallFrames = new Uint32Array([dictionary.callFrames.wellKnownIndex.root, a, b]);
-    const samples = new Uint32Array([2, 2, 1, 2]);
+    const sampleNodes = new Uint32Array([2, 2, 1, 2]);
     const result = createLocationsFromScriptOffsets(
         dictionary,
         nodeParent,
         nodeScriptOffsets,
         nodeCallFrames,
-        samples,
+        sampleNodes,
         new Int32Array([51, 51, 22, 44])
     )!;
 
@@ -375,7 +375,8 @@ test('adds a node per sampled node and script offset after the call tree nodes, 
     ]);
     assert.deepEqual([...result.parent], [0, 0, 1, 2, 1, 2]);
     assert.deepEqual([...result.sourceIdToNode], [3, 4, 5]);
-    assert.deepEqual([...samples], [0, 0, 1, 2]);
+    assert.deepEqual([...result.samples], [0, 0, 1, 2]);
+    assert.deepEqual([...sampleNodes], [2, 2, 1, 2]);
     assert.equal(result.dictionary, dictionary.locations);
 });
 

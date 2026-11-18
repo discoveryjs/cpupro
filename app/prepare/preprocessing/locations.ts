@@ -10,16 +10,16 @@ export type VectorLocations = TreeSource<CpuProLocation> & {
 
 // Locations of samples and of their call tree: a node of the call tree is located at the script offset of its call
 // in the parent's call frame, and a sample at its script offset in its node's call frame. A location combines
-// a call frame, a script offset and the line and column of the offset when the source is available. Samples become
+// a call frame, a script offset and the line and column of the offset when the source is available. Samples are
 // samples of location nodes added after the call tree nodes, a node per sampled node and script offset.
 export function createLocationsFromScriptOffsets(
     dict: Dictionary,
     nodeParent: Uint32Array,
     nodeScriptOffsets: Int32Array,
     nodeCallFrames: Uint32Array,
-    samples: Uint32Array,
+    sampleNodes: Uint32Array,
     sampledScriptOffsets: Int32Array | null
-) {
+): VectorLocations | null {
     if (sampledScriptOffsets === null) {
         return null;
     }
@@ -55,9 +55,10 @@ export function createLocationsFromScriptOffsets(
 
     // A sample becomes a sample of the site of its node at its script offset, the site is located
     // at the script offset in the node's call frame
-    const sampleSites = new LocationSites(Math.min(samples.length, 1 << 12));
+    const samples = new Uint32Array(sampleNodes.length);
+    const sampleSites = new LocationSites(Math.min(sampleNodes.length, 1 << 12));
 
-    sampleSites.sitesOf(samples, sampledScriptOffsets, null, samples);
+    sampleSites.sitesOf(sampleNodes, sampledScriptOffsets, null, samples);
 
     const sampleCount = sampleSites.count;
     const sampleLocations = locationsOf(
@@ -82,7 +83,8 @@ export function createLocationsFromScriptOffsets(
         nodes,
         parent,
         sourceIdToNode,
-        dictionary: dict.locations
+        dictionary: dict.locations,
+        samples
     };
 }
 
