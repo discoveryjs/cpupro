@@ -6,7 +6,7 @@ import { processPaths } from './prepare/preprocessing/short-paths.js';
 import { processDisplayNames } from './prepare/preprocessing/module-names.js';
 import { Dictionary } from './prepare/dictionary.js';
 import { createProfile, Profile } from './prepare/profile.mjs';
-import { createHeapSnapshot, HeapSnapshot } from './prepare/heap-snapshot.js';
+import { HeapSnapshot } from './prepare/heap-snapshot.js';
 import { ProfileLineType } from './prepare/lines/types.js';
 import { CpuProSession } from './prepare/types.js';
 import { createProfileSession } from './prepare/profile-session.mjs';
@@ -182,7 +182,7 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
         for (let i = 0; i < sessionHeapSnapshots.length; i++) {
             const { thread, heapSnapshot: heapSnapshotData } = sessionHeapSnapshots[i];
             const heapSnapshot = await runSessionTask('create heap snapshot', () =>
-                createHeapSnapshot(heapSnapshotData, thread)
+                new HeapSnapshot(heapSnapshotData, thread)
             );
 
             thread.heapSnapshots.push(heapSnapshot);

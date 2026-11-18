@@ -312,6 +312,17 @@ test('a heap snapshot is a session of a thread with the snapshot and no profiles
         ]
     );
     assert.equal(heapSnapshot.strings.get(heapSnapshot.nodes.columns.name[1]), 'Foo');
+    assert.deepEqual(
+        heapSnapshot.classes.filter(nodeClass => nodeClass.count > 0),
+        [
+            { name: '(string)', type: 'string', count: 1, selfSize: 24 },
+            { name: '(synthetic)', type: 'synthetic', count: 1, selfSize: 0 },
+            { name: 'Foo', type: 'object', count: 1, selfSize: 32 }
+        ]
+    );
+    assert.deepEqual(heapSnapshot.nodeClasses, new Uint32Array([9, 10, 2]));
+    assert.deepEqual(heapSnapshot.retainedSizes, new Float64Array([56, 32, 24]));
+    assert.deepEqual(heapSnapshot.retainers.retainerEdges, new Uint32Array([0, 1]));
 });
 
 // A snapshot written with a TypedArray per field and decoded with strings as an array (e.g. jsonxl) is taken as is
