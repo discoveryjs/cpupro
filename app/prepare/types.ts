@@ -467,7 +467,7 @@ export type CpuProScript = {
     lineOffset: number;
     columnOffset: number;
     sourceMapUrl: string | null;
-    hasSourceMap: boolean; // given with a source map, which source mapping takes from the input
+    sourceMap: SourceMap | null;
     module: CpuProModule;
     callFrames: CpuProCallFrame[];
     functionRanges: FunctionRange[] | null;

@@ -4,8 +4,7 @@ import { SourceMapGenerator } from 'source-map-js';
 import { Dictionary } from '../dictionary.js';
 import { ProfileScriptsMap } from './scripts.js';
 import { SourceMapping } from './source-mapping.js';
-import type { Ownership } from '../formats/types.js';
-import type { CpuProLocation, CpuProScript, SourceMap } from '../types.js';
+import type { CpuProLocation, CpuProScript } from '../types.js';
 import * as scriptFunctions from '../misc/script-function-resolution.js';
 
 // Function ranges of original scripts are parsed on demand instead of parse workers
@@ -37,11 +36,12 @@ function createFixture() {
     }
 
     const dictionary = new Dictionary();
+    const inputSourceMap = JSON.parse(generator.toString());
     const scriptsMap = new ProfileScriptsMap(dictionary, [{
         id: 1,
         url: 'bundle.js',
         source: ' '.repeat(80),
-        sourceMap: JSON.parse(generator.toString())
+        sourceMap: inputSourceMap
     }]);
     const generatedScript = scriptsMap.get(1)!;
     const generatedFunction = dictionary.resolveCallFrame({
@@ -57,20 +57,7 @@ function createFixture() {
     // a tree of the generated function and the locations in it
     const tree = locationTree(dictionary, [generatedFunction.location.id - 1, ...generatedLocations]);
 
-    return { dictionary, sourceMaps: scriptsMap.sourceMaps, generatedScript, generatedFunction, generatedLocations, tree };
-}
-
-// Source mapping given the source maps of a profile's scripts, as a profile gives them
-function createSourceMapping(
-    dictionary: Dictionary,
-    sourceMaps: Map<CpuProScript, SourceMap>,
-    ownership: Ownership | null = null
-) {
-    const sourceMapping = new SourceMapping(dictionary, ownership);
-
-    sourceMapping.addSourceMaps(sourceMaps);
-
-    return sourceMapping;
+    return { dictionary, inputSourceMap, generatedScript, generatedFunction, generatedLocations, tree };
 }
 
 // A tree of locations, as a breakdown has
@@ -87,18 +74,16 @@ function describeOriginal(location: CpuProLocation) {
     return [location.script!.url, location.line, location.column, location.callFrame.name];
 }
 
-test('a script given with a source map keeps that it has one, the map stays with the input', () => {
-    const { sourceMaps, generatedScript } = createFixture();
-    const inputSourceMap = sourceMaps.get(generatedScript);
+test('a script given with a source map keeps a copy of the source map record, whole', () => {
+    const { inputSourceMap, generatedScript } = createFixture();
 
-    assert.equal(generatedScript.hasSourceMap, true);
-    assert.notEqual(inputSourceMap, undefined);
-    assert.equal(Object.values(generatedScript).includes(inputSourceMap), false);
+    assert.notEqual(generatedScript.sourceMap, inputSourceMap);
+    assert.deepEqual(generatedScript.sourceMap, inputSourceMap);
 });
 
 test('original locations belong to the original functions containing them', async () => {
-    const { dictionary, sourceMaps, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
-    const sourceMapping = createSourceMapping(dictionary, sourceMaps, {
+    const { dictionary, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary, {
         api: 'test',
         areas: ['team-a'],
         files: { 'a.js': [0] }
@@ -134,8 +119,8 @@ test('original locations belong to the original functions containing them', asyn
 });
 
 test('call frames of original scripts take the modules their scripts take on registration', async () => {
-    const { dictionary, sourceMaps, generatedLocations, tree } = createFixture();
-    const sourceMapping = createSourceMapping(dictionary, sourceMaps, {
+    const { dictionary, generatedLocations, tree } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary, {
         api: 'test',
         areas: ['team-a'],
         files: { 'a.js': [0] }
@@ -152,10 +137,10 @@ test('call frames of original scripts take the modules their scripts take on reg
 });
 
 test('a location without a position belongs to the original function of its generated function start', async () => {
-    const { dictionary, sourceMaps, generatedFunction } = createFixture();
+    const { dictionary, generatedFunction } = createFixture();
     const generatedNoPosition = dictionary.resolveLocation(generatedFunction);
     const tree = locationTree(dictionary, [generatedFunction.location.id - 1, generatedNoPosition.id - 1]);
-    const originalLocations = (await createSourceMapping(dictionary, sourceMaps).mapLocations(tree))!;
+    const originalLocations = (await new SourceMapping(dictionary).mapLocations(tree))!;
     const start = dictionary.locations[originalLocations[generatedFunction.location.id - 1]];
     const noPosition = dictionary.locations[originalLocations[generatedNoPosition.id - 1]];
 
@@ -164,8 +149,8 @@ test('a location without a position belongs to the original function of its gene
 });
 
 test('maps only locations of the mapped trees, each once, and reuses original scripts', async () => {
-    const { dictionary, sourceMaps, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
-    const sourceMapping = createSourceMapping(dictionary, sourceMaps);
+    const { dictionary, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
     const first = [...(await sourceMapping.mapLocations(tree))!];
     const scriptsCount = dictionary.scripts.length;
     const added = dictionary.resolveLocationIndex(generatedFunction, generatedScript, -1, 0, 25);
@@ -186,9 +171,9 @@ test('maps only locations of the mapped trees, each once, and reuses original sc
 
 test('original scripts looked up in advance are registered on mapping in the same order', async () => {
     const single = createFixture();
-    const singleLocations = (await createSourceMapping(single.dictionary, single.sourceMaps).mapLocations(single.tree))!;
-    const { dictionary, sourceMaps, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
-    const sourceMapping = createSourceMapping(dictionary, sourceMaps);
+    const singleLocations = (await new SourceMapping(single.dictionary).mapLocations(single.tree))!;
+    const { dictionary, generatedScript, generatedFunction, generatedLocations, tree } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
     const scriptsCount = dictionary.scripts.length;
 
     sourceMapping.prepareLocations(tree);
@@ -254,7 +239,7 @@ function createScriptLocations(sourceMap: unknown, scriptCount: number, columns:
     };
     const locations = Array.from({ length: scriptCount }, locateColumns);
 
-    return { dictionary, sourceMaps: scriptsMap.sourceMaps, locations, tree: locationTree(dictionary, locations.flat()) };
+    return { dictionary, locations, tree: locationTree(dictionary, locations.flat()) };
 }
 
 test.each([
@@ -270,8 +255,8 @@ test.each([
         names: [],
         mappings
     };
-    const { dictionary, sourceMaps, locations, tree } = createScriptLocations(sourceMap, 1, [column]);
-    const originalLocations = (await createSourceMapping(dictionary, sourceMaps).mapLocations(tree))!;
+    const { dictionary, locations, tree } = createScriptLocations(sourceMap, 1, [column]);
+    const originalLocations = (await new SourceMapping(dictionary).mapLocations(tree))!;
 
     assert.equal(originalLocations[locations[0][0]], locations[0][0]);
 });
@@ -284,8 +269,8 @@ test('a source listed twice gives one original script per generated script', asy
         names: [],
         mappings: 'AAAA,UCAA'
     };
-    const { dictionary, sourceMaps, locations, tree } = createScriptLocations(sourceMap, 2, [0, 10]);
-    const originalLocations = (await createSourceMapping(dictionary, sourceMaps).mapLocations(tree))!;
+    const { dictionary, locations, tree } = createScriptLocations(sourceMap, 2, [0, 10]);
+    const originalLocations = (await new SourceMapping(dictionary).mapLocations(tree))!;
     const originalScript = (location: number) => dictionary.locations[originalLocations[location]].script;
     const originalScripts = locations.map(scriptLocations => scriptLocations.map(originalScript));
     const scriptsOfSource = dictionary.scripts.filter(script => script.url === 'a.js');
@@ -298,8 +283,8 @@ test('a source listed twice gives one original script per generated script', asy
 
 test('original scripts start parsing once per lookup, mapping waits for the parsing', async () => {
     let finishParsing = () => {};
-    const { dictionary, sourceMaps, tree } = createFixture();
-    const sourceMapping = createSourceMapping(dictionary, sourceMaps);
+    const { dictionary, tree } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
     const parsing = new Promise<undefined>(resolve => finishParsing = () => resolve(undefined));
 
     prepareScriptSources.mockClear();
@@ -323,8 +308,8 @@ test('original scripts start parsing once per lookup, mapping waits for the pars
 
 test('mapping waits for the parsing of original scripts of every lookup', async () => {
     let finishParsing = () => {};
-    const { dictionary, sourceMaps, generatedScript, generatedFunction, tree } = createFixture();
-    const sourceMapping = createSourceMapping(dictionary, sourceMaps);
+    const { dictionary, generatedScript, generatedFunction, tree } = createFixture();
+    const sourceMapping = new SourceMapping(dictionary);
     const parsing = new Promise<undefined>(resolve => finishParsing = () => resolve(undefined));
 
     sourceMapping.prepareLocations(tree);

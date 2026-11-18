@@ -33,8 +33,7 @@ test('a source-mapped breakdown attributes generated functions to the original f
     });
     const sourceMapping = new SourceMapping(dictionary);
 
-    sourceMapping.addSourceMaps(new Map([[compiled, JSON.parse(generator.toString())]]));
-    compiled.hasSourceMap = true;
+    compiled.sourceMap = JSON.parse(generator.toString());
 
     const line = profile.timeline!;
     const mapped = await createSourceMappedBreakdown(

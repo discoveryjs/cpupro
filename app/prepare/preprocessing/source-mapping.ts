@@ -1,7 +1,7 @@
 import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import type { Ownership } from '../formats/types.js';
-import type { CpuProScript, SourceMap } from '../types.js';
+import type { CpuProScript } from '../types.js';
 import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
 import { SourceMapIndex } from '../misc/source-map.js';
 import {
@@ -26,7 +26,6 @@ export class SourceMapping {
     #dictionary: Dictionary;
     #ownership: Ownership | null;
     #diagnose: Diagnose;
-    #inputSourceMaps: Map<CpuProScript, SourceMap>; // given until a script's source map is indexed
     #sourceMaps: Map<CpuProScript, ScriptSourceMap | null>;
     #originalScriptsByUrl: Map<string, CpuProScript[]>;
     #nextOriginalScriptId: number = -1;
@@ -48,7 +47,6 @@ export class SourceMapping {
         this.#dictionary = dictionary;
         this.#ownership = ownership;
         this.#diagnose = diagnose;
-        this.#inputSourceMaps = new Map();
         this.#sourceMaps = new Map();
         this.#originalScriptsByUrl = new Map();
         this.#unregisteredScripts = [];
@@ -58,15 +56,6 @@ export class SourceMapping {
         this.#pendingLines = [];
         this.#pendingColumns = [];
         this.#originalLocations = new Int32Array(0);
-    }
-
-    // Source maps of scripts given with a profile, which come from its input; a script keeps only that it has one
-    addSourceMaps(sourceMaps: Map<CpuProScript, SourceMap>) {
-        for (const [script, sourceMap] of sourceMaps) {
-            if (!this.#sourceMaps.has(script)) {
-                this.#inputSourceMaps.set(script, sourceMap);
-            }
-        }
     }
 
     get hasSourceMaps() {
@@ -99,7 +88,7 @@ export class SourceMapping {
 
             this.#originalLocations[locationIndex] = locationIndex;
 
-            if (script === null || !script.hasSourceMap) {
+            if (script === null || script.sourceMap === null) {
                 continue;
             }
 
@@ -234,17 +223,10 @@ export class SourceMapping {
         let sourceMap = this.#sourceMaps.get(script);
 
         if (sourceMap === undefined) {
-            const inputSourceMap = this.#inputSourceMaps.get(script);
-
-            if (inputSourceMap === undefined) {
-                return null;
-            }
-
             sourceMap = null;
-            this.#inputSourceMaps.delete(script);
 
             try {
-                const index = new SourceMapIndex(inputSourceMap);
+                const index = new SourceMapIndex(script.sourceMap!);
 
                 sourceMap = {
                     index,
