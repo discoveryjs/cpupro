@@ -270,7 +270,7 @@ test('a profile has the collections its breakdowns use, the session has all of t
     assert.ok(session.shared.owners.length > 0);
 });
 
-// A root holding an object and a string, as V8 writes a snapshot
+// A root holding an object and a string, the object holding the string by an element, as V8 writes a snapshot
 const heapSnapshotText = JSON.stringify({
     snapshot: {
         meta: {
@@ -280,11 +280,11 @@ const heapSnapshotText = JSON.stringify({
             edge_types: [['context', 'element', 'property', 'internal', 'hidden', 'shortcut', 'weak'], 'string_or_number', 'node']
         },
         node_count: 3,
-        edge_count: 2,
+        edge_count: 3,
         trace_function_count: 0
     },
-    nodes: [9, 1, 1, 0, 2, 0, 3, 2, 3, 32, 0, 0, 2, 3, 5, 24, 0, 0],
-    edges: [2, 2, 6, 2, 3, 12],
+    nodes: [9, 1, 1, 0, 2, 0, 3, 2, 3, 32, 1, 0, 2, 3, 5, 24, 0, 0],
+    edges: [2, 2, 6, 2, 3, 12, 1, 0, 12],
     strings: ['<dummy>', '', 'Foo', 'text']
 });
 
@@ -313,16 +313,44 @@ test('a heap snapshot is a session of a thread with the snapshot and no profiles
     );
     assert.equal(heapSnapshot.strings.get(heapSnapshot.nodes.columns.name[1]), 'Foo');
     assert.deepEqual(
-        heapSnapshot.classes.filter(nodeClass => nodeClass.count > 0),
+        heapSnapshot.classes
+            .filter(nodeClass => nodeClass.count > 0)
+            .map(({ name, type, count, selfSize, objects }) => ({ name, type, count, selfSize, objects })),
         [
-            { name: '(string)', type: 'string', count: 1, selfSize: 24 },
-            { name: '(synthetic)', type: 'synthetic', count: 1, selfSize: 0 },
-            { name: 'Foo', type: 'object', count: 1, selfSize: 32 }
+            { name: '(string)', type: 'string', count: 1, selfSize: 24, objects: new Uint32Array([2]) },
+            { name: '(synthetic)', type: 'synthetic', count: 1, selfSize: 0, objects: new Uint32Array([0]) },
+            { name: 'Foo', type: 'object', count: 1, selfSize: 32, objects: new Uint32Array([1]) }
         ]
     );
     assert.deepEqual(heapSnapshot.nodeClasses, new Uint32Array([9, 10, 2]));
     assert.deepEqual(heapSnapshot.retainedSizes, new Float64Array([56, 32, 24]));
-    assert.deepEqual(heapSnapshot.retainers.retainerEdges, new Uint32Array([0, 1]));
+    assert.deepEqual(heapSnapshot.retainers.retainerEdges, new Uint32Array([0, 1, 2]));
+});
+
+// An object is made when read, with its references by their names, an element's or a hidden edge's by its index
+test('objects of a heap snapshot and their references', async () => {
+    const heapSnapshot = (await prepareData(await decodeHeapSnapshot(bytesOf(heapSnapshotText)))).heapSnapshots[0];
+    const { objects } = heapSnapshot;
+    const object = objects[1];
+
+    assert.equal(objects.length, 3);
+    assert.equal(objects[3], undefined);
+    assert.equal(objects[1], object);
+    assert.deepEqual(
+        { id: object.id, type: object.type, name: object.name, selfSize: object.selfSize, class: object.class.name },
+        { id: 3, type: 'object', name: 'Foo', selfSize: 32, class: 'Foo' }
+    );
+    assert.deepEqual(objects[0].edges, [
+        { type: 'property', name: 'Foo', from: 0, to: 1 },
+        { type: 'property', name: 'text', from: 0, to: 2 }
+    ]);
+    assert.deepEqual(object.edges, [{ type: 'element', name: 0, from: 1, to: 2 }]);
+    assert.deepEqual(object.retainers, [{ type: 'property', name: 'Foo', from: 0, to: 1 }]);
+    assert.deepEqual(objects[2].retainers, [
+        { type: 'property', name: 'text', from: 0, to: 2 },
+        { type: 'element', name: 0, from: 1, to: 2 }
+    ]);
+    assert.deepEqual(objects[0].retainers, []);
 });
 
 // A snapshot written with a TypedArray per field and decoded with strings as an array (e.g. jsonxl) is taken as is

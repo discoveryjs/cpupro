@@ -47,6 +47,7 @@ module.exports = {
             './pages/default.js',
             './pages/events.css',
             './pages/events.js',
+            './pages/heap-object.js',
             './pages/module.js',
             './pages/owner.js',
             './pages/package.js',

@@ -8,6 +8,7 @@ import {
     computeFirstEdges,
     computeRetainers
 } from './heap-snapshot-graph.js';
+import { classObjects, createObjectList, type HeapSnapshotObject } from './heap-snapshot-objects.js';
 
 // The nodes of a type: their number and the sum of their self sizes
 export type HeapSnapshotNodeType = {
@@ -16,12 +17,15 @@ export type HeapSnapshotNodeType = {
     selfSize: number;
 };
 
-// The nodes of a class: objects and natives of a constructor name, nodes of another type by their type
+// The nodes of a class: objects and natives of a constructor name, nodes of another type by their type. The indices
+// of its nodes are found when read and kept while something holds them
 export type HeapSnapshotClass = {
+    index: number;
     name: string;
     type: string;
     count: number;
     selfSize: number;
+    readonly objects: Uint32Array;
 };
 
 // A snapshot of the heap of a thread: its nodes (objects of the heap) and edges (references between them) by the
@@ -38,6 +42,7 @@ export class HeapSnapshot {
     sections: Record<string, unknown>;
     classes: HeapSnapshotClass[];
     nodeClasses: Uint32Array; // per node: the index of its class
+    objects: readonly HeapSnapshotObject[]; // by the indices of nodes, made when read
     nodeTypes: HeapSnapshotNodeType[];
     selfSize: number;
 
@@ -66,6 +71,11 @@ export class HeapSnapshot {
         this.nodeClasses = nodeClasses;
         this.nodeTypes = nodeTypes;
         this.selfSize = selfSize;
+        this.objects = createObjectList(this);
+
+        for (let i = 0; i < classes.length; i++) {
+            defineClassObjects(this, classes[i]);
+        }
 
         exposeGetters(this, HeapSnapshot.prototype, [
             'firstEdges',
@@ -133,11 +143,26 @@ export class HeapSnapshot {
     }
 
     #weakEdgeType() {
-        const { edge_fields: fields, edge_types: types } = this.snapshot.meta;
-        const typeNames = types[fields.indexOf('type')] as string[];
-
-        return typeNames.indexOf('weak');
+        return edgeTypeNames(this.snapshot).indexOf('weak');
     }
+}
+
+function defineClassObjects(snapshot: HeapSnapshot, nodeClass: HeapSnapshotClass) {
+    let objects: WeakRef<Uint32Array> | null = null;
+
+    Object.defineProperty(nodeClass, 'objects', {
+        enumerable: true,
+        get() {
+            let indices = objects?.deref();
+
+            if (indices === undefined) {
+                indices = classObjects(snapshot, nodeClass.index);
+                objects = new WeakRef(indices);
+            }
+
+            return indices;
+        }
+    });
 }
 
 // Classes of nodes: an object or a native takes the class of its name, of its type apart, another node the class of
@@ -179,7 +204,7 @@ function classifyNodes(snapshot: V8HeapSnapshot['snapshot'], nodes: HeapSnapshot
 
     const counts = new Uint32Array(classCount);
     const sizes = new Float64Array(classCount);
-    const classes: HeapSnapshotClass[] = [];
+    const classes: Omit<HeapSnapshotClass, 'objects'>[] = [];
 
     for (let i = 0; i < nodes.length; i++) {
         const nodeClass = nodeClasses[i];
@@ -190,6 +215,7 @@ function classifyNodes(snapshot: V8HeapSnapshot['snapshot'], nodes: HeapSnapshot
 
     for (let i = 0; i < typeNames.length; i++) {
         classes.push({
+            index: i,
             name: `(${typeNames[i]})`,
             type: typeNames[i],
             count: counts[i],
@@ -204,6 +230,7 @@ function classifyNodes(snapshot: V8HeapSnapshot['snapshot'], nodes: HeapSnapshot
             : objectType;
 
         classes.push({
+            index: i,
             name: strings.get(key >> 1),
             type: typeNames[type],
             count: counts[i],
@@ -211,8 +238,9 @@ function classifyNodes(snapshot: V8HeapSnapshot['snapshot'], nodes: HeapSnapshot
         });
     }
 
+    // the objects of classes are defined by the snapshot
     return {
-        classes,
+        classes: classes as HeapSnapshotClass[],
         nodeClasses
     };
 }
@@ -236,6 +264,10 @@ function summarizeNodeTypes(snapshot: V8HeapSnapshot['snapshot'], classes: HeapS
     return nodeTypes;
 }
 
-function nodeTypeNames(snapshot: V8HeapSnapshot['snapshot']) {
+export function nodeTypeNames(snapshot: V8HeapSnapshot['snapshot']) {
     return snapshot.meta.node_types[snapshot.meta.node_fields.indexOf('type')] as string[];
+}
+
+export function edgeTypeNames(snapshot: V8HeapSnapshot['snapshot']) {
+    return snapshot.meta.edge_types[snapshot.meta.edge_fields.indexOf('type')] as string[];
 }
