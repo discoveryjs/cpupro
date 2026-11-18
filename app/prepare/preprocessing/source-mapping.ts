@@ -136,22 +136,7 @@ export class SourceMapping {
 
         // registering happens here rather than on lookup, so the order of dictionary scripts and modules
         // doesn't depend on when the locations were looked up
-        for (let i = 0; i < this.#unregisteredScripts.length; i++) {
-            const script = this.#unregisteredScripts[i];
-
-            script.module = dictionary.resolveModule(script);
-
-            // ownership files are paths of original sources
-            if (this.#ownership !== null) {
-                const area = this.#ownership.areas[this.#ownership.files[script.url]?.[0] ?? -1];
-
-                if (area !== undefined) {
-                    script.module.owner = dictionary.resolveOwner(area);
-                }
-            }
-
-            dictionary.scripts.push(script);
-        }
+        this.#registerOriginalScripts();
 
         const pendingLocations = this.#pendingLocations;
 
@@ -159,7 +144,8 @@ export class SourceMapping {
         await Promise.all(this.#parsing);
 
         for (let i = 0; i < pendingLocations.length; i++) {
-            const location = locations[pendingLocations[i]];
+            const locationIndex = pendingLocations[i];
+            const location = locations[locationIndex];
             const script = this.#pendingScripts[i];
             const line = this.#pendingLines[i];
             const column = this.#pendingColumns[i];
@@ -171,12 +157,12 @@ export class SourceMapping {
                 : dictionary.callFrames[dictionary.resolveScriptCallFrameIndex(script)];
 
             if (location.callFrame.noLocLocation === location) {
-                this.#originalLocations[pendingLocations[i]] = dictionary.resolveLocationIndex(callFrame);
+                this.#originalLocations[locationIndex] = dictionary.resolveLocationIndex(callFrame);
             } else if (location.callFrame.location === location) {
                 // the start of a generated function denotes the start of its original function
-                this.#originalLocations[pendingLocations[i]] = callFrame.location.id - 1;
+                this.#originalLocations[locationIndex] = callFrame.location.id - 1;
             } else {
-                this.#originalLocations[pendingLocations[i]] = dictionary.resolveLocationIndex(
+                this.#originalLocations[locationIndex] = dictionary.resolveLocationIndex(
                     callFrame,
                     script,
                     -1,
@@ -186,7 +172,6 @@ export class SourceMapping {
             }
         }
 
-        this.#unregisteredScripts = [];
         this.#parsing = [];
         this.#pendingLocations = [];
         this.#pendingScripts = [];
@@ -199,12 +184,71 @@ export class SourceMapping {
         return this.#originalLocations.subarray(0, locations.length);
     }
 
-    // Once the profiles of the session are mapped, the line boundaries of original scripts have no reader:
-    // original locations keep their offsets, and views take lines of sources from the sources
-    releaseLineBoundaries() {
-        for (const scripts of this.#originalScriptsByUrl.values()) {
-            releaseScriptLineBoundaries(scripts);
+    // Once the profiles of the session are mapped, a script with a source map takes the original scripts of all
+    // sources of the map, the sources no location maps to included, and the line boundaries of original scripts
+    // have no reader: original locations keep their offsets, and views take lines of sources from the sources.
+    // PERF: The original scripts are created here rather than on reading the originals of a script, as creating
+    // an original script resolves its module by the dictionary: keeping the dictionary for that kept 83 MB more
+    // after loading a large trace, while creating the rest of its originals (9K of 36K) takes 14–19 ms
+    completeSession() {
+        const { scripts } = this.#dictionary;
+        const scriptCount = scripts.length;
+
+        for (let i = 0; i < scriptCount; i++) {
+            const script = scripts[i];
+
+            if (script.sourceMap === null) {
+                continue;
+            }
+
+            const sourceMap = this.#getSourceMap(script);
+
+            if (sourceMap === null) {
+                continue;
+            }
+
+            const originals = new Array<CpuProScript>(sourceMap.originalScripts.length);
+
+            for (let j = 0; j < originals.length; j++) {
+                originals[j] = this.#getOriginalScript(script, sourceMap, j);
+            }
+
+            script.originals = originals;
         }
+
+        this.#registerOriginalScripts();
+
+        for (const scriptsOfUrl of this.#originalScriptsByUrl.values()) {
+            releaseScriptLineBoundaries(scriptsOfUrl);
+        }
+    }
+
+    #registerOriginalScripts() {
+        const dictionary = this.#dictionary;
+        const ownership = this.#ownership;
+        const scripts = this.#unregisteredScripts;
+
+        for (let i = 0; i < scripts.length; i++) {
+            const script = scripts[i];
+
+            script.module = dictionary.resolveModule(script);
+
+            // ownership files are paths of original sources, the first area of a file owns it
+            if (ownership !== null) {
+                const fileAreas = ownership.files[script.url];
+                const area = fileAreas !== undefined
+                    ? ownership.areas[fileAreas[0]]
+                    : undefined;
+
+                if (area !== undefined) {
+                    script.module.owner = dictionary.resolveOwner(area);
+                }
+            }
+
+            dictionary.scripts.push(script);
+        }
+
+        this.#unregisteredScripts = [];
     }
 
     #growOriginalLocations() {
@@ -250,12 +294,14 @@ export class SourceMapping {
         let script = sourceMap.originalScripts[sourceIndex];
 
         if (script === null) {
-            const url = sourceMap.index.sources[sourceIndex];
-            const source = sourceMap.index.sourcesContent[sourceIndex] ?? null;
+            const { sources, sourcesContent } = sourceMap.index;
+            const url = sources[sourceIndex];
+            const source = sourcesContent[sourceIndex] ?? null;
             let scriptsByUrl = this.#originalScriptsByUrl.get(url);
 
             if (scriptsByUrl === undefined) {
-                this.#originalScriptsByUrl.set(url, scriptsByUrl = []);
+                scriptsByUrl = [];
+                this.#originalScriptsByUrl.set(url, scriptsByUrl);
             }
 
             // a source map may list the same source several times

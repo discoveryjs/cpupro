@@ -468,6 +468,7 @@ export type CpuProScript = {
     columnOffset: number;
     sourceMapUrl: string | null;
     sourceMap: SourceMap | null;
+    originals: readonly CpuProScript[]; // of the sources of the source map, by their index in the sources
     module: CpuProModule;
     callFrames: CpuProCallFrame[];
     functionRanges: FunctionRange[] | null;

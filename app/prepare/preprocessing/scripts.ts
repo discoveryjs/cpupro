@@ -2,6 +2,7 @@ import type { CpuProModule, CpuProScript, IProfileScriptsMap, V8CpuProfile, V8Cp
 import type { Dictionary } from '../dictionary.js';
 import type { Diagnose } from '../diagnostics.js';
 import { getScriptLineBoundaries } from '../misc/script-function-resolution.js';
+import { EMPTY_ARRAY } from '../const.js';
 
 export class ProfileScriptsMap implements IProfileScriptsMap {
     dict: Dictionary;
@@ -235,6 +236,7 @@ export function createScript(id: number, url: string, source: string | null = nu
         columnOffset: 0,
         sourceMapUrl: null,
         sourceMap: null,
+        originals: EMPTY_ARRAY,
         module: null as unknown as CpuProModule,
         callFrames: [],
         functionRanges: null,

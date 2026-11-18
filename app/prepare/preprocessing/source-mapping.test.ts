@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { SourceMapGenerator } from 'source-map-js';
+import jora from 'jora';
 import { Dictionary } from '../dictionary.js';
 import { ProfileScriptsMap } from './scripts.js';
 import { SourceMapping } from './source-mapping.js';
@@ -279,6 +280,39 @@ test('a source listed twice gives one original script per generated script', asy
     assert.equal(originalScripts[1][0], originalScripts[1][1]);
     assert.notEqual(originalScripts[0][0], originalScripts[1][0]);
     assert.deepEqual(scriptsOfSource.map(script => script.originalFor!.url), ['bundle-0.js', 'bundle-1.js']);
+});
+
+test('a completed session gives a script the original scripts of all sources of its source map', async () => {
+    const sourceMap = {
+        version: 3,
+        sources: ['a.js', 'b.js', 'a.js'],
+        sourcesContent: ['const a = 1;', 'const b = 2;', 'const a = 1;'],
+        names: [],
+        mappings: 'AAAA' // only a.js has a location
+    };
+    const { dictionary, locations, tree } = createScriptLocations(sourceMap, 1, [0]);
+    const sourceMapping = new SourceMapping(dictionary, {
+        api: 'test',
+        areas: ['team-b'],
+        files: { 'b.js': [0] }
+    });
+    const originalLocations = (await sourceMapping.mapLocations(tree))!;
+    const generatedScript = dictionary.locations[locations[0][0]].script!;
+    const mappedScript = dictionary.locations[originalLocations[locations[0][0]]].script!;
+    const originals = jora('originals.({ url, source, generatedUrl: originalFor.url, owner: module.owner.name })');
+
+    sourceMapping.completeSession();
+
+    // originals follow the sources, a source listed twice has one original script; the original of a mapped
+    // location is the same script
+    assert.deepEqual(originals(generatedScript), [
+        { url: 'a.js', source: 'const a = 1;', generatedUrl: 'bundle-0.js', owner: '(unknown)' },
+        { url: 'b.js', source: 'const b = 2;', generatedUrl: 'bundle-0.js', owner: 'team-b' },
+        { url: 'a.js', source: 'const a = 1;', generatedUrl: 'bundle-0.js', owner: '(unknown)' }
+    ]);
+    assert.equal(generatedScript.originals[0], mappedScript);
+    assert.equal(generatedScript.originals[2], mappedScript);
+    assert.equal(dictionary.scripts.includes(generatedScript.originals[1]), true);
 });
 
 test('original scripts start parsing once per lookup, mapping waits for the parsing', async () => {
