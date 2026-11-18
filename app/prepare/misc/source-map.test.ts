@@ -184,6 +184,14 @@ test('resolves a segment and a line across the end of a chunk of the mappings as
     assertConsumerPositions(createSourceMap(undefined, ['a.js'], mappings), 3, segmentCount + 30);
 });
 
+// A chunk of lines of a segment each ends at the separator of a line
+test('resolves positions of lines of a segment each over several chunks as source-map-js does', () => {
+    const lineCount = Math.ceil(2 * MAPPINGS_CHUNK_SIZE / 5);
+    const mappings = 'AAAA' + ';AACA'.repeat(lineCount - 1);
+
+    assertConsumerPositions(createSourceMap(undefined, ['a.js'], mappings), lineCount + 1, 2);
+});
+
 test('resolves positions of mappings indexed in several chunks as source-map-js does', () => {
     const random = sequence(1);
     const generator = new SourceMapGenerator({ file: 'bundle.js' });
