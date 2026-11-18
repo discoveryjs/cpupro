@@ -12,7 +12,7 @@ import { createMemlineCpuSamplesBreakdown } from './memline-cpu-samples-breakdow
 import { createMemlineLocationsBreakdown } from './memline-locations-breakdown.mjs';
 import { createEventClasses } from './event-signatures.js';
 import { createAttributeFilter } from './filters/attribute.js';
-import { asInt32Array, asUint32Array, fractionDigits } from '../misc/utils.js';
+import { asInt32Array, asUint32Array, fractionDigits, min } from '../misc/utils.js';
 import { stepFractionDigits } from '../misc/time-utils.js';
 import { FilterSet } from '../computations/filter-set.js';
 import { RangeSelection, RangeView } from '../computations/range.js';
@@ -81,6 +81,24 @@ const memlineMethods: ProfileLineMethods = {
     }
 };
 
+// The sampling interval of allocations is the smallest allocation size, a pass over every allocation, so it is
+// computed when first read; the source info is made outside of createMemline so its getter keeps the sizes only
+function createAllocationSourceInfo(allocationSizes: Uint32Array) {
+    let samplesInterval = -1;
+
+    return {
+        nodes: 0, // Allocation events don't have nodes (they reference CPU nodes)
+        samples: allocationSizes.length,
+        get samplesInterval() {
+            if (samplesInterval === -1) {
+                samplesInterval = min(allocationSizes);
+            }
+
+            return samplesInterval;
+        }
+    };
+}
+
 /**
  * Create memory allocation line from combined profile allocation data.
  * Maps allocation events to CPU samples, then uses CPU profile's trees to compute metrics.
@@ -115,46 +133,8 @@ export async function createMemline(
         return null;
     }
 
-    // const vmstate = new Uint32Array(16);
-    // const builtins = new Map();
-    // let internals = 0;
-    // for (let i = 0; i < _cpuproAllocationContextInfo!.length; i++) {
-    //     vmstate[_cpuproAllocationContextInfo![i] & 0x0f] += _cpuproAllocationSizes![i];
-    //     if (_cpuproAllocationContextInfo![i] > 0x0f) {
-    //         internals += _cpuproAllocationSizes![i];
-    //         const id = _cpuproAllocationContextInfo![i] >> 4;
-    //         builtins.set(id, (builtins.get(id) || 0) + _cpuproAllocationSizes![i]);
-    //     }
-    // }
-    // console.log('Internals', internals);
-    // for (let i = 0; i < vmstate.length; i++) {
-    //     if (vmstate[i] > 0) {
-    //         console.log(_cpuproAllocationVmStateNames![i], vmstate[i]);
-    //     }
-    // }
-    // console.log('Builtins:');
-    // for (const [id, size] of [...builtins.entries()].sort((a, b) => b[1] - a[1])) {
-    //     console.log(`  ${_cpuproAllocationBuiltinNames![id]}: ${size}`);
-    // }
-
     // Convert allocation sizes to typed array for faster processing
     const allocationSizes = asUint32Array(_cpuproAllocationSizes);
-
-    let samplesInterval = allocationSizes[0];
-    for (let i = 1; i < allocationSizes.length; i++) {
-        if (allocationSizes[i] < samplesInterval) {
-            samplesInterval = allocationSizes[i];
-        }
-    }
-
-    // Exclude GCed allocations from size
-    // if (data._cpuproAllocationGc) {
-    //     for (let i = 0; i < allocationSizes.length; i++) {
-    //         if (data._cpuproAllocationGc![i] > 0) {
-    //             allocationSizes[i] = 0;
-    //         }
-    //     }
-    // }
 
     // Populations of the memline share the prefix sums of allocation sizes; their end is the axis total
     const cumulative = await work('compute memline cumulative sizes', () =>
@@ -206,11 +186,7 @@ export async function createMemline(
         type: 'memline',
         kind: 'memory' as const,
         profile: null as unknown as Profile, // to be set by caller
-        sourceInfo: {
-            nodes: 0, // Allocation events don't have nodes (they reference CPU nodes)
-            samples: _cpuproAllocationSizes.length,
-            samplesInterval
-        },
+        sourceInfo: createAllocationSourceInfo(allocationSizes),
 
         axisStart: 0,
         axisStartNoSamples: 0,
