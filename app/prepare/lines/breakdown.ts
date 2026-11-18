@@ -3,7 +3,7 @@ import { createSampleBreakdown, type DictDimension, type TreeDimension } from '.
 import type { WorkHandler } from '../misc/work.js';
 import type { CpuProCallFrame, CpuProCategory, CpuProLocation, CpuProModule, CpuProNode, CpuProOwner, CpuProPackage } from '../types.js';
 import type { LineTreeDimension, ProfileLine, ProfileLineBreakdown } from './types.js';
-import type { SampledTreeSet } from '../computations/sampled-tree-set.js';
+import type { SampledTreeDimension, SampledTreeSet } from '../computations/sampled-tree-set.js';
 import type { Population, PopulationFiltered } from '../computations/population.js';
 import { TreeValueBounds } from '../computations/tree-node-bounds.js';
 
@@ -13,7 +13,7 @@ export async function createLineBreakdown(
     populationFiltered: PopulationFiltered,
     populationViewport: PopulationFiltered,
     populationWindow: PopulationFiltered,
-    { source, sampledTrees }: SampledTreeSet,
+    { source, sampledTrees, dimensions: dimensionNames }: SampledTreeSet,
     work: WorkHandler
 ): Promise<ProfileLineBreakdown> {
     const population = populationFiltered.population;
@@ -28,7 +28,11 @@ export async function createLineBreakdown(
 
         return { recomputeMetrics, dimensions: lineDimensions };
     });
-    const offset = sampledTrees.length > 5 ? 1 : 0;
+    const dimensionByName: Partial<Record<SampledTreeDimension, LineTreeDimension<CpuProNode>>> = {};
+
+    for (let i = 0; i < dimensionNames.length; i++) {
+        dimensionByName[dimensionNames[i]] = dimensions[i];
+    }
 
     return {
         kind,
@@ -39,12 +43,12 @@ export async function createLineBreakdown(
         populationWindow,
         populationFiltered,
         recomputeMetrics,
-        locations: offset ? dimensions[0] as LineTreeDimension<CpuProLocation> : null,
-        callFrames: dimensions[offset] as LineTreeDimension<CpuProCallFrame>,
-        modules: dimensions[offset + 1] as LineTreeDimension<CpuProModule>,
-        packages: dimensions[offset + 2] as LineTreeDimension<CpuProPackage>,
-        categories: dimensions[offset + 3] as LineTreeDimension<CpuProCategory>,
-        owners: dimensions[offset + 4] as LineTreeDimension<CpuProOwner>
+        locations: (dimensionByName.locations ?? null) as LineTreeDimension<CpuProLocation> | null,
+        callFrames: dimensionByName.callFrames as LineTreeDimension<CpuProCallFrame>,
+        modules: dimensionByName.modules as LineTreeDimension<CpuProModule>,
+        packages: dimensionByName.packages as LineTreeDimension<CpuProPackage>,
+        categories: dimensionByName.categories as LineTreeDimension<CpuProCategory>,
+        owners: dimensionByName.owners as LineTreeDimension<CpuProOwner>
     };
 }
 

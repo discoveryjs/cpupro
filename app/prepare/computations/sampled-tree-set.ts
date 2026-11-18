@@ -28,11 +28,17 @@ export type SampledTreeSourceOrigin = {
     sourceIds: Uint32Array;
 };
 
+// Names of the trees of a set, by which breakdowns take their dimensions
+export type SampledTreeDimension = 'locations' | 'callFrames' | 'modules' | 'packages' | 'categories' | 'owners';
+
 export type SampledTreeSet = {
     source: (TreeSource<CpuProLocation> | TreeSource<CpuProCallFrame>) & { origin?: SampledTreeSourceOrigin };
     sampledTrees: SampledCpuProCallTree[];
+    dimensions: SampledTreeDimension[]; // the name of every sampled tree
     dictionary: Dictionary | Usage;
 };
+
+const callFrameDimensions: SampledTreeDimension[] = ['callFrames', 'modules', 'packages', 'categories', 'owners'];
 
 export async function createSampledTreeSet(
     dictionary: Dictionary,
@@ -73,22 +79,20 @@ export async function createSampledTreeSet(
         )
     );
 
+    const dimensions: SampledTreeDimension[] = treeSet.locations !== null
+        ? ['locations', ...callFrameDimensions]
+        : callFrameDimensions;
+    const treeOfDimension = (dimension: SampledTreeDimension) => treeSet[dimension] as CpuProCallTree;
     const sampledTrees = await work('map samples to trees', () =>
         createSampledTrees(
             treeSet.sourceIdToNode,
-            [
-                ...(treeSet.locations ? [treeSet.locations] : []),
-                treeSet.callFrames,
-                treeSet.modules,
-                treeSet.packages,
-                treeSet.categories,
-                treeSet.owners
-            ]
+            dimensions.map(treeOfDimension)
         )
     );
 
     return {
         sampledTrees,
+        dimensions,
         source: treeSource,
         dictionary: usage || dictionary
     };
@@ -98,15 +102,19 @@ export function createSampledTrees(
     sampleIdToEntryTreeNode: Int32Array,
     trees: CpuProCallTree[]
 ) {
-    const sampledTrees: SampledCpuProCallTree[] = [];
+    // A sampled tree takes the position of its tree, whatever order trees are mapped in
+    const sampledTrees: SampledCpuProCallTree[] = new Array(trees.length);
     const sampleToNodeBySourceTree = new Map<CpuProCallTree | null, Uint32Array>(
         [[null, new Uint32Array(sampleIdToEntryTreeNode)]]
     );
+    let sampledTreeCount = 0;
 
-    while (sampledTrees.length < trees.length) {
+    while (sampledTreeCount < trees.length) {
         let foundNewTree = false;
 
-        for (const tree of trees) {
+        for (let i = 0; i < trees.length; i++) {
+            const tree = trees[i];
+
             if (sampleToNodeBySourceTree.has(tree)) {
                 continue;
             }
@@ -123,11 +131,12 @@ export function createSampledTrees(
                 }
 
                 foundNewTree = true;
+                sampledTreeCount++;
                 sampleToNodeBySourceTree.set(tree, sampleToNode);
-                sampledTrees.push({
+                sampledTrees[i] = {
                     tree,
                     sampleToNode
-                } as SampledCpuProCallTree);
+                } as SampledCpuProCallTree;
             }
         }
 
@@ -142,7 +151,7 @@ export function createSampledTrees(
 // The tree set of samples of another set's source, a source id per sample: the trees and the dictionary are shared,
 // the source and the maps of samples to tree nodes take the nodes of the samples' source ids
 export function sampledTreeSetOfSourceIds(treeSet: SampledTreeSet, sampleSourceIds: Uint32Array): SampledTreeSet {
-    const { source, sampledTrees, dictionary } = treeSet;
+    const { source, sampledTrees, dimensions, dictionary } = treeSet;
     const sourceIdToNode = new Int32Array(sampleSourceIds.length);
     const samplesTrees: SampledCpuProCallTree[] = [];
 
@@ -174,6 +183,7 @@ export function sampledTreeSetOfSourceIds(treeSet: SampledTreeSet, sampleSourceI
             }
         },
         sampledTrees: samplesTrees,
+        dimensions,
         dictionary
     };
 }
