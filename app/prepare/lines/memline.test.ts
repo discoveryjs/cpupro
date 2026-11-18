@@ -82,6 +82,30 @@ test('maps allocation attribute codes to dictionary indices of 1 byte without ch
     assert.deepEqual([...gc], [0 << 2 | 2, 1 << 2 | 0, 2 << 2 | 1]);
 });
 
+// The code types of a memline come from the code types of allocations, the names of the types as V8 tiers are shown
+// and context info: JS code (0) keeps the code type, the VM state OTHER (5) takes its own
+test('a memline takes the code types of allocations by their names and context info', async () => {
+    const line = await createAllocationMemline({
+        _cpuproAllocationSizes: [8, 16, 24, 32, 40, 48],
+        _cpuproAllocationCodeType: [0, 1, 2, 3, 4, 4],
+        _cpuproAllocationCodeTypeNames: {
+            0: 'unknown',
+            1: 'ignition',
+            2: 'baseline',
+            3: 'maglev',
+            4: 'turbofan'
+        },
+        _cpuproAllocationContextInfo: [0, 0, 0, 0, 0, 0x05]
+    });
+    const attribute = line!.attributes.find(entry => entry.name === 'allocationCodeType')!;
+    const codeTypeName = (index: number) => attribute.dict[index];
+
+    assert.deepEqual(
+        Array.from(attribute.values, codeTypeName),
+        ['Unknown', 'Ignition', 'Sparkplug', 'Maglev', 'Turbofan', 'Other']
+    );
+});
+
 // Context info holds a VM state in bits 0-3 and a builtin (its id + 1) in bits 4-31: JS code (0), the VM state
 // OTHER (5), a builtin in JS, and a builtin under which the bytecode compiler (3) allocates
 test.each([
