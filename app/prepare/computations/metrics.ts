@@ -80,6 +80,7 @@ export class TreeMetrics<T extends CpuProNode> extends Observer {
         for (const index of tree.selectNodes(valueIndex, true)) {
             samples += samplesCount[index];
             selfValue += selfValues[index];
+
             if (nested[index] === 0) {
                 nestedValue += nestedValues[index];
             }
@@ -110,7 +111,9 @@ function projectSampleToNode<T extends CpuProNode>(tree: CallTree<T>, sourceMetr
     for (let i = 0; i < sampleToNode.length; i++) {
         const nodeIndex = tree.sourceIdToNode[sourceMetrics.sampleToNode[i]];
 
-        sampleToNode[i] = nodeIndex >= 0 ? nodeIndex : excludedNode;
+        sampleToNode[i] = nodeIndex >= 0
+            ? nodeIndex
+            : excludedNode;
     }
 
     return sampleToNode;
@@ -207,10 +210,13 @@ export class AncestorSubsetTreeMetrics<T extends CpuProNode> extends TreeMetrics
         for (let i = 0; i < nodeOriginalsCount.length; i++) {
             const start = nodeOriginalsOffset[i];
             const end = start + nodeOriginalsCount[i];
+
             for (let j = start; j < end; j++) {
                 const origIdx = nodeOriginals[j];
+
                 selfValues[i] += origSelf[origIdx];
                 samplesCount[i] += origSamples[origIdx];
+
                 // For nodes that are occurrences of the focused value (mapped to root),
                 // skip nestedValues for recursive occurrences to avoid double-counting
                 // (same logic as getValueMetrics)
@@ -235,8 +241,7 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
     dictionary: T[];
     #entries: DictionaryMetric<T>[] | null = null;
     #entriesMap: WeakRef<Map<T, DictionaryMetric<T>>>;
-    // Gives the metric arrays brought up to date
-    #values: () => DictionaryMetricsMap<T>;
+    #values: () => DictionaryMetricsMap<T>; // gives the metric arrays brought up to date
 
     constructor(
         dictionary: T[],
@@ -334,12 +339,15 @@ export class DictionaryMetrics<T extends CpuProNode> extends Observer {
 }
 
 function copyMetrics<T>(source: DimensionMaps<T>, target: DimensionMaps<T>) {
-    target.treeMap.samplesCount.set(source.treeMap.samplesCount);
-    target.treeMap.selfValues.set(source.treeMap.selfValues);
-    target.treeMap.nestedValues.set(source.treeMap.nestedValues);
-    target.dictMap.samplesCount.set(source.dictMap.samplesCount);
-    target.dictMap.selfValues.set(source.dictMap.selfValues);
-    target.dictMap.totalValues.set(source.dictMap.totalValues);
+    const { treeMap: sourceTreeMap, dictMap: sourceDictMap } = source;
+    const { treeMap: targetTreeMap, dictMap: targetDictMap } = target;
+
+    targetTreeMap.samplesCount.set(sourceTreeMap.samplesCount);
+    targetTreeMap.selfValues.set(sourceTreeMap.selfValues);
+    targetTreeMap.nestedValues.set(sourceTreeMap.nestedValues);
+    targetDictMap.samplesCount.set(sourceDictMap.samplesCount);
+    targetDictMap.selfValues.set(sourceDictMap.selfValues);
+    targetDictMap.totalValues.set(sourceDictMap.totalValues);
 }
 
 function createDimension<T extends CpuProNode>(
