@@ -327,6 +327,20 @@ test('a heap snapshot is a session of a thread with the snapshot and no profiles
     assert.deepEqual(heapSnapshot.retainers.retainerEdges, new Uint32Array([0, 1, 2]));
 });
 
+// A snapshot with its dominator tree takes it rather than computing one
+test('a heap snapshot with columns of dominators and retained sizes takes them', async () => {
+    const decoded = await decodeHeapSnapshot(bytesOf(heapSnapshotText));
+    const retainedSizes = new Float64Array([100, 50, 24]);
+
+    decoded.nodes.columns.dominator = new Uint32Array([0xFFFFFFFF, 0, 1]);
+    decoded.nodes.columns.retained_size = retainedSizes;
+
+    const heapSnapshot = (await prepareData(decoded)).heapSnapshots[0];
+
+    assert.equal(heapSnapshot.retainedSizes, retainedSizes);
+    assert.deepEqual(heapSnapshot.dominators, new Uint32Array([0xFFFFFFFF, 0, 1]));
+});
+
 // An object is made when read, with its references by their names, an element's or a hidden edge's by its index
 test('objects of a heap snapshot and their references', async () => {
     const heapSnapshot = (await prepareData(await decodeHeapSnapshot(bytesOf(heapSnapshotText)))).heapSnapshots[0];

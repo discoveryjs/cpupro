@@ -12,7 +12,8 @@ const referenceCols = field => [
             content: heapObjectLink
         }
     },
-    { header: 'Self size', align: 'right', content: `text:#.heapSnapshot.objects[${field}].selfSize.bytes()` }
+    { header: 'Self size', align: 'right', content: `text:#.heapSnapshot.objects[${field}].selfSize.bytes()` },
+    { header: 'Retained size', align: 'right', content: `text:#.heapSnapshot.retainedSizes[${field}].bytes()` }
 ];
 
 const pageContent = [
@@ -29,6 +30,7 @@ const pageContent = [
         content: [
             { title: 'Class', content: 'text:class.name' },
             { title: 'Self size', content: 'text:selfSize.bytes()' },
+            { title: 'Retained size', content: 'text:snapshot.retainedSizes[index].bytes()' },
             { title: 'References', value: '=edges.size()' },
             { title: 'Retainers', value: '=retainers.size()' }
         ]

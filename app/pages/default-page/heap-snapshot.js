@@ -12,7 +12,8 @@ const classObjects = {
     limit: 25,
     cols: [
         { header: 'Object', content: heapObjectLink },
-        { header: 'Self size', align: 'right', content: 'text:selfSize.bytes()' }
+        { header: 'Self size', align: 'right', content: 'text:selfSize.bytes()' },
+        { header: 'Retained size', align: 'right', content: 'text:snapshot.retainedSizes[index].bytes()' }
     ]
 };
 

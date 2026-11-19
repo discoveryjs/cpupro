@@ -118,15 +118,30 @@ test('the dominator tree takes strong edges, nodes out of reach retain themselve
     );
 });
 
+// Random graphs, half of them starting with a chain of nodes with a single strong successor each, as the root
+// of a snapshot often does, which bounds the semidominators of the nodes after it
 test('the dominator tree of random graphs is the one by definition', () => {
     const random = sequence(7);
 
-    for (let graph = 0; graph < 30; graph++) {
-        const nodeCount = 2 + random(40);
+    for (let graph = 0; graph < 60; graph++) {
+        const nodeCount = 4 + random(40);
+        const chainLength = graph % 2 === 0
+            ? 1 + random(3)
+            : 0;
         const targets: number[][] = [];
         const weak: [number, number][] = [];
 
-        for (let i = 0; i < nodeCount; i++) {
+        for (let i = 0; i < chainLength; i++) {
+            targets.push([i + 1]);
+
+            // a weak edge leaves the chain a chain of strong edges
+            if (random(2) === 0) {
+                targets[i].push(random(nodeCount));
+                weak.push([i, targets[i][1]]);
+            }
+        }
+
+        for (let i = chainLength; i < nodeCount; i++) {
             const edgeCount = random(4);
 
             targets.push([]);

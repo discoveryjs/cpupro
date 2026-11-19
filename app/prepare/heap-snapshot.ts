@@ -48,7 +48,7 @@ export class HeapSnapshot {
 
     #firstEdges: Uint32Array | null = null;
     #retainers: ReturnType<typeof computeRetainers> | null = null;
-    #dominatorTree: ReturnType<typeof computeDominatorTree> | null = null;
+    #dominatorTree: { dominators: Uint32Array; retainedSizes: Float64Array } | null = null;
     #distances: Uint32Array | null = null;
 
     constructor(data: UniformHeapSnapshot, thread: CpuProThread) {
@@ -128,7 +128,20 @@ export class HeapSnapshot {
         return this.#distances;
     }
 
+    // A snapshot may come with its dominator tree, the columns of the immediate dominator of every node (its index,
+    // NO_NODE for the root and nodes out of reach) and its retained size
     #getDominatorTree() {
+        const { dominator, retained_size: retainedSize } = this.nodes.columns;
+
+        if (this.#dominatorTree === null && dominator !== undefined && retainedSize !== undefined) {
+            this.#dominatorTree = {
+                dominators: dominator as Uint32Array,
+                retainedSizes: retainedSize instanceof Float64Array
+                    ? retainedSize
+                    : Float64Array.from(retainedSize)
+            };
+        }
+
         if (this.#dominatorTree === null) {
             this.#dominatorTree = computeDominatorTree(
                 this.firstEdges,

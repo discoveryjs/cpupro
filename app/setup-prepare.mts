@@ -185,6 +185,12 @@ export default (async function(input: unknown, { rejectData, markers, setWorkTit
                 new HeapSnapshot(heapSnapshotData, thread)
             );
 
+            // Retained sizes are what a snapshot is opened for, when it's the main data of the session rather than
+            // a supplement of its profiles
+            if (sessionProfiles.length === 0) {
+                await runSessionTask('compute retained sizes', () => heapSnapshot.retainedSizes);
+            }
+
             thread.heapSnapshots.push(heapSnapshot);
             session.heapSnapshots.push(heapSnapshot);
             heapSnapshots.push(heapSnapshot);
